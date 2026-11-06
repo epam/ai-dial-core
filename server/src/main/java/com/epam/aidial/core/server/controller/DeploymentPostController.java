@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -151,14 +152,15 @@ public class DeploymentPostController extends BaseChatCompletionController {
 
     private Future<?> handleDeployment(String deploymentId) {
         return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> {
-            Deployment dep = proxy.getDeploymentService().findDeployment(context, deploymentId);
+            Deployment dep = proxy.getDeploymentService().findCallableDeployment(context, deploymentId);
             proxy.getConsentService().verifyUserConsent(context, dep, requestedInterface());
             return dep;
         }))
                 .map(dep -> {
                     Features features = dep.resolveFeatures(requestedInterface());
                     boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
-                    if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
+                    if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey
+                            && !DeploymentService.isLent(context, dep)) {
                         throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", deploymentId, context.getApiKeyData().getSourceDeployment()));
                     }
 

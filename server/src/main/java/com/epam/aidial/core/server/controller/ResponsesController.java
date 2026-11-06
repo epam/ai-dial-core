@@ -37,6 +37,7 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -262,12 +263,13 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Void setupDeployment(String model) {
-        Deployment deployment = proxy.getDeploymentService().findDeployment(context, model);
+        Deployment deployment = proxy.getDeploymentService().findCallableDeployment(context, model);
         proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.OPENAI_RESPONSES);
 
         Features features = deployment.resolveFeatures(InterfaceType.OPENAI_RESPONSES);
         boolean isPerRequestKey = !context.isOriginalRequest();
-        if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey) {
+        if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey
+                && !DeploymentService.isLent(context, deployment)) {
             throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", model, context.getApiKeyData().getSourceDeployment()));
         }
 

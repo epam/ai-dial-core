@@ -158,7 +158,8 @@ public class ResponseItemController implements Controller {
         if (operation == Operation.DELETE && proxy.getBackgroundJobService().isJobActive(dialResponseId)) {
             throw new HttpException(HttpStatus.CONFLICT, "Cannot delete response while background job is in progress");
         }
-        Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
+        // a response stored by an alias is read through its pass, which forwards to the response its target pass stored
+        Deployment deployment = proxy.getDeploymentService().findCallableDeployment(context, mapping.getDeploymentName());
         if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
                 context.getConfig().getTranslators()) == null) {
             throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API");

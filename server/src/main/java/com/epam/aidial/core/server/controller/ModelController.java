@@ -49,6 +49,10 @@ public class ModelController {
     public Future<?> getModel(String modelId) {
         Config config = context.getConfig();
         Model model = config.getModels().get(modelId);
+        if (model == null && AliasListings.isAliasId(config, modelId)) {
+            AliasListings.respondModel(context, modelId, view -> true, ModelController::createModel);
+            return Future.succeededFuture();
+        }
 
         if (model == null) {
             return context.respond(HttpStatus.NOT_FOUND);
@@ -81,10 +85,18 @@ public class ModelController {
                 models.add(data);
             }
         }
+        AliasListings.listModels(context).onSuccess(views -> {
+            for (Model view : views) {
+                models.add(createModel(view));
+            }
+            respond(models);
+        }).onFailure(error -> AliasListings.respondError(context, error));
+        return Future.succeededFuture();
+    }
 
+    private Future<?> respond(List<ModelData> models) {
         ListData<ModelData> list = new ListData<>();
         list.setData(models);
-
         return context.respond(HttpStatus.OK, list);
     }
 

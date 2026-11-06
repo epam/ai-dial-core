@@ -333,7 +333,7 @@ through the interceptor chain.
 
 | Setting                    | Default                               | Required | Description                                                                                                  |
 |-----------------------------|:-------------------------------------:|:--------:|--------------------------------------------------------------------------------------------------------------|
-| backgroundJob.localBaseUrl | http://localhost:{actual server port} |    No    | Base URL that background job polling uses to reach this Core instance's own HTTP endpoint.                   |
+| backgroundJob.localBaseUrl | http://localhost:{actual server port} |    No    | Base URL that background job polling and [alias](/docs/dynamic-settings/aliases.md) calls use to reach this Core instance's own HTTP endpoint. |
 | backgroundJob.pollTimeoutMs | 300000                               |    No    | Timeout in milliseconds of a single polling request. A request exceeding it fails and counts as a poll failure. |
 | backgroundJob.pollGiveUpStatusCodes | [401, 403, 404]               |    No    | HTTP status codes of a polling response that make the job give up immediately instead of retrying.         |
 | backgroundJob.jobTtlMs     | 86400000                              |    No    | Lifetime in milliseconds of a background job and its per-request API key. The scheduler's next scan expires a job older than this. |
@@ -359,7 +359,7 @@ the client subscribed with no events ever reaching it.
 <details> 
 <summary><b>Admin System Export Configurations</b></summary>
 
-Settings of `POST /v1/admin/system-export`, which streams the `public` and `platform` buckets as a ZIP archive.
+Settings of `POST /v1/admin/system-export`, which streams the `public` and `platform` buckets (or those listed in the optional `scope` query parameter) as a ZIP archive.
 Refer to [Admin system export](docs/admin-system-export.md) to learn more.
 
 | Setting                        | Default | Required | Description                                                                                                                                              |
@@ -446,6 +446,7 @@ DIAL Core stores user data in the following storages:
 | models                 | A list of deployed models and their parameters. Refer to [Models](/docs/dynamic-settings/models.md) to see dynamic settings.                                                                                                                                                    |
 | toolsets               | A list of available toolsets and their parameters. Refer to [Toolsets](/docs/dynamic-settings/toolsets.md) to see dynamic settings.                                                                                                                                             |
 | routers                | A list of routers: deployments that pick the model serving a request. Refer to [Routers](/docs/dynamic-settings/routers.md) to see dynamic settings.                                                                                                                            |
+| aliases                | Admin-managed deployments of their own that forward calls to a model, application or toolset and grant callers the right to call it. Refer to [Aliases](/docs/dynamic-settings/aliases.md) to see dynamic settings. |
 | roles                  | API key or JWT roles and their parameters. Refer to [Roles](/docs/dynamic-settings/roles.md) to see dynamic settings.                                                                                                                                                           |
 | keys                   | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.                                                                                                                                                                     |
 | retriableErrorCodes    | List of Retriable Error Codes for handling outages at LLM Providers. This list extends the existing error codes (429, 502, 503, 504) but doesn't override them.                                                                                                                 |

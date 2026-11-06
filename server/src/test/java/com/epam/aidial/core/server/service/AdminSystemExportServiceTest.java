@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.FileUtil;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
@@ -59,6 +60,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -75,6 +77,10 @@ class AdminSystemExportServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-01-02T03:04:05.678Z");
     private static final String CORE_VERSION = "1.2.3";
+    private static final List<String> ALL_BUCKETS = MergedConfigStore.ADMIN_BUCKET_LOCATIONS;
+    private static final int KEY_LENGTH = 32;
+    private static final String PLAIN_KEY = "p".repeat(KEY_LENGTH);
+    private static final String WRAPPED_KEY = "w".repeat(KEY_LENGTH + 28);
 
     private RedisServer redisServer;
     private RedissonClient redis;
@@ -117,7 +123,7 @@ class AdminSystemExportServiceTest {
             blobStorage = new BlobStorage(mapper.readValue(blobStorageConfig, Storage.class));
 
             lockService = new LockService(redis, null);
-            service = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION);
+            service = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, false, KEY_LENGTH);
         } catch (Throwable e) {
             destroy();
             throw e;
@@ -232,7 +238,7 @@ class AdminSystemExportServiceTest {
         Path file = testDir.resolve("compression.zip");
 
         try (OutputStream out = Files.newOutputStream(file)) {
-            service.export(out, NOW);
+            service.export(out, NOW, ALL_BUCKETS);
         }
 
         try (ZipFile zip = new ZipFile(file.toFile())) {
@@ -277,6 +283,131 @@ class AdminSystemExportServiceTest {
     }
 
     @Test
+    void testResolveBucketLocations() {
+        assertEquals(List.of("public/", "platform/"), AdminSystemExportService.resolveBucketLocations(List.of()));
+        assertEquals(List.of("platform/"), AdminSystemExportService.resolveBucketLocations(List.of("platform")));
+        assertEquals(List.of("public/"), AdminSystemExportService.resolveBucketLocations(List.of(" PUBLIC , public")));
+        assertEquals(List.of("public/", "platform/"), AdminSystemExportService.resolveBucketLocations(List.of("platform,public")));
+        assertEquals(List.of("public/", "platform/"), AdminSystemExportService.resolveBucketLocations(List.of("platform", "PUBLIC")));
+        assertEquals(List.of("platform/"), AdminSystemExportService.resolveBucketLocations(List.of("platform", "platform")));
+    }
+
+    @Test
+    void testInvalidScopeIsRejected() {
+        for (String scope : List.of("org", "all", "", " ", "public,", ",platform", "public,,platform", "public;platform")) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> AdminSystemExportService.resolveBucketLocations(List.of(scope)), "scope '" + scope + "'");
+            assertTrue(e.getMessage().contains("public, platform"), e.getMessage());
+        }
+        for (List<String> scopes : List.of(List.of("public", ""), List.of("", "platform"), List.of("public", "org"))) {
+            assertThrows(IllegalArgumentException.class, () -> AdminSystemExportService.resolveBucketLocations(scopes), "scopes " + scopes);
+        }
+    }
+
+    @Test
+    void testExportHoldsOnlyTheSelectedBuckets() throws IOException {
+        store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
+        store("platform/models/m1", "application/json", null, Map.of(), "{}");
+
+        assertEquals(List.of("platform/models/m1"), contentEntries(export(service, List.of("platform/"))));
+        assertEquals(List.of("public/files/user1/a.txt"), contentEntries(export(service, List.of("public/"))));
+        assertEquals(List.of("public/files/user1/a.txt", "platform/models/m1"), contentEntries(export(service, ALL_BUCKETS)));
+    }
+
+    @Test
+    void testBucketOutsideTheScopeIsNotLocked() throws Exception {
+        store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
+        try (GatedOutputStream gatedOut = new GatedOutputStream()) {
+            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut, NOW, List.of("public/")));
+            assertTrue(gatedOut.writing.await(10, TimeUnit.SECONDS));
+
+            LockService.Lock platformLock = lockService.tryLock("platform/");
+            assertNotNull(platformLock, "platform/ is outside the scope and must not be locked");
+            platformLock.close();
+            assertNull(lockService.tryLock("public/"), "public/ must be locked while exporting");
+
+            gatedOut.proceed.countDown();
+            exporting.get(10, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void testHeldLockOfBucketOutsideTheScopeDoesNotRejectExport() throws IOException {
+        store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
+        LockService.Lock held = lockService.tryLock("platform/");
+        assertNotNull(held);
+        try {
+            assertEquals(List.of("public/files/user1/a.txt"), contentEntries(export(service, List.of("public/"))));
+        } finally {
+            held.close();
+        }
+    }
+
+    @Test
+    void testEncryptionKeysAreExportedWhenKmsIsEnabled() throws IOException {
+        store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY);
+        store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY);
+        store("public/credentials/cred1", "application/json", null, Map.of(), "secret");
+        store("platform/credentials/cred2", "application/json", null, Map.of(), "secret");
+        store("public/files/owner/encryption_keys/notes.txt", "text/plain", null, Map.of(), "notes");
+        AdminSystemExportService kmsService = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, true, KEY_LENGTH);
+
+        byte[] archive = export(kmsService);
+        Map<String, byte[]> entries = readEntries(archive);
+
+        assertEquals(List.of("public/encryption_keys/cek", "public/files/owner/encryption_keys/notes.txt", "platform/encryption_keys/cek"),
+                contentEntries(archive));
+        assertArrayEquals(WRAPPED_KEY.getBytes(StandardCharsets.UTF_8), entries.get("platform/encryption_keys/cek"));
+        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/encryption_keys/cek"));
+        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "platform/encryption_keys/cek"));
+        assertFalse(entries.keySet().stream().anyMatch(name -> name.contains("cred1") || name.contains("cred2")));
+    }
+
+    @Test
+    void testEncryptionKeysOfOnlyTheSelectedBucketAreExportedWhenKmsIsEnabled() throws IOException {
+        store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY);
+        store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY);
+        AdminSystemExportService kmsService = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, true, KEY_LENGTH);
+
+        assertEquals(List.of("platform/encryption_keys/cek"), contentEntries(export(kmsService, List.of("platform/"))));
+    }
+
+    @Test
+    void testEncryptionKeyThatCannotBeWrappedIsNotExported() throws IOException {
+        store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), PLAIN_KEY);
+        store("public/encryption_keys/longer", "application/octet-stream", null, Map.of(), PLAIN_KEY + "x");
+        store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "");
+        store("platform/encryption_keys/encoded", "application/octet-stream", "gzip", Map.of(), "short");
+        AdminSystemExportService kmsService = new AdminSystemExportService(blobStorage, lockService, NOW::toEpochMilli, CORE_VERSION, true, KEY_LENGTH);
+        Logger logger = (Logger) LoggerFactory.getLogger(AdminSystemExportService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            byte[] archive = export(kmsService);
+
+            assertEquals(List.of("public/encryption_keys/longer", "platform/encryption_keys/encoded"), contentEntries(archive));
+            assertArrayEquals((PLAIN_KEY + "x").getBytes(StandardCharsets.UTF_8), readEntries(archive).get("public/encryption_keys/longer"));
+            List<String> warnings = appender.list.stream().filter(event -> event.getLevel() == Level.WARN).map(ILoggingEvent::getFormattedMessage).toList();
+            assertEquals(2, warnings.size(), warnings.toString());
+            assertTrue(warnings.stream().anyMatch(message -> message.endsWith("public/encryption_keys/cek")), warnings.toString());
+            assertTrue(warnings.stream().anyMatch(message -> message.endsWith("platform/encryption_keys/cek")), warnings.toString());
+        } finally {
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    void testEmptyBlobIsExportedAsEmptyEntry() throws IOException {
+        store("public/models/m1", "application/json", null, Map.of(), "");
+
+        Map<String, byte[]> entries = readEntries(export(service));
+
+        assertEquals(0, entries.get("public/models/m1").length);
+        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/models/m1"));
+    }
+
+    @Test
     void testMarkersAreExportedWithMetadata() throws IOException {
         store("public/skills/folder/.dial-folder", "application/json", null, Map.of("k", "v"), "{}");
         store("public/skills/folder/skill/.dial-resource", "application/json", null, Map.of(), "{}");
@@ -315,7 +446,7 @@ class AdminSystemExportServiceTest {
 
         Path file = testDir.resolve("export.zip");
         try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(file))) {
-            exportService.export(out, NOW);
+            exportService.export(out, NOW, ALL_BUCKETS);
         }
 
         try (ZipFile zip = new ZipFile(file.toFile())) {
@@ -354,7 +485,7 @@ class AdminSystemExportServiceTest {
     void testConcurrentBucketLockWaitsForExport() throws Exception {
         store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
         try (GatedOutputStream gatedOut = new GatedOutputStream()) {
-            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut, NOW));
+            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut, NOW, ALL_BUCKETS));
             assertTrue(gatedOut.writing.await(10, TimeUnit.SECONDS));
 
             AtomicBoolean acquired = new AtomicBoolean();
@@ -377,11 +508,11 @@ class AdminSystemExportServiceTest {
     void testConcurrentExportIsRejected() throws Exception {
         store("public/files/user1/a.txt", "text/plain", null, Map.of(), "a");
         try (GatedOutputStream gatedOut = new GatedOutputStream()) {
-            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut, NOW));
+            CompletableFuture<Void> exporting = CompletableFuture.runAsync(() -> service.export(gatedOut, NOW, ALL_BUCKETS));
             assertTrue(gatedOut.writing.await(10, TimeUnit.SECONDS));
 
             ByteArrayOutputStream rejectedOut = new ByteArrayOutputStream();
-            assertThrows(AdminSystemExportBusyException.class, () -> service.export(rejectedOut, NOW));
+            assertThrows(AdminSystemExportBusyException.class, () -> service.export(rejectedOut, NOW, ALL_BUCKETS));
             assertEquals(0, rejectedOut.size());
 
             gatedOut.proceed.countDown();
@@ -398,7 +529,7 @@ class AdminSystemExportServiceTest {
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-            assertThrows(AdminSystemExportBusyException.class, () -> service.export(out, NOW));
+            assertThrows(AdminSystemExportBusyException.class, () -> service.export(out, NOW, ALL_BUCKETS));
 
             assertEquals(0, out.size());
             LockService.Lock publicLock = lockService.tryLock("public/");
@@ -430,7 +561,7 @@ class AdminSystemExportServiceTest {
             }
         };
 
-        UncheckedIOException e = assertThrows(UncheckedIOException.class, () -> service.export(failingOut, NOW));
+        UncheckedIOException e = assertThrows(UncheckedIOException.class, () -> service.export(failingOut, NOW, ALL_BUCKETS));
 
         assertEquals("broken pipe", e.getCause().getMessage());
         byte[] bytes = written.toByteArray();
@@ -451,8 +582,8 @@ class AdminSystemExportServiceTest {
         ByteArrayOutputStream written = new ByteArrayOutputStream();
 
         UncheckedIOException e = assertThrows(UncheckedIOException.class, () ->
-                new AdminSystemExportService(blobStorage, lockService, current::get, CORE_VERSION)
-                        .export(afterFirstWrite(written, () -> current.addAndGet(LockService.LOCK_PERIOD.plusSeconds(1).toMillis())), NOW));
+                new AdminSystemExportService(blobStorage, lockService, current::get, CORE_VERSION, false, KEY_LENGTH)
+                        .export(afterFirstWrite(written, () -> current.addAndGet(LockService.LOCK_PERIOD.plusSeconds(1).toMillis())), NOW, ALL_BUCKETS));
 
         assertTrue(e.getCause().getMessage().contains("lock period"), e.getCause().getMessage());
         assertEquals(-1, indexOf(written.toByteArray(), new byte[] {'P', 'K', 5, 6}), "end of central directory must not be written");
@@ -469,8 +600,8 @@ class AdminSystemExportServiceTest {
         AtomicLong current = new AtomicLong(NOW.toEpochMilli());
         ByteArrayOutputStream written = new ByteArrayOutputStream();
 
-        new AdminSystemExportService(blobStorage, lockService, current::get, CORE_VERSION)
-                .export(afterFirstWrite(written, () -> current.addAndGet(LockService.LOCK_PERIOD.toMillis())), NOW);
+        new AdminSystemExportService(blobStorage, lockService, current::get, CORE_VERSION, false, KEY_LENGTH)
+                .export(afterFirstWrite(written, () -> current.addAndGet(LockService.LOCK_PERIOD.toMillis())), NOW, ALL_BUCKETS);
 
         assertTrue(readEntries(written.toByteArray()).containsKey("public/files/user1/a.txt"));
     }
@@ -501,7 +632,7 @@ class AdminSystemExportServiceTest {
                 throw new IOException("broken pipe");
             }
         }) {
-            assertThrows(UncheckedIOException.class, () -> service.export(failingOut, NOW));
+            assertThrows(UncheckedIOException.class, () -> service.export(failingOut, NOW, ALL_BUCKETS));
 
             List<ILoggingEvent> errors = appender.list.stream().filter(event -> event.getLevel() == Level.ERROR).toList();
             assertEquals(1, errors.size());
@@ -546,7 +677,7 @@ class AdminSystemExportServiceTest {
     }
 
     private AdminSystemExportService newService(BlobStorage storage) {
-        return new AdminSystemExportService(storage, lockService, NOW::toEpochMilli, CORE_VERSION);
+        return new AdminSystemExportService(storage, lockService, NOW::toEpochMilli, CORE_VERSION, false, KEY_LENGTH);
     }
 
     private static BlobStorage singleBlobStorage(String path, Blob blob) {
@@ -565,9 +696,17 @@ class AdminSystemExportServiceTest {
     }
 
     private static byte[] export(AdminSystemExportService exportService) {
+        return export(exportService, ALL_BUCKETS);
+    }
+
+    private static byte[] export(AdminSystemExportService exportService, List<String> bucketLocations) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        exportService.export(out, NOW);
+        exportService.export(out, NOW, bucketLocations);
         return out.toByteArray();
+    }
+
+    private static List<String> contentEntries(byte[] archive) throws IOException {
+        return readEntries(archive).keySet().stream().filter(name -> !name.startsWith(".dial-system-export/")).toList();
     }
 
     private static byte[] gzip(String body) throws IOException {

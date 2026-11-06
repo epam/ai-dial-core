@@ -116,7 +116,8 @@ public class DeploymentFeatureController {
     )
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         // make sure request.body() called before request.resume()
-        return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId)).map(dep -> {
+        // an alias forwards the request to Core for its target, which then runs it as a target pass
+        return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findCallableDeployment(context, deploymentId)).map(dep -> {
             if (dep instanceof Application application) {
                 dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
             }

@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
@@ -91,6 +92,12 @@ public class UpstreamRouteProvider {
             context.setPolicy(breakpointContext.policy());
             context.setEntry(entry);
             context.setPrefixToHash(breakpointContext.prefixToHash());
+        }
+        if (deployment instanceof AliasPass) {
+            // Core's own address: a status the target pass answers is about that call, not about this upstream,
+            // so it must not be remembered for the next call of the alias
+            TieredBalancer balancer = new TieredBalancer(key, upstreams, generatorFactory.get());
+            return new UpstreamRoute(taskExecutor, upstreamCacheService, balancer, 1, null);
         }
         return get(key, upstreams, deployment.getMaxRetryAttempts(), context);
     }
