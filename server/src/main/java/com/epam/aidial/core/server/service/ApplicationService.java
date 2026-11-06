@@ -285,6 +285,7 @@ public class ApplicationService {
         if (application.getExternalServices() != null) {
             externalServiceService.purgeApplicationCredentials(resource, application.getExternalServices().keySet());
         }
+        resourceService.deleteResource(ConsentService.adminConsentDescriptor(application.getName()), EtagHeader.ANY);
 
         if (isPublicOrReview(resource)) {
             if (application.getFunction() != null) {

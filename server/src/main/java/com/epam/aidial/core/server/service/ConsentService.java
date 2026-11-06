@@ -136,7 +136,7 @@ public class ConsentService {
                 .setConsent(adminConsentOf(declared))
                 .setGrantedBy(context.getInitiatorId())
                 .setGrantedAt(clock.getAsLong());
-        resourceService.putResource(getAdminConsentDescription(application.getName()),
+        resourceService.putResource(adminConsentDescriptor(application.getName()),
                 ProxyUtil.convertToString(grant), EtagHeader.ANY);
         return grant;
     }
@@ -144,7 +144,7 @@ public class ConsentService {
     /** Deletes the record; returns the withdrawn grant (null when absent) for the audit event. */
     public ConsentGrant withdrawAdminConsent(ProxyContext context, String deploymentId) {
         Application application = requireApplication(context, deploymentId);
-        ResourceDescriptor descriptor = getAdminConsentDescription(application.getName());
+        ResourceDescriptor descriptor = adminConsentDescriptor(application.getName());
         ConsentGrant withdrawn = readAdminConsent(descriptor);
         resourceService.deleteResource(descriptor, EtagHeader.ANY);
         return withdrawn;
@@ -153,7 +153,7 @@ public class ConsentService {
     /** {@code consented} is exactly what the request-time gate enforces. */
     public AdminConsentStatus describeAdminConsent(ProxyContext context, String deploymentId) {
         Application application = requireApplication(context, deploymentId);
-        ConsentGrant stored = readAdminConsent(getAdminConsentDescription(application.getName()));
+        ConsentGrant stored = readAdminConsent(adminConsentDescriptor(application.getName()));
         if (stored == null) {
             return new AdminConsentStatus().setConsented(false);
         }
@@ -167,7 +167,7 @@ public class ConsentService {
     }
 
     public boolean isAdminConsented(String applicationId, List<ResourceDependency> declaration) {
-        return matches(readAdminConsent(getAdminConsentDescription(applicationId)), declaration);
+        return matches(readAdminConsent(adminConsentDescriptor(applicationId)), declaration);
     }
 
     /** Exact snapshot equality, shared by the gate and the status read; provenance never participates. */
@@ -203,9 +203,9 @@ public class ConsentService {
     }
 
     /** One record per application in the public bucket; a moved app gets a new key and is unconsented. */
-    private static ResourceDescriptor getAdminConsentDescription(String deploymentId) {
+    public static ResourceDescriptor adminConsentDescriptor(String applicationName) {
         return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.ADMIN_CONSENT,
-                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, deploymentId);
+                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, applicationName);
     }
 
     private ConsentGrant readAdminConsent(ResourceDescriptor descriptor) {

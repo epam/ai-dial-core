@@ -178,6 +178,23 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testDeletingTheApplicationDeletesItsAdminConsent() {
+        verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, reviewedResources(DECLARING_APP),
+                "authorization", "admin"), 200);
+
+        verify(send(HttpMethod.DELETE, "/v1/applications/public/dependency-consent-app", null, "", "authorization", "admin"), 200);
+        // the same path and declaration again: nobody has approved this application
+        verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        Response status = send(HttpMethod.GET, "/v1/admin-consent/" + DECLARING_APP, null, "", "authorization", "admin");
+        verify(status, 200);
+        assertEquals("{\"consented\":false}", status.body(), () -> "Body: " + status.body());
+    }
+
+    @Test
     void testAdminConsentStatusForNonDeclarersAndNonAdmins() {
         // A non-declaring app is a legitimate "nothing consented" answer, not an error.
         verify(send(HttpMethod.PUT, "/v1/applications/public/plain-consent-app", null, """
