@@ -3,6 +3,9 @@
     "files": ["/app/config/aidial.config.json"],
     "reload": 60000
   },
+  "applications": {
+    "allowUserResourceDependencies": false
+  },
   "redis": {
     "singleServerConfig": {
       "address": "redis://localhost:16370"

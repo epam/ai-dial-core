@@ -72,6 +72,7 @@ import com.epam.aidial.core.server.service.OrgUnitSettings;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.PublicationUtil;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
@@ -386,13 +387,15 @@ public class AiDial {
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService, applicationSchemaService);
 
-            ConsentService consentService = new ConsentService(deploymentService, resourceService);
+            ConsentService consentService = new ConsentService(deploymentService, resourceService, clock);
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
             WellKnownResourceMetadataService wellKnownResourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
+            boolean allowUserResourceDependencies = settings("applications").getBoolean("allowUserResourceDependencies", false);
+            ResourceDependencyValidator resourceDependencyValidator = new ResourceDependencyValidator(allowUserResourceDependencies);
 
             ApiKeyValidation apiKeyValidation = Json.decodeValue(settings("apiKeyValidation").toBuffer(), ApiKeyValidation.class);
             boolean printAuthorizationHeader = settings.getBoolean("printAuthorizationHeader", false);
@@ -435,7 +438,8 @@ public class AiDial {
                     toolSetService, securedResourceService, mcpHttpClientBuilder, toolSetRepairService, applicationSchemaService,
                     catalogSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
-                    perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
+                    perRequestPermissionService, resourceDependencyValidator, resourceAuthSettingsEncryptionService,
+                    authSettingsResolver, clientChannelService, taskExecutor, version(),
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,

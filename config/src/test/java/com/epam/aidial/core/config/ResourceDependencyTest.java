@@ -31,7 +31,7 @@ public class ResourceDependencyTest {
                 {
                     "kind": "dial.resourceLink",
                     "link_id": "lnk_1",
-                    "target": {"path": "current-user/skills/"},
+                    "target": {"path": "skills/{current-user}/"},
                     "access": ["read", "write"],
                     "required": true
                 }
@@ -40,7 +40,7 @@ public class ResourceDependencyTest {
 
         assertEquals(ResourceDependency.KIND, dependency.getKind());
         assertEquals("lnk_1", dependency.getLinkId());
-        assertEquals("current-user/skills/", dependency.getTarget().getPath());
+        assertEquals("skills/{current-user}/", dependency.getTarget().getPath());
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE), dependency.getAccess());
         assertTrue(dependency.isRequired());
     }
@@ -58,7 +58,7 @@ public class ResourceDependencyTest {
     @Test
     void defaultsWhenOptionalFieldsAreAbsent() throws Exception {
         ResourceDependency dependency = MAPPER.readValue(
-                "{\"kind\": \"dial.resourceLink\", \"target\": {\"path\": \"current-user/\"}}",
+                "{\"kind\": \"dial.resourceLink\", \"target\": {\"path\": \"skills/{current-user}/\"}}",
                 ResourceDependency.class);
 
         assertNull(dependency.getLinkId());
@@ -72,7 +72,7 @@ public class ResourceDependencyTest {
                 {
                     "kind": "dial.resourceLink",
                     "linkId": "lnk_1",
-                    "target": {"path": "current-user/skills/"},
+                    "target": {"path": "skills/{current-user}/"},
                     "access": ["write"],
                     "required": true
                 }
@@ -86,13 +86,13 @@ public class ResourceDependencyTest {
     void omitsDefaultValuesFromSerialization() throws Exception {
         ResourceDependency dependency = new ResourceDependency()
                 .setKind(ResourceDependency.KIND)
-                .setTarget(new ResourceDependency.Target().setPath("current-user/"));
+                .setTarget(new ResourceDependency.Target().setPath("skills/{current-user}/"));
 
         String json = MAPPER.writeValueAsString(dependency);
 
         assertFalse(json.contains("required"));
         assertFalse(json.contains("access"));
-        assertEquals("{\"kind\":\"dial.resourceLink\",\"target\":{\"path\":\"current-user/\"}}", json);
+        assertEquals("{\"kind\":\"dial.resourceLink\",\"target\":{\"path\":\"skills/{current-user}/\"}}", json);
     }
 
     @Test
@@ -110,10 +110,10 @@ public class ResourceDependencyTest {
     @Test
     void applicationSectionParsesBothForms() throws Exception {
         String snake = """
-                {"name": "app", "resource_dependencies": [{"link_id": "lnk_1", "target": {"path": "public/folder/"}}]}
+                {"name": "app", "resource_dependencies": [{"link_id": "lnk_1", "target": {"path": "files/public/folder/"}}]}
                 """;
         String camel = """
-                {"name": "app", "resourceDependencies": [{"linkId": "lnk_1", "target": {"path": "public/folder/"}}]}
+                {"name": "app", "resourceDependencies": [{"linkId": "lnk_1", "target": {"path": "files/public/folder/"}}]}
                 """;
 
         assertEquals(MAPPER.readValue(snake, Application.class).getResourceDependencies(),
@@ -144,7 +144,7 @@ public class ResourceDependencyTest {
                 .setResourceDependencies(List.of(new ResourceDependency()
                         .setKind(ResourceDependency.KIND)
                         .setLinkId("lnk_1")
-                        .setTarget(new ResourceDependency.Target().setPath("current-user/skills/"))
+                        .setTarget(new ResourceDependency.Target().setPath("skills/{current-user}/"))
                         .setAccess(Set.of(ResourceAccessType.WRITE))
                         .setRequired(true)));
 

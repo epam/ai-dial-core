@@ -25,6 +25,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
 import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.policy.PolicyAssignmentPrecheck;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.validation.ValidationUtil;
@@ -145,6 +146,10 @@ public class ConfigValidationService {
                     ConfigPostProcessor.validateOverridePaths(applicationManifest.spec(), warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                    String dependencyError = ResourceDependencyValidator.findShapeError(applicationManifest.spec());
+                    if (dependencyError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, dependencyError);
                     }
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
                         String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(

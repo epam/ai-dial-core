@@ -37,6 +37,7 @@ import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
@@ -192,6 +193,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final ResourceCredentialsService resourceCredentialsService;
     private final PerRequestPermissionService perRequestPermissionService;
+    private final ResourceDependencyValidator resourceDependencyValidator;
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
     private final AuthSettingsResolver authSettingsResolver;
     private final ClientChannelService clientChannelService;

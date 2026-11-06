@@ -9,14 +9,24 @@ import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.consent.AcceptConsentRequest;
+import com.epam.aidial.core.server.data.consent.AdminConsentStatus;
+import com.epam.aidial.core.server.data.consent.Consent;
+import com.epam.aidial.core.server.data.consent.ConsentGrant;
+import com.epam.aidial.core.server.data.consent.GrantAdminConsentRequest;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
+import com.epam.aidial.core.server.log.ResourceDependencyAuditLog;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
+import io.vertx.core.buffer.Buffer;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+import java.util.function.Supplier;
 
 @AllArgsConstructor
 @Slf4j
@@ -94,6 +104,117 @@ public class ConsentController {
         return Future.succeededFuture();
     }
 
+    @ApiOperation(
+            method = "GET",
+            path = "/v1/admin-consent/{deployment_id}",
+            operationId = "getApplicationAdminConsentStatus",
+            tags = {"Admin Consent"},
+            parameters = {
+                    @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = AdminConsentStatus.class)),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> getAdminConsentStatus(String deploymentId) {
+        proxy.getTaskExecutor().submit(() -> {
+            requireAdmin();
+            return proxy.getConsentService().describeAdminConsent(context, deploymentId);
+        }).onSuccess(status -> context.respond(HttpStatus.OK, status))
+                .onFailure(error -> handleAdminConsentError(deploymentId, error));
+        return Future.succeededFuture();
+    }
+
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/admin-consent/{deployment_id}",
+            operationId = "grantApplicationAdminConsent",
+            requestBody = @ApiSchema(implementation = GrantAdminConsentRequest.class),
+            tags = {"Admin Consent"},
+            parameters = {
+                    @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 409),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> grantAdminConsent(String deploymentId) {
+        context.getRequest().body()
+                .onSuccess(body -> adminConsentOperation(deploymentId, "GRANT",
+                        () -> proxy.getConsentService().grantAdminConsent(context, deploymentId, reviewedResources(body))))
+                .onFailure(error -> handleAdminConsentError(deploymentId, error));
+        return Future.succeededFuture();
+    }
+
+    private static List<Consent.ResourceEntry> reviewedResources(Buffer body) {
+        GrantAdminConsentRequest request;
+        try {
+            request = ProxyUtil.convertToObject(body, GrantAdminConsentRequest.class);
+        } catch (IllegalArgumentException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Invalid request body provided");
+        }
+        if (request == null || request.getResources() == null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "The reviewed resources are missing");
+        }
+        return request.getResources();
+    }
+
+    @ApiOperation(
+            method = "DELETE",
+            path = "/v1/admin-consent/{deployment_id}",
+            operationId = "withdrawApplicationAdminConsent",
+            tags = {"Admin Consent"},
+            parameters = {
+                    @ApiParameter(name = "deployment_id", in = ParameterIn.PATH, required = true,
+                            description = OpenApiDescriptions.DEPLOYMENT_ID)
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "Success"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404),
+                    @ApiResponse(code = 500)
+            }
+    )
+    public Future<?> withdrawAdminConsent(String deploymentId) {
+        return adminConsentOperation(deploymentId, "WITHDRAW",
+                () -> proxy.getConsentService().withdrawAdminConsent(context, deploymentId));
+    }
+
+    /** Admin only, checked before the deployment is resolved; audited on success and on failure. */
+    private Future<?> adminConsentOperation(String deploymentId, String action, Supplier<ConsentGrant> operation) {
+        proxy.getTaskExecutor().submit(() -> {
+            requireAdmin();
+            return operation.get();
+        })
+                .onComplete(result -> ResourceDependencyAuditLog.consent(context, deploymentId, action,
+                        result.succeeded() ? snapshotOf(result.result()) : null, result.cause()))
+                .onSuccess(ignored -> context.respond(HttpStatus.OK))
+                .onFailure(error -> handleAdminConsentError(deploymentId, error));
+        return Future.succeededFuture();
+    }
+
+    private static List<Consent.ResourceEntry> snapshotOf(ConsentGrant grant) {
+        return grant == null || grant.getConsent() == null ? null : grant.getConsent().getResources();
+    }
+
+    private void requireAdmin() {
+        // hasExplicitAdminAccess, not hasAdminAccess: unconfigured admin rules must deny, since this consent
+        // reaches every user (as the platform-bucket admin API does).
+        if (!proxy.getAccessService().hasExplicitAdminAccess(context)) {
+            throw new PermissionDeniedException("Only administrators may manage application admin consent");
+        }
+    }
+
     private void handleRequestError(String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
             log.warn("Forbidden deployment {}", deploymentId);
@@ -105,6 +226,26 @@ public class ConsentController {
             log.error("Failed to process user consent", error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Failed to process user consent for deployment=%s".formatted(deploymentId));
+        }
+    }
+
+    private void handleAdminConsentError(String deploymentId, Throwable error) {
+        if (error instanceof PermissionDeniedException) {
+            log.warn("Forbidden admin consent for deployment {}", deploymentId);
+            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
+        } else if (error instanceof ResourceNotFoundException) {
+            log.warn("Deployment not found {}", deploymentId);
+            context.respond(HttpStatus.NOT_FOUND, error.getMessage());
+        } else if (error instanceof HttpException httpException) {
+            log.warn("Admin consent rejected for deployment {} status={}", deploymentId, httpException.getStatus());
+            context.respond(httpException);
+        } else if (error instanceof IllegalArgumentException) {
+            log.warn("Invalid admin consent request for deployment {}: {}", deploymentId, error.getMessage());
+            context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+        } else {
+            log.error("Failed to process admin consent", error);
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to process admin consent for deployment=%s".formatted(deploymentId));
         }
     }
 

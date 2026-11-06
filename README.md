@@ -398,11 +398,12 @@ Refer to [Admin system export](docs/admin-system-export.md) to learn more.
 <details> 
 <summary><b>Applications Configurations</b></summary>
 
-| Setting                         | Default | Required | Description                                                                                                                           |
-|---------------------------------|:-------:|:--------:|---------------------------------------------------------------------------------------------------------------------------------------|
-| applications.includeCustomApps  |  false  |    No    | The flag indicates whether applications should be included into openai listing (required for Code Apps, Custom Apps, Quick Apps, etc) |
-| applications.controllerEndpoint |    -    |    No    | The endpoint to Application Controller Web Service that manages deployments for applications with functions                           |
-| applications.controllerTimeout  | 240000  |    No    | The timeout of operations to Application Controller Web Service                                                                       |
+| Setting                                    | Default | Required | Description                                                                                                                                                                                                                                                                                                                                 |
+|--------------------------------------------|:-------:|:--------:|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| applications.includeCustomApps             |  false  |    No    | The flag indicates whether applications should be included into openai listing (required for Code Apps, Custom Apps, Quick Apps, etc)                                                                                                                                                                                                       |
+| applications.controllerEndpoint            |    -    |    No    | The endpoint to Application Controller Web Service that manages deployments for applications with functions                                                                                                                                                                                                                                 |
+| applications.controllerTimeout             | 240000  |    No    | The timeout of operations to Application Controller Web Service                                                                                                                                                                                                                                                                             |
+| applications.allowUserResourceDependencies |  false  |    No    | Whether user-authored applications may declare `resource_dependencies` (scoped access to the calling user's resources outside the appdata sandbox). Admin-authored applications are not gated. The setting gates writes only: an application saved earlier keeps resolving while its admin consent stands; withdraw the consent to stop it. |
 
 </details>
 

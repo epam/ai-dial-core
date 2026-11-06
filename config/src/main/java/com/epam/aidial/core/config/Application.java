@@ -54,9 +54,6 @@ public class Application extends Deployment {
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
     private boolean allowUserExternalServices;
 
-    // Declared resource dependencies — pointer links, not grants: the declaration itself carries
-    // no access. Inert until write-time validation and request-start resolution land; until then
-    // the section parses, persists and round-trips, and nothing evaluates it.
     @JsonAlias({"resourceDependencies", "resource_dependencies"})
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private List<ResourceDependency> resourceDependencies = List.of();
