@@ -7,6 +7,7 @@ import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -375,9 +376,6 @@ public class ApplicationService {
         if (application.getExternalServices() != null) {
             externalServiceService.purgeApplicationCredentials(resource, application.getExternalServices().keySet());
         }
-        if (application.getName() != null) {
-            resourceService.deleteResource(ConsentService.adminConsentDescriptor(application.getName()), EtagHeader.ANY);
-        }
 
         if (isPublicOrReview(resource)) {
             if (application.getFunction() != null) {
@@ -396,6 +394,16 @@ public class ApplicationService {
                     resourceService.deleteResource(file, EtagHeader.ANY);
                 }
             }
+        }
+        deleteAdminConsent(resource, application);
+    }
+
+    /** The record is keyed by the name requests resolve to: a platform application's config name, any other's url. */
+    private void deleteAdminConsent(ResourceDescriptor resource, Application application) {
+        String deploymentName = ResourceDescriptor.PLATFORM_BUCKET.equals(resource.getBucketName())
+                ? MergedConfigStore.resolveMapKeyFor(resource) : application.getName();
+        if (deploymentName != null) {
+            resourceService.deleteResource(ConsentService.adminConsentDescriptor(deploymentName), EtagHeader.ANY);
         }
     }
 
