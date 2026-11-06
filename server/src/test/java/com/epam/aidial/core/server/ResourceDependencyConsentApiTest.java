@@ -133,6 +133,9 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 404);
         verify(send(HttpMethod.GET, "/v1/admin-consent/unknown-app", null, "",
                 "authorization", "admin"), 404);
+        // a resource that is no deployment at all
+        verify(send(HttpMethod.GET, "/v1/admin-consent/files/public/x", null, "",
+                "authorization", "admin"), 404);
     }
 
     @Test

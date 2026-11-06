@@ -188,7 +188,11 @@ public class ConsentService {
         // userRoles say who may run an application, not who manages its consent
         Deployment deployment = context.getConfig().selectDeployment(deploymentId);
         if (deployment == null) {
-            deployment = deploymentService.findDeployment(context, deploymentId);
+            try {
+                deployment = deploymentService.findDeployment(context, deploymentId);
+            } catch (IllegalArgumentException e) {
+                throw new ResourceNotFoundException("Deployment is not an application: " + deploymentId);
+            }
         }
         if (deployment instanceof Application application) {
             return application;
