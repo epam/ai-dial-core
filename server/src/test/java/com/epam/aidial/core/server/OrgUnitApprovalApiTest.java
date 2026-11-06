@@ -239,6 +239,136 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
         assertEquals(403, decide("approve", url, APPROVER).status());
     }
 
+    @Test
+    void testApproverEditsWithinTheirUnits() {
+        String url = request("public/Acme/", "Acme/a.txt", null);
+        String approverBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", APPROVER).body()).getString("bucket");
+        String ownSource = "files/" + approverBucket + "/b.txt";
+        assertEquals(200, upload(HttpMethod.PUT, "/v1/" + ownSource, null, "b", "authorization", APPROVER).status());
+
+        JsonObject edited = new JsonObject(decide("get", url, APPROVER).body());
+        edited.getJsonArray("resources").getJsonObject(0).put("targetUrl", "files/public/Acme/renamed.txt");
+        edited.getJsonArray("resources").add(new JsonObject().put("action", "ADD").put("sourceUrl", ownSource)
+                .put("targetUrl", "files/public/Acme/b.txt"));
+        Response updated = update(edited, APPROVER);
+        assertEquals(200, updated.status(), updated.body());
+
+        assertEquals(200, decide("approve", url, APPROVER).status());
+        assertEquals("a", send(HttpMethod.GET, "/v1/files/public/Acme/renamed.txt", null, null, "authorization", "user").body());
+        assertEquals("b", send(HttpMethod.GET, "/v1/files/public/Acme/b.txt", null, null, "authorization", "user").body());
+    }
+
+    @Test
+    void testApproverCannotMoveRequestsOutOfTheirUnits() {
+        String url = request("public/Acme/", "Acme/a.txt", null);
+        JsonObject original = new JsonObject(decide("get", url, APPROVER).body());
+
+        for (String folder : List.of("public/Handbook/", "public/Acme/Risk/", "public/")) {
+            JsonObject edited = original.copy().put("targetFolder", folder);
+            edited.getJsonArray("resources").getJsonObject(0).put("targetUrl", "files/" + folder + "a.txt");
+            assertEquals(403, update(edited, APPROVER).status(), folder);
+        }
+        JsonObject deeperTarget = original.copy();
+        deeperTarget.getJsonArray("resources").getJsonObject(0).put("targetUrl", "files/public/Acme/Risk/a.txt");
+        assertEquals(403, update(deeperTarget, APPROVER).status());
+
+        assertEquals(original, new JsonObject(decide("get", url, APPROVER).body()));
+    }
+
+    @Test
+    void testApproverEditsNothingOutsideTheirUnitsOrTheirOwn() {
+        String sharedSpace = request("public/Handbook/", "Handbook/c.txt", null);
+        assertEquals(403, update(new JsonObject(decide("get", sharedSpace, "admin").body()), APPROVER).status());
+
+        assign("public/Acme", USERS);
+        String own = request("public/Acme/", "Acme/a.txt", null);
+        assertEquals(403, update(new JsonObject(decide("get", own, "user").body()), "user").status());
+
+        JsonObject pending = new JsonObject(decide("get", own, "admin").body());
+        Response refused = update(pending, OTHER);
+        assertEquals(403, refused.status());
+        assertEquals("Only admin can update publications", refused.body());
+        assertEquals(200, update(pending, APPROVER).status());
+    }
+
+    @Test
+    void testApproverCannotPullRequestsIntoTheirUnits() {
+        String sharedSpace = request("public/Handbook/", "Handbook/c.txt", null);
+        JsonObject original = new JsonObject(decide("get", sharedSpace, "admin").body());
+
+        JsonObject pulled = original.copy().put("targetFolder", "public/Acme/");
+        pulled.getJsonArray("resources").getJsonObject(0).put("targetUrl", "files/public/Acme/c.txt");
+        Response refused = update(pulled, APPROVER);
+        assertEquals(403, refused.status(), refused.body());
+        assertEquals("Forbidden resource: " + sharedSpace, refused.body());
+        assertEquals(original, new JsonObject(decide("get", sharedSpace, "admin").body()));
+    }
+
+    @Test
+    void testApproverAddsOnlySourcesTheyRead() {
+        String url = request("public/Acme/", "Acme/a.txt", null);
+        String unreadable = "files/" + userBucket + "/private.txt";
+        assertEquals(200, upload(HttpMethod.PUT, "/v1/" + unreadable, null, "p", "authorization", "user").status());
+
+        JsonObject edited = new JsonObject(decide("get", url, APPROVER).body());
+        edited.getJsonArray("resources").add(new JsonObject().put("action", "ADD").put("sourceUrl", unreadable)
+                .put("targetUrl", "files/public/Acme/private.txt"));
+        Response refused = update(edited, APPROVER);
+        assertEquals(403, refused.status());
+        assertEquals("You don't have permission to access resource " + unreadable, refused.body());
+        assertEquals(200, update(edited, "admin").status());
+    }
+
+    @Test
+    void testApproverDeletesRequestsInTheirUnits() {
+        String pending = request("public/Acme/", "Acme/a.txt", null);
+        String reviewUrl = new JsonObject(decide("get", pending, APPROVER).body()).getJsonArray("resources").getJsonObject(0).getString("reviewUrl");
+        String approved = request("public/Acme/", "Acme/b.txt", null);
+        assertEquals(200, decide("approve", approved, APPROVER).status());
+
+        assertEquals(403, decide("delete", pending, OTHER).status());
+        for (String url : List.of(pending, approved)) {
+            Response deleted = decide("delete", url, APPROVER);
+            assertEquals(200, deleted.status(), deleted.body());
+        }
+        assertEquals(List.of(), urls(list(APPROVER)));
+        assertEquals(404, send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "authorization", "admin").status());
+        assertEquals(200, send(HttpMethod.GET, "/v1/files/public/Acme/b.txt", null, null, "authorization", "user").status());
+        assertEquals(404, decide("get", pending, "user").status());
+    }
+
+    @Test
+    void testApproverDeletesNothingOutsideTheirUnits() {
+        String sharedSpace = request("public/Handbook/", "Handbook/c.txt", null);
+        String childUnit = request("public/Acme/Risk/", "Acme/Risk/a.txt", null);
+        String missing = "publications/" + userBucket + "/missing";
+
+        for (String url : List.of(sharedSpace, childUnit, missing)) {
+            Response refused = decide("delete", url, APPROVER);
+            assertEquals(403, refused.status(), url);
+            assertEquals("Forbidden resource: " + url, refused.body());
+        }
+        assertEquals(200, decide("get", childUnit, "user").status());
+        assertEquals(200, decide("delete", childUnit, "user").status());
+    }
+
+    @Test
+    void testCreateWithUrlStillChecksSources() {
+        String approverBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", APPROVER).body()).getString("bucket");
+        String unreadable = "files/" + approverBucket + "/private.txt";
+        assertEquals(200, upload(HttpMethod.PUT, "/v1/" + unreadable, null, "p", "authorization", APPROVER).status());
+
+        JsonObject body = new JsonObject().put("url", "publications/" + userBucket + "/forged").put("targetFolder", "public/Acme/")
+                .put("resources", new JsonArray().add(new JsonObject().put("action", "ADD").put("sourceUrl", unreadable)
+                        .put("targetUrl", "files/public/Acme/private.txt")));
+        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, body.encode(), "authorization", "user");
+        assertEquals(403, created.status(), created.body());
+    }
+
+    private Response update(JsonObject publication, String caller) {
+        return send(HttpMethod.POST, "/v1/ops/publication/update", null, publication.encode(), "authorization", caller);
+    }
+
     private String request(String targetFolder, String target, String rules) {
         String name = target.substring(target.lastIndexOf('/') + 1);
         String source = "files/" + userBucket + "/" + target.replace("/", "-");

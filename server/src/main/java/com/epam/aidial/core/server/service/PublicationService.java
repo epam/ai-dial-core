@@ -225,14 +225,34 @@ public class PublicationService {
         return publication;
     }
 
-    public Publication deletePublication(ProxyContext context, ResourceDescriptor resource) {
-        validatePublicationResourceDescriptor(resource);
+    /**
+     * Another user's request, for a unit approver who may decide it, removed as a DIAL admin removes it. A missing
+     * request answers like a refused one.
+     */
+    public Publication deletePublicationAsApprover(ProxyContext context, ResourceDescriptor resource) {
+        requireAdminOrApprover(context, resource);
+        Publication publication;
+        try {
+            publication = getPublication(resource);
+        } catch (ResourceNotFoundException e) {
+            throw forbidden(resource);
+        }
+        if (!orgUnitApprovals.mayDecide(context, publication)) {
+            throw forbidden(resource);
+        }
+        return deletePublication(context, resource, publication);
+    }
 
-        resourceService.computeResource(PUBLIC_PUBLICATIONS, body -> {
-            Map<String, Publication> publications = decodePublications(body);
-            Publication publication = publications.remove(resource.getUrl());
-            return (publication == null) ? body : encodePublications(publications);
-        });
+    public Publication deletePublication(ProxyContext context, ResourceDescriptor resource) {
+        return deletePublication(context, resource, null);
+    }
+
+    /**
+     * Removes the request from its owner's list first, so one that no longer equals {@code expected} stays listed
+     * everywhere.
+     */
+    private Publication deletePublication(ProxyContext context, ResourceDescriptor resource, @Nullable Publication expected) {
+        validatePublicationResourceDescriptor(resource);
 
         MutableObject<Publication> reference = new MutableObject<>();
         resourceService.computeResource(publications(resource), body -> {
@@ -240,14 +260,26 @@ public class PublicationService {
             Publication publication = publications.remove(resource.getUrl());
 
             if (publication == null) {
-                throw new ResourceNotFoundException("No publication: " + resource.getUrl());
+                return body;
+            }
+            if (expected != null && !expected.equals(publication)) {
+                throw new ResourceNotFoundException("Publication changed during deleting: " + resource.getUrl());
             }
 
             reference.setValue(publication);
             return encodePublications(publications);
         });
 
+        resourceService.computeResource(PUBLIC_PUBLICATIONS, body -> {
+            Map<String, Publication> publications = decodePublications(body);
+            Publication publication = publications.remove(resource.getUrl());
+            return (publication == null) ? body : encodePublications(publications);
+        });
+
         Publication publication = reference.get();
+        if (publication == null) {
+            throw new ResourceNotFoundException("No publication: " + resource.getUrl());
+        }
 
         if (publication.getStatus() == Publication.Status.PENDING) {
             List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
@@ -259,20 +291,29 @@ public class PublicationService {
         return publication;
     }
 
+    /**
+     * DIAL admins edit any pending request; a unit approver one they may decide, before and after the edit, so an edit
+     * never takes a request out of their units. Only sources the editor may read are added.
+     */
     public Publication updatePublication(ProxyContext context, Publication publication) {
+        boolean admin = accessService.hasAdminAccess(context);
+        if (!admin && !orgUnitApprovals.decidesAnyUnit(context)) {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Only admin can update publications");
+        }
+
         validatePublicationRequest(publication);
 
         if (publication.getUrl() == null) {
             throw new IllegalArgumentException("Publication url is required");
         }
         ResourceDescriptor publicationResource = ResourceDescriptorFactory.fromPrivateUrl(publication.getUrl(), encryption);
-
-        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
-        String bucket = encryption.encrypt(bucketLocation);
+        if (!admin && !orgUnitApprovals.mayDecide(context, publication)) {
+            throw forbidden(publicationResource);
+        }
 
         String reviewBucket = getReviewBucket(publicationResource);
 
-        validatePublicationResources(context, publication, bucket, reviewBucket, true);
+        validatePublicationResources(context, publication, publicationResource.getBucketName(), reviewBucket, admin, false);
 
         validatePublicationResourceDescriptor(publicationResource);
 
@@ -289,7 +330,10 @@ public class PublicationService {
             Publication existingPublication = publications.get(publicationResource.getUrl());
 
             if (existingPublication == null) {
-                throw new ResourceNotFoundException("No publication: " + publicationResource.getUrl());
+                throw admin ? new ResourceNotFoundException("No publication: " + publicationResource.getUrl()) : forbidden(publicationResource);
+            }
+            if (!admin && !orgUnitApprovals.mayDecide(context, existingPublication)) {
+                throw forbidden(publicationResource);
             }
 
             if (existingPublication.getStatus() != Publication.Status.PENDING) {
@@ -305,6 +349,9 @@ public class PublicationService {
                 if (resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT) {
                     if (existingResource == null) {
                         ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
+                        if (!admin && !accessService.hasReadAccess(from, context)) {
+                            throw new PermissionDeniedException("You don't have permission to access resource " + resource.getSourceUrl());
+                        }
                         if (!hasResource(from)) {
                             throw new IllegalArgumentException("Source resource does not exist: " + resource.getSourceUrl());
                         }
@@ -546,7 +593,7 @@ public class PublicationService {
         String publicationUrl = String.join(ResourceDescriptor.PATH_SEPARATOR, "publications", bucketName, id);
         String reviewBucket = encodeReviewBucket(bucketLocation, id);
 
-        validatePublicationResources(context, publication, bucketName, reviewBucket, isAdmin);
+        validatePublicationResources(context, publication, bucketName, reviewBucket, isAdmin, true);
 
         publication.setUrl(publicationUrl);
         publication.setCreatedAt(clock.getAsLong());
@@ -554,10 +601,13 @@ public class PublicationService {
         publication.setAuthor(context.getUserDisplayName());
     }
 
-    private void validatePublicationResources(ProxyContext context, Publication publication, String bucketName, String reviewBucket, boolean isAdmin) {
+    /**
+     * {@code isPublicationNew} comes from the caller, never from the body: a create carrying a {@code url} is still new.
+     */
+    private void validatePublicationResources(ProxyContext context, Publication publication, String bucketName, String reviewBucket,
+                                              boolean isAdmin, boolean isPublicationNew) {
         Set<String> urls = new HashSet<>();
         String targetFolder = publication.getTargetFolder();
-        boolean isPublicationNew = publication.getUrl() == null;
         for (Publication.Resource resource : publication.getResources()) {
             Publication.ResourceAction action = resource.getAction();
             if (action == null) {
@@ -625,7 +675,8 @@ public class PublicationService {
         String sourceUrl = resource.getSourceUrl();
         String targetUrl = resource.getTargetUrl();
 
-        if (!(accessService.hasReadAccess(source, context) || accessService.hasAdminAccess(context))) {
+        // an edit keeps sources already in the request, which only the requester reads; new ones are checked under its lock
+        if (isPublicationNew && !(accessService.hasReadAccess(source, context) || accessService.hasAdminAccess(context))) {
             throw new PermissionDeniedException("You don't have permission to access resource " + sourceUrl);
         }
 

@@ -101,6 +101,14 @@ public class OrgUnitApprovals {
         return isEnabled() && ownerOfFolder(orgUnits.getUnitList().units(), targetFolder) != null;
     }
 
+    /**
+     * Whether the caller may decide requests into some unit, as editing one needs; reviewing alone isn't enough.
+     */
+    public boolean decidesAnyUnit(ProxyContext context) {
+        return isEnabled() && isPerson(context) && orgUnits.roleAssignmentsOfAll(orgUnits.getUnitList().units()).values().stream()
+                .anyMatch(assignments -> grants(context, assignments, OrgUnitRoles.READ) && grants(context, assignments, OrgUnitRoles.WRITE));
+    }
+
     public boolean approvesAnyUnit(ProxyContext context) {
         return isEnabled() && isPerson(context) && approvesAnyUnit(context, orgUnits.getUnitList().units());
     }
