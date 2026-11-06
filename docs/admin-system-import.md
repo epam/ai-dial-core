@@ -84,8 +84,8 @@ all. There is no limit on the number of entries or on the archive size.
   system import; they rebuild on their own, under the bucket locks, once that fires.
 - **Speed.** Each phase makes one blob storage call per blob, at most `adminSystemImport.parallelism` (4 by default) at
   a time; every delete of the wipe finishes before the first copy. A larger value shortens a large import, but above 5
-  also raise the JVM option `-Dhttp.maxConnections` to at least that value: Core's blob storage client keeps 5 connections
-  per host by default, and every call beyond that opens a new TLS connection.
+  also raise the JVM option `-Dhttp.maxConnections` to at least that value: the JDK keeps at most 5 idle connections per
+  host by default, and closes the rest, so later calls pay a new TLS handshake.
 - **The encryption keys are not in the archive and Core does not check for them.** Before importing into another
   environment, copy the source's `public/encryption_keys/cek` and `platform/encryption_keys/cek` (the ones that
   exist — an environment that never stored a secret has none) to the target, then roll-restart its pods, as for any

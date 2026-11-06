@@ -378,7 +378,7 @@ Settings of `POST /v1/admin/system-import`, which replaces the `public` and `pla
 |-------------------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | adminSystemImport.stallTimeout     | 60000   |    No    | Time in milliseconds the stage phase waits for the next chunk of the upload before failing it with `408` and releasing the guard. Must be positive, otherwise Core does not start. |
 | adminSystemImport.progressInterval | 15000   |    No    | Time in milliseconds between progress lines on the response while the replace phase runs. Must be positive, otherwise Core does not start.              |
-| adminSystemImport.parallelism      | 4       |    No    | Blob storage calls a system import runs at a time while it stages, wipes, copies and deletes its staging. Must be at least 1, otherwise Core does not start. Above 5, also raise the JVM option `-Dhttp.maxConnections` to at least this value, or most calls open a new TLS connection. |
+| adminSystemImport.parallelism      | 4       |    No    | Blob storage calls a system import runs at a time while it stages, wipes, copies and deletes its staging. Must be at least 1, otherwise Core does not start. Above 5, also raise the JVM option `-Dhttp.maxConnections` to at least this value, so idle connections to blob storage are reused instead of reopened. |
 
 </details>
 
