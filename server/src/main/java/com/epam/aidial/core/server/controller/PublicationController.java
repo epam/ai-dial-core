@@ -173,6 +173,9 @@ public class PublicationController {
                 .compose(body -> {
                     String url = ProxyUtil.convertToObject(body, ResourceLink.class).url();
                     ResourceDescriptor resource = decodePublication(url, false);
+                    if (orgUnitService.isEnabled() && !hasAccess(resource, true)) {
+                        return taskExecutor.submit(() -> publicationService.deletePublicationAsApprover(context, resource));
+                    }
                     checkAccess(resource, true);
                     return taskExecutor.submit(() -> publicationService.deletePublication(context, resource));
                 })
@@ -201,9 +204,6 @@ public class PublicationController {
                 .body()
                 .compose(body -> {
                     Publication publication = ProxyUtil.convertToObject(body, Publication.class);
-                    if (!isAdmin()) {
-                        throw new HttpException(HttpStatus.FORBIDDEN, "Only admin can update publications");
-                    }
                     return taskExecutor.submit(() -> publicationService.updatePublication(context, publication));
                 })
                 .onSuccess(publication -> context.respond(HttpStatus.OK, publication))

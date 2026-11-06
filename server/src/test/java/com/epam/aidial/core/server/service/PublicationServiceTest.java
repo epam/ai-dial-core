@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -124,6 +125,28 @@ class PublicationServiceTest {
         reset();
         service.rejectPublication(context, resource, new RejectPublicationRequest(URL, null));
         assertEquals("Your request has been rejected by admin", lastNotification());
+    }
+
+    @Test
+    void testApproverDeleteKeepsRequestChangedAfterTheCheck() {
+        when(approvals.mayDecide(any(), any())).thenAnswer(invocation -> {
+            documents.computeIfPresent("Users/alice/", (key, value) -> value.replace("public/Acme/", "public/Beta/"));
+            return true;
+        });
+
+        assertThrows(ResourceNotFoundException.class, () -> service.deletePublicationAsApprover(context, resource));
+        assertTrue(documents.get("Users/alice/").contains(URL));
+    }
+
+    @Test
+    void testReviewerWhoCannotDecideMayNotEdit() {
+        when(approvals.decidesAnyUnit(any())).thenReturn(false);
+        Publication edit = new Publication().setUrl(URL).setTargetFolder("public/Acme/").setResources(new ArrayList<>());
+
+        HttpException refused = assertThrows(HttpException.class, () -> service.updatePublication(context, edit));
+        assertEquals(HttpStatus.FORBIDDEN, refused.getStatus());
+        assertEquals("Only admin can update publications", refused.getMessage());
+        verify(approvals, never()).mayDecide(any(), any());
     }
 
     private void reset() {
