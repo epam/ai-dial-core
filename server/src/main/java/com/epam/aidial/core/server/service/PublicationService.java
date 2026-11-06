@@ -339,9 +339,12 @@ public class PublicationService {
             if (existingPublication.getStatus() != Publication.Status.PENDING) {
                 throw new IllegalStateException("Can only update PENDING publications");
             }
+            // only items the request adds have a source whose read was checked and a review copy core placed itself
             Map<String, Publication.Resource> sourceUrlToResource = new HashMap<>();
             for (Publication.Resource resource : existingPublication.getResources()) {
-                sourceUrlToResource.put(resource.getSourceUrl(), resource);
+                if (resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT) {
+                    sourceUrlToResource.put(resource.getSourceUrl(), resource);
+                }
             }
             Set<String> newSourceUrls = new HashSet<>();
             for (Publication.Resource resource : publication.getResources()) {
@@ -729,6 +732,8 @@ public class PublicationService {
 
     private void validateResourceForDeletion(Publication.Resource resource, String targetFolder, Set<String> urls,
                                              String bucketName, boolean isAdmin) {
+        // an unpublished item has no review copy, so a client's reviewUrl is never kept
+        resource.setReviewUrl(null);
         String targetUrl = resource.getTargetUrl();
         ResourceDescriptor target = ResourceDescriptorFactory.fromPublicUrl(targetUrl);
         verifyResourceType(target);

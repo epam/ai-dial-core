@@ -15,6 +15,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Unit approvers deciding publication requests: "user" requests, "azp:approver1" approves Acme, "azp:other" approves nothing.
@@ -302,6 +303,30 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
         assertEquals(403, refused.status(), refused.body());
         assertEquals("Forbidden resource: " + sharedSpace, refused.body());
         assertEquals(original, new JsonObject(decide("get", sharedSpace, "admin").body()));
+    }
+
+    @Test
+    void testApproverCannotTakeSourcesThroughUnpublishItems() {
+        String otherBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", OTHER).body()).getString("bucket");
+        String secret = "files/" + otherBucket + "/secret.txt";
+        assertEquals(200, upload(HttpMethod.PUT, "/v1/" + secret, null, "secret", "authorization", OTHER).status());
+        assertEquals(200, decide("approve", request("public/Acme/", "Acme/existing.txt", null), APPROVER).status());
+        String url = request("public/Acme/", "Acme/a.txt", null);
+
+        JsonObject planted = new JsonObject(decide("get", url, APPROVER).body());
+        planted.getJsonArray("resources").add(new JsonObject().put("action", "DELETE").put("targetUrl", "files/public/Acme/existing.txt")
+                .put("sourceUrl", secret).put("reviewUrl", secret));
+        Response stored = update(planted, APPROVER);
+        assertEquals(200, stored.status(), stored.body());
+        JsonObject unpublish = new JsonObject(stored.body()).getJsonArray("resources").getJsonObject(1);
+        assertEquals("DELETE", unpublish.getString("action"));
+        assertNull(unpublish.getString("reviewUrl"));
+
+        JsonObject taken = new JsonObject(stored.body());
+        taken.getJsonArray("resources").set(1, new JsonObject().put("action", "ADD").put("sourceUrl", secret)
+                .put("targetUrl", "files/public/Acme/stolen.txt"));
+        assertEquals(403, update(taken, APPROVER).status());
+        assertEquals("secret", send(HttpMethod.GET, "/v1/" + secret, null, null, "authorization", OTHER).body());
     }
 
     @Test
