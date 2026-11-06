@@ -12,6 +12,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
@@ -2289,6 +2290,23 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                     dependencyAppBody("""
                             {"kind": "dial.resourceLink", "link_id": "lnk_untyped", "target": {"path": "current-user/rootstuff/"}, "access": ["write"]}"""));
             verify(response, 400);
+        }
+    }
+
+    /** Admin rules unconfigured: nobody counts as an admin author, so the flag (off) applies to every write. */
+    public static class AdminRulesUnconfigured extends ResourceBaseTest {
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject().put("access", new JsonObject().put("admin", new JsonObject().put("rules", new JsonArray())));
+        }
+
+        @Test
+        void testUserAuthoredDependenciesRejectedWithoutAdminRules() {
+            Response response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
+                    dependencyAppBody("""
+                            {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"]}"""));
+            verify(response, 403);
         }
     }
 
