@@ -92,7 +92,7 @@ public class EffectiveBudgets {
             return false;
         }
         List<Rule> rules = subject.stream().map(EffectiveBudgets::toRule).toList();
-        return RuleMatcher.match(claims.userRoles(), claims.userClaims(), rules);
+        return RuleMatcher.match(claims.userRoles(), claims.userEmail(), claims.userClaims(), rules);
     }
 
     private Rule toRule(PolicySubjectRule subjectRule) {

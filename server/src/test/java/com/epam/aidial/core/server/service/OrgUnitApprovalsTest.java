@@ -261,7 +261,7 @@ class OrgUnitApprovalsTest {
                 node.put(claims[i], claims[i + 1]);
             }
         }
-        return context(new ExtractedClaims(email, List.of(), email, node, null, email));
+        return context(new ExtractedClaims(email, List.of(), email, node, null, email, email));
     }
 
     private ProxyContext withRoles(ProxyContext context, String role) {
