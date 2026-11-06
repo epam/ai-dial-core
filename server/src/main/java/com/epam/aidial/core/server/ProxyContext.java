@@ -14,6 +14,8 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
+import com.epam.aidial.core.server.upstream.ProxyRequest;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -23,8 +25,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -34,6 +34,7 @@ import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -91,9 +92,9 @@ public class ProxyContext {
     private Route route;
     private RouteType routeType;
     private UpstreamRoute upstreamRoute;
-    private HttpClientRequest proxyRequest;
+    private ProxyRequest proxyRequest;
     private String proxyRequestUri;
-    private HttpClientResponse proxyResponse;
+    private ProxyResponse proxyResponse;
     private Buffer requestBody;
     private Buffer responseBody;
     private long requestTimestamp;
@@ -119,6 +120,12 @@ public class ProxyContext {
     private final Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
     // the merged chat completions body, or the terminal Responses frame - whichever surface streamed
     private String assembledStreamingResponse;
+    // the body an origin plugin passed to its in-process call, on the child pass Core serves for that call
+    private ObjectNode callTree;
+    // the tree the chain serialised into requestBody, kept for the plugin of an embedded interface until it is called
+    private ObjectNode requestTree;
+    // the hosts of the in-process calls this pass's plugin makes, one per attempt
+    private List<ChildPass> childPasses;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -335,6 +342,38 @@ public class ProxyContext {
             assembledStreamingResponse = AnalyticsLogContext.assembleStreamingChatCompletionsResponse(responseBody);
         }
         return assembledStreamingResponse;
+    }
+
+    /**
+     * The body of the in-process call this pass serves, while the request's body is not set: the parse sites take it
+     * in place of parsing, and the chain sets the body when it serialises the tree. Null once the body is set, and on
+     * a pass that serves no call.
+     */
+    public ObjectNode getCallTree() {
+        return requestBody == null ? callTree : null;
+    }
+
+    public void addChildPass(ChildPass childPass) {
+        if (childPasses == null) {
+            childPasses = new ArrayList<>();
+        }
+        childPasses.add(childPass);
+    }
+
+    /**
+     * Ends the in-process calls of this pass's plugin, as the pass has ended.
+     */
+    public void closeChildPasses() {
+        if (childPasses != null) {
+            childPasses.forEach(ChildPass::close);
+        }
+    }
+
+    /**
+     * Whether Core serves this pass in process, for an origin plugin's call.
+     */
+    public boolean isChildPass() {
+        return callTree != null;
     }
 
     public void setRequestBodyWithTimestamp(Buffer body) {

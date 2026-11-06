@@ -12,10 +12,10 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 
@@ -63,13 +63,13 @@ public class MessagesCountTokensController extends MessagesBaseController {
     }
 
     @Override
-    protected void processResponse(HttpClientResponse proxyResponse) {
+    protected void processResponse(ProxyResponse proxyResponse) {
         proxyResponse.body()
                 .compose(body -> forwardResponse(proxyResponse, body))
                 .onFailure(this::handleProxyConnectionError);
     }
 
-    private Future<Void> forwardResponse(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Void> forwardResponse(ProxyResponse proxyResponse, Buffer body) {
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();

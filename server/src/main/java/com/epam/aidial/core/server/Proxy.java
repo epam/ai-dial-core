@@ -56,6 +56,7 @@ import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
+import com.epam.aidial.core.server.upstream.OriginClient;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -212,6 +213,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AdminSystemExportService adminSystemExportService;
     private final AdminSystemExportService.Settings adminSystemExportSettings;
     private final OrgUnitService orgUnitService;
+    private final OriginClient originClient;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -222,7 +224,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
     }
 
-    private void handleError(Throwable error, HttpServerRequest request) {
+    void handleError(Throwable error, HttpServerRequest request) {
         if (!request.response().ended()) {
             HttpStatus status;
             String message;
@@ -474,15 +476,24 @@ public class Proxy implements Handler<HttpServerRequest> {
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
-            GenAiTraceAttributes.initialize(context);
-            ContextManager.setProxyContext(context);
-            ControllerTemplate controllerTemplate = ControllerSelector.select(request);
-            Controller controller = controllerTemplate.build(this, context);
-            future = controller.handle();
+            future = dispatch(context);
         } catch (Exception t) {
             future = Future.failedFuture(t);
         }
         return future;
+    }
+
+    /**
+     * Serves an authenticated pass: the controller of the request's method and path handles it. A child pass of an
+     * origin plugin's in-process call starts here too.
+     */
+    @SneakyThrows
+    Future<?> dispatch(ProxyContext context) {
+        GenAiTraceAttributes.initialize(context);
+        ContextManager.setProxyContext(context);
+        ControllerTemplate controllerTemplate = ControllerSelector.select(context.getRequest());
+        Controller controller = controllerTemplate.build(this, context);
+        return controller.handle();
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {

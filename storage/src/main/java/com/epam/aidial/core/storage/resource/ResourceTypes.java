@@ -30,6 +30,7 @@ public enum ResourceTypes implements ResourceType {
     CATALOG_SCHEMA("catalog_schemas", true, TimeUnit.DAYS.toMillis(30)),
     INTERCEPTOR("interceptors", true, TimeUnit.DAYS.toMillis(30)),
     TRANSLATOR("translators", true, TimeUnit.DAYS.toMillis(30)),
+    PLUGIN("plugins", true, TimeUnit.DAYS.toMillis(30)),
     ROLE("roles", true, TimeUnit.DAYS.toMillis(30)),
     PROJECT_KEY("project_keys", "keys", true, TimeUnit.DAYS.toMillis(30)),
     POLICY("policies", true, TimeUnit.DAYS.toMillis(30)),
@@ -50,7 +51,7 @@ public enum ResourceTypes implements ResourceType {
      */
     public static final Set<ResourceType> EVENT_TYPES = Set.of(
             FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
-            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
+            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, TRANSLATOR, PLUGIN, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
             POLICY, POLICY_ASSIGNMENT, SKILL, PROJECT);
 
     private final String group;
@@ -86,6 +87,7 @@ public enum ResourceTypes implements ResourceType {
             case "catalog_schemas" -> CATALOG_SCHEMA;
             case "interceptors" -> INTERCEPTOR;
             case "translators" -> TRANSLATOR;
+            case "plugins" -> PLUGIN;
             case "roles" -> ROLE;
             case "project_keys", "keys" -> PROJECT_KEY;
             case "policies" -> POLICY;

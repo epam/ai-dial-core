@@ -85,8 +85,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
 
     private ChatCompletionRequest parseBody(Buffer body) {
         try {
-            context.setRequestBodyWithTimestamp(body);
-            return new ChatCompletionRequest(ProxyUtil.parseObject(body));
+            return new ChatCompletionRequest(ProxyUtil.parseRequestBody(context, body));
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }

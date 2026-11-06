@@ -275,10 +275,8 @@ public class DeploymentPostController extends BaseChatCompletionController {
         log.info("Received body from client. Deployment: {}. Length: {}",
                 deployment.getName(), requestBody.length());
 
-        context.setRequestBodyWithTimestamp(requestBody);
-
         try {
-            ObjectNode requestTree = ProxyUtil.parseObject(requestBody);
+            ObjectNode requestTree = ProxyUtil.parseRequestBody(context, requestBody);
             RequestObject request = new ChatCompletionRequest(requestTree);
             GenAiTraceAttributes.setRequestAttributes(context, requestedInterface(), requestTree);
             processChatCompletionsRequestBody(request);

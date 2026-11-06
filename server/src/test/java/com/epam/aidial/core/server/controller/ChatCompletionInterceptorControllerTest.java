@@ -10,6 +10,8 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.upstream.OriginClient;
+import com.epam.aidial.core.server.upstream.ProxyRequest;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -17,7 +19,6 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +61,7 @@ public class ChatCompletionInterceptorControllerTest {
     void stubConfig() {
         // buildUri resolves translator references against the request's config on every call
         lenient().when(context.getConfig()).thenReturn(new Config());
+        lenient().when(proxy.getOriginClient()).thenAnswer(invocation -> new OriginClient(proxy.getClient(), null, null));
     }
 
     @Test
@@ -253,7 +255,7 @@ public class ChatCompletionInterceptorControllerTest {
 
     @Test
     void handleProxyResponseError_answersBadGateway() {
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, Answers.RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, Answers.RETURNS_DEEP_STUBS);
         when(context.getProxyRequest()).thenReturn(proxyRequest);
         when(context.getProxyApiKeyData()).thenReturn(null);
         when(context.respond(eq(HttpStatus.BAD_GATEWAY), any(ErrorData.class)))

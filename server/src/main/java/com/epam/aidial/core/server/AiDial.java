@@ -28,10 +28,12 @@ import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
+import com.epam.aidial.core.server.config.EmbeddedOrigins;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.PlatformEntityLocationStrategy;
+import com.epam.aidial.core.server.config.PluginRegistry;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.controller.HealthCheckController;
@@ -94,6 +96,7 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.tracing.TracingSettings;
+import com.epam.aidial.core.server.upstream.OriginClient;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxySettings;
@@ -148,6 +151,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.List;
@@ -176,6 +180,7 @@ public class AiDial {
     private volatile int serverPort;
     private HttpClient client;
     private WebSocketClient webSocketClient;
+    private EmbeddedOrigins embeddedOrigins;
 
     private RedissonClient redis;
     private Proxy proxy;
@@ -240,7 +245,7 @@ public class AiDial {
 
             AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
-            LogStore logStore = new GfLogStore(AnalyticsSettings.from(settings("analytics")));
+            LogStore logStore = createLogStore(AnalyticsSettings.from(settings("analytics")));
 
             if (accessTokenValidator == null) {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");
@@ -293,15 +298,17 @@ public class AiDial {
             ExternalServiceService externalServiceService = new ExternalServiceService(
                     resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor);
 
+            // Before the config stores: they validate every plugins entry against the provider of its type
+            PluginRegistry pluginRegistry = PluginRegistry.load(Path.of(settings("plugins").getString("dir", "plugins")));
             String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
                     .getBoolean("softValidation", false);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
                     vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId,
+                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId, pluginRegistry,
                     externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
             FileConfigStore fileConfigStore = new FileConfigStore(
-                    vertx, settings("config"), null,
+                    vertx, settings("config"), null, pluginRegistry,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
             mergedConfigStore.init(fileConfigStore);
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
@@ -358,7 +365,7 @@ public class AiDial {
                     mergedConfigStore, resourceService, secretFieldProcessor, mergedConfigStore.isSoftValidation(),
                     apiKeyStore, applicationService, toolSetService, catalogSchemaService);
             ConfigValidationService configValidationService = new ConfigValidationService(
-                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
+                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService, pluginRegistry);
 
             Settings backgroundJobSettings =
                     Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
@@ -416,7 +423,9 @@ public class AiDial {
             budgetCounterSweepService = new BudgetCounterSweepService(timerService, resourceService, lockService, redis,
                     mergedConfigStore, budgetCounterSweepSettings, backgroundTracer);
 
-            ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
+            embeddedOrigins = new EmbeddedOrigins(pluginRegistry, vertx, taskExecutor);
+            OriginClient originClient = new OriginClient(client, vertx, embeddedOrigins);
+            ResponsesApiClient responsesApiClient = new ResponsesApiClient(originClient, clientOptions);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
@@ -441,7 +450,7 @@ public class AiDial {
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminSystemExportService, adminSystemExportSettings, orgUnitService);
+                    adminSystemExportService, adminSystemExportSettings, orgUnitService, originClient);
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
@@ -557,6 +566,8 @@ public class AiDial {
                 close(vertx, v -> v.undeploy(serverDeploymentId));
             }
             close(client, HttpClient::close);
+            // no request arrives now, and the plugins close their own Vert.x clients before Vert.x closes
+            close(embeddedOrigins, EmbeddedOrigins::close);
             close(resourceService);
             close(complexResourceSweepService);
             close(budgetCounterSweepService);
@@ -618,6 +629,13 @@ public class AiDial {
             String json = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             return new JsonObject(json);
         }
+    }
+
+    /**
+     * The store analytics rows are written to. Integration tests override it to read the rows.
+     */
+    protected LogStore createLogStore(AnalyticsSettings settings) {
+        return new GfLogStore(settings);
     }
 
     private static String version() {

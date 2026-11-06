@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import io.vertx.core.http.HttpClientResponse;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -132,7 +131,7 @@ public class UpstreamRoute {
         fail(status, -1);
     }
 
-    public void fail(HttpClientResponse response) {
+    public void fail(ProxyResponse response) {
         long retryAfter = retrieveRetryAfterSeconds(response);
         HttpStatus status = HttpStatus.fromStatusCode(response.statusCode());
         fail(status, retryAfter);
@@ -153,7 +152,7 @@ public class UpstreamRoute {
         succeed(null, null);
     }
 
-    public void succeed(HttpClientResponse proxyResponse, Deployment deployment) {
+    public void succeed(ProxyResponse proxyResponse, Deployment deployment) {
         verifyCurrentUpstream();
         if (deployment instanceof Model model) {
             updateUpstreamCache(proxyResponse, model);
@@ -161,7 +160,7 @@ public class UpstreamRoute {
         balancer.succeed(upstream);
     }
 
-    private void updateUpstreamCache(HttpClientResponse proxyResponse, Model model) {
+    private void updateUpstreamCache(ProxyResponse proxyResponse, Model model) {
         String breakpointPath = proxyResponse.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH);
         if (breakpointPath == null) {
             // no cache
@@ -207,7 +206,7 @@ public class UpstreamRoute {
      * @param response http response from upstream
      * @return the amount of seconds after which upstream should be available or -1 if the value is not provided
      */
-    private static long retrieveRetryAfterSeconds(HttpClientResponse response) {
+    private static long retrieveRetryAfterSeconds(ProxyResponse response) {
         try {
             String retryAfterHeaderValue = response.getHeader("Retry-After");
             if (retryAfterHeaderValue != null) {

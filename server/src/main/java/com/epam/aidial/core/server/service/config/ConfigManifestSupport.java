@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
@@ -19,6 +20,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPluginManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
@@ -61,16 +63,17 @@ public class ConfigManifestSupport {
             Map.entry("Settings", 0),
             Map.entry("Schema", 1),
             Map.entry("CatalogSchema", 1),
-            Map.entry("Translator", 2),
-            Map.entry("Interceptor", 3),
-            Map.entry("Role", 4),
-            Map.entry("Key", 5),
-            Map.entry("Route", 6),
-            Map.entry("Model", 7),
-            Map.entry("ToolSet", 8),
-            Map.entry("Application", 9),
-            Map.entry("Policy", 10),
-            Map.entry("PolicyAssignment", 11));
+            Map.entry("Plugin", 2),
+            Map.entry("Translator", 3),
+            Map.entry("Interceptor", 4),
+            Map.entry("Role", 5),
+            Map.entry("Key", 6),
+            Map.entry("Route", 7),
+            Map.entry("Model", 8),
+            Map.entry("ToolSet", 9),
+            Map.entry("Application", 10),
+            Map.entry("Policy", 11),
+            Map.entry("PolicyAssignment", 12));
 
     /**
      * Sorts a manifest list so a kind that other kinds can reference (e.g. {@code Interceptor})
@@ -87,6 +90,7 @@ public class ConfigManifestSupport {
             Map.entry("CatalogSchema", "catalog_schemas"),
             Map.entry("Interceptor", "interceptors"),
             Map.entry("Translator", "translators"),
+            Map.entry("Plugin", "plugins"),
             Map.entry("Role", "roles"),
             Map.entry("Key", "keys"),
             Map.entry("Route", "routes"),
@@ -103,6 +107,7 @@ public class ConfigManifestSupport {
             scratch.setModels(new HashMap<>(live.getModels()));
             scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
             scratch.setTranslators(new HashMap<>(live.getTranslators()));
+            scratch.setPlugins(new HashMap<>(live.getPlugins()));
             scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
             scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
             scratch.setApplications(new HashMap<>(live.getApplications()));
@@ -132,6 +137,8 @@ public class ConfigManifestSupport {
                         scratch.getInterceptors().put(parsed.name().name(), interceptor.spec());
                 case AdminTranslatorManifest translator ->
                         scratch.getTranslators().put(parsed.name().name(), translator.spec());
+                case AdminPluginManifest plugin ->
+                        scratch.getPlugins().put(parsed.name().name(), plugin.spec());
                 case AdminRoleManifest role ->
                         scratch.getRoles().put(parsed.name().name(), role.spec());
                 case AdminRouteManifest route ->
@@ -252,6 +259,8 @@ public class ConfigManifestSupport {
                     ConfigEntityCodec.treeToEntity(entry.spec(), Interceptor.class));
             case "Translator" -> new AdminTranslatorManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Translator.class));
+            case "Plugin" -> new AdminPluginManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Plugin.class));
             case "Role" -> new AdminRoleManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Role.class));
             case "Key" -> new AdminKeyManifest(entry.kind(), entry.name(),

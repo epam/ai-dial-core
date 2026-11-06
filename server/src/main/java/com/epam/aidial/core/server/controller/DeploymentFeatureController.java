@@ -16,6 +16,8 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
+import com.epam.aidial.core.server.upstream.HttpProxyRequest;
+import com.epam.aidial.core.server.upstream.HttpProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -225,7 +227,7 @@ public class DeploymentFeatureController {
                 proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
-        context.setProxyRequest(proxyRequest);
+        context.setProxyRequest(new HttpProxyRequest(proxyRequest));
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
         Deployment deployment = context.getDeployment();
@@ -237,7 +239,7 @@ public class DeploymentFeatureController {
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
-        ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);
+        ProxyUtil.setOverrideNameHeader(proxyRequest.headers(), deployment);
 
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             try {
@@ -277,10 +279,11 @@ public class DeploymentFeatureController {
         log.info("Received response header from origin: status={}, headers={}", proxyResponse.statusCode(),
                 proxyResponse.headers().size());
 
+        HttpProxyResponse wrappedResponse = new HttpProxyResponse(proxyResponse);
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024));
+                ProxyUtil.contentLength(wrappedResponse, 1024));
 
-        context.setProxyResponse(proxyResponse);
+        context.setProxyResponse(wrappedResponse);
 
         HttpServerResponse response = context.getResponse();
         response.setChunked(true);

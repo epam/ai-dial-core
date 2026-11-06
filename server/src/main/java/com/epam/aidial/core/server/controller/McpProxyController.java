@@ -22,6 +22,8 @@ import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.upstream.HttpProxyRequest;
+import com.epam.aidial.core.server.upstream.HttpProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -205,7 +207,7 @@ public class McpProxyController implements Controller {
         log.info("Connected to origin: {}", connection.remoteAddress());
 
         HttpServerRequest request = context.getRequest();
-        context.setProxyRequest(proxyRequest);
+        context.setProxyRequest(new HttpProxyRequest(proxyRequest));
 
         Deployment deployment = context.getDeployment();
 
@@ -250,7 +252,7 @@ public class McpProxyController implements Controller {
 
         if (responseStatusCode == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
             UpstreamRoute upstreamRoute = context.getUpstreamRoute();
-            upstreamRoute.fail(proxyResponse);
+            upstreamRoute.fail(new HttpProxyResponse(proxyResponse));
             // get next upstream
             if (canRetry(upstreamRoute)) {
                 sendRequest(); // try next
@@ -280,13 +282,14 @@ public class McpProxyController implements Controller {
                 ? null
                 : new BufferingReadStream.BaseEventListener(fns);
 
+        HttpProxyResponse wrappedResponse = new HttpProxyResponse(proxyResponse);
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024), eventListener);
+                ProxyUtil.contentLength(wrappedResponse, 1024), eventListener);
 
-        context.setProxyResponse(proxyResponse);
+        context.setProxyResponse(wrappedResponse);
 
         HttpServerResponse response = context.getResponse();
-        ProxyUtil.handleChunkedResponse(response, proxyResponse);
+        ProxyUtil.handleChunkedResponse(response, wrappedResponse);
 
         proxyResponseStream.pipe()
                 .endOnFailure(false)
@@ -321,7 +324,7 @@ public class McpProxyController implements Controller {
         URI currentUri;
         URI redirectUri;
         try {
-            currentUri = new URI(context.getProxyRequest().absoluteURI());
+            currentUri = new URI(context.getProxyRequest().absoluteUri());
             // resolve via URI.resolve(URI), not resolve(String) - the latter delegates to URI.create(String),
             // which throws an unchecked IllegalArgumentException on a malformed location instead of the
             // checked URISyntaxException caught below

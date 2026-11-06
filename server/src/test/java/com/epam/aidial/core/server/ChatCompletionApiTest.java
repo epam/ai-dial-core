@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -26,6 +27,7 @@ public class ChatCompletionApiTest extends ResourceBaseTest {
 
             verify(response, 200);
             assertTrue(response.body().contains("\"content\":\"hi\""));
+            assertEquals(1, awaitAnalyticsRows(1).size());
         }
     }
 

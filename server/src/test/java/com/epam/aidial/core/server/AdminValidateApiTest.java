@@ -339,6 +339,48 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testValidateAcceptsPluginManifest() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Plugin",
+                      "name": "plugins/platform/validate-plugin",
+                      "spec": {"type": "test-echo", "settings": {"greeting": "hi"}}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("valid").asInt(), response::body);
+        assertEquals("VALID", parsed.get("results").get(0).get("status").asText(), response::body);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRejectsPluginWithRejectedSettings() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Plugin",
+                      "name": "plugins/platform/validate-plugin-bad",
+                      "spec": {"type": "test-echo", "settings": {}}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode result = ProxyUtil.MAPPER.readTree(response.body()).get("results").get(0);
+        assertEquals("FAILED", result.get("status").asText(), response::body);
+        assertTrue(result.get("error").asText().contains("settings.greeting"), response::body);
+    }
+
+    @Test
+    @SneakyThrows
     void testV04PrecheckTrueMixedBatch422Atomic() {
         String body = """
                 {

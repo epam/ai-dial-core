@@ -18,7 +18,9 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
@@ -104,6 +106,42 @@ public class ProxyContextTest {
             logger.setLevel(previous);
             logger.detachAppender(appender);
         }
+    }
+
+    @Test
+    public void testCallTreeUntilTheBodyIsSet() {
+        ProxyContext context = context(null);
+        assertNull(context.getCallTree());
+
+        ObjectNode tree = ProxyUtil.MAPPER.createObjectNode().put("model", "m");
+        context.setCallTree(tree);
+        assertSame(tree, context.getCallTree());
+        assertTrue(context.isChildPass());
+
+        context.setRequestBody(Buffer.buffer("{}"));
+        assertNull(context.getCallTree());
+        assertTrue(context.isChildPass());
+    }
+
+    @Test
+    public void testParseRequestBodyTakesTheCallTree() throws Exception {
+        ProxyContext context = context(null);
+        ObjectNode tree = ProxyUtil.MAPPER.createObjectNode().put("model", "m");
+        context.setCallTree(tree);
+
+        assertSame(tree, ProxyUtil.parseRequestBody(context, Buffer.buffer()));
+        assertNull(context.getRequestBody());
+        assertTrue(context.getRequestBodyTimestamp() > 0);
+    }
+
+    @Test
+    public void testParseRequestBodyParsesWithoutCallTree() throws Exception {
+        ProxyContext context = context(null);
+        Buffer body = Buffer.buffer("{\"model\":\"m\"}");
+
+        assertEquals("m", ProxyUtil.parseRequestBody(context, body).path("model").asText());
+        assertSame(body, context.getRequestBody());
+        assertFalse(context.isChildPass());
     }
 
     private static ProxyContext context(ExtractedClaims claims) {

@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
@@ -23,6 +24,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPluginManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
@@ -159,6 +161,7 @@ public class ConfigApplyService {
                     applyManagedEntity(interceptor.spec(), id, parsed.name(), ResourceTypes.INTERCEPTOR, scratch, pending);
             case AdminTranslatorManifest translator ->
                     applyTranslator(translator.spec(), id, parsed.name(), pending);
+            case AdminPluginManifest plugin -> applyPlugin(plugin.spec(), id, parsed.name(), pending);
             case AdminRoleManifest role ->
                     applyManagedEntity(role.spec(), id, parsed.name(), ResourceTypes.ROLE, scratch, pending);
             case AdminRouteManifest route ->
@@ -227,7 +230,7 @@ public class ConfigApplyService {
         // resolved through Config.selectDeployment, so they don't share the short-name namespace.
         if (type == ResourceTypes.INTERCEPTOR) {
             List<ValidationWarning> warnings = new ArrayList<>();
-            ConfigPostProcessor.validateOverridePaths((Interceptor) entity, warnings);
+            ConfigPostProcessor.validateInterfaces((Interceptor) entity, warnings);
             if (!warnings.isEmpty()) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
             }
@@ -264,6 +267,21 @@ public class ConfigApplyService {
         resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
         pending.add(new EntityChange(ResourceTypes.TRANSLATOR, MergedConfigStore.resolveMapKeyFor(descriptor), translator));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
+    }
+
+    private EntityResult applyPlugin(Plugin plugin, String id, ParsedName parsed, List<EntityChange> pending) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validatePlugin(id, plugin, mergedConfigStore.getPluginRegistry(), true, warnings);
+        // Without a provider the unknown type is the only warning: a dangling reference, soft-tolerable as a model's
+        boolean softFailure = mergedConfigStore.getPluginRegistry().get(plugin.getType()) == null;
+        if (!warnings.isEmpty() && !(softFailure && softValidation)) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+        }
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.PLUGIN, parsed.bucket(), parsed.location(), parsed.name());
+        resourceService.putResource(descriptor, ConfigEntityCodec.serializeForBlob(plugin), EtagHeader.ANY);
+        pending.add(new EntityChange(ResourceTypes.PLUGIN, MergedConfigStore.resolveMapKeyFor(descriptor), plugin));
+        return new EntityResult(id, softFailure ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
     }
 
     private EntityResult applyKey(Key key, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {

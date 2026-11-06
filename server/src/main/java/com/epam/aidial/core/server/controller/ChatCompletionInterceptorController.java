@@ -11,11 +11,11 @@ import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSe
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.upstream.ProxyRequest;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpServerRequest;
 
 import java.io.IOException;
@@ -38,13 +38,13 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
     }
 
     @Override
-    protected void enrichProxyRequestHeaders(HttpClientRequest proxyRequest) {
-        ProxyUtil.setOverrideNameHeader(proxyRequest, context.getDeployment());
+    protected void enrichProxyRequestHeaders(ProxyRequest proxyRequest) {
+        ProxyUtil.setOverrideNameHeader(proxyRequest.headers(), context.getDeployment());
     }
 
     @Override
     protected RequestObject parseRequest(Buffer body) throws IOException {
-        return new ChatCompletionRequest(ProxyUtil.parseObject(body));
+        return new ChatCompletionRequest(parseObject(body));
     }
 
     @Override

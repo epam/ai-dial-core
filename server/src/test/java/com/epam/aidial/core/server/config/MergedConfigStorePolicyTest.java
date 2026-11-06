@@ -256,7 +256,7 @@ class MergedConfigStorePolicyTest {
         lenient().when(fileConfigStore.get()).thenReturn(file);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, onInvalidEntity, false, "pod-this",
+                secretFieldProcessor, lockService, onInvalidEntity, false, "pod-this", PluginRegistry.EMPTY,
                 externalServiceService, resourceAuthSettingsEncryptionService, Mockito.mock(BackgroundOperationTracer.class));
         store.init(fileConfigStore);
         return store;

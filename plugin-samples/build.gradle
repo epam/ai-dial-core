@@ -1,0 +1,21 @@
+// Sample plugins, built into a jar of their own: a Core image carries it in its plugins directory only when built
+// with --build-arg SAMPLE_PLUGINS=true. Core's class loader provides the plugin API, Vert.x and Jackson at run time.
+dependencies {
+    compileOnly project(':plugin-api')
+    compileOnly("io.vertx:vertx-core:${vertx_version}")
+    compileOnly("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+
+    testImplementation project(':plugin-api')
+    testImplementation("io.vertx:vertx-core:${vertx_version}")
+    testImplementation("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:${junit_version}")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junit_version}")
+}
+
+test {
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat = "full"
+    }
+    useJUnitPlatform()
+}

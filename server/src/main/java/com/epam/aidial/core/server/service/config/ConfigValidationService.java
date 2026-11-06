@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.KeyValidator;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.config.PluginRegistry;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.config.manifest.AdminApplicationManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminCatalogSchemaManifest;
@@ -14,6 +15,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPluginManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
@@ -47,12 +49,14 @@ public class ConfigValidationService {
     private final ResourceService resourceService;
     private final boolean softValidation;
     private final CatalogSchemaService catalogSchemaService;
+    private final PluginRegistry pluginRegistry;
 
     public ConfigValidationService(ResourceService resourceService, boolean softValidation,
-                                   CatalogSchemaService catalogSchemaService) {
+                                   CatalogSchemaService catalogSchemaService, PluginRegistry pluginRegistry) {
         this.resourceService = resourceService;
         this.softValidation = softValidation;
         this.catalogSchemaService = catalogSchemaService;
+        this.pluginRegistry = pluginRegistry;
     }
 
     public PolicyAssignmentPrecheck newPolicyPrecheck() {
@@ -100,7 +104,7 @@ public class ConfigValidationService {
                 }
                 case AdminInterceptorManifest interceptorManifest -> {
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateOverridePaths(interceptorManifest.spec(), warnings);
+                    ConfigPostProcessor.validateInterfaces(interceptorManifest.spec(), warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
@@ -114,6 +118,13 @@ public class ConfigValidationService {
                     Translator translator = translatorManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
                     ConfigPostProcessor.validateTranslator(id, translator, warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                }
+                case AdminPluginManifest pluginManifest -> {
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validatePlugin(id, pluginManifest.spec(), pluginRegistry, !softValidation, warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
@@ -142,7 +153,7 @@ public class ConfigValidationService {
                 }
                 case AdminApplicationManifest applicationManifest -> {
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateOverridePaths(applicationManifest.spec(), warnings);
+                    ConfigPostProcessor.validateInterfaces(applicationManifest.spec(), warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }

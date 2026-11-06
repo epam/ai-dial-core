@@ -85,11 +85,15 @@ public class AnalyticsLogContext {
         return toBuilder().requestBody(null).responseBody(null).assembledStreamingResponse(null).bodiesOmitted(true).build();
     }
 
+    /**
+     * The row of a pass. A pass Core serves in process for an origin plugin's call has no bodies in its row: the
+     * plugin's own pass logs them once for the trace.
+     */
     public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse) {
         Buffer responseBody = context.getResponseBody();
         Route route = context.getRoute();
         RouteType routeType = context.getRouteType();
-        return AnalyticsLogContext.builder()
+        AnalyticsLogContext row = AnalyticsLogContext.builder()
                 .traceId(context.getTraceId())
                 .spanId(context.getSpanId())
                 .parentSpanId(context.getParentSpanId())
@@ -126,6 +130,7 @@ public class AnalyticsLogContext {
                 .usagePerModel(context.getUsagePerModel())
                 .operationDurationMs(context.calculateOperationDurationMs())
                 .build();
+        return context.isChildPass() ? row.withoutBodies() : row;
     }
 
     public static AnalyticsLogContext from(BackgroundJobRecord record, ResponsesApiClient.TerminalResult result, List<UsagePerModel> usagePerModel) {

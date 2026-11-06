@@ -5,11 +5,14 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
@@ -205,6 +208,34 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
         Translator translator = merged.getTranslators().get(shortName);
         assertNotNull(translator);
         assertEquals("http://localhost:9001/migrated-translate", translator.getBaseUrl(),
+                "Blob entity must win over the file entry sharing its short name");
+    }
+
+    @Test
+    @SneakyThrows
+    void testBlobPluginNextToTheFilePlugins() {
+        verify(send(HttpMethod.PUT, "/v1/plugins/platform/p1", null,
+                "{\"type\": \"test-echo\", \"settings\": {\"greeting\": \"hello\"}}", "authorization", "admin"), 200);
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        JsonNode plugins = ProxyUtil.MAPPER.readTree(reload.body()).get("plugins");
+        assertTrue(plugins.has("file-plugin"), reload::body);
+        assertTrue(plugins.has("p1"), reload::body);
+    }
+
+    @Test
+    @SneakyThrows
+    void testBlobPluginShadowsTheFilePlugin() {
+        putBlob(ResourceTypes.PLUGIN, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                "file-plugin", "{\"type\": \"test-echo\", \"settings\": {\"greeting\": \"hello\"}}");
+
+        Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
+        assertEquals(200, reload.status());
+
+        JsonNode plugin = ProxyUtil.MAPPER.readTree(reload.body()).get("plugins").get("file-plugin");
+        assertEquals("hello", plugin.get("settings").get("greeting").asText(),
                 "Blob entity must win over the file entry sharing its short name");
     }
 
