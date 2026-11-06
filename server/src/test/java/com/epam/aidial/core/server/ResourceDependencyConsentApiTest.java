@@ -226,6 +226,11 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                 {"sourceUrl": "applications/public/move-dst-app", "destinationUrl": "applications/public/copy-app"}
                 """, "authorization", "admin"), 200);
         assertConsented("applications/public/copy-app", false);
+        // an unapproved application moved over an approved one does not inherit its approval
+        verify(send(HttpMethod.POST, "/v1/ops/resource/move", null, """
+                {"sourceUrl": "applications/public/copy-app", "destinationUrl": "applications/public/move-dst-app", "overwrite": true}
+                """, "authorization", "admin"), 200);
+        assertConsented("applications/public/move-dst-app", false);
     }
 
     private void assertConsented(String applicationId, boolean consented) {

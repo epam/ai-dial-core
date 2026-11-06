@@ -398,11 +398,16 @@ public class ApplicationService {
         resourceService.deleteResource(adminConsentOf(resource), EtagHeader.ANY);
     }
 
-    /** The approval follows a moved application: it binds the declared resources, which a move does not change. */
+    /**
+     * The approval follows a moved application: it binds the declared resources, which a move does not change. An
+     * application the move overwrites loses its own approval.
+     */
     public void moveAdminConsent(ResourceDescriptor source, ResourceDescriptor destination) {
         String grant = resourceService.getResource(adminConsentOf(source));
         if (grant != null) {
             resourceService.putResource(adminConsentOf(destination), grant, EtagHeader.ANY);
+        } else {
+            resourceService.deleteResource(adminConsentOf(destination), EtagHeader.ANY);
         }
     }
 
