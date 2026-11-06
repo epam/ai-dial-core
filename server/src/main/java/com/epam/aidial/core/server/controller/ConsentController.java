@@ -177,7 +177,7 @@ public class ConsentController {
             return operation.get();
         })
                 .onComplete(result -> ResourceDependencyAuditLog.consent(context, deploymentId, action,
-                        result.succeeded() ? snapshotOf(result.result()) : null, asRuntime(result.cause())))
+                        result.succeeded() ? snapshotOf(result.result()) : null, result.cause()))
                 .onSuccess(ignored -> context.respond(HttpStatus.OK))
                 .onFailure(error -> handleRequestError(deploymentId, error));
         return Future.succeededFuture();
@@ -185,13 +185,6 @@ public class ConsentController {
 
     private static List<Consent.ResourceEntry> snapshotOf(ConsentGrant grant) {
         return grant == null || grant.getConsent() == null ? null : grant.getConsent().getResources();
-    }
-
-    private static RuntimeException asRuntime(Throwable error) {
-        if (error == null) {
-            return null;
-        }
-        return error instanceof RuntimeException runtimeError ? runtimeError : new RuntimeException(error);
     }
 
     private void requireAdmin() {

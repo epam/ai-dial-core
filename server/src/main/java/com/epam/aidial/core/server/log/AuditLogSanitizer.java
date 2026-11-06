@@ -27,7 +27,7 @@ final class AuditLogSanitizer {
         return value == null ? null : REASON_UNSAFE.matcher(value).replaceAll("_");
     }
 
-    static String reasonOf(RuntimeException error) {
+    static String reasonOf(Throwable error) {
         return error == null ? "" : " reason=\"%s\"".formatted(sanitizeReason(error.getMessage()));
     }
 }

@@ -32,7 +32,7 @@ public final class ResourceDependencyAuditLog {
      * grant, the withdrawn record on withdraw — so the audit line always carries what was approved.
      */
     public static void consent(ProxyContext context, String applicationId, String action,
-                               List<Consent.ResourceEntry> declaration, RuntimeException error) {
+                               List<Consent.ResourceEntry> declaration, Throwable error) {
         String targets = declaration == null ? "" : targetsOf(declaration);
         String accessTypes = declaration == null ? "" : accessTypesOf(declaration);
         AUDIT.info("event=resource_dependency_consent action={} outcome={} actor={} admin_user_id={} "
@@ -96,7 +96,7 @@ public final class ResourceDependencyAuditLog {
                 .collect(Collectors.joining(","));
     }
 
-    private static String outcomeOf(RuntimeException error) {
+    private static String outcomeOf(Throwable error) {
         return switch (error) {
             case null -> "SUCCESS";
             case PermissionDeniedException ignored -> "DENIED";
