@@ -394,7 +394,7 @@ public class AiDial {
             WellKnownResourceMetadataService wellKnownResourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
-            boolean allowUserResourceDependencies = settings("config").getBoolean("allowUserResourceDependencies", false);
+            boolean allowUserResourceDependencies = settings("applications").getBoolean("allowUserResourceDependencies", false);
             ResourceDependencyValidator resourceDependencyValidator = new ResourceDependencyValidator(allowUserResourceDependencies);
 
             ApiKeyValidation apiKeyValidation = Json.decodeValue(settings("apiKeyValidation").toBuffer(), ApiKeyValidation.class);

@@ -70,7 +70,7 @@ public class ResourceDependencyValidator {
         }
         if (!allowUserResourceDependencies) {
             throw new HttpException(FORBIDDEN,
-                    "User-authored applications may not declare resource dependencies (allowUserResourceDependencies is disabled)");
+                    "User-authored applications may not declare resource dependencies (applications.allowUserResourceDependencies is disabled)");
         }
     }
 
