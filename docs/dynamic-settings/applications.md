@@ -275,7 +275,7 @@ An entry is a request, not a grant: it gives the application no access of its ow
 
 An administrator approves the list as a whole through the [Admin Consent API](./admin_consent_api.md). Any later change of the list requires a new approval. Applications created by users may declare resource dependencies only when the static setting `applications.allowUserResourceDependencies` is enabled. The setting gates writes only: an application saved earlier keeps resolving while its admin consent stands; withdraw the consent to stop it.
 
-Resource dependencies are added on chat completion calls and on MCP calls (`/v1/deployments/<deployment name>/mcp`); application routes and feature endpoints do not receive them. An MCP application receives them only with `mcp.forwardPerRequestKey` set to `true`; otherwise a `required` entry fails the call.
+Resource dependencies are added on chat completion calls, Responses API calls (`/openai/v1/responses`), Anthropic Messages calls (`/anthropic/v1/messages`, including `/anthropic/v1/messages/count_tokens`) and MCP calls (`/v1/deployments/<deployment name>/mcp`); application routes and feature endpoints do not receive them. An MCP application receives them only with `mcp.forwardPerRequestKey` set to `true`; otherwise a `required` entry fails the call.
 
 Each entry is an object with the following fields:
 

@@ -11,7 +11,7 @@ import java.util.Set;
 
 /**
  * A declared resource dependency: a request, not a grant. The record carries no access of its
- * own — at request start Core verifies the originating user's reach and the required consent,
+ * own — at request start Core verifies the initiator's reach and the required consent,
  * and only then bakes the grant into the per-request key the app already holds.
  */
 @Data
@@ -49,8 +49,8 @@ public class ResourceDependency {
         /**
          * A DIAL resource URL in one of two forms:
          * <ul>
-         *   <li>concrete global-view path: {@code files/public/policies/}</li>
-         *   <li>current-user placeholder path: {@code files/{current-user}/skills/}</li>
+         *   <li>{@code <type>/<bucket>/<path>}, a concrete bucket: {@code files/public/policies/}</li>
+         *   <li>{@code <type>/{current-user}/<path>}, the calling user's own bucket: {@code skills/{current-user}/}</li>
          * </ul>
          */
         private String path;
