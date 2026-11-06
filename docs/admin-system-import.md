@@ -105,14 +105,16 @@ all. There is no limit on the number of entries or on the archive size.
     import ends: Core tells them over Redis. A pod that was disconnected from Redis at that moment misses the message and
     keeps the old key until it restarts; until then it cannot decrypt the imported secrets, its config rebuild skips
     every entity that has one, and a secret saved on it is encrypted with the old key and is lost.
-  - **A key that you place in blob storage by hand is not announced**, with or without a KMS provider, so roll-restart
-    the pods afterwards.
+  - **A key that you place in blob storage by hand is not announced**, so the pods keep the key they have cached.
+    Place it before the import: the import then makes every pod drop the cached key of each bucket it replaces, and no
+    restart is needed. For a bucket that the archive has no entries for, or a key placed without an import,
+    roll-restart the pods.
   - **Without a KMS provider** keys are never exported or imported. Before importing into another environment, copy the
     source's `public/encryption_keys/cek` and `platform/encryption_keys/cek` (the ones that exist — an environment
-    that never stored a secret has none) to the target, then roll-restart its pods, as for any out-of-band change to
-    the encryption keys. If this step is forgotten and the archive carries encrypted secrets, the rebuild after the
-    import creates a new key, those secrets fail to decrypt, and the rebuild lists the affected entities as invalid;
-    nothing is lost, and importing the same archive again after placing the right key fixes it.
+    that never stored a secret has none) to the target, then run the import; the wipe leaves the keys in place. If
+    this step is forgotten and the archive carries encrypted secrets, the rebuild after the import creates a new key,
+    those secrets fail to decrypt, and the rebuild lists the affected entities as invalid; nothing is lost, and
+    importing the same archive again after placing the right key fixes it.
 - **No deploys during a system import.** A rolling restart that kills the pod mid-replace leaves the buckets
   partly imported; this recovers the same way any other replace-phase failure does — run the same archive again.
 - A leftover `.dial-system-import-tmp/` folder from a pod that died mid-import is reclaimed automatically within
