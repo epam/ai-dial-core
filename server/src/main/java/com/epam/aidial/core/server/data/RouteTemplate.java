@@ -335,6 +335,10 @@ public enum RouteTemplate {
             "^/v1/ops/config/reload$",
             "/v1/ops/config/reload"
     ),
+    ADMIN_CONSENT(
+            "^/v1/admin-consent/(?<id>.+)$",
+            "/v1/admin-consent/{id}"
+    ),
     USER_CONSENT(
             "^/v1/consent/(?<id>.+?)$",
             "/v1/consent/{id}"

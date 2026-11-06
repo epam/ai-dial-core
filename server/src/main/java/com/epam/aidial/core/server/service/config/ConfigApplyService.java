@@ -325,8 +325,8 @@ public class ConfigApplyService {
         return new EntityResult(id, softFailure ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyApplication(AdminManifest entry, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
-        Application application = ConfigEntityCodec.treeToEntity(entry.spec(), Application.class);
+    private EntityResult applyApplication(Application application, String id, ParsedName parsed,
+                                          Config scratch, List<EntityChange> pending) {
         // Same shape rules as every other application write surface; always admin context here, so the
         // user-authored governance ceiling does not apply.
         List<String> dependencyIssues = ResourceDependencyValidator.shapeIssues(application);
