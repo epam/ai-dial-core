@@ -662,12 +662,12 @@ public class ResourceController extends AccessControlBaseController {
 
     private void validateCustomApplication(Application application) {
         try {
-            checkCreateCodeApp(application);
-            validateSchemaBasedApplication(application);
-            resourceDependencyValidator.validateShape(application);
             if (!accessService.hasExplicitAdminAccess(context)) {
                 resourceDependencyValidator.validateUserAuthored(application);
             }
+            resourceDependencyValidator.validateShape(application);
+            checkCreateCodeApp(application);
+            validateSchemaBasedApplication(application);
             if (!application.getInterceptors().isEmpty()) {
                 if (!accessService.hasAdminAccess(context)) {
                     throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
