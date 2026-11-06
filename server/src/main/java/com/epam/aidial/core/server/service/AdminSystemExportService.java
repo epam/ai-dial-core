@@ -6,7 +6,6 @@ import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -26,7 +25,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.function.LongSupplier;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
@@ -44,10 +42,6 @@ import java.util.zip.ZipOutputStream;
  */
 @Slf4j
 public class AdminSystemExportService {
-
-    static final String MANIFEST_ENTRY = ".dial-system-export/manifest.json";
-    static final String METADATA_ENTRY_PREFIX = ".dial-system-export/metadata/";
-    static final int FORMAT_VERSION = 1;
 
     private static final String IDENTITY_ENCODING = "identity";
     private static final int PAGE_SIZE = 1000;
@@ -105,7 +99,9 @@ public class AdminSystemExportService {
         long deadlineMillis = startMillis + LockService.LOCK_PERIOD.toMillis();
         DiscardableZipOutputStream zip = new DiscardableZipOutputStream(new ExportOutputStream(out, stats, clock, deadlineMillis));
         try {
-            writeJsonEntry(zip, MANIFEST_ENTRY, new Manifest(FORMAT_VERSION, coreVersion, start.truncatedTo(ChronoUnit.SECONDS).toString()), stats);
+            SystemArchiveManifest manifest = new SystemArchiveManifest(SystemArchiveManifest.FORMAT_VERSION, coreVersion,
+                    start.truncatedTo(ChronoUnit.SECONDS).toString());
+            writeJsonEntry(zip, SystemArchiveManifest.ENTRY, manifest, stats);
 
             for (String bucketLocation : MergedConfigStore.ADMIN_BUCKET_LOCATIONS) {
                 exportBucket(zip, bucketLocation, stats);
@@ -146,7 +142,7 @@ public class AdminSystemExportService {
 
         MutableBlobMetadata meta = blob.getMetadata();
         try (InputStream payload = blob.getPayload().openStream()) {
-            writeJsonEntry(zip, METADATA_ENTRY_PREFIX + path, toBlobMetadata(meta), stats);
+            writeJsonEntry(zip, SystemArchiveBlobMetadata.ENTRY_PREFIX + path, toBlobMetadata(meta), stats);
             writeBlobContent(zip, path, meta.getContentMetadata().getContentEncoding(), payload, stats);
         }
     }
@@ -175,9 +171,9 @@ public class AdminSystemExportService {
         return encoded ? Deflater.NO_COMPRESSION : Deflater.DEFAULT_COMPRESSION;
     }
 
-    private static BlobMetadata toBlobMetadata(MutableBlobMetadata meta) {
+    private static SystemArchiveBlobMetadata toBlobMetadata(MutableBlobMetadata meta) {
         ContentMetadata content = meta.getContentMetadata();
-        return new BlobMetadata(
+        return new SystemArchiveBlobMetadata(
                 content.getContentType(),
                 content.getContentEncoding(),
                 content.getContentDisposition(),
@@ -259,9 +255,6 @@ public class AdminSystemExportService {
         }
     }
 
-    private record Manifest(int formatVersion, String coreVersion, String createdAt) {
-    }
-
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Settings {
@@ -276,10 +269,5 @@ public class AdminSystemExportService {
                         + LockService.LOCK_PERIOD.toMillis() + " ms, but got: " + stallTimeout);
             }
         }
-    }
-
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    private record BlobMetadata(String contentType, String contentEncoding, String contentDisposition, String contentLanguage,
-                                String cacheControl, String creationDate, String lastModified, Map<String, String> userMetadata) {
     }
 }

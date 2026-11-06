@@ -65,6 +65,7 @@ public class AdminSystemImportService {
     private final ResourceService resourceService;
     private final MergedConfigStore mergedConfigStore;
     private final AdminSystemImportValidationService validationService;
+    private final AdminSystemImportMetadataReader metadataReader = new AdminSystemImportMetadataReader();
     private final Executor executor;
     private final Settings settings;
     private final LongSupplier clock;
@@ -262,7 +263,8 @@ public class AdminSystemImportService {
         TimedInputStream timed = new TimedInputStream(archive);
         ZipInputStream zip = new ZipInputStream(timed, StandardCharsets.UTF_8);
         ZipEntry first = zip.getNextEntry();
-        validationService.validateManifest(first, zip);
+        validationService.validateManifestEntry(first);
+        validationService.validateManifest(metadataReader.readManifest(zip));
 
         Set<Long> seenNames = new HashSet<>();
         seenNames.add(hash64(first.getName()));
@@ -278,15 +280,15 @@ public class AdminSystemImportService {
                 throw rejected("Duplicate entry: " + name);
             }
 
-            if (name.startsWith(AdminSystemExportService.METADATA_ENTRY_PREFIX)) {
+            if (name.startsWith(SystemArchiveBlobMetadata.ENTRY_PREFIX)) {
                 if (pendingMetadata != null) {
                     throw rejected("Metadata entry without its blob: " + pendingMetadataName);
                 }
-                String blobPath = name.substring(AdminSystemExportService.METADATA_ENTRY_PREFIX.length());
+                String blobPath = name.substring(SystemArchiveBlobMetadata.ENTRY_PREFIX.length());
                 validationService.validateBlobName(blobPath);
                 pendingMetadataName = name;
                 pendingBlobPath = blobPath;
-                pendingMetadata = validationService.readMetadata(zip);
+                pendingMetadata = metadataReader.readMetadata(zip);
                 continue;
             }
 
