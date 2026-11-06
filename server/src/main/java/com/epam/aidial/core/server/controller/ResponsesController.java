@@ -560,7 +560,16 @@ public class ResponsesController extends BaseDeploymentPostController {
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && dialId != null) {
             completionFuture = proxy.getBackgroundJobService().deleteJob(dialId)
-                    .compose(deleted -> deleted ? collectTokenUsage(responseBody, dialId) : Future.succeededFuture());
+                    .compose(deleted -> {
+                        if (!deleted) {
+                            return Future.succeededFuture();
+                        }
+                        if (context.getDecision() != null) {
+                            // the stream ended the job, so no poller writes the router row: this pass does
+                            context.getDecision().releaseRow();
+                        }
+                        return collectTokenUsage(responseBody, dialId);
+                    });
         } else {
             // the buffered bytes are the raw upstream frames, so the id has to come from us
             completionFuture = collectTokenUsage(responseBody, dialId);

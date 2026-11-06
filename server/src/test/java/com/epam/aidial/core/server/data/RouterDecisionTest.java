@@ -76,4 +76,11 @@ class RouterDecisionTest {
                 + "\"decide_ms\":7,\"attempts\":[{\"deployment\":\"m1\",\"status\":502,\"reason\":\"body\",\"received\":true}],"
                 + "\"decisions\":2}", json);
     }
+
+    @Test
+    void routerRowTakenOnce() {
+        RouterDecision decision = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 1);
+        assertTrue(decision.takeRow());
+        assertFalse(decision.takeRow());
+    }
 }

@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
@@ -914,21 +915,31 @@ public class GfLogStoreTest {
     }
 
     @Test
-    public void testBackgroundJobRowCarriesTheDecision() {
+    public void testBackgroundJobRouterRowCarriesTheDecision() {
         RouterDecision decision = new RouterDecision("r3", InterfaceType.OPENAI_RESPONSES, List.of("gpt-4"), 7);
+        RouterDecision.Hop hop = new RouterDecision.Hop("routerspan", null, null, List.of("r3"));
         BackgroundJobRecord record = BackgroundJobRecord.builder()
                 .deploymentName("gpt-4")
                 .parentDeployment("r3")
                 .executionPath(List.of("r3", "gpt-4"))
                 .decision(decision.toRow())
+                .routerHop(hop)
                 .requestMethod("POST")
                 .requestBody("{}")
                 .build();
 
-        JsonNode log = logOf(AnalyticsLogContext.from(record, null, null));
+        AnalyticsLogContext serving = AnalyticsLogContext.from(record, null, null);
+        JsonNode servingLog = logOf(serving);
+        assertNull(servingLog.get("decision"));
+        assertEquals("routerspan", servingLog.get("trace").get("core_parent_span_id").asText());
 
-        assertEquals("r3", log.get("parent_deployment").asText());
-        assertEquals("[\"r3\",\"gpt-4\"]", log.get("execution_path").toString());
+        JsonNode log = logOf(AnalyticsLogContext.routerRow(serving, record.decision(), hop, TokenStatsTracker.UsageStats.EMPTY));
+        assertEquals("r3", log.get("deployment").asText());
+        assertNull(log.get("parent_deployment"));
+        assertEquals("[\"r3\"]", log.get("execution_path").toString());
+        assertEquals("routerspan", log.get("trace").get("core_span_id").asText());
+        assertNull(log.get("request").get("body"));
+        assertNull(log.get("token_usage"));
         assertEquals("{\"router\":\"r3\",\"api\":\"openaiResponses\",\"candidates\":[\"gpt-4\"],\"deployment\":\"gpt-4\","
                 + "\"decide_ms\":7,\"attempts\":[]}", log.get("decision").toString());
     }

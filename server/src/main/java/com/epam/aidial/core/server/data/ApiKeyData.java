@@ -7,7 +7,6 @@ import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonInclude;
 import io.vertx.core.MultiMap;
 import lombok.Data;
 
@@ -65,9 +64,6 @@ public class ApiKeyData {
     // deployment triggers interceptors
     private String initialDeployment;
     private String initialDeploymentApi;
-    // a router's verdict for the deployment the interceptor chain ends at, so the pass serving it records the decision
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    private RouterDecision.Row decision;
     // Original HTTP headers to be stored during an interceptor invocation chain
     private Map<String, String> httpHeaders = new HashMap<>();
     // Map of receivers whom resources are shared to by per request API key.

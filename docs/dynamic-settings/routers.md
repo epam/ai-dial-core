@@ -230,7 +230,10 @@ These are the answers to the first decide request; in each case DIAL Core sends 
 
 ### Accounting
 
-A decided request is one pass: one analytics row, for the deployment that served, and no row for the router. The router comes before that deployment in `execution_path` (`["r1", "gpt-4"]`; after a global interceptor `["i1", "r1", "gpt-4"]`) and is its `parent_deployment`. The per-request key the deployment receives carries the same `executionPath`, so a deployment it calls sees the same path, and `sourceDeployment` names the deployment itself. The row carries a `decision` object:
+A decided request is one pass, and it writes two analytics rows: the row of the deployment that served, and a router row above it.
+
+* **Serving row.** The router comes before the deployment in `execution_path` (`["r1", "gpt-4"]`; after a global interceptor `["i1", "r1", "gpt-4"]`) and is its `parent_deployment`. Its `core_parent_span_id` is the router row's `core_span_id`, unless an interceptor chain served it. The per-request key the deployment receives carries the same `executionPath`, so a deployment it calls sees the same path, and `sourceDeployment` names the deployment itself.
+* **Router row.** It has `deployment` the router, the `execution_path` and `parent_deployment` of a direct call to the router, and the client's response status. It has no bodies and no upstream. Its span exists only in the analytics rows. `price` and `usage_per_model` cover everything below the request, calls the router made while deciding included. Its token counts are zero, so summing tokens over all rows counts each model call once. DIAL Core writes it even when no candidate served, and it is the only row that carries the `decision` object:
 
 ```json
 "decision": {
@@ -243,7 +246,7 @@ A decided request is one pass: one analytics row, for the deployment that served
 }
 ```
 
-`attempts` lists each try before the one that served: `status` is what DIAL Core would have answered for it, `reason` one of `forbidden`, `not_found`, `limit`, `unavailable` (skipped before the call), `connect`, `upstream`, `body` or `stream` (skipped after the call). `received: true` marks a try whose upstream had already answered. For a request that needed more than one decide request, `decisions` says how many, `candidates` lists every verdict's candidates in order, and `decide_ms` is their sum. A background Responses job served through a decision carries the same `execution_path`, `parent_deployment` and `decision` on the row DIAL Core writes when the job ends.
+`attempts` lists each try before the one that served: `status` is what DIAL Core would have answered for it, `reason` one of `forbidden`, `not_found`, `limit`, `unavailable` (skipped before the call), `connect`, `upstream`, `body` or `stream` (skipped after the call). `received: true` marks a try whose upstream had already answered. For a request that needed more than one decide request, `decisions` says how many, `candidates` lists every verdict's candidates in order, and `decide_ms` is their sum. For a background Responses job served through a decision, DIAL Core writes both rows when the job ends.
 
 Rolling back to a DIAL Core release without decision mode while a `mode: decision` entry exists makes the whole config file fail to load: switch those entries back to proxy mode first.
 

@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
@@ -23,6 +24,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,7 +58,7 @@ public class AnalyticsLogContext {
     private final String deploymentName;
     private final String parentDeployment;
     private final List<String> executionPath;
-    // the router's verdict when a router in decision mode chose the deployment; null otherwise
+    // set on the router row of a decided request only
     private final RouterDecision.Row decision;
 
     private final String requestProtocol;
@@ -95,7 +97,8 @@ public class AnalyticsLogContext {
         return AnalyticsLogContext.builder()
                 .traceId(context.getTraceId())
                 .spanId(context.getSpanId())
-                .parentSpanId(context.getParentSpanId())
+                // the pass that asked the router is the router row's child
+                .parentSpanId(context.getDecision() != null ? context.getDecision().getHop().spanId() : context.getParentSpanId())
                 .project(context.getProject())
                 .userHash(context.getUserHash())
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
@@ -112,7 +115,6 @@ public class AnalyticsLogContext {
                         ? context.getDecision().getRouter()
                         : getParentDeployment(context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
                 .executionPath(context.getExecutionPath())
-                .decision(decisionRow(context))
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
                 .requestMethod(context.getRequest().method().name())
                 .requestUri(context.getRequest().uri())
@@ -137,7 +139,7 @@ public class AnalyticsLogContext {
         return AnalyticsLogContext.builder()
                 .traceId(record.traceId())
                 .spanId(record.spanId())
-                .parentSpanId(record.parentSpanId())
+                .parentSpanId(record.routerHop() != null ? record.routerHop().spanId() : record.parentSpanId())
                 .project(record.project())
                 .userHash(record.userHash())
                 .conversationId(record.conversationId())
@@ -152,7 +154,6 @@ public class AnalyticsLogContext {
                 .deploymentName(record.deploymentName())
                 .parentDeployment(record.parentDeployment())
                 .executionPath(record.executionPath())
-                .decision(record.decision())
                 .requestProtocol(record.requestProtocol())
                 .requestMethod(record.requestMethod())
                 .requestUri(record.requestUri())
@@ -188,17 +189,41 @@ public class AnalyticsLogContext {
     }
 
     /**
-     * The {@code decision} object of this pass's row: the verdict on the context, or the one carried to the pass
-     * that serves the chosen deployment behind its interceptors.
+     * The router's row of a decided request, from the row of the pass that asked the router, without its bodies,
+     * upstream and route. Its cost is what that pass's span rolled up: {@code price} the cost of everything below it,
+     * {@code usage_per_model} those calls and the serving deployment's own report, which its span's breakdown leaves
+     * out. Token counts stay zero: the router made no model call.
      */
-    public static RouterDecision.Row decisionRow(ProxyContext context) {
-        if (context.getDecision() != null) {
-            return context.getDecision().toRow();
+    public static AnalyticsLogContext routerRow(AnalyticsLogContext serving, RouterDecision.Row decision, RouterDecision.Hop hop,
+                                                TokenStatsTracker.UsageStats stats) {
+        TokenUsage usage = null;
+        List<UsagePerModel> usagePerModel = null;
+        TokenUsage spanUsage = stats.total();
+        if (spanUsage != null) {
+            usage = new TokenUsage();
+            usage.setAggCost(spanUsage.getAggCost());
+            usagePerModel = new ArrayList<>(stats.usagePerModel());
+            if (!spanUsage.isEmpty()) {
+                usagePerModel.add(new UsagePerModel(usagePerModel.size(), decision.deployment(), spanUsage));
+            }
         }
-        // a chosen deployment with interceptors is served in the pass its last interceptor calls back
-        RouterDecision.Row carried = context.getApiKeyData() == null ? null : context.getApiKeyData().getDecision();
-        return carried != null && context.getDeployment() != null && carried.deployment().equals(context.getDeployment().getName())
-                ? carried : null;
+        return serving.toBuilder()
+                .spanId(hop.spanId())
+                .parentSpanId(hop.parentSpanId())
+                .deploymentName(decision.router())
+                .parentDeployment(hop.parentDeployment())
+                .executionPath(hop.executionPath())
+                .decision(decision)
+                .requestBody(null)
+                .responseBody(null)
+                .assembledStreamingResponse(null)
+                .bodiesOmitted(true)
+                .upstreamEndpoint(null)
+                .routeName(null)
+                .routeType(null)
+                .tokenUsage(usage)
+                .usagePerModel(usagePerModel)
+                .build();
     }
 
     public static String getParentDeployment(String sourceDeployment, List<String> interceptors, List<String> executionPath) {

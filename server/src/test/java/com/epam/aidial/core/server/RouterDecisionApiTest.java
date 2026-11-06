@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.service.BackgroundJobService;
+import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
@@ -19,6 +20,7 @@ import org.redisson.api.RedissonClient;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -33,6 +35,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
+import static com.google.common.collect.MoreCollectors.onlyElement;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -138,12 +141,16 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         RecordedRequest served = single(request -> request.getPath().startsWith("/openai/deployments/gpt-4-real/"));
         assertNotEquals(decideKey.get(), served.getHeader("api-key"));
 
-        for (int i = 0; i < 50 && rows.size() < 2; i++) {
-            Thread.sleep(20);
-        }
-        AnalyticsLogContext classifier = rows.stream().filter(row -> "m1".equals(row.getDeploymentName())).findFirst().orElseThrow();
+        awaitRows(rows, 3);
+        AnalyticsLogContext classifier = row(rows, "m1");
         assertEquals("r1", classifier.getParentDeployment());
-        assertNull(classifier.getDecision());
+        // the router row counts the call made while deciding with the one that served
+        AnalyticsLogContext router = routerRow(rows);
+        BigDecimal both = classifier.getTokenUsage().getCost().add(row(rows, "gpt-4").getTokenUsage().getCost());
+        assertEquals(0, both.compareTo(router.getTokenUsage().getAggCost()), () -> router.getTokenUsage().toString());
+        assertEquals(List.of("m1", "gpt-4"), router.getUsagePerModel().stream().map(UsagePerModel::getModel).toList());
+        // the priced call made while deciding is no cost a router accrues as an aggregated cost
+        assertEquals(List.of(), redis().getKeys().getKeysStreamByPattern("*aggregated-costs*").toList());
 
         // the key is invalidated when the decide call ends; the delete is not awaited, so allow it a moment
         int status = 0;
@@ -288,18 +295,18 @@ class RouterDecisionApiTest extends ResourceBaseTest {
             RecordedRequest create = single(request -> !isDecide(request) && "POST".equals(request.getMethod()));
             assertEquals("gpt-4-real", ProxyUtil.MAPPER.readTree(create.getBody().readUtf8()).get("model").asText());
 
-            // the job's row is written when the poll, through Core, finds the origin's answer terminal
-            for (int i = 0; i < 100 && rows.isEmpty(); i++) {
-                Thread.sleep(50);
-            }
+            // both rows are written when the poll, through Core, finds the origin's answer terminal
+            awaitRows(rows, 2);
         }
-        AnalyticsLogContext row = singleRow(rows);
-        assertEquals("gpt-4", row.getDeploymentName());
+        AnalyticsLogContext row = row(rows, "gpt-4");
         assertEquals(List.of("r3", "gpt-4"), row.getExecutionPath());
         assertEquals("r3", row.getParentDeployment());
-        assertEquals("r3", row.getDecision().router());
-        assertEquals("openaiResponses", row.getDecision().api());
-        assertEquals("gpt-4", row.getDecision().deployment());
+        AnalyticsLogContext router = routerRow(rows);
+        assertEquals("r3", router.getDeploymentName());
+        assertEquals(router.getSpanId(), row.getParentSpanId());
+        assertEquals("r3", router.getDecision().router());
+        assertEquals("openaiResponses", router.getDecision().api());
+        assertEquals("gpt-4", router.getDecision().deployment());
     }
 
     @Test
@@ -455,11 +462,18 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         single(request -> request.getPath().equals("/openai/deployments/m2/chat/completions"));
         verify(send(HttpMethod.GET, "/v1/bucket", null, null, "api-key", failedKey.get()), 401);
 
-        AnalyticsLogContext row = singleRow(rows);
-        assertEquals("m2", row.getDeploymentName());
+        awaitRows(rows, 2);
+        AnalyticsLogContext row = row(rows, "m2");
         assertEquals(List.of("r1", "m2"), row.getExecutionPath());
         assertEquals("r1", row.getParentDeployment());
-        RouterDecision.Row decision = row.getDecision();
+        AnalyticsLogContext router = routerRow(rows);
+        assertEquals("r1", router.getDeploymentName());
+        assertEquals(List.of("r1"), router.getExecutionPath());
+        assertNull(router.getParentDeployment());
+        assertTrue(router.isBodiesOmitted());
+        assertNull(router.getRequestBody());
+        assertNull(router.getUpstreamEndpoint());
+        RouterDecision.Row decision = router.getDecision();
         assertEquals("r1", decision.router());
         assertEquals("openaiChatCompletions", decision.api());
         assertEquals(List.of("m1", "m2"), decision.candidates());
@@ -551,11 +565,11 @@ class RouterDecisionApiTest extends ResourceBaseTest {
             });
             verify(sendChat("r1"), 200, COMPLETION);
         }
-        AnalyticsLogContext row = singleRow(rows);
-        assertEquals("m-int", row.getDeploymentName());
+        awaitRows(rows, 2);
+        AnalyticsLogContext row = row(rows, "m-int");
         assertEquals(List.of("r1", "i2", "m-int"), row.getExecutionPath());
         assertEquals("r1", row.getParentDeployment());
-        RouterDecision.Row decision = row.getDecision();
+        RouterDecision.Row decision = routerRow(rows).getDecision();
         assertEquals("r1", decision.router());
         assertEquals(List.of("private-model", "m-int"), decision.candidates());
         assertEquals("m-int", decision.deployment());
@@ -577,7 +591,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         }
         single(request -> request.getPath().equals("/openai/deployments/m1/chat/completions"));
         single(request -> request.getPath().equals("/openai/deployments/m2/chat/completions"));
-        assertEquals(List.of(new RouterDecision.Attempt("m1", 502, "body", true, false)), singleRow(rows).getDecision().attempts());
+        assertEquals(List.of(new RouterDecision.Attempt("m1", 502, "body", true, false)), routerRow(awaitRows(rows, 2)).getDecision().attempts());
     }
 
     @Test
@@ -746,7 +760,9 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertEquals(List.of("r1"), keys.get(1).getExecutionPath());
         assertEquals("r1", keys.get(1).getSourceDeployment());
 
-        RouterDecision.Row row = singleRow(rows).getDecision();
+        awaitRows(rows, 2);
+        row(rows, "m2");
+        RouterDecision.Row row = routerRow(rows).getDecision();
         assertEquals(2, row.decisions());
         assertEquals(List.of("m1", "m2"), row.candidates());
         assertEquals("m2", row.deployment());
@@ -757,6 +773,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     @DialConfigLocation(CONFIG)
     void limitReached() {
         verdict.set("{\"candidates\": [\"m1\"]}");
+        List<AnalyticsLogContext> rows = captureRows();
         try (TestWebServer server = new TestWebServer(4848, request -> {
             received.add(request);
             if (isDecide(request)) {
@@ -768,6 +785,13 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         }
         assertEquals(2, received.stream().filter(this::isDecide).count());
         assertEquals(2, received.stream().filter(request -> request.getPath().contains("/m1/")).count());
+
+        // no candidate served, so the router row is the only one
+        AnalyticsLogContext router = routerRow(awaitRows(rows, 1));
+        assertEquals(502, router.getResponseStatusCode());
+        assertEquals(2, router.getDecision().decisions());
+        assertEquals("m1", router.getDecision().deployment());
+        assertEquals(List.of(new RouterDecision.Attempt("m1", 502, "upstream")), router.getDecision().attempts());
     }
 
     @Test
@@ -898,16 +922,79 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void oneRowForDecidedRequest() {
+    void servingRowIsTheRouterRowsChild() {
         List<AnalyticsLogContext> rows = captureRows();
         try (TestWebServer server = server()) {
             verify(sendChat("r1"), 200);
         }
-        AnalyticsLogContext row = singleRow(rows);
-        assertEquals("gpt-4", row.getDeploymentName());
+        // a decided request adds exactly one row, the router's
+        awaitRows(rows, 2);
+        AnalyticsLogContext row = row(rows, "gpt-4");
         assertEquals(List.of("r1", "gpt-4"), row.getExecutionPath());
         assertEquals("r1", row.getParentDeployment());
-        assertEquals(List.of(), row.getDecision().attempts());
+        AnalyticsLogContext router = routerRow(rows);
+        assertEquals(List.of(), router.getDecision().attempts());
+        assertEquals(router.getSpanId(), row.getParentSpanId());
+        assertNotEquals(row.getSpanId(), router.getSpanId());
+        assertEquals(row.getTraceId(), router.getTraceId());
+        assertNull(router.getParentSpanId());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void streamedBackgroundJobWritesBothRowsLive() {
+        List<AnalyticsLogContext> rows = captureRows();
+        String stream = "event: response.created\n"
+                + "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"queued\"}}\n\n"
+                + "event: response.completed\n"
+                + "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\","
+                + "\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n";
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                return answer(request);
+            }
+            return TestWebServer.createResponse(200, stream, "content-type", "text/event-stream");
+        })) {
+            verify(send(HttpMethod.POST, "/openai/v1/responses", null,
+                    "{\"model\":\"r3\",\"background\":true,\"stream\":true,\"input\":\"hi\"}", "content-type", "application/json"), 200);
+            // the stream ended the job live, so the poller has nothing left to write
+            awaitRows(rows, 2);
+        }
+        assertEquals("gpt-4", routerRow(rows).getDecision().deployment());
+        row(rows, "gpt-4");
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerRowShowsTheCostUnderIt() {
+        List<AnalyticsLogContext> rows = captureRows();
+        try (TestWebServer server = server()) {
+            verify(sendChat("r1"), 200);
+        }
+        awaitRows(rows, 2);
+        AnalyticsLogContext row = row(rows, "gpt-4");
+        AnalyticsLogContext router = routerRow(rows);
+        assertEquals(1, row.getTokenUsage().getAggCost().signum());
+        assertEquals(0, row.getTokenUsage().getAggCost().compareTo(router.getTokenUsage().getAggCost()));
+        assertNull(router.getTokenUsage().getCost());
+        assertEquals(0, router.getTokenUsage().getTotalTokens());
+        assertEquals(List.of("gpt-4"), router.getUsagePerModel().stream().map(UsagePerModel::getModel).toList());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerRowOfSecuredKey() {
+        List<AnalyticsLogContext> rows = captureRows();
+        try (TestWebServer server = server()) {
+            verify(send(HttpMethod.POST, "/openai/deployments/r1/chat/completions", null, CHAT_BODY,
+                    "api-key", "securedKey1", "content-type", "application/json"), 200);
+        }
+        awaitRows(rows, 2);
+        AnalyticsLogContext router = routerRow(rows);
+        assertTrue(router.isSecuredApiKey());
+        assertEquals("gpt-4", router.getDecision().deployment());
+        assertTrue(row(rows, "gpt-4").isSecuredApiKey());
     }
 
     @Test
@@ -930,6 +1017,19 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     void globalInterceptorBeforeTheDecisionOnTheResponsesApi() {
         assertDecidedAfterTheInterceptor("/openai/v1/responses", "{\"model\":\"r1\",\"store\":false,\"input\":\"hi\"}",
                 "/i1/openai/v1/responses", "/openai/v1/responses", "/openai/v1/responses", RESPONSE);
+    }
+
+    @Test
+    @DialConfigLocation(INTERCEPTOR_CONFIG)
+    void routerRowAfterGlobalInterceptor() {
+        List<AnalyticsLogContext> rows = captureRows();
+        assertDecidedAfterTheInterceptor("/openai/deployments/r1/chat/completions", CHAT_BODY,
+                "/openai/deployments/interceptor/chat/completions", "/openai/deployments/gpt-4/chat/completions");
+        awaitRows(rows, 2);
+        AnalyticsLogContext router = routerRow(rows);
+        assertEquals(List.of("i1", "r1"), router.getExecutionPath());
+        assertNull(router.getParentDeployment());
+        assertEquals(router.getSpanId(), row(rows, "gpt-4").getParentSpanId());
     }
 
     private void assertDecidedAfterTheInterceptor(String path, String body, String callbackPath, String modelPath) {
@@ -1071,14 +1171,25 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         return rows;
     }
 
+    /**
+     * Waits for the rows of a request: they are saved right after the response ends, the router row as the pass that
+     * asked the router finishes, so they may trail the client by a moment.
+     */
     @SneakyThrows
-    private static AnalyticsLogContext singleRow(List<AnalyticsLogContext> rows) {
-        // the row is saved right after the response ends, so it may trail the client by a moment
-        for (int i = 0; i < 50 && rows.isEmpty(); i++) {
+    private static List<AnalyticsLogContext> awaitRows(List<AnalyticsLogContext> rows, int count) {
+        for (int i = 0; i < 250 && rows.size() < count; i++) {
             Thread.sleep(20);
         }
         Thread.sleep(100);
-        assertEquals(1, rows.size(), () -> rows.stream().map(AnalyticsLogContext::getDeploymentName).toList().toString());
-        return rows.getFirst();
+        assertEquals(count, rows.size(), () -> rows.stream().map(AnalyticsLogContext::getDeploymentName).toList().toString());
+        return rows;
+    }
+
+    private static AnalyticsLogContext routerRow(List<AnalyticsLogContext> rows) {
+        return rows.stream().filter(row -> row.getDecision() != null).collect(onlyElement());
+    }
+
+    private static AnalyticsLogContext row(List<AnalyticsLogContext> rows, String deployment) {
+        return rows.stream().filter(row -> deployment.equals(row.getDeploymentName()) && row.getDecision() == null).collect(onlyElement());
     }
 }

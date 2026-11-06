@@ -41,6 +41,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
+import io.opentelemetry.sdk.trace.IdGenerator;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
@@ -73,6 +74,7 @@ public class BaseDeploymentPostController {
     private static final Set<Integer> DEFAULT_RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
             HttpStatus.SERVICE_UNAVAILABLE.getCode());
+    private static final IdGenerator SPAN_IDS = IdGenerator.random();
 
     protected final Proxy proxy;
     protected final ProxyContext context;
@@ -136,7 +138,11 @@ public class BaseDeploymentPostController {
     protected void finalizeRequest() {
         // every terminal path of all four LLM surfaces reaches here, including the respond(...) helpers above
         GenAiTraceAttributes.setLatencyAttributes(context);
-        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
+        // the router row reads the span's stats, which a root's endSpan deletes
+        writeRouterRow()
+                .onFailure(error -> log.warn("Router row is not written", error))
+                .onComplete(ignore -> proxy.getTokenStatsTracker().endSpan(context)
+                        .onFailure(error -> log.error("Error occurred at completing span", error)));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
@@ -146,6 +152,32 @@ public class BaseDeploymentPostController {
                         }
                     }).onFailure(error -> log.error("error occurred on invalidating per-request key", error));
         }
+    }
+
+    /**
+     * The router row of a decided request, written once by the pass that asked the router. Its cost is what this
+     * pass's span rolled up: the deployment that served and everything below it, calls made while deciding included.
+     */
+    private Future<Void> writeRouterRow() {
+        RouterDecision decision = context.getDecision();
+        if (decision == null || !decision.takeRow()) {
+            return Future.succeededFuture();
+        }
+        // the stats the serving report returned, read before the response ended; a pass whose root may end first
+        // must not read them after it
+        TokenStatsTracker.UsageStats reported = context.getSpanUsageStats();
+        Future<TokenStatsTracker.UsageStats> stats = reported != null
+                ? Future.succeededFuture(reported) : proxy.getTokenStatsTracker().getUsageStats(context);
+        return stats
+                .otherwise(error -> {
+                    log.warn("Router {} row is written without its cost", decision.getRouter(), error);
+                    return TokenStatsTracker.UsageStats.EMPTY;
+                })
+                .map(usage -> {
+                    AnalyticsLogContext serving = AnalyticsLogContext.from(context, null);
+                    proxy.getLogStore().save(AnalyticsLogContext.routerRow(serving, decision.toRow(), decision.getHop(), usage));
+                    return null;
+                });
     }
 
     /**
@@ -210,6 +242,8 @@ public class BaseDeploymentPostController {
         } else {
             // drop connection to stop application responding
             context.getProxyRequest().reset();
+            // the pass keeps its key and span to their TTLs, but the router row is written
+            writeRouterRow().onFailure(e -> log.warn("Router row is not written", e));
         }
     }
 
@@ -343,6 +377,9 @@ public class BaseDeploymentPostController {
             }
             TokenStatsTracker.UsageStats stats = result.result();
             context.setUsagePerModel(stats.usagePerModel());
+            if (context.getDecision() != null) {
+                context.setSpanUsageStats(stats);
+            }
             if (updateTokenUsage) {
                 TokenUsage forLog = hasOwnUsage ? ownUsage : new TokenUsage();
                 if (stats.total() != null) {
@@ -589,9 +626,22 @@ public class BaseDeploymentPostController {
                     decision.setRouterConfig(router);
                     decision.setEntry(entry);
                     decision.setKeyTemplate(key);
+                    decision.setHop(routerHop(router));
                     context.setDecision(decision);
                     return true;
                 });
+    }
+
+    /**
+     * The router row's place: a span of its own under the request's parent, and the parent and path a direct call to
+     * the router has. The incoming key's path, as the key minted for this pass does not exist yet.
+     */
+    private RouterDecision.Hop routerHop(Router router) {
+        List<String> incoming = context.getApiKeyData().getExecutionPath();
+        List<String> path = new ArrayList<>(incoming == null ? List.of() : incoming);
+        path.add(router.getName());
+        String parent = AnalyticsLogContext.getParentDeployment(context.getSourceDeployment(), context.getInterceptors(), path);
+        return new RouterDecision.Hop(SPAN_IDS.generateSpanId(), context.getParentSpanId(), parent, List.copyOf(path));
     }
 
     /**
@@ -623,7 +673,12 @@ public class BaseDeploymentPostController {
         boolean withBody = entry.getContext() != null && Boolean.TRUE.equals(entry.getContext().getBody());
         Buffer bytes = withBody ? context.getOriginalRequestBody() : null;
         long start = System.currentTimeMillis();
-        proxy.getTaskExecutor().submit(() -> mintKeyLike(decision.getKeyTemplate(), entry))
+        proxy.getTokenStatsTracker().unnameSpan(context)
+                .recover(error -> {
+                    log.warn("Router {} decides again in a span named after the failed candidate", decision.getRouter(), error);
+                    return Future.succeededFuture();
+                })
+                .compose(ignore -> proxy.getTaskExecutor().submit(() -> mintKeyLike(decision.getKeyTemplate(), entry)))
                 .compose(key -> askRouter(decision.getRouterConfig(), entry, decision.getApi(), bytes, key, decision.getAttempts()))
                 .onComplete(result -> {
                     if (result.succeeded() && !context.getResponse().closed()) {
@@ -763,6 +818,7 @@ public class BaseDeploymentPostController {
         context.setProxyApiKeyData(null);
         context.setCacheBreakpointContext(null);
         context.setUpstreamBodyReceived(false);
+        context.setSpanUsageStats(null);
         context.setRequestBody(context.getOriginalRequestBody());
         if (next) {
             decision.skip(status, reason, received);

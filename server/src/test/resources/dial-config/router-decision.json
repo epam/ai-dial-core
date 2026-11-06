@@ -40,7 +40,8 @@
       "type": "chat",
       "baseUrl": "http://localhost:4848",
       "overrideName": "gpt-4-real",
-      "interfaces": {"openaiChatCompletions": {}, "openaiResponses": {}}
+      "interfaces": {"openaiChatCompletions": {}, "openaiResponses": {}},
+      "pricing": {"unit": "token", "prompt": "0.001", "completion": "0.002"}
     },
     "claude": {
       "type": "chat",
@@ -55,7 +56,8 @@
     "m1": {
       "type": "chat",
       "baseUrl": "http://localhost:4848",
-      "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}}
+      "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}},
+      "pricing": {"unit": "token", "prompt": "0.001", "completion": "0.002"}
     },
     "m3": {
       "type": "chat",
@@ -116,6 +118,7 @@
     }
   },
   "keys": {
-    "proxyKey1": {"project": "p1", "role": "analysts"}
+    "proxyKey1": {"project": "p1", "role": "analysts"},
+    "securedKey1": {"project": "p1", "role": "analysts", "secured": true}
   }
 }

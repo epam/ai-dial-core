@@ -278,9 +278,9 @@ initiator's `costs` record or the ancestor's `<deployment>/costs` record.
 
 ### Requirement: One analytics row per Core pass
 Core SHALL write one analytics row per pass that relays an origin's answer, a `Model` pass whose client disconnected
-during the relay included, with `deployment`, `execution_path` from the key it minted, `parent_deployment` set to
-the nearest preceding `execution_path` entry that is not one of the deployment's interceptors (absent for a root),
-and `trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_id`.
+during the relay included, with `deployment`, `execution_path` from the key it minted, `parent_deployment` the
+nearest preceding `execution_path` entry that is not one of the deployment's interceptors (absent for a root), and
+`trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_id`; a decided request adds a router row.
 
 #### Scenario: Parent deployment of a model called by an app
 - **WHEN** root `app` calls `gpt-4`
@@ -293,8 +293,8 @@ and `trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_i
 
 #### Scenario: One row for a decided request
 - **WHEN** a user calls router `r1` in decision mode and its decision chooses `gpt-4`, which answers
-- **THEN** one row is written, `gpt-4` with `execution_path: ["r1", "gpt-4"]` and `parent_deployment: "r1"`, and no
-  row for `r1`
+- **THEN** one row is written for the pass, `gpt-4` with `execution_path: ["r1", "gpt-4"]` and
+  `parent_deployment: "r1"`, and the router row for `r1` is written beside it
 
 ### Requirement: Passes without an analytics row
 Core SHALL NOT write an analytics row for a pass that forwards to an interceptor, so usage an interceptor's body

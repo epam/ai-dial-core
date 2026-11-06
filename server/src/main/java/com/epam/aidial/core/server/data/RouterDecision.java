@@ -49,6 +49,11 @@ public class RouterDecision {
     private DeploymentInterface entry;
     @Setter
     private ApiKeyData keyTemplate;
+    // where the router row sits in the call tree, fixed when the router answered
+    @Setter
+    private Hop hop;
+    // the router row is written, or left to the poller of the background job this request started
+    private boolean rowTaken;
 
     public RouterDecision(String router, InterfaceType api, List<String> candidates, long decideMs) {
         this.router = router;
@@ -108,6 +113,21 @@ public class RouterDecision {
         closed = true;
     }
 
+    /**
+     * True the first time only: the router row is written once, whichever terminal path asks for it.
+     */
+    public boolean takeRow() {
+        if (rowTaken) {
+            return false;
+        }
+        rowTaken = true;
+        return true;
+    }
+
+    public void releaseRow() {
+        rowTaken = false;
+    }
+
     public Row toRow() {
         return new Row(router, api.getValue(), List.copyOf(candidates), current(), decideMs, List.copyOf(attempts),
                 decisions > 1 ? decisions : null);
@@ -119,6 +139,14 @@ public class RouterDecision {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Row(String router, String api, List<String> candidates, String deployment, long decideMs, List<Attempt> attempts,
                       @JsonInclude(JsonInclude.Include.NON_NULL) Integer decisions) {
+    }
+
+    /**
+     * The router row's own span, only in the analytics rows: the request's parent span is its parent, and the row of
+     * the pass that asked the router is its child. {@code parentDeployment} and {@code executionPath} are those of a
+     * direct call to the router.
+     */
+    public record Hop(String spanId, String parentSpanId, String parentDeployment, List<String> executionPath) {
     }
 
     /**
