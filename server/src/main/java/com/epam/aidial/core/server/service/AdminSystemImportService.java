@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
+import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.vertx.stream.InputStreamAdapter;
 import com.epam.aidial.core.storage.blobstore.BlobAttributes;
@@ -14,6 +16,7 @@ import com.epam.aidial.core.storage.service.TempFolderCleaner;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.Strings;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
@@ -65,6 +68,7 @@ public class AdminSystemImportService {
     private final ResourceService resourceService;
     private final MergedConfigStore mergedConfigStore;
     private final AdminSystemImportValidationService validationService;
+    private final ContentEncryptionKeyService contentEncryptionKeyService;
     private final AdminSystemImportMetadataReader metadataReader = new AdminSystemImportMetadataReader();
     private final Executor executor;
     private final Settings settings;
@@ -73,12 +77,14 @@ public class AdminSystemImportService {
 
     public AdminSystemImportService(BlobStorage blobStorage, LockService lockService, ResourceService resourceService,
                                     MergedConfigStore mergedConfigStore, AdminSystemImportValidationService validationService,
-                                    Executor executor, Settings settings, LongSupplier clock, Supplier<String> idGenerator) {
+                                    ContentEncryptionKeyService contentEncryptionKeyService, Executor executor, Settings settings,
+                                    LongSupplier clock, Supplier<String> idGenerator) {
         this.blobStorage = blobStorage;
         this.lockService = lockService;
         this.resourceService = resourceService;
         this.mergedConfigStore = mergedConfigStore;
         this.validationService = validationService;
+        this.contentEncryptionKeyService = contentEncryptionKeyService;
         this.executor = executor;
         this.settings = settings;
         this.clock = clock;
@@ -105,8 +111,7 @@ public class AdminSystemImportService {
                 + ResourceDescriptor.PATH_SEPARATOR + idGenerator.get() + ResourceDescriptor.PATH_SEPARATOR;
         BlobCalls uploads = newCalls();
         try {
-            long blobCount = stageArchive(archive, stagingPrefix, uploads);
-            return new StagedImport(stagingPrefix, blobCount);
+            return stageArchive(archive, stagingPrefix, uploads);
         } catch (Throwable e) {
             uploads.awaitQuietly();
             try {
@@ -145,7 +150,7 @@ public class AdminSystemImportService {
         List<String> warnings = new ArrayList<>();
 
         progress.setPhase(Progress.Phase.WIPE);
-        long deleted = wipeBuckets(progress);
+        long deleted = wipeBuckets(staged.bucketLocations(), progress);
         long wipeEndedAt = clock.getAsLong();
 
         progress.setPhase(Progress.Phase.COPY);
@@ -154,7 +159,8 @@ public class AdminSystemImportService {
         long copyEndedAt = clock.getAsLong();
 
         progress.setPhase(Progress.Phase.INVALIDATE);
-        resourceService.invalidate(MergedConfigStore.ADMIN_BUCKET_LOCATIONS);
+        resourceService.invalidate(staged.bucketLocations());
+        invalidateEncryptionKeys(staged.bucketLocations());
         long invalidateEndedAt = clock.getAsLong();
 
         progress.setPhase(Progress.Phase.REBUILD);
@@ -168,9 +174,9 @@ public class AdminSystemImportService {
         long endedAt = clock.getAsLong();
 
         long totalMillis = endedAt - startedAt;
-        log.info("System import replace finished: lockWait={}ms, wipe={}ms ({} blobs), copy={}ms ({} blobs), invalidate={}ms, "
-                        + "rebuild={}ms, total={}ms", startedAt - requestedAt, wipeEndedAt - startedAt, deleted, copyEndedAt - wipeEndedAt,
-                copied, invalidateEndedAt - copyEndedAt, endedAt - invalidateEndedAt, totalMillis);
+        log.info("System import replace finished: buckets={}, lockWait={}ms, wipe={}ms ({} blobs), copy={}ms ({} blobs), invalidate={}ms, "
+                        + "rebuild={}ms, total={}ms", staged.bucketLocations(), startedAt - requestedAt, wipeEndedAt - startedAt, deleted,
+                copyEndedAt - wipeEndedAt, copied, invalidateEndedAt - copyEndedAt, endedAt - invalidateEndedAt, totalMillis);
 
         long overMillis = totalMillis - LockService.LOCK_PERIOD.toMillis();
         if (overMillis > 0) {
@@ -181,10 +187,10 @@ public class AdminSystemImportService {
         return new ImportResult(copied, deleted, warnings);
     }
 
-    private long wipeBuckets(Progress progress) {
+    private long wipeBuckets(List<String> bucketLocations, Progress progress) {
         BlobCalls deletes = newCalls();
         long deleted = 0;
-        for (String bucketLocation : MergedConfigStore.ADMIN_BUCKET_LOCATIONS) {
+        for (String bucketLocation : bucketLocations) {
             String marker = null;
             do {
                 PageSet<? extends StorageMetadata> page = blobStorage.list(bucketLocation, marker, PAGE_SIZE, true);
@@ -207,6 +213,13 @@ public class AdminSystemImportService {
 
     private static boolean isUnderEncryptionKeys(String bucketLocation, String path) {
         return path.startsWith(bucketLocation + ResourceTypes.ENCRYPTION_KEYS.group() + ResourceDescriptor.PATH_SEPARATOR);
+    }
+
+    private void invalidateEncryptionKeys(List<String> bucketLocations) {
+        for (String bucketLocation : bucketLocations) {
+            String bucketName = Strings.CS.removeEnd(bucketLocation, ResourceDescriptor.PATH_SEPARATOR);
+            contentEncryptionKeyService.invalidateKey(new BucketInfo(bucketName, bucketLocation));
+        }
     }
 
     private long promoteStagedBlobs(String stagingPrefix, Progress progress) {
@@ -258,7 +271,7 @@ public class AdminSystemImportService {
         return new BlobCalls(executor, settings.getParallelism());
     }
 
-    private long stageArchive(InputStream archive, String stagingPrefix, BlobCalls uploads) throws IOException {
+    private StagedImport stageArchive(InputStream archive, String stagingPrefix, BlobCalls uploads) throws IOException {
         long startedAt = clock.getAsLong();
         TimedInputStream timed = new TimedInputStream(archive);
         ZipInputStream zip = new ZipInputStream(timed, StandardCharsets.UTF_8);
@@ -272,6 +285,7 @@ public class AdminSystemImportService {
         String pendingMetadataName = null;
         String pendingBlobPath = null;
         BlobAttributes pendingMetadata = null;
+        Set<String> buckets = new HashSet<>();
         long blobCount = 0;
 
         for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
@@ -301,7 +315,8 @@ public class AdminSystemImportService {
             }
             validationService.validateBlobName(name);
 
-            uploadStagedBlob(stagingPrefix + name, pendingMetadata, zip, uploads);
+            uploadStagedBlob(name, stagingPrefix + name, pendingMetadata, zip, uploads);
+            buckets.add(name.substring(0, name.indexOf(ResourceDescriptor.PATH_SEPARATOR) + 1));
             blobCount++;
             pendingMetadata = null;
             pendingMetadataName = null;
@@ -317,11 +332,16 @@ public class AdminSystemImportService {
         uploads.awaitAll();
         log.info("System import stage finished: blobs={}, bytes={}, duration={}ms, waitingForClient={}ms",
                 blobCount, timed.bytes, clock.getAsLong() - startedAt, timed.waitNanos / NANOS_PER_MILLI);
-        return blobCount;
+        List<String> bucketLocations = MergedConfigStore.ADMIN_BUCKET_LOCATIONS.stream().filter(buckets::contains).toList();
+        return new StagedImport(stagingPrefix, blobCount, bucketLocations);
     }
 
-    private void uploadStagedBlob(String path, BlobAttributes attributes, ZipInputStream zip, BlobCalls uploads) throws IOException {
+    private void uploadStagedBlob(String name, String path, BlobAttributes attributes, ZipInputStream zip, BlobCalls uploads)
+            throws IOException {
         byte[] head = zip.readNBytes(MAX_BUFFERED_BLOB_BYTES + 1);
+        if (validationService.isEncryptionKey(name)) {
+            validationService.validateEncryptionKey(name, attributes, head);
+        }
         if (head.length <= MAX_BUFFERED_BLOB_BYTES) {
             uploads.submit(() -> blobStorage.upload(path, attributes, new ByteArrayInputStream(head)));
         } else {
@@ -361,7 +381,7 @@ public class AdminSystemImportService {
         return new RuntimeException(e);
     }
 
-    public record StagedImport(String stagingPrefix, long blobCount) {
+    public record StagedImport(String stagingPrefix, long blobCount, List<String> bucketLocations) {
     }
 
     public record ImportResult(long importedBlobs, long deletedBlobs, List<String> warnings) {

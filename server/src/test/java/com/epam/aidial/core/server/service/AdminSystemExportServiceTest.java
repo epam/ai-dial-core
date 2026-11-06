@@ -358,8 +358,8 @@ class AdminSystemExportServiceTest {
         assertEquals(List.of("public/encryption_keys/cek", "public/files/owner/encryption_keys/notes.txt", "platform/encryption_keys/cek"),
                 contentEntries(archive));
         assertArrayEquals(WRAPPED_KEY.getBytes(StandardCharsets.UTF_8), entries.get("platform/encryption_keys/cek"));
-        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/encryption_keys/cek"));
-        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "platform/encryption_keys/cek"));
+        assertTrue(entries.containsKey(SystemArchiveBlobMetadata.ENTRY_PREFIX + "public/encryption_keys/cek"));
+        assertTrue(entries.containsKey(SystemArchiveBlobMetadata.ENTRY_PREFIX + "platform/encryption_keys/cek"));
         assertFalse(entries.keySet().stream().anyMatch(name -> name.contains("cred1") || name.contains("cred2")));
     }
 
@@ -404,7 +404,7 @@ class AdminSystemExportServiceTest {
         Map<String, byte[]> entries = readEntries(export(service));
 
         assertEquals(0, entries.get("public/models/m1").length);
-        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/models/m1"));
+        assertTrue(entries.containsKey(SystemArchiveBlobMetadata.ENTRY_PREFIX + "public/models/m1"));
     }
 
     @Test

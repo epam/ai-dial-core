@@ -52,4 +52,10 @@ public class CachedContentEncryptionKeyManager implements ContentEncryptionKeyMa
         }
     }
 
+    @Override
+    public void invalidate(ResourceDescriptor cekDescriptor) {
+        cekCache.invalidate(cekDescriptor);
+        contentEncryptionKeyManager.invalidate(cekDescriptor);
+    }
+
 }

@@ -268,7 +268,10 @@ public class AiDial {
                     timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId, blockingCallTracer);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"), blockingCallTracer);
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(blockingCallTracer);
+            KmsSettings kmsSettings = readKmsSettings();
+            KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, blockingCallTracer);
+            ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(keyManagementService, kmsSettings);
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(contentEncryptionKeyService);
             SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
                     credentialEncryptionService,
                     new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
@@ -427,7 +430,7 @@ public class AiDial {
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
-            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), readKmsSettings().isEnabled(),
+            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), kmsSettings.isEnabled(),
                     readEncryptionSettings().getKeySize() / Byte.SIZE);
             AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
             adminSystemExportSettings.validate();
@@ -435,10 +438,10 @@ public class AiDial {
             AdminSystemImportService.Settings adminSystemImportSettings = Json.decodeValue(
                     settings("adminSystemImport").toBuffer(), AdminSystemImportService.Settings.class);
             adminSystemImportSettings.validate();
-            AdminSystemImportValidationService adminSystemImportValidationService =
-                    new AdminSystemImportValidationService(CoreVersion.parse(version()));
+            AdminSystemImportValidationService adminSystemImportValidationService = new AdminSystemImportValidationService(
+                    CoreVersion.parse(version()), kmsSettings.isEnabled(), keyManagementService);
             AdminSystemImportService adminSystemImportService = new AdminSystemImportService(storage, lockService, resourceService,
-                    mergedConfigStore, adminSystemImportValidationService, command -> taskExecutor.submit(() -> {
+                    mergedConfigStore, adminSystemImportValidationService, contentEncryptionKeyService, command -> taskExecutor.submit(() -> {
                         command.run();
                         return null;
                     }), adminSystemImportSettings, clock, generator);
@@ -530,19 +533,15 @@ public class AiDial {
         return Json.decodeValue(toolsetSecurity.getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
     }
 
-    private CredentialEncryptionService getCredentialEncryptionService(BlockingCallTracer blockingCallTracer) {
-        KmsSettings kmsSettings = readKmsSettings();
-        EncryptionSettings encryptionSettings = readEncryptionSettings();
-        ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
-        KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, blockingCallTracer);
-        ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
-                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
-        ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(contentEncryptionKeyManager);
-        DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
+    private CredentialEncryptionService getCredentialEncryptionService(ContentEncryptionKeyService contentEncryptionKeyService) {
+        DataEncryptionService dataEncryptionService = new DataEncryptionService(readEncryptionSettings(), new SecureRandom());
         return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);
     }
 
-    private ContentEncryptionKeyService getContentEncryptionKeyService(ContentEncryptionKeyManager contentEncryptionKeyManager) {
+    private ContentEncryptionKeyService getContentEncryptionKeyService(KeyManagementService keyManagementService, KmsSettings kmsSettings) {
+        ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(readEncryptionSettings());
+        ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
+                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
         Function<BucketInfo, BucketInfo> rootBucketExtractor = bucketInfo -> {
             String rootLocation = PublicationUtil.getRootLocation(bucketInfo.location());
             if (bucketInfo.location().equals(rootLocation)) {

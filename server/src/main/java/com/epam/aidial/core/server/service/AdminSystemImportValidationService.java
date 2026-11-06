@@ -1,24 +1,47 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.credentials.exception.CekEncryptionException;
+import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.server.util.CoreVersion;
+import com.epam.aidial.core.storage.blobstore.BlobAttributes;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
+import org.apache.commons.lang3.StringUtils;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
 
 /**
- * The checks of a system import archive that do not depend on the order of its entries: the manifest and each blob
- * name. A failed check throws {@link AdminSystemImportRejectedException} with {@code 400}.
+ * The checks of a system import archive that do not depend on the order of its entries: the manifest, each blob name
+ * and each encryption key. A failed check throws {@link AdminSystemImportRejectedException} with {@code 400}.
  */
 public class AdminSystemImportValidationService {
 
     private static final int MAX_NAME_BYTES = 1024;
+    private static final int MAX_ENCRYPTION_KEY_BYTES = 64 * 1024;
+    private static final String IDENTITY_ENCODING = "identity";
+    private static final String GZIP_ENCODING = "gzip";
+    private static final String CREDENTIALS_GROUP = ResourceTypes.CREDENTIALS.group() + ResourceDescriptor.PATH_SEPARATOR;
+    private static final String ENCRYPTION_KEYS_GROUP = ResourceTypes.ENCRYPTION_KEYS.group() + ResourceDescriptor.PATH_SEPARATOR;
 
     private final CoreVersion coreVersion;
+    private final KeyManagementService keyManagementService;
+    private final List<String> excludedGroups;
 
-    public AdminSystemImportValidationService(CoreVersion coreVersion) {
+    /**
+     * @param kmsEnabled whether a KMS provider wraps the content encryption keys: the archive may then hold them, and
+     *                   each is unwrapped with {@code keyManagementService}; otherwise they are rejected like credentials
+     */
+    public AdminSystemImportValidationService(CoreVersion coreVersion, boolean kmsEnabled, KeyManagementService keyManagementService) {
         this.coreVersion = coreVersion;
+        this.keyManagementService = keyManagementService;
+        this.excludedGroups = kmsEnabled ? List.of(CREDENTIALS_GROUP) : List.of(CREDENTIALS_GROUP, ENCRYPTION_KEYS_GROUP);
     }
 
     public void validateManifestEntry(ZipEntry first) {
@@ -70,17 +93,54 @@ public class AdminSystemImportValidationService {
         checkNotExcluded(name);
     }
 
-    private static void checkNotExcluded(String name) {
-        int firstSlash = name.indexOf('/');
-        if (firstSlash < 0) {
-            return;
+    public boolean isEncryptionKey(String name) {
+        return startsWithGroup(name, ENCRYPTION_KEYS_GROUP);
+    }
+
+    public void validateEncryptionKey(String path, BlobAttributes attributes, byte[] content) {
+        byte[] wrapped = decode(path, attributes.contentEncoding(), content);
+        try {
+            keyManagementService.decrypt(wrapped);
+        } catch (CekEncryptionException e) {
+            throw rejected("Encryption key cannot be decrypted with the KMS key of this environment: " + path);
         }
-        String remainder = name.substring(firstSlash + 1);
-        for (String group : AdminSystemExportService.EXCLUDED_GROUPS) {
-            if (remainder.regionMatches(true, 0, group, 0, group.length())) {
+    }
+
+    private static byte[] decode(String path, String contentEncoding, byte[] content) {
+        checkKeySize(path, content);
+        if (StringUtils.isBlank(contentEncoding) || IDENTITY_ENCODING.equalsIgnoreCase(contentEncoding.trim())) {
+            return content;
+        }
+        if (!GZIP_ENCODING.equalsIgnoreCase(contentEncoding.trim())) {
+            throw rejected("Encryption key has an unsupported content encoding: " + path);
+        }
+        byte[] decoded;
+        try (InputStream gzip = new GZIPInputStream(new ByteArrayInputStream(content))) {
+            decoded = gzip.readNBytes(MAX_ENCRYPTION_KEY_BYTES + 1);
+        } catch (IOException e) {
+            throw rejected("Encryption key is not valid gzip: " + path);
+        }
+        checkKeySize(path, decoded);
+        return decoded;
+    }
+
+    private static void checkKeySize(String path, byte[] key) {
+        if (key.length == 0 || key.length > MAX_ENCRYPTION_KEY_BYTES) {
+            throw rejected("Encryption key is not a wrapped key: " + path);
+        }
+    }
+
+    private void checkNotExcluded(String name) {
+        for (String group : excludedGroups) {
+            if (startsWithGroup(name, group)) {
                 throw rejected("Entry under an excluded group: " + name);
             }
         }
+    }
+
+    private static boolean startsWithGroup(String name, String group) {
+        int firstSlash = name.indexOf(ResourceDescriptor.PATH_SEPARATOR);
+        return firstSlash >= 0 && name.regionMatches(true, firstSlash + 1, group, 0, group.length());
     }
 
     private static AdminSystemImportRejectedException rejected(String message) {

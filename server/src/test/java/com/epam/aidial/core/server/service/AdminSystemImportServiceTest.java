@@ -1,5 +1,9 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
+import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
+import com.epam.aidial.core.credentials.exception.CekEncryptionException;
+import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.util.CoreVersion;
 import com.epam.aidial.core.storage.blobstore.BlobAttributes;
@@ -87,6 +91,8 @@ class AdminSystemImportServiceTest {
     private LockService lockService;
     private ResourceService resourceService;
     private MergedConfigStore mergedConfigStore;
+    private KeyManagementService keyManagementService;
+    private ContentEncryptionKeyService contentEncryptionKeyService;
     private AtomicLong clock;
     private AtomicLong idCounter;
     private AdminSystemImportService service;
@@ -125,6 +131,8 @@ class AdminSystemImportServiceTest {
             resourceService = new ResourceService(timerService, redis, storage, lockService, settings, null);
 
             mergedConfigStore = mock(MergedConfigStore.class);
+            keyManagementService = mock(KeyManagementService.class);
+            contentEncryptionKeyService = mock(ContentEncryptionKeyService.class);
             clock = new AtomicLong(1_700_000_000_000L);
             idCounter = new AtomicLong();
             service = newService();
@@ -135,13 +143,17 @@ class AdminSystemImportServiceTest {
     }
 
     private AdminSystemImportService newService() {
-        return newService(new AdminSystemImportService.Settings());
+        return newService(new AdminSystemImportService.Settings(), false);
     }
 
     private AdminSystemImportService newService(AdminSystemImportService.Settings settings) {
+        return newService(settings, false);
+    }
+
+    private AdminSystemImportService newService(AdminSystemImportService.Settings settings, boolean kmsEnabled) {
         return new AdminSystemImportService(storage, lockService, resourceService, mergedConfigStore,
-                new AdminSystemImportValidationService(CoreVersion.parse(CORE_VERSION)),
-                command -> Thread.ofVirtual().start(command), settings,
+                new AdminSystemImportValidationService(CoreVersion.parse(CORE_VERSION), kmsEnabled, keyManagementService),
+                contentEncryptionKeyService, command -> Thread.ofVirtual().start(command), settings,
                 clock::get, () -> "import-" + idCounter.incrementAndGet());
     }
 
@@ -558,7 +570,7 @@ class AdminSystemImportServiceTest {
     void testCredentialsAreWiped() {
         storage.store("public/credentials/t1", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
         storage.store("platform/credentials/t2", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
-        runImport(archiveOf(CORE_VERSION, entry("public/models/m1", "{}")));
+        runImport(archiveOf(CORE_VERSION, entry("public/models/m1", "{}"), entry("platform/models/m1", "{}")));
 
         assertFalse(storage.exists("public/credentials/t1"));
         assertFalse(storage.exists("platform/credentials/t2"));
@@ -568,10 +580,52 @@ class AdminSystemImportServiceTest {
     void testEncryptionKeysSurvive() {
         storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "key-bytes".getBytes(StandardCharsets.UTF_8));
         storage.store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), "key-bytes-2".getBytes(StandardCharsets.UTF_8));
-        runImport(archiveOf(CORE_VERSION, entry("public/models/m1", "{}")));
+        runImport(archiveOf(CORE_VERSION, entry("public/models/m1", "{}"), entry("platform/models/m1", "{}")));
 
         assertTrue(storage.exists("platform/encryption_keys/cek"));
         assertTrue(storage.exists("public/encryption_keys/cek"));
+    }
+
+    @Test
+    void testBucketWithoutEntriesIsLeftUntouched() {
+        storeOld("public/models/old");
+        storeOld("platform/models/old");
+
+        AdminSystemImportService.ImportResult result = runImport(archiveOf(CORE_VERSION, entry("platform/models/new", "{}")));
+
+        assertTrue(storage.exists("public/models/old"));
+        assertFalse(storage.exists("platform/models/old"));
+        assertTrue(storage.exists("platform/models/new"));
+        assertEquals(1, result.deletedBlobs());
+        Mockito.verify(contentEncryptionKeyService).invalidateKey(new BucketInfo("platform", "platform/"));
+        Mockito.verify(contentEncryptionKeyService, Mockito.never()).invalidateKey(new BucketInfo("public", "public/"));
+    }
+
+    @Test
+    void testEncryptionKeyFromTheArchiveReplacesTheTargetKey() {
+        storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "old-key".getBytes(StandardCharsets.UTF_8));
+        storage.store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), "public-key".getBytes(StandardCharsets.UTF_8));
+        AdminSystemImportService kmsService = newService(new AdminSystemImportService.Settings(), true);
+        byte[] archive = archiveOf(CORE_VERSION, entry("platform/models/m1", "{}"), entry("platform/encryption_keys/cek", "wrapped-key"));
+
+        kmsService.replace(kmsService.stage(stream(archive)), new AdminSystemImportService.Progress());
+
+        assertArrayEquals("wrapped-key".getBytes(StandardCharsets.UTF_8), readBytes("platform/encryption_keys/cek"));
+        assertArrayEquals("public-key".getBytes(StandardCharsets.UTF_8), readBytes("public/encryption_keys/cek"));
+        Mockito.verify(keyManagementService).decrypt("wrapped-key".getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testEncryptionKeyThatCannotBeUnwrappedIsRejected() {
+        storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "old-key".getBytes(StandardCharsets.UTF_8));
+        when(keyManagementService.decrypt(any())).thenThrow(new CekEncryptionException("Decryption error", new RuntimeException()));
+        AdminSystemImportService kmsService = newService(new AdminSystemImportService.Settings(), true);
+        byte[] archive = archiveOf(CORE_VERSION, entry("platform/models/m1", "{}"), entry("platform/encryption_keys/cek", "other-env-key"));
+
+        assertThrows(AdminSystemImportRejectedException.class, () -> kmsService.stage(stream(archive)));
+
+        assertArrayEquals("old-key".getBytes(StandardCharsets.UTF_8), readBytes("platform/encryption_keys/cek"));
+        assertFalse(storage.exists("platform/models/m1"));
     }
 
     @Test
