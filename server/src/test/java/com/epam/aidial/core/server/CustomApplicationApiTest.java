@@ -12,6 +12,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequest;
@@ -2195,6 +2196,125 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         }
     }
 
+
+    @Test
+    void testResourceDependenciesSectionWriteTimeValidation() {
+        // Admin-authored (public bucket): a valid section is accepted.
+        Response response = send(HttpMethod.PUT, "/v1/applications/public/resource-dependency-app", null,
+                dependencyAppBody("""
+                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true},
+                        {"kind": "dial.resourceLink", "link_id": "lnk_policies", "target": {"path": "files/public/policies/"}, "access": ["read"]}"""),
+                "authorization", "admin");
+        verify(response, 200);
+
+        // User-authored (own bucket) with the flag off — the default: rejected wholesale.
+        response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
+                dependencyAppBody("""
+                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"]}"""));
+        verify(response, 403);
+
+        // with the flag off a user learns nothing about the shape rules: 403, not 400
+        response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
+                dependencyAppBody("""
+                        {"kind": "dial.resourceLink", "link_id": "lnk_bad", "target": {"path": "files/public/*/"}, "access": ["read"]}"""));
+        verify(response, 403);
+
+        // The ceiling is keyed on the author, not the destination bucket: an admin prototyping in
+        // their own bucket authors an admin app — the section is accepted even with the flag off.
+        response = send(HttpMethod.PUT, "/v1/applications/" + adminBucket() + "/resource-dependency-app", null,
+                dependencyAppBody("""
+                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"]}"""),
+                "authorization", "admin");
+        verify(response, 200);
+
+        // Shape violations are rejected for every author; admin + public bucket isolates shape from the ceiling.
+        String[][] invalidSections = {
+                {"wrong kind", "{\"kind\": \"dial.resource\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/f/\"}, \"access\": [\"read\"]}"},
+                {"concrete personal path", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"users/bob/files/f/\"}, \"access\": [\"read\"]}"},
+                {"wildcard", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/*/\"}, \"access\": [\"read\"]}"},
+                {"placeholder off the bucket slot",
+                        "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/%7Bcurrent-user%7D/f/\"}, \"access\": [\"read\"]}"},
+                {"unknown root", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"buckets/public/f/\"}, \"access\": [\"read\"]}"},
+                {"share is not a dependency right",
+                        "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/f/\"}, \"access\": [\"share\"]}"},
+                {"empty access", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/f/\"}, \"access\": []}"},
+        };
+        for (String[] casePair : invalidSections) {
+            response = send(HttpMethod.PUT, "/v1/applications/public/resource-dependency-app", null,
+                    dependencyAppBody(casePair[1]), "authorization", "admin");
+            assertEquals(400, response.status(), casePair[0] + " — body: " + response.body());
+        }
+
+        // Apps without the section are unaffected.
+        response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/plain-application", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "Plain Application"
+                }
+                """);
+        verify(response, 200);
+    }
+
+    private static String dependencyAppBody(String dependenciesJson) {
+        return """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "Resource Dependency App",
+                "resource_dependencies": [%s]
+                }
+                """.formatted(dependenciesJson);
+    }
+
+    private String adminBucket() {
+        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin");
+        return new JsonObject(response.body()).getString("bucket");
+    }
+
+    /** The governance flag on: user-authored apps may declare dependencies; malformed shapes are still a 400. */
+    public static class AllowUserResourceDependenciesOn extends ResourceBaseTest {
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject().put("applications", new JsonObject().put("allowUserResourceDependencies", true));
+        }
+
+        @Test
+        void testUserAuthoredDependenciesWhileFlagOn() {
+            Response response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
+                    dependencyAppBody("""
+                            {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true}"""));
+            verify(response, 200);
+
+            // {current-user}/ alone is not a typed target: 400
+            response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
+                    dependencyAppBody("""
+                            {"kind": "dial.resourceLink", "link_id": "lnk_root", "target": {"path": "{current-user}/"}, "access": ["write"]}"""));
+            verify(response, 400);
+
+            // the old current-user/… spelling: 400
+            response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
+                    dependencyAppBody("""
+                            {"kind": "dial.resourceLink", "link_id": "lnk_untyped", "target": {"path": "current-user/rootstuff/"}, "access": ["write"]}"""));
+            verify(response, 400);
+        }
+    }
+
+    /** Admin rules unconfigured: nobody counts as an admin author, so the flag (off) applies to every write. */
+    public static class AdminRulesUnconfigured extends ResourceBaseTest {
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject().put("access", new JsonObject().put("admin", new JsonObject().put("rules", new JsonArray())));
+        }
+
+        @Test
+        void testUserAuthoredDependenciesRejectedWithoutAdminRules() {
+            Response response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
+                    dependencyAppBody("""
+                            {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"]}"""));
+            verify(response, 403);
+        }
+    }
 
     private HttpUriRequest createHttpUriRequest(int port, String deployment, String apiKey) {
         String uri = "http://127.0.0.1:" + port + "/openai/deployments/" + deployment + "/chat/completions";

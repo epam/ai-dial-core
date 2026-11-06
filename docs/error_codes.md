@@ -19,6 +19,8 @@ User is authenticated by Core but doesn't have insufficient permissions to a res
 - lack of privileges for access to model, application
 - admin can approve publications only
 - access to attached files in chat completion request
+- a required resource dependency of the application is not accessible to the user or not approved by an administrator
+- only administrators can manage an application's admin consent
 
 #### 404 NOT FOUND
 
@@ -45,6 +47,7 @@ The status code indicates a request conflict with the current state of the targe
  - Application must be stopped before deployment
  - Application must be started before undeployment
  - Application must be stopped before deleting
+ - The application's resource dependencies changed since the administrator reviewed them
 
 #### 412 PRECONDITION FAILED
 

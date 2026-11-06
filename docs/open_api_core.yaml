@@ -61,6 +61,7 @@ security:
 - ApiKeyAuth: []
 tags:
 - name: Admin
+- name: Admin Consent
 - name: Anthropic
 - name: Applications
 - name: Catalog
@@ -2128,6 +2129,131 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin-consent/{deployment_id}:
+    get:
+      tags:
+      - Admin Consent
+      summary: "/v1/admin-consent/{deployment_id}"
+      description: Returns the admin consent status of an application's declared resource dependencies. `consented` is true only while a stored approval exists and matches the current declaration — exactly what request-time resolution enforces. `stale` marks an approval the declaration has since changed away from; the last approval stays visible for re-approval. Explicit administrators only.
+      operationId: getApplicationAdminConsentStatus
+      parameters:
+      - name: deployment_id
+        in: path
+        description: "The application's deployment id, as in `/v1/consent/{deployment_id}`: a config application name or `applications/{bucket}/{path}`. Admin consent applies to applications only; any other deployment is 404."
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConsentStatus"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    post:
+      tags:
+      - Admin Consent
+      summary: "/v1/admin-consent/{deployment_id}"
+      description: "Approves the reviewed resource dependencies for every user; each user still gets only what they can reach themselves. The body lists the resources the administrator reviewed; if the declaration changed since, the call fails with 409 and nothing is stored. Any later change of the declaration invalidates the approval. Explicit administrators only; 400 when the body is missing or the application declares no dependencies."
+      operationId: grantApplicationAdminConsent
+      parameters:
+      - name: deployment_id
+        in: path
+        description: "The application's deployment id, as in `/v1/consent/{deployment_id}`: a config application name or `applications/{bucket}/{path}`. Admin consent applies to applications only; any other deployment is 404."
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantAdminConsentRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - Admin Consent
+      summary: "/v1/admin-consent/{deployment_id}"
+      description: Withdraws the admin consent. Calls started after the withdrawal no longer receive the dependencies; a per-request key already issued keeps its grants until it expires. Explicit administrators only.
+      operationId: withdrawApplicationAdminConsent
+      parameters:
+      - name: deployment_id
+        in: path
+        description: "The application's deployment id, as in `/v1/consent/{deployment_id}`: a config application name or `applications/{bucket}/{path}`. Admin consent applies to applications only; any other deployment is 404."
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/admin/apply:
     post:
       tags:
@@ -16050,6 +16176,26 @@ components:
           type: string
         spec:
           $ref: "#/components/schemas/CatalogSchema"
+    AdminConsentStatus:
+      type: object
+      properties:
+        consented:
+          description: "The approval is live: a record exists and matches the current declaration."
+          type: boolean
+        grantedAt:
+          description: "When it was approved, epoch milliseconds."
+          type: integer
+        grantedBy:
+          description: "Who approved: the administrator's user id, or the API key's project."
+          type: string
+        grantedResources:
+          description: "The approved resources, as declared at approval time."
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentResourceEntry"
+        stale:
+          description: A record exists but no longer matches the current declaration; absent when there is no record.
+          type: boolean
     AdminInterceptorManifest:
       type: object
       properties:
@@ -16377,6 +16523,11 @@ components:
           $ref: "#/components/schemas/MapStringString"
         baseUrl:
           type: string
+        resource_dependencies:
+          description: Declared resource dependencies for this application. Present only when the application declares dependencies; omitted otherwise.
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceDependency"
     ApplicationData:
       type: object
       properties:
@@ -17694,11 +17845,26 @@ components:
       properties:
         deployments:
           $ref: "#/components/schemas/MapStringConsentDeployment"
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentResourceEntry"
     ConsentDeployment:
       type: object
       properties:
         consentRequired:
           type: boolean
+    ConsentResourceEntry:
+      type: object
+      properties:
+        access:
+          description: The approved access rights.
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        url:
+          description: "The target as declared; placeholders such as `{current-user}` are not resolved."
+          type: string
     Conversation:
       type: object
       properties:
@@ -18417,6 +18583,14 @@ components:
           $ref: "#/components/schemas/RateLimitSchedule"
         spendingLimits:
           $ref: "#/components/schemas/SpendingLimits"
+    GrantAdminConsentRequest:
+      type: object
+      properties:
+        resources:
+          description: "The resources the administrator reviewed, as declared (the entries the application's `resource_dependencies` yield). Must equal the current declaration."
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentResourceEntry"
     HealthResponse:
       type: object
       properties:
@@ -19568,6 +19742,35 @@ components:
       - SIGNED_IN
       - SIGNED_OUT
       - FAILED
+    ResourceDependency:
+      description: |
+        A declared resource dependency — a request, not a grant. The record carries no access of its own; at request start Core verifies the originating user's reach and the required admin consent, and only then bakes the grant into the per-request key the app holds.
+      type: object
+      properties:
+        access:
+          description: "The access types this dependency requests: READ and/or WRITE."
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        kind:
+          description: Descriptor kind; must be "dial.resourceLink".
+          type: string
+        link_id:
+          description: Unique identity of this record within the application's declaration.
+          type: string
+        required:
+          description: |
+            When true, an unresolvable or unconsented dependency fails the call with 403. When false (default), the dependency degrades silently.
+          type: boolean
+        target:
+          $ref: "#/components/schemas/ResourceDependencyTarget"
+    ResourceDependencyTarget:
+      type: object
+      properties:
+        path:
+          description: |
+            A DIAL resource URL in one of two forms: a concrete global-view path (e.g. "files/public/policies/") or a current-user placeholder path (e.g. "files/{current-user}/skills/"). Write-time validation enforces the grammar.
+          type: string
     ResourceEvent:
       type: object
       properties:
@@ -19759,6 +19962,7 @@ components:
       - APPLICATION
       - CODE_INTERPRETER_SESSION
       - USER_CONSENT
+      - ADMIN_CONSENT
       - TOOL_SET
       - CREDENTIALS
       - EXTERNAL_SERVICE

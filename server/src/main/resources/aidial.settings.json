@@ -95,7 +95,8 @@
     "connectTimeout": 10000
   },
   "applications": {
-    "includeCustomApps": true
+    "includeCustomApps": true,
+    "allowUserResourceDependencies": false
   },
   "access": {
     "admin": {

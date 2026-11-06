@@ -46,6 +46,7 @@ An object containing parameters for each [application](#applications).
 * `createdAt`: The date of the application creation.
 * `updatedAt`: The date of the last application update. 
 * `dependencies`: A list of dependent deployments (applications, AI models) which the application may use. Refer to [Managing Authorization in Complex Application Ecosystems](https://docs.dialx.ai/tutorials/developers/apps-development/auth-matrix) to learn more about dependencies.
+* `resourceDependencies`: A list of DIAL resources outside the application that it may access on behalf of the calling user, once an administrator approves the list. Refer to [applications.<application_name>.resourceDependencies](#applicationsapplication_nameresourcedependencies).
 * `viewerUrl`: A string with URL of the application's [custom viewer UI](https://github.com/epam/ai-dial-chat/tree/development/docs). A custom UI, if enabled, will override the standard DIAL Chat UI.
 * `editorUrl`: A string with URL of the application's custom builder UI. Application builder allows DIAL Chat end-users to create instances of apps using a [UI wizards](https://docs.dialx.ai/tutorials/user-guide#application-builder).
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call. Used only where the interface entry declares no `defaults` of its own. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
@@ -263,6 +264,45 @@ Supported configuration parameters:
     "allowedTools": ["tool1", "tool2"],
     "configDelivery": "meta",
     "forwardPerRequestKey": true
+}
+```
+
+#### applications.<application_name>.resourceDependencies
+
+A list of DIAL resources outside the application — files, prompts, conversations, skills, other applications and toolsets, or folders of them — that the application may read or write on behalf of the user who calls it. In API requests and responses the field is named `resource_dependencies`.
+
+An entry is a request, not a grant: it gives the application no access of its own. On every call DIAL Core checks each entry against the calling user's own access — their own bucket, resources shared with them, and public resources — and against an administrator's approval of the list. The entries that pass are added to the [per request API key](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/3.per-request-keys.md) the application receives for that call. An entry the user cannot access, or a list no administrator has approved, adds nothing. When the application calls another application, that application's own `resourceDependencies` are checked for the same user.
+
+An administrator approves the list as a whole through the [Admin Consent API](./admin_consent_api.md). Any later change of the list requires a new approval. Applications created by users may declare resource dependencies only when the static setting `applications.allowUserResourceDependencies` is enabled. The setting gates writes only: an application saved earlier keeps resolving while its admin consent stands; withdraw the consent to stop it.
+
+Resource dependencies are added on chat completion calls and on MCP calls (`/v1/deployments/<deployment name>/mcp`); application routes and feature endpoints do not receive them. An MCP application receives them only with `mcp.forwardPerRequestKey` set to `true`; otherwise a `required` entry fails the call.
+
+Each entry is an object with the following fields:
+
+* `kind`: Always `dial.resourceLink`.
+* `link_id`: The entry identifier, unique within the application.
+* `target.path`: The resource or folder: `<type>/{current-user}/<path>` for one in the bucket of whoever calls the application, or `<type>/<bucket>/<path>` for a fixed location. `<type>` is one of `applications`, `conversations`, `files`, `prompts`, `skills`, `toolsets`. A path ending with `/` is a folder and covers everything inside it.
+* `access`: A non-empty list of `read` and `write`.
+* `required`: If `true`, a call fails with `403` when the entry cannot be granted. Default is `false`: the call goes on without the entry.
+
+An application may declare up to 100 entries. A list that breaks these rules is rejected with `400` when the application is saved through the API; in a config file, an entry that breaks them is never granted.
+
+**Example**
+
+```json
+"applications": {
+    "app-with-resource-dependencies": {
+        "endpoint": "http://localhost:7001/openai/deployments/app/chat/completions",
+        "resourceDependencies": [
+            {
+                "kind": "dial.resourceLink",
+                "link_id": "lnk_reports",
+                "target": { "path": "files/{current-user}/reports/" },
+                "access": ["read", "write"],
+                "required": true
+            }
+        ]
+    }
 }
 ```
 
