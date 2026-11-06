@@ -328,30 +328,20 @@ public class DeploymentPostController extends BaseDeploymentPostController {
         context.setRequestBody(requestBody);
         context.setRequestBodyTimestamp(System.currentTimeMillis());
 
-        RequestObject request;
         try {
-            request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
-        } catch (Throwable e) {
-            respond(HttpStatus.BAD_REQUEST);
-            log.warn("Can't process JSON request body. Error:", e);
-            return;
-        }
-        try {
+            RequestObject request = new ChatCompletionRequest(ProxyUtil.parseObject(requestBody));
             context.setStreamingRequest(request.isStreaming());
             if (ProxyUtil.processChain(request, buildEnhancementFunctions())) {
                 context.setRequestBody(Buffer.buffer(request.serialize()));
             }
             proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
-        } catch (HttpException e) {
-            respond(e.getStatus(), e.getMessage());
-            log.warn("Request to {} rejected: {} {}", deployment.getName(), e.getStatus(), e.getMessage());
-            return;
-        } catch (IllegalArgumentException e) {
-            respond(HttpStatus.BAD_REQUEST);
-            log.warn("Invalid request to {}: {}", deployment.getName(), e.getMessage());
-            return;
         } catch (Throwable e) {
-            handleRequestError(deployment.getName(), e);
+            if (e instanceof HttpException httpException) {
+                respond(httpException.getStatus(), httpException.getMessage());
+            } else {
+                respond(HttpStatus.BAD_REQUEST);
+            }
+            log.warn("Can't process JSON request body. Error:", e);
             return;
         }
 

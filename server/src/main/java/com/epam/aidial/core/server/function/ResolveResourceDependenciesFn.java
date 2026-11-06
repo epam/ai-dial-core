@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -32,6 +33,7 @@ import javax.annotation.Nullable;
  * <p>Runs on every hop of a call chain; reach is evaluated by
  * {@code AccessService.lookupInitiatorPermissions}, never against the calling key's own grants.
  */
+@Slf4j
 public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
 
     private static final String UNDELIVERABLE_REASON = "dependency grants cannot be delivered: mcp.forwardPerRequestKey is false";
@@ -53,7 +55,15 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         if (declaration == null || declaration.isEmpty()) {
             return false;
         }
-        resolve(application, declaration);
+        try {
+            resolve(application, declaration);
+        } catch (HttpException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            // a server-side failure: say so here rather than let the calling controller map it as a client error
+            log.error("Failed to resolve resource dependencies of {}", application.getName(), e);
+            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to resolve resource dependencies", e);
+        }
         return false;
     }
 

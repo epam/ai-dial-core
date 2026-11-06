@@ -69,7 +69,6 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CONTENT_TYPE_APPLICATION_
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_GATEWAY;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
-import static com.epam.aidial.core.storage.http.HttpStatus.INTERNAL_SERVER_ERROR;
 import static com.epam.aidial.core.storage.http.HttpStatus.NOT_FOUND;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNSUPPORTED_MEDIA_TYPE;
 import static io.vertx.core.http.HttpHeaders.AUTHORIZATION;
@@ -584,16 +583,17 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
-    public void testHandleRequestBody_RespondsInternalErrorWhenTheChainFailsUnexpectedly() {
+    public void testHandleRequestBody_RespondsBadRequestWhenTheChainThrowsAnyOtherException() {
+        // development's behaviour, unchanged: only an HttpException carries its own status
         stubChatCompletionRequest();
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-        doThrow(new IllegalStateException("storage unavailable")).when(apiKeyStore).assignPerRequestApiKey(any());
+        doThrow(new IllegalStateException("unexpected")).when(apiKeyStore).assignPerRequestApiKey(any());
         when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(true));
 
         controller.handleRequestBody(Buffer.buffer(CHAIN_BODY));
 
-        verify(context).respond(eq(INTERNAL_SERVER_ERROR), anyString());
+        verify(context).respond(BAD_REQUEST);
         verify(proxy, never()).getClient();
     }
 

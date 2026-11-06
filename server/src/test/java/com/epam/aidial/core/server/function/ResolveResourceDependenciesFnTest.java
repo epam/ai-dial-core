@@ -147,6 +147,17 @@ public class ResolveResourceDependenciesFnTest {
     }
 
     @Test
+    void apply_reportsServerSideFailureAsInternalError() {
+        // the calling controllers map anything but an HttpException as a client error, so the resolver states its own
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("skills/{current-user}/", false)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenThrow(new IllegalStateException("storage unavailable"));
+
+        HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, error.getStatus());
+    }
+
+    @Test
     void apply_resolvesOnChainedHop() {
         // identity propagates down the chain, so the initiator's reach is evaluable on a chained hop
         when(context.getDeployment()).thenReturn(application);
