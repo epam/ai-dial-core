@@ -17,8 +17,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
@@ -40,14 +40,12 @@ public class ResourceDependencyValidator {
      */
     private static final String CURRENT_USER_PLACEHOLDER = "{current-user}";
 
-    /**
-     * The resource types a declaration may address (segment 0); ResourceTypes.of() also maps internal
-     * engine types (credentials, keys, models, …), which are never declarable.
-     */
-    private static final Set<String> DECLARABLE_RESOURCE_TYPES =
-            Set.of("files", "prompts", "conversations", "applications", "toolsets", "skills");
+    /** The resource types a declaration may address; internal engine types (credentials, keys, models, …) never are. */
+    private static final Set<ResourceTypes> DECLARABLE_RESOURCE_TYPES = Set.of(ResourceTypes.FILE, ResourceTypes.PROMPT,
+            ResourceTypes.CONVERSATION, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL);
 
-    private static final String DECLARABLE_TYPES_LIST = String.join(", ", new TreeSet<>(DECLARABLE_RESOURCE_TYPES));
+    private static final String DECLARABLE_TYPES_LIST = DECLARABLE_RESOURCE_TYPES.stream()
+            .map(ResourceTypes::group).sorted().collect(Collectors.joining(", "));
 
     private final boolean allowUserResourceDependencies;
 
@@ -157,7 +155,7 @@ public class ResourceDependencyValidator {
             throw new IllegalArgumentException("personal targets are declared as {type}/" + CURRENT_USER_PLACEHOLDER
                     + "/…, not as a concrete users/… path");
         }
-        if (!DECLARABLE_RESOURCE_TYPES.contains(type)) {
+        if (!isDeclarable(type)) {
             throw new IllegalArgumentException("target must start with a declarable resource type (" + DECLARABLE_TYPES_LIST + ")");
         }
         if (segments.length < 3) {
@@ -201,6 +199,10 @@ public class ResourceDependencyValidator {
                 throw new IllegalArgumentException("wildcards are not allowed");
             }
         }
+    }
+
+    private static boolean isDeclarable(String type) {
+        return DECLARABLE_RESOURCE_TYPES.stream().anyMatch(declarable -> declarable.group().equals(type));
     }
 
     private static boolean isPlaceholder(String segment) {
