@@ -196,6 +196,8 @@ DIAL Core ignores other fields. A body without a non-empty `candidates` array, `
 
 DIAL Core serves the first usable candidate as if the client had called it: the caller's roles, consent and per-request-key access to it, its limits against the caller, its interceptors, one per-request key, its `defaultHeaders`, `defaults` and `overrideName`. On `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages` (`count_tokens` included) DIAL Core sets the body `model` to the candidate's name before applying its `overrideName`, and sends the candidate's name in `X-DIAL-DEPLOYMENT-ID` on Messages.
 
+The client sees the router's name in the answer's `model`, as with an alias: DIAL Core replaces the `model` of chat completions, Responses and Messages answers, streamed and buffered, with the router's name, and does the same when a stored response is read back. Analytics still names the deployment that served, in `deployment`. Embeddings, a buffered legacy completion and a buffered answer relayed through the chosen deployment's interceptors keep the upstream's `model`, because DIAL Core passes those bodies through unparsed.
+
 ### Fallback and re-decide
 
 DIAL Core skips a candidate, without calling it, when the caller may not use it, its limits are exhausted, it does not serve the interface or it does not exist. It also skips a candidate, as long as no byte of its answer has reached the client, when:

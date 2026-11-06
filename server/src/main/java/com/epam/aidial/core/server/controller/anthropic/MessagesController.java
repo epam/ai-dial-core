@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
@@ -193,7 +194,7 @@ public class MessagesController extends MessagesBaseController {
         }
 
         BufferingReadStream responseStream = createResponseStream(proxyResponse,
-                () -> new MessagesSseListener(List.of(new CollectMessagesTokenUsageFn(proxy, context))));
+                () -> new MessagesSseListener(RouterModelFn.withRouterModel(proxy, context, List.of(new CollectMessagesTokenUsageFn(proxy, context)))));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -208,7 +209,10 @@ public class MessagesController extends MessagesBaseController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer upstreamBody) {
+        // the one buffered answer Core does not otherwise re-serialize: a decided request pays a parse for the router name
+        Buffer body = context.getDecision() != null && proxyResponse.statusCode() == 200
+                ? RouterModelFn.rewrite(upstreamBody, context.getDecision().getRouter()) : upstreamBody;
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();

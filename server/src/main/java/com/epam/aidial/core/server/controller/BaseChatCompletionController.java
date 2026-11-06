@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestSkillsFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.StripUsagePerModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
@@ -188,10 +189,10 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
         }
 
         Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->
-                new ChatCompletionSseListener(isChatCompletionsPath()
+                new ChatCompletionSseListener(RouterModelFn.withRouterModel(proxy, context, isChatCompletionsPath()
                         ? List.of(new StripUsagePerModelFn(proxy, context), new CollectResponseChatCompletionAttachmentsFn(proxy, context),
                                 new CollectChatCompletionUsageFn(proxy, context))
-                        : List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
+                        : List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context))));
         BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
 
         HttpServerResponse response = context.getResponse();

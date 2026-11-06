@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
@@ -445,6 +446,9 @@ public class BaseDeploymentPostController {
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
             return body;
+        }
+        if (context.getDecision() != null) {
+            RouterModelFn.rewrite(object, context.getDecision().getRouter());
         }
         List<UsagePerModel> usagePerModel = context.getUsagePerModel();
         if (usagePerModel == null || usagePerModel.isEmpty()) {

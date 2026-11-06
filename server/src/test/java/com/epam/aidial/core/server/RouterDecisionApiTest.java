@@ -55,6 +55,9 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     private static final String COMPLETION = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\","
             + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}],"
             + "\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":10,\"total_tokens\":15}}";
+    private static final String MODEL_COMPLETION = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"model\":\"gpt-4-real\","
+            + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}],"
+            + "\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":10,\"total_tokens\":15}}";
     private static final String MESSAGE = "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\","
             + "\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
     private static final String EMBEDDINGS = "{\"object\":\"list\",\"data\":[],\"usage\":{\"prompt_tokens\":1,\"total_tokens\":1}}";
@@ -366,6 +369,172 @@ class RouterDecisionApiTest extends ResourceBaseTest {
             verify(sendChat("r1"), 502);
         }
         assertTrue(received.stream().allMatch(this::isDecide));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void bufferedChatAnswerNamesTheRouter() throws Exception {
+        List<AnalyticsLogContext> rows = captureRows();
+        Response response;
+        try (TestWebServer server = upstreamAnswering(MODEL_COMPLETION, "application/json")) {
+            response = sendChat("r1");
+            verify(response, 200);
+        }
+        assertEquals("r1", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+        awaitRows(rows, 2);
+        row(rows, "gpt-4");
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void streamedChatAnswerNamesTheRouter() throws Exception {
+        String stream = "data: " + MODEL_COMPLETION.replace("chat.completion", "chat.completion.chunk") + "\n\n"
+                + "data: [DONE]\n\n";
+        HttpResponse<String> response;
+        try (TestWebServer server = upstreamAnswering(stream, "text/event-stream")) {
+            response = rawStream("r1");
+        }
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"model\":\"r1\""), response.body());
+        assertFalse(response.body().contains("gpt-4-real"), response.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void responsesAnswerNamesTheRouter() throws Exception {
+        Response response;
+        try (TestWebServer server = upstreamAnswering("{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-4-real\","
+                + "\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}", "application/json")) {
+            response = send(HttpMethod.POST, "/openai/v1/responses", null, "{\"model\":\"r3\",\"input\":\"hi\"}",
+                    "content-type", "application/json");
+            verify(response, 200);
+        }
+        assertEquals("r3", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void streamedMessagesAnswerNamesTheRouter() {
+        verdict.set("{\"candidates\": [\"claude\"]}");
+        String stream = "event: message_start\n"
+                + "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\","
+                + "\"model\":\"claude-real\",\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"
+                + "event: message_stop\n"
+                + "data: {\"type\":\"message_stop\"}\n\n";
+        Response response;
+        try (TestWebServer server = upstreamAnswering(stream, "text/event-stream")) {
+            response = send(HttpMethod.POST, "/anthropic/v1/messages", null,
+                    "{\"model\":\"r1\",\"stream\":true,\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                    "content-type", "application/json");
+            verify(response, 200);
+        }
+        assertTrue(response.body().contains("\"model\":\"r1\""), response.body());
+        assertFalse(response.body().contains("claude-real"), response.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void embeddingsKeepTheUpstreamModel() throws Exception {
+        verdict.set("{\"candidates\": [\"ada\"]}");
+        Response response;
+        try (TestWebServer server = upstreamAnswering("{\"object\":\"list\",\"model\":\"ada-real\",\"data\":[],"
+                + "\"usage\":{\"prompt_tokens\":1,\"total_tokens\":1}}", "application/json")) {
+            response = send(HttpMethod.POST, "/openai/deployments/r1/embeddings", null, "{\"input\":\"hi\"}",
+                    "content-type", "application/json");
+            verify(response, 200);
+        }
+        assertEquals("ada-real", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void undecidedAnswerUnchanged() throws Exception {
+        Response response;
+        try (TestWebServer server = upstreamAnswering(MODEL_COMPLETION, "application/json")) {
+            response = sendChat("gpt-4");
+            verify(response, 200);
+        }
+        assertEquals("gpt-4-real", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void bufferedMessagesAnswerNamesTheRouter() throws Exception {
+        verdict.set("{\"candidates\": [\"claude\"]}");
+        Response response;
+        try (TestWebServer server = upstreamAnswering(MESSAGE.replace("\"role\":\"assistant\",", "\"role\":\"assistant\",\"model\":\"claude-real\","),
+                "application/json")) {
+            response = sendMessages("r1");
+            verify(response, 200);
+        }
+        // the whole rewritten body arrived: its Content-Length (of the gzip-encoded answer here) fits it
+        assertEquals("r1", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void streamedResponsesAnswerNamesTheRouter() {
+        String stream = "event: response.created\n"
+                + "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-4-real\","
+                + "\"status\":\"in_progress\"}}\n\n"
+                + "event: response.completed\n"
+                + "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-4-real\","
+                + "\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n";
+        Response response;
+        try (TestWebServer server = upstreamAnswering(stream, "text/event-stream")) {
+            response = send(HttpMethod.POST, "/openai/v1/responses", null, "{\"model\":\"r3\",\"stream\":true,\"input\":\"hi\"}",
+                    "content-type", "application/json");
+            verify(response, 200);
+        }
+        assertTrue(response.body().contains("\"model\":\"r3\""), response.body());
+        assertFalse(response.body().contains("gpt-4-real"), response.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void storedResponseReadBackNamesTheRouter() throws Exception {
+        String answer = "{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-4-real\",\"status\":\"completed\",\"output\":[],"
+                + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
+        Response stored;
+        try (TestWebServer server = upstreamAnswering(answer, "application/json")) {
+            Response created = send(HttpMethod.POST, "/openai/v1/responses", null, "{\"model\":\"r3\",\"store\":true,\"input\":\"hi\"}",
+                    "content-type", "application/json");
+            verify(created, 200);
+            String id = ProxyUtil.MAPPER.readTree(created.body()).get("id").asText();
+            stored = send(HttpMethod.GET, "/openai/v1/responses/" + id, null, null);
+            verify(stored, 200);
+        }
+        assertEquals("r3", ProxyUtil.MAPPER.readTree(stored.body()).get("model").asText());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void streamedAnswerThroughTheCandidatesInterceptorNamesTheRouter() throws Exception {
+        verdict.set("{\"candidates\": [\"m-int\"]}");
+        String stream = "data: " + MODEL_COMPLETION.replace("chat.completion", "chat.completion.chunk").replace("gpt-4-real", "m-int-real") + "\n\n"
+                + "data: [DONE]\n\n";
+        HttpResponse<String> response;
+        try (TestWebServer server = upstreamAnswering(stream, "text/event-stream")) {
+            server.map(HttpMethod.POST, "/openai/deployments/i2/chat/completions", request -> {
+                Response callback = send(HttpMethod.POST, "/openai/deployments/interceptor/chat/completions", null,
+                        request.getBody().readUtf8(), "api-key", request.getHeader("api-key"), "content-type", "application/json");
+                return TestWebServer.createResponse(callback.status(), callback.body(), "content-type", "text/event-stream");
+            });
+            response = rawStream("r1");
+        }
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"model\":\"r1\""), response.body());
+        assertFalse(response.body().contains("m-int-real"), response.body());
+    }
+
+    /**
+     * Answers decide requests with the verdict and every other request with {@code body}.
+     */
+    private TestWebServer upstreamAnswering(String body, String contentType) {
+        return new TestWebServer(4848, request -> {
+            received.add(request);
+            return isDecide(request) ? answer(request) : TestWebServer.createResponse(200, body, "content-type", contentType);
+        });
     }
 
     @Test

@@ -27,6 +27,7 @@ import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachments
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
@@ -451,7 +452,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context);
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-            return new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn, extractFn));
+            return new ResponsesSseListener(RouterModelFn.withRouterModel(proxy, context, List.of(wrapFn, attachmentsFn, replaceIdFn, extractFn)));
         });
 
         HttpServerResponse response = context.getResponse();
@@ -528,6 +529,9 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
 
         String upstreamId = idNode.asText();
+        if (context.getDecision() != null) {
+            RouterModelFn.rewrite(object, context.getDecision().getRouter());
+        }
         Upstream upstream = context.getUpstreamRoute().get();
         if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
             EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId(), context.getDeployment().getName());
@@ -542,6 +546,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .upstreamKey(upstream.getId())
                 .deploymentName(context.getDeployment().getName())
                 .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
+                .router(context.getDecision() == null ? null : context.getDecision().getRouter())
                 .build();
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
