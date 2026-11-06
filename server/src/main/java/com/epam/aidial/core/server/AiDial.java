@@ -357,9 +357,9 @@ public class AiDial {
 
             ConfigApplyService configApplyService = new ConfigApplyService(
                     mergedConfigStore, resourceService, secretFieldProcessor, mergedConfigStore.isSoftValidation(),
-                    apiKeyStore, applicationService, toolSetService, catalogSchemaService);
+                    apiKeyStore, applicationService, toolSetService, catalogSchemaService, applicationSchemaService);
             ConfigValidationService configValidationService = new ConfigValidationService(
-                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
+                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService, applicationSchemaService);
 
             Settings backgroundJobSettings =
                     Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);

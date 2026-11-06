@@ -1,6 +1,9 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.InterfaceMode;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -24,7 +27,9 @@ import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -138,6 +143,72 @@ public class FileConfigStoreTest {
         Files.writeString(file, roles.formatted("prompts/**"));
         periodic.getValue().handle(2L);
         assertEquals("prompts/**", store.get().getOrgUnitRoles().get("auditor").getPermissions().get(0).getPathPattern());
+    }
+
+    @Test
+    public void testLoad_RouterWithInterfaces() {
+        JsonObject settings = new JsonObject()
+                .put("files", new JsonArray().add("dial-config/routers.json"))
+                .put("reload", 1000);
+
+        Config config = new FileConfigStore(vertx, settings, apiKeyStore, List.of()).get();
+
+        Router router = assertInstanceOf(Router.class, config.selectDeployment("r1"));
+        assertEquals("r1", router.getName());
+        assertEquals(Set.of("analysts"), router.getUserRoles());
+        assertEquals(Set.of("openaiChatCompletions", "openaiEmbeddings", "anthropicMessages"), router.getInterfaces().keySet());
+    }
+
+    @Test
+    public void testLoad_RouterInDecisionMode() {
+        JsonObject settings = new JsonObject()
+                .put("files", new JsonArray().add("dial-config/router-decision.json"))
+                .put("reload", 1000);
+
+        Config config = new FileConfigStore(vertx, settings, apiKeyStore, List.of()).get();
+
+        DeploymentInterface chat = config.getRouters().get("r1").getInterfaces().get("openaiChatCompletions");
+        assertEquals(InterfaceMode.DECISION, chat.getMode());
+        assertEquals("http://localhost:4848/decide", chat.getBaseUrl());
+        assertNull(chat.getContext());
+        assertNull(chat.getDecisionTimeoutMs());
+        assertEquals(Boolean.TRUE, config.getRouters().get("r3").getInterfaces().get("openaiChatCompletions").getContext().getBody());
+        assertEquals(200L, config.getRouters().get("r-slow").getInterfaces().get("openaiChatCompletions").getDecisionTimeoutMs());
+    }
+
+    @Test
+    public void testLoad_RouterWithUpstreamsRejected(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("aidial.config.json");
+        Files.writeString(file, """
+                {"routers": {"r1": {"baseUrl": "http://router", "upstreams": [{"endpoint": "http://x"}]}}}
+                """);
+
+        Exception error = assertThrows(Exception.class, () -> new FileConfigStore(vertx, fileSettings(file), apiKeyStore, List.of()));
+        assertTrue(rootMessage(error).contains("upstreams"), rootMessage(error));
+    }
+
+    @Test
+    public void testLoad_RouterNameTakenByModelRejected(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("aidial.config.json");
+        Files.writeString(file, """
+                {"models": {"x": {"endpoint": "http://model/chat"}},
+                 "routers": {"x": {"baseUrl": "http://router", "interfaces": {"openaiChatCompletions": {}}}}}
+                """);
+
+        Exception error = assertThrows(Exception.class, () -> new FileConfigStore(vertx, fileSettings(file), apiKeyStore, List.of()));
+        assertTrue(rootMessage(error).contains("duplicate is found x"), rootMessage(error));
+    }
+
+    private static JsonObject fileSettings(Path file) {
+        return new JsonObject().put("files", new JsonArray().add(file.toString())).put("reload", 1000);
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable cause = error;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return String.valueOf(cause.getMessage());
     }
 
     private static JsonObject prepareSettings(@Nullable Boolean overwriteArrays) {

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.token;
 
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -64,18 +65,39 @@ public class TokenStatsTracker {
         });
     }
 
+    /**
+     * Takes the deployment name off the context's span while its router decides again, so the calls the router makes
+     * then grow no candidate's aggregated-cost record.
+     */
+    public Future<Void> unnameSpan(ProxyContext context) {
+        return taskExecutor.submit(() -> {
+            update(context.getTraceId(), false, traceContext -> {
+                TokenStats span = traceContext.spans.get(context.getSpanId());
+                if (span != null) {
+                    span.deploymentName = null;
+                }
+                return true;
+            });
+            return null;
+        });
+    }
+
     public Future<TokenUsage> getTokenStats(ProxyContext context) {
         return getUsageStats(context).map(UsageStats::total);
     }
 
     public Future<UsageStats> getUsageStats(ProxyContext context) {
+        return getUsageStats(context.getTraceId(), context.getSpanId());
+    }
+
+    public Future<UsageStats> getUsageStats(String traceId, String spanId) {
         return taskExecutor.submit(() -> {
-            String json = blockingCallTracer.trace("cost_stats.get", () -> getBucket(context.getTraceId()).get());
+            String json = blockingCallTracer.trace("cost_stats.get", () -> getBucket(traceId).get());
             TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
             if (traceContext == null) {
                 return UsageStats.EMPTY;
             }
-            return traceContext.getUsageStats(context.getSpanId());
+            return traceContext.getUsageStats(spanId);
         });
     }
 
@@ -157,7 +179,16 @@ public class TokenStatsTracker {
         void addSpan(ProxyContext context) {
             String spanId = context.getSpanId();
             String parentSpanId = context.getParentSpanId();
-            String deploymentName = context.getDeployment() == null ? null : context.getDeployment().getName();
+            // a deciding router names no span: what its calls cost goes to no aggregated-cost record
+            String deploymentName = context.getDeployment() == null || context.getDeployment() instanceof Router
+                    ? null : context.getDeployment().getName();
+            TokenStats existing = spans.get(spanId);
+            if (existing != null) {
+                // the pass is re-entered with a router's next candidate: what the failed candidate's children
+                // rolled up stays, and later reports credit the new candidate
+                existing.deploymentName = deploymentName;
+                return;
+            }
             TokenStats tokenStats = new TokenStats(new TokenUsage(), parentSpanId, deploymentName);
             spans.put(spanId, tokenStats);
         }

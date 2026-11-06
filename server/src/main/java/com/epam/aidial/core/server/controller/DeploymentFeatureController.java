@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -43,6 +44,7 @@ import java.util.function.Function;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
+import static com.epam.aidial.core.server.Proxy.HEADER_USER_INFO;
 
 @Slf4j
 public class DeploymentFeatureController {
@@ -189,6 +191,14 @@ public class DeploymentFeatureController {
 
     @SneakyThrows
     private void sendRequest(String endpoint) {
+        if (context.getDeployment() instanceof Router router) {
+            try {
+                context.setRouterPropertiesHeader(proxy.getApplicationSchemaService().routerPropertiesHeader(router));
+            } catch (HttpException e) {
+                respond(e.getStatus(), e.getMessage());
+                return;
+            }
+        }
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(new URL(endpoint))
                 .setMethod(context.getRequest().method())
@@ -236,9 +246,15 @@ public class DeploymentFeatureController {
         }
         excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
+        excludeHeaders.add(HEADER_USER_INFO, "whatever");
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
         ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);
+        if (deployment instanceof Router) {
+            if (context.getRouterPropertiesHeader() != null) {
+                proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, context.getRouterPropertiesHeader());
+            }
+        }
 
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             try {

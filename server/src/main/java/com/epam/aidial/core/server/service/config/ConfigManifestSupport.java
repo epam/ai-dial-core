@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
@@ -23,6 +24,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentMan
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRouterManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
@@ -63,14 +65,15 @@ public class ConfigManifestSupport {
             Map.entry("CatalogSchema", 1),
             Map.entry("Translator", 2),
             Map.entry("Interceptor", 3),
-            Map.entry("Role", 4),
-            Map.entry("Key", 5),
-            Map.entry("Route", 6),
-            Map.entry("Model", 7),
-            Map.entry("ToolSet", 8),
-            Map.entry("Application", 9),
-            Map.entry("Policy", 10),
-            Map.entry("PolicyAssignment", 11));
+            Map.entry("Router", 4),
+            Map.entry("Role", 5),
+            Map.entry("Key", 6),
+            Map.entry("Route", 7),
+            Map.entry("Model", 8),
+            Map.entry("ToolSet", 9),
+            Map.entry("Application", 10),
+            Map.entry("Policy", 11),
+            Map.entry("PolicyAssignment", 12));
 
     /**
      * Sorts a manifest list so a kind that other kinds can reference (e.g. {@code Interceptor})
@@ -86,6 +89,7 @@ public class ConfigManifestSupport {
             Map.entry("Schema", "schemas"),
             Map.entry("CatalogSchema", "catalog_schemas"),
             Map.entry("Interceptor", "interceptors"),
+            Map.entry("Router", "routers"),
             Map.entry("Translator", "translators"),
             Map.entry("Role", "roles"),
             Map.entry("Key", "keys"),
@@ -102,6 +106,8 @@ public class ConfigManifestSupport {
         if (live != null) {
             scratch.setModels(new HashMap<>(live.getModels()));
             scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
+            // a copy: mutateScratch writes into the scratch, never into the live config
+            scratch.setRouters(new HashMap<>(live.getRouters()));
             scratch.setTranslators(new HashMap<>(live.getTranslators()));
             scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
             scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
@@ -132,6 +138,8 @@ public class ConfigManifestSupport {
                 }
                 case AdminInterceptorManifest interceptor ->
                         scratch.getInterceptors().put(parsed.name().name(), interceptor.spec());
+                case AdminRouterManifest router ->
+                        scratch.getRouters().put(parsed.name().name(), router.spec());
                 case AdminTranslatorManifest translator ->
                         scratch.getTranslators().put(parsed.name().name(), translator.spec());
                 case AdminRoleManifest role ->
@@ -180,7 +188,7 @@ public class ConfigManifestSupport {
     /**
      * Shared by {@link ConfigValidationService#validateOnly} (precheck) and the real-apply
      * {@code applyX} methods on {@link ConfigApplyService}: non-null iff {@code parsed}'s short
-     * name is already claimed by a different model/application/interceptor/toolset in
+     * name is already claimed by a different model/application/interceptor/router/toolset in
      * {@code scratch}. See {@link ConfigPostProcessor#isDeploymentIdTakenByAnotherDeploymentType}.
      */
     static String validateDeploymentIdUniqueness(Config scratch, ResourceTypes type, ParsedName parsed) {
@@ -252,6 +260,8 @@ public class ConfigManifestSupport {
             case "CatalogSchema" -> new AdminCatalogSchemaManifest(entry.kind(), entry.name(), entry.spec());
             case "Interceptor" -> new AdminInterceptorManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Interceptor.class));
+            case "Router" -> new AdminRouterManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Router.class));
             case "Translator" -> new AdminTranslatorManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Translator.class));
             case "Role" -> new AdminRoleManifest(entry.kind(), entry.name(),

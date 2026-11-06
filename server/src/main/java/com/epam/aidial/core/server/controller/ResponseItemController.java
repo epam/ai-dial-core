@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -290,6 +291,9 @@ public class ResponseItemController implements Controller {
         if (idNode.isTextual() && mapping.getUpstreamResponseId().equals(idNode.asText())) {
             object.put("id", dialResponseId);
         }
+        if (mapping.getRouter() != null) {
+            RouterModelFn.rewrite(object, mapping.getRouter());
+        }
         return Buffer.buffer(JsonUtil.serialize(object));
     }
 
@@ -309,7 +313,7 @@ public class ResponseItemController implements Controller {
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024),
-                new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn)));
+                new ResponsesSseListener(RouterModelFn.withRouterModel(proxy, context, mapping.getRouter(), List.of(wrapFn, attachmentsFn, replaceIdFn))));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);

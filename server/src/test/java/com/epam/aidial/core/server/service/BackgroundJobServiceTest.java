@@ -179,6 +179,8 @@ class BackgroundJobServiceTest {
         lenient().when(proxyContext.getProxyApiKeyData().getPerRequestKey()).thenReturn("test-per-request-key");
         lenient().when(proxyContext.getRequest().version()).thenReturn(HttpVersion.HTTP_1_1);
         lenient().when(proxyContext.getRequest().method()).thenReturn(HttpMethod.POST);
+        // a deep stub would answer a mock decision: these jobs are not decided
+        lenient().when(proxyContext.getDecision()).thenReturn(null);
         lenient().when(proxyContext.getRequest().uri()).thenReturn("/v1/responses");
         lenient().when(proxyContext.getRequestBody()).thenReturn(Buffer.buffer("{}"));
         // a real claims node: the deep-stub default is an ObjectNode mock, which serializes the record into broken JSON
