@@ -21,8 +21,8 @@ curl -fsS -X POST -H "Authorization: Bearer <admin token>" -H "Content-Type: app
 2. **Replace**, holding the locks of both buckets: delete every blob under the buckets that the archive has blobs
    for, except `encryption_keys/`; write every staged blob at its real path with the content type, encoding,
    disposition, language, cache control and user metadata from its archive metadata; drop the cached and queued
-   entries of those buckets in Redis (including a cached `encryption_keys/cek`) and the importing pod's in-memory copy
-   of their keys; then rebuild the merged config on the pod that ran the import.
+   entries of those buckets in Redis (including a cached `encryption_keys/cek`), tell every pod to drop its in-memory
+   copy of their keys; then rebuild the merged config on the pod that ran the import.
 3. The staging is deleted in the background after the response, whether the system import succeeded or was
    rejected.
 
@@ -95,14 +95,18 @@ all. There is no limit on the number of entries or on the archive size.
 - **Encryption keys.**
   - **With a KMS provider** (`toolsets.security.kms.provider` is `aws`, `azure` or `gcp`) the archive carries each
     exported bucket's `encryption_keys/cek`, wrapped by the KMS key. Core unwraps every key with the KMS of the target
-    before it changes anything and answers `400` if it cannot, so the target must use the same KMS key. A key in the
-    archive replaces the key of its bucket; a bucket with no key in the archive (export skips an empty or
-    plaintext-sized key, or the bucket had none) keeps its own. A KMS outage ends the import with `500`, nothing
-    changed.
-  - **After an import that brought keys, roll-restart the pods and make no admin config writes until it is done.**
-    Core drops the importing pod's cached keys, but every other pod keeps the key it has in memory until it restarts,
-    since using a key keeps it cached. Until then such a pod cannot decrypt the imported secrets, so its config rebuild
-    skips every entity that has one, and a secret saved on it is encrypted with the old key and is lost.
+    before it changes anything and answers `400` if it cannot, so the target's KMS key must be able to unwrap them:
+    the same KMS key as the source. Each environment generates its own content encryption key, so the two had
+    different ones; after the import the target uses the archive's key, together with the secrets it encrypted, and
+    both environments share it. A key in the archive replaces the key of its bucket; a bucket with no key in the
+    archive (export skips an empty or plaintext-sized key, or the bucket had none) keeps its own. A KMS outage ends the
+    import with `500`, nothing changed.
+  - **No restart is needed after an import.** Every pod drops its cached copy of an imported bucket's key when the
+    import ends: Core tells them over Redis. A pod that was disconnected from Redis at that moment misses the message and
+    keeps the old key until it restarts; until then it cannot decrypt the imported secrets, its config rebuild skips
+    every entity that has one, and a secret saved on it is encrypted with the old key and is lost.
+  - **A key that you place in blob storage by hand is not announced**, with or without a KMS provider, so roll-restart
+    the pods afterwards.
   - **Without a KMS provider** keys are never exported or imported. Before importing into another environment, copy the
     source's `public/encryption_keys/cek` and `platform/encryption_keys/cek` (the ones that exist — an environment
     that never stored a secret has none) to the target, then roll-restart its pods, as for any out-of-band change to

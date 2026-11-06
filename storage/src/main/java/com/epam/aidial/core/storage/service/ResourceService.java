@@ -1022,6 +1022,19 @@ public class ResourceService implements AutoCloseable {
         publishTopicEvent(descriptor, action, timestamp, etag, null);
     }
 
+    /**
+     * Tells every pod that a resource changed, whatever its type, for a change made outside the write path of this
+     * service, such as a direct blob copy.
+     */
+    public void publishUpdate(ResourceDescriptor descriptor) {
+        ResourceEvent event = new ResourceEvent()
+                .setUrl(descriptor.getUrl())
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setTimestamp(System.currentTimeMillis())
+                .setSenderPodId(senderPodIdSupplier.get());
+        topic.publish(event);
+    }
+
     private void publishTopicEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag,
             @Nullable Map<String, String> metadata) {
         if (!ResourceTypes.EVENT_TYPES.contains(descriptor.getType())) {
