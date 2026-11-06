@@ -3,12 +3,14 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.MutableBlobMetadata;
 import org.jclouds.blobstore.domain.PageSet;
@@ -16,26 +18,32 @@ import org.jclouds.blobstore.domain.StorageMetadata;
 import org.jclouds.blobstore.domain.StorageType;
 import org.jclouds.io.ContentMetadata;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.SequenceInputStream;
 import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * Streams the {@code public} and {@code platform} buckets as a ZIP archive.
+ * Streams the selected admin buckets ({@code public}, {@code platform}) as a ZIP archive.
  *
  * <p>Layout: {@code .dial-system-export/manifest.json} first; then, for every blob, {@code .dial-system-export/metadata/<path>}
  * (content headers, blob timestamps and user metadata) immediately followed by the entry {@code <path>} holding the
- * bytes exactly as stored. Encryption keys and credentials are not exported.
+ * bytes exactly as stored. Credentials are not exported. Encryption keys are exported only when a KMS provider is
+ * configured, because without one they are stored in plaintext, and then only a blob that can be a KMS-wrapped key.
  *
  * <p>The archive is read from blob storage, so a resource written within the sync delay of the resource service
  * may not be in it yet.
@@ -45,24 +53,59 @@ public class AdminSystemExportService {
 
     private static final String IDENTITY_ENCODING = "identity";
     private static final int PAGE_SIZE = 1000;
-    /**
-     * Resource-type groups export leaves out. Package-private so {@code AdminSystemImportService} rejects the
-     * same groups at the same position and the two cannot drift apart.
-     */
-    static final List<String> EXCLUDED_GROUPS = List.of(
-            ResourceTypes.ENCRYPTION_KEYS.group() + "/",
-            ResourceTypes.CREDENTIALS.group() + "/");
+    private static final String CREDENTIALS_GROUP = ResourceTypes.CREDENTIALS.group() + "/";
+    private static final String ENCRYPTION_KEYS_GROUP = ResourceTypes.ENCRYPTION_KEYS.group() + "/";
 
     private final BlobStorage blobStorage;
     private final LockService lockService;
     private final LongSupplier clock;
     private final String coreVersion;
+    private final List<String> excludedGroups;
+    private final int encryptionKeyLength;
 
-    public AdminSystemExportService(BlobStorage blobStorage, LockService lockService, LongSupplier clock, String coreVersion) {
+    /**
+     * @param encryptionKeyLength length in bytes of a plaintext content encryption key; an encryption key blob with no content
+     *                            encoding that is not longer than this cannot be a KMS-wrapped key, so it is not exported
+     */
+    public AdminSystemExportService(BlobStorage blobStorage, LockService lockService, LongSupplier clock, String coreVersion,
+                                    boolean kmsEnabled, int encryptionKeyLength) {
         this.blobStorage = blobStorage;
         this.lockService = lockService;
         this.clock = clock;
         this.coreVersion = coreVersion;
+        this.excludedGroups = kmsEnabled ? List.of(CREDENTIALS_GROUP) : List.of(CREDENTIALS_GROUP, ENCRYPTION_KEYS_GROUP);
+        this.encryptionKeyLength = encryptionKeyLength;
+    }
+
+    /**
+     * Resolves the {@code scope} request parameter to bucket locations, in the order of
+     * {@link MergedConfigStore#ADMIN_BUCKET_LOCATIONS}. A scope name is a bucket location without the trailing separator.
+     *
+     * @param scopes the values of the {@code scope} parameter, each a comma-separated list of bucket names compared
+     *               case-insensitively; no value selects every bucket
+     * @throws IllegalArgumentException if a value is empty, has an empty element or names an unknown bucket
+     */
+    public static List<String> resolveBucketLocations(List<String> scopes) {
+        if (scopes.isEmpty()) {
+            return MergedConfigStore.ADMIN_BUCKET_LOCATIONS;
+        }
+
+        List<String> validNames = MergedConfigStore.ADMIN_BUCKET_LOCATIONS.stream().map(AdminSystemExportService::toScopeName).toList();
+        Set<String> requestedNames = new HashSet<>();
+        for (String scope : scopes) {
+            for (String name : scope.split(",", -1)) {
+                String normalized = name.trim().toLowerCase(Locale.ROOT);
+                if (!validNames.contains(normalized)) {
+                    throw new IllegalArgumentException("scope must be a comma-separated list of: " + String.join(", ", validNames));
+                }
+                requestedNames.add(normalized);
+            }
+        }
+        return MergedConfigStore.ADMIN_BUCKET_LOCATIONS.stream().filter(location -> requestedNames.contains(toScopeName(location))).toList();
+    }
+
+    private static String toScopeName(String bucketLocation) {
+        return Strings.CS.removeEnd(bucketLocation, ResourceDescriptor.PATH_SEPARATOR);
     }
 
     /**
@@ -72,11 +115,12 @@ public class AdminSystemExportService {
      * <p>The locks are not renewed, so the system export fails once it has run for the lock period.
      *
      * @param start the time recorded in the manifest as the start of the system export
+     * @param bucketLocations the buckets to lock and export, see {@link #resolveBucketLocations}
      * @throws AdminSystemExportBusyException if a bucket lock is held by another system export or a writer, nothing is written then
      */
-    public void export(OutputStream out, Instant start) {
+    public void export(OutputStream out, Instant start, List<String> bucketLocations) {
         long startMillis = clock.getAsLong();
-        LockService.Lock locks = lockService.tryLockBuckets(MergedConfigStore.ADMIN_BUCKET_LOCATIONS);
+        LockService.Lock locks = lockService.tryLockBuckets(bucketLocations);
         if (locks == null) {
             log.info("Admin system export rejected: a bucket lock is held by another system export or a write");
             throw new AdminSystemExportBusyException("A bucket lock is held by another system export or a write");
@@ -84,7 +128,7 @@ public class AdminSystemExportService {
 
         ExportStats stats = new ExportStats();
         try (locks) {
-            writeArchive(out, start, startMillis, stats);
+            writeArchive(out, start, startMillis, bucketLocations, stats);
         } catch (Throwable e) {
             Duration duration = Duration.ofMillis(clock.getAsLong() - startMillis);
             log.error("Admin system export failed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes, e);
@@ -95,7 +139,7 @@ public class AdminSystemExportService {
         log.info("Admin system export completed: duration={}ms, entries={}, bytes={}", duration.toMillis(), stats.entries, stats.bytes);
     }
 
-    private void writeArchive(OutputStream out, Instant start, long startMillis, ExportStats stats) {
+    private void writeArchive(OutputStream out, Instant start, long startMillis, List<String> bucketLocations, ExportStats stats) {
         long deadlineMillis = startMillis + LockService.LOCK_PERIOD.toMillis();
         DiscardableZipOutputStream zip = new DiscardableZipOutputStream(new ExportOutputStream(out, stats, clock, deadlineMillis));
         try {
@@ -103,7 +147,7 @@ public class AdminSystemExportService {
                     start.truncatedTo(ChronoUnit.SECONDS).toString());
             writeJsonEntry(zip, SystemArchiveManifest.ENTRY, manifest, stats);
 
-            for (String bucketLocation : MergedConfigStore.ADMIN_BUCKET_LOCATIONS) {
+            for (String bucketLocation : bucketLocations) {
                 exportBucket(zip, bucketLocation, stats);
             }
 
@@ -122,18 +166,18 @@ public class AdminSystemExportService {
             PageSet<? extends StorageMetadata> page = blobStorage.list(bucketLocation, marker, PAGE_SIZE, true);
             for (StorageMetadata meta : page) {
                 if (meta.getType() == StorageType.BLOB && shouldExport(bucketLocation, meta.getName())) {
-                    exportBlob(zip, meta.getName(), stats);
+                    exportBlob(zip, bucketLocation, meta.getName(), stats);
                 }
             }
             marker = page.getNextMarker();
         } while (marker != null);
     }
 
-    private static boolean shouldExport(String bucketLocation, String path) {
-        return EXCLUDED_GROUPS.stream().noneMatch(group -> path.startsWith(bucketLocation + group));
+    private boolean shouldExport(String bucketLocation, String path) {
+        return excludedGroups.stream().noneMatch(group -> path.startsWith(bucketLocation + group));
     }
 
-    private void exportBlob(ZipOutputStream zip, String path, ExportStats stats) throws IOException {
+    private void exportBlob(ZipOutputStream zip, String bucketLocation, String path, ExportStats stats) throws IOException {
         Blob blob = blobStorage.loadWithoutTranscoding(path);
         if (blob == null) {
             log.debug("Skipping blob deleted during the system export: {}", path);
@@ -141,9 +185,19 @@ public class AdminSystemExportService {
         }
 
         MutableBlobMetadata meta = blob.getMetadata();
+        String contentEncoding = meta.getContentMetadata().getContentEncoding();
         try (InputStream payload = blob.getPayload().openStream()) {
+            InputStream content = payload;
+            if (path.startsWith(bucketLocation + ENCRYPTION_KEYS_GROUP) && !isEncoded(contentEncoding)) {
+                byte[] head = payload.readNBytes(encryptionKeyLength + 1);
+                if (head.length <= encryptionKeyLength) {
+                    log.warn("Skipping encryption key that cannot be KMS-wrapped, it is empty or as short as a plaintext key: {}", path);
+                    return;
+                }
+                content = new SequenceInputStream(new ByteArrayInputStream(head), payload);
+            }
             writeJsonEntry(zip, SystemArchiveBlobMetadata.ENTRY_PREFIX + path, toBlobMetadata(meta), stats);
-            writeBlobContent(zip, path, meta.getContentMetadata().getContentEncoding(), payload, stats);
+            writeBlobContent(zip, path, contentEncoding, content, stats);
         }
     }
 
@@ -167,8 +221,11 @@ public class AdminSystemExportService {
     }
 
     private static int compressionLevel(String contentEncoding) {
-        boolean encoded = !StringUtils.isBlank(contentEncoding) && !IDENTITY_ENCODING.equalsIgnoreCase(contentEncoding.trim());
-        return encoded ? Deflater.NO_COMPRESSION : Deflater.DEFAULT_COMPRESSION;
+        return isEncoded(contentEncoding) ? Deflater.NO_COMPRESSION : Deflater.DEFAULT_COMPRESSION;
+    }
+
+    private static boolean isEncoded(String contentEncoding) {
+        return !StringUtils.isBlank(contentEncoding) && !IDENTITY_ENCODING.equalsIgnoreCase(contentEncoding.trim());
     }
 
     private static SystemArchiveBlobMetadata toBlobMetadata(MutableBlobMetadata meta) {
