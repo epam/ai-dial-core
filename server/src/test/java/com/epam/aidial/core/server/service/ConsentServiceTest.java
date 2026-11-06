@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.SneakyThrows;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -47,6 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -80,6 +82,12 @@ public class ConsentServiceTest {
 
     @InjectMocks
     private ConsentService service;
+
+    @BeforeEach
+    void emptyConfig() {
+        // the admin-consent tests resolve dynamic applications: nothing in the config
+        lenient().when(context.getConfig()).thenReturn(new Config());
+    }
 
     @Test
     public void testBuildConsent_WhenConsentIsMissed() {

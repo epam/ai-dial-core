@@ -111,6 +111,14 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testAdminManagesConsentOfConfigAppOutsideItsUserRoles() {
+        // secured-app is limited to the "user" role, which the admin does not have
+        Response status = send(HttpMethod.GET, "/v1/admin-consent/secured-app", null, "", "authorization", "admin");
+        verify(status, 200);
+        assertEquals("{\"consented\":false}", status.body(), () -> "Body: " + status.body());
+    }
+
+    @Test
     void testOnlyAdministratorsMayConsent() {
         verify(send(HttpMethod.PUT, "/v1/applications/public/dependency-consent-app", null,
                 DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
