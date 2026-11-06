@@ -73,7 +73,7 @@ public class DeploymentService {
     public Deployment findDeployment(ProxyContext context, String id) {
         Deployment deployment = context.getConfig().selectDeployment(id);
         if (deployment != null) {
-            if (!deployment.hasAccess(context.getUserRoles()) && !isLent(context, deployment)) {
+            if (!hasAccess(context, deployment) && !isLent(context, deployment)) {
                 throwForbiddenDeploymentError(id);
             }
             return deployment;
@@ -85,6 +85,18 @@ public class DeploymentService {
             case TOOL_SET -> toolSetService.getToolSet(deploymentDescriptor).getValue();
             default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
         };
+    }
+
+    /**
+     * Whether the caller may use a config deployment by its {@code userRoles}. An alias without {@code userRoles} takes
+     * those of its config target; when its target is a resource, or missing, it is let through here, and checked when
+     * the target is resolved ({@link AliasService#toPass}, {@link AliasService#toView}).
+     */
+    private boolean hasAccess(ProxyContext context, Deployment deployment) {
+        if (deployment instanceof Alias alias) {
+            return !Boolean.FALSE.equals(aliasService.hasConfigAccess(context, alias));
+        }
+        return deployment.hasAccess(context.getUserRoles());
     }
 
     /**
@@ -117,9 +129,9 @@ public class DeploymentService {
     private List<Deployment> listConfigAliasViews(ProxyContext context, AliasPresentation presentation, boolean inMemory) {
         List<Deployment> views = new ArrayList<>();
         for (Alias alias : context.getConfig().getAliases().values()) {
-            if (alias.getEffectivePresentation() == presentation && alias.hasAccess(context.getUserRoles())) {
+            if (alias.getEffectivePresentation() == presentation && !Boolean.FALSE.equals(aliasService.hasConfigAccess(context, alias))) {
                 Deployment view = aliasService.toView(context, alias, inMemory);
-                if (view != null) {
+                if (view != null && view.hasAccess(context.getUserRoles())) {
                     views.add(view);
                 }
             }
@@ -136,18 +148,25 @@ public class DeploymentService {
 
     /**
      * The names of the aliases shown as {@code presentation} the caller may call, leaving out those whose config target
-     * is missing or no longer fits. A resource target is not read, so an alias to a missing resource is named.
+     * is missing or no longer fits. A resource target is not read, so an alias to a missing resource is named, unless
+     * the alias takes its access from it: then the caller's read access to it is checked. Runs on the task executor.
      */
     public List<RoleBasedEntity> listAliasNames(ProxyContext context, AliasPresentation presentation) {
         List<RoleBasedEntity> names = new ArrayList<>();
         for (Alias alias : context.getConfig().getAliases().values()) {
-            if (alias.getEffectivePresentation() == presentation && alias.hasAccess(context.getUserRoles())
+            if (alias.getEffectivePresentation() == presentation
                     && !AliasTargets.isTargetMissing(alias, context.getConfig())
-                    && !AliasTargets.isTargetIncompatible(alias, context.getConfig())) {
+                    && !AliasTargets.isTargetIncompatible(alias, context.getConfig())
+                    && hasNameAccess(context, alias)) {
                 names.add(alias);
             }
         }
         return names;
+    }
+
+    private boolean hasNameAccess(ProxyContext context, Alias alias) {
+        Boolean access = aliasService.hasConfigAccess(context, alias);
+        return access != null ? access : aliasService.toView(context, alias) != null;
     }
 
     /**

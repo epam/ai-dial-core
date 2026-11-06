@@ -14,7 +14,9 @@
       "endpoint": "http://localhost:4848/openai/deployments/gpt-4/chat/completions",
       "userRoles": ["power-user"],
       "displayName": "GPT-4 internal",
+      "displayVersion": "0613",
       "description": "The internal GPT-4 deployment.",
+      "iconUrl": "http://icons/gpt-4.svg",
       "pricing": {"unit": "token", "prompt": "0.01", "completion": "0.02"}
     },
     "closed-model": {
@@ -48,6 +50,12 @@
     "search": {
       "endpoint": "http://localhost:4848/search/mcp",
       "userRoles": ["power-user"]
+    },
+    "secured-search": {
+      "endpoint": "http://localhost:4848/secured/mcp",
+      "transport": "HTTP",
+      "userRoles": ["power-user"],
+      "authSettings": {"authenticationType": "API_KEY", "apiKeyHeader": "Authorization"}
     }
   },
   "aliases": {
@@ -107,6 +115,18 @@
       "presentAs": "model",
       "userRoles": ["default-user"],
       "target": {"path": "models/missing-model"}
+    },
+    "inherited-alias": {
+      "target": {"path": "models/gpt-4-internal"}
+    },
+    "gone-resource-alias": {
+      "presentAs": "application",
+      "userRoles": ["default-user"],
+      "target": {"path": "applications/3R4ac3QT6AZjujjrzHhd8M/gone-app"}
+    },
+    "secured-tools": {
+      "userRoles": ["default-user"],
+      "target": {"path": "toolsets/secured-search"}
     }
   },
   "roles": {

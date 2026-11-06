@@ -237,8 +237,9 @@ public class BaseDeploymentPostController {
         }
 
         // Application/Assistant: any deployment may self-report usage in its own response body;
-        // capture it alongside whatever its descendant Model spans already reported.
-        TokenUsage ownUsage = parseTokenUsage(responseBody);
+        // capture it alongside whatever its descendant Model spans already reported. An alias relays its target's
+        // answer, whose usage the target pass has reported already, so the alias reports none of its own.
+        TokenUsage ownUsage = context.getDeployment() instanceof AliasPass ? null : parseTokenUsage(responseBody);
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 

@@ -14,8 +14,4 @@ public class AliasTarget {
 
     // "<models|applications|toolsets>/<name>" for a config deployment, "<applications|toolsets>/<bucket>/<path>" for a resource
     private String path;
-
-    // reserved for references by deployment id and version; an alias that sets them is refused
-    private Object id;
-    private Object version;
 }

@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.AliasTarget;
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceType;
@@ -11,6 +12,7 @@ import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import org.junit.jupiter.api.Test;
@@ -158,13 +160,16 @@ class AliasPassesTest {
     }
 
     @Test
-    void viewFallsBackToTheTargetDisplayNameAndDescriptionOnly() {
+    void viewFallsBackToWhatTheTargetServesButNotToItsVersion() {
         Model target = new Model();
         target.setName("gpt-4");
         target.setDisplayName(LocalizedValue.of("GPT-4"));
         target.setDescription(LocalizedValue.of("The target."));
         target.setDisplayVersion("0613");
         target.setIconUrl("http://icons/gpt-4.png");
+        target.setIntro(LocalizedValue.of("Ask me."));
+        target.setDescriptionKeywords(List.of("chat"));
+        target.setAuthor("Platform team");
         Alias alias = alias(AliasPresentation.MODEL);
         alias.setDisplayName(null);
 
@@ -172,8 +177,11 @@ class AliasPassesTest {
 
         assertEquals(LocalizedValue.of("GPT-4"), view.getDisplayName());
         assertEquals(LocalizedValue.of("The target."), view.getDescription());
+        assertEquals("http://icons/gpt-4.png", view.getIconUrl());
+        assertEquals(LocalizedValue.of("Ask me."), view.getIntro());
+        assertEquals(List.of("chat"), view.getDescriptionKeywords());
         assertNull(view.getDisplayVersion());
-        assertNull(view.getIconUrl());
+        assertNull(view.getAuthor());
         assertEquals("assistant", view.getName());
 
         alias.setDisplayName(LocalizedValue.of("Assistant"));
@@ -181,6 +189,27 @@ class AliasPassesTest {
         Model own = (Model) AliasPasses.view(alias, AliasPresentation.MODEL, target);
         assertEquals(LocalizedValue.of("Assistant"), own.getDisplayName());
         assertEquals(LocalizedValue.of("Own."), own.getDescription());
+    }
+
+    @Test
+    void toolsetViewTellsHowToSignInWithoutTheSecrets() {
+        ToolSet target = new ToolSet();
+        target.setName("search");
+        target.setEndpoint("http://tools/mcp");
+        target.setAuthSettings(ResourceAuthSettings.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .clientId("client")
+                .clientSecret("secret")
+                .codeVerifier("verifier")
+                .build());
+
+        ToolSet view = (ToolSet) AliasPasses.view(alias(AliasPresentation.TOOLSET), AliasPresentation.TOOLSET, target);
+
+        assertEquals(AuthenticationType.OAUTH, view.getAuthSettings().getAuthenticationType());
+        assertEquals("client", view.getAuthSettings().getClientId());
+        assertNull(view.getAuthSettings().getClientSecret());
+        assertNull(view.getAuthSettings().getCodeVerifier());
+        assertEquals("secret", target.getAuthSettings().getClientSecret());
     }
 
     private static Application mcpApplication() {

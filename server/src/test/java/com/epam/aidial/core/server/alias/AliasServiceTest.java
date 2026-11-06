@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -20,7 +21,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -40,8 +43,10 @@ class AliasServiceTest {
     private final ApplicationService applicationService = mock(ApplicationService.class);
     private final ToolSetService toolSetService = mock(ToolSetService.class);
     private final ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
+    private final AccessService accessService = mock(AccessService.class);
     private final ProxyContext context = mock(ProxyContext.class);
-    private final AliasService service = new AliasService(applicationService, toolSetService, applicationSchemaService, null);
+    private final AliasService service = new AliasService(applicationService, toolSetService, applicationSchemaService, null,
+            accessService);
 
     @BeforeEach
     void setUp() {
@@ -49,9 +54,12 @@ class AliasServiceTest {
         model.setName("gpt-4");
         model.setEndpoint("http://origin/chat");
         model.setDisplayName(LocalizedValue.of("GPT-4"));
+        model.setUserRoles(Set.of("power-user"));
         Config config = new Config();
         config.setModels(Map.of("gpt-4", model));
         when(context.getConfig()).thenReturn(config);
+        when(context.getUserRoles()).thenReturn(List.of("power-user"));
+        when(accessService.hasReadAccess(any(), any())).thenReturn(true);
         when(applicationSchemaService.modifyEndpointsForCustomApplication(any())).thenAnswer(call -> call.getArgument(0));
         service.setLocalBaseUrl(SELF);
     }
@@ -132,6 +140,66 @@ class AliasServiceTest {
 
         assertEquals("assistant-v1", view.getName());
         assertEquals(LocalizedValue.of("GPT-4"), view.getDisplayName());
+    }
+
+    @Test
+    void aliasWithoutUserRolesTakesTheConfigTargetRoles() {
+        Alias alias = alias(null, "models/gpt-4");
+        assertEquals(Boolean.TRUE, service.hasConfigAccess(context, alias));
+        assertEquals(Set.of("power-user"), service.toView(context, alias, true).getUserRoles());
+
+        when(context.getUserRoles()).thenReturn(List.of("default-user"));
+        assertEquals(Boolean.FALSE, service.hasConfigAccess(context, alias));
+        HttpException forbidden = assertThrows(HttpException.class, () -> service.toPass(context, alias));
+        assertEquals(HttpStatus.FORBIDDEN, forbidden.getStatus());
+
+        alias.setUserRoles(Set.of("default-user"));
+        assertEquals(Boolean.TRUE, service.hasConfigAccess(context, alias));
+        assertEquals(Set.of("default-user"), service.toView(context, alias, true).getUserRoles());
+    }
+
+    @Test
+    void aliasWithoutUserRolesTakesReadAccessToTheResourceTarget() {
+        Application application = new Application();
+        application.setName("applications/public/app");
+        application.setEndpoint("http://app/chat");
+        when(applicationService.getApplication(any())).thenReturn(Pair.of(null, application));
+        Alias alias = alias(null, "applications/public/app");
+        assertNull(service.hasConfigAccess(context, alias));
+
+        when(accessService.hasReadAccess(any(), any())).thenReturn(false);
+        HttpException forbidden = assertThrows(HttpException.class, () -> service.toPass(context, alias));
+        assertEquals(HttpStatus.FORBIDDEN, forbidden.getStatus());
+        assertNull(service.toView(context, alias));
+
+        alias.setUserRoles(Set.of("power-user"));
+        assertInstanceOf(AliasPass.class, service.toPass(context, alias));
+    }
+
+    @Test
+    void securedTargetIsTheToolsetUnderItsId() {
+        ToolSet toolSet = new ToolSet();
+        toolSet.setEndpoint("http://tools/mcp");
+        when(toolSetService.getToolSet(any())).thenReturn(Pair.of(null, toolSet));
+
+        AliasService.SecuredTarget target = service.toSecuredTarget(context, alias(null, "toolsets/public/my%20search"));
+
+        assertEquals("toolsets/public/my search", target.id());
+        assertTrue(target.resource());
+        assertEquals("toolsets/public/my search", service.securedTargetId(alias(null, "toolsets/public/my%20search")));
+        assertThrows(ResourceNotFoundException.class, () -> service.toSecuredTarget(context, alias(null, "models/gpt-4")));
+    }
+
+    @Test
+    void checkTargetReadsTheResourceTarget() {
+        when(applicationService.getApplication(any())).thenThrow(new ResourceNotFoundException("gone"));
+        assertEquals(AliasService.TargetProblem.MISSING, service.checkTarget(context, alias(null, "applications/public/app")));
+
+        ToolSet toolSet = new ToolSet();
+        when(toolSetService.getToolSet(any())).thenReturn(Pair.of(null, toolSet));
+        assertEquals(AliasService.TargetProblem.INCOMPATIBLE,
+                service.checkTarget(context, alias(AliasPresentation.MODEL, "toolsets/public/search")));
+        assertNull(service.checkTarget(context, alias(null, "toolsets/public/search")));
     }
 
     private static Alias alias(AliasPresentation presentation, String path) {

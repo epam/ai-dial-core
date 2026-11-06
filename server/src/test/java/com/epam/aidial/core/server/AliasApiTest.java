@@ -60,6 +60,62 @@ class AliasApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void aliasWithoutUserRolesTakesTheTargetRoles() {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
+                    "Content-Type", "application/json");
+
+            assertEquals(403, chat("inherited-alias", "default-key").status());
+            Response allowed = chat("inherited-alias", "power-key");
+            assertEquals(200, allowed.status(), allowed.body());
+        }
+
+        assertFalse(ids(send(HttpMethod.GET, "/openai/models", null, "", "api-key", "default-key")).contains("inherited-alias"));
+        assertTrue(ids(send(HttpMethod.GET, "/openai/models", null, "", "api-key", "power-key")).contains("inherited-alias"));
+        assertEquals(403, send(HttpMethod.GET, "/openai/models/inherited-alias", null, "", "api-key", "default-key").status());
+        Response names = send(HttpMethod.GET, "/v1/deployment-names", null, null, "api-key", "default-key");
+        assertFalse(names.body().contains("\"inherited-alias\""), names.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void callerSignsInToTheToolsetThroughTheAlias() {
+        // the caller has no rights on the target toolset itself
+        verify(send(HttpMethod.POST, "/v1/ops/toolset/signin", null, signIn("secured-search", "Bearer user-secret"),
+                "api-key", "default-key"), 403);
+        verify(send(HttpMethod.POST, "/v1/ops/toolset/signin", null, signIn("secured-tools", "Bearer user-secret"),
+                "api-key", "default-key"), 200, "true");
+
+        Response toolsets = send(HttpMethod.GET, "/openai/toolsets", null, "", "api-key", "default-key");
+        JsonObject entry = find(toolsets, "secured-tools");
+        JsonObject authSettings = entry.getJsonObject("auth_settings");
+        assertEquals("API_KEY", authSettings.getString("authentication_type"), entry.encode());
+        assertEquals("SIGNED_IN", authSettings.getString("user_level_auth_status"), entry.encode());
+
+        AtomicReference<String> authorization = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/secured/mcp", request -> {
+                authorization.set(request.getHeader("Authorization"));
+                return TestWebServer.createResponse(200, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}",
+                        "Content-Type", "application/json");
+            });
+            Response response = send(HttpMethod.POST, "/v1/toolset/secured-tools/mcp", null,
+                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}",
+                    "api-key", "default-key", "Content-Type", "application/json");
+            assertEquals(200, response.status(), response.body());
+        }
+        assertEquals("Bearer user-secret", authorization.get());
+
+        verify(send(HttpMethod.POST, "/v1/ops/toolset/signout", null, """
+                {"url": "secured-tools", "credentialsLevel": "USER", "authenticationType": "API_KEY"}
+                """, "api-key", "default-key"), 200, "true");
+        // organization-level credentials stay the admin's to set
+        verify(send(HttpMethod.POST, "/v1/ops/toolset/signin", null,
+                signIn("secured-tools", "Bearer org-secret").replace("\"USER\"", "\"GLOBAL\""), "api-key", "default-key"), 403);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void targetPassCarriesTheCallChain() {
         AtomicReference<ApiKeyData> targetKey = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848)) {
@@ -294,6 +350,9 @@ class AliasApiTest extends ResourceBaseTest {
         assertEquals("model", plain.getString("object"));
         assertEquals("GPT-4 internal", plain.getString("display_name"));
         assertEquals("The internal GPT-4 deployment.", plain.getString("description"));
+        assertEquals("http://icons/gpt-4.svg", plain.getString("icon_url"));
+        // the alias has a version of its own, so the target's does not show as the alias's
+        assertFalse(plain.containsKey("display_version"), plain.encode());
 
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
@@ -312,6 +371,8 @@ class AliasApiTest extends ResourceBaseTest {
         assertEquals("degraded", body.getString("status"));
         assertTrue(health.body().contains("\"aliases/broken\""), health.body());
         assertTrue(health.body().contains("alias_target_missing"), health.body());
+        // a resource target is read for the report
+        assertTrue(health.body().contains("\"aliases/gone-resource-alias\""), health.body());
         assertFalse(health.body().contains("aliases/assistant"), health.body());
     }
 
@@ -327,6 +388,12 @@ class AliasApiTest extends ResourceBaseTest {
         assertTrue(one.body().contains("models/gpt-4-internal"), one.body());
 
         verify(send(HttpMethod.GET, "/v1/admin/config/file/aliases", null, null, "api-key", "default-key"), 403);
+    }
+
+    private static String signIn(String url, String apiKey) {
+        return """
+                {"url": "%s", "credentialsLevel": "USER", "authenticationType": "API_KEY", "api_key": "%s"}
+                """.formatted(url, apiKey);
     }
 
     private Response chat(String deployment, String apiKey) {

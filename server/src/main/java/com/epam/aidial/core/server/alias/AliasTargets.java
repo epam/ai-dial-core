@@ -87,8 +87,8 @@ public class AliasTargets {
     }
 
     /**
-     * The problems of the alias's own fields: a {@code target} with a {@code path} and none of the reserved fields
-     * {@code id} and {@code version}, and a type to be shown as. The target itself is not looked up.
+     * The problems of the alias's own fields: a {@code target} with a {@code path} that names a deployment of the config
+     * or an application or toolset resource, and not another alias. The target itself is not looked up.
      */
     public List<ValidationWarning> validateFields(Alias alias) {
         List<ValidationWarning> warnings = new ArrayList<>();
@@ -96,9 +96,6 @@ public class AliasTargets {
         if (target == null || target.getPath() == null) {
             warnings.add(new ValidationWarning(PATH_FIELD, "target.path is required"));
             return warnings;
-        }
-        if (target.getId() != null || target.getVersion() != null) {
-            warnings.add(new ValidationWarning("target", "target.id and target.version are not supported"));
         }
         String path = target.getPath();
         if (path.startsWith("aliases/")) {

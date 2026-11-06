@@ -17,8 +17,8 @@ Non-goals: see "Out of scope" in proposal.md.
 
 ### `Alias` is a `Deployment`
 `config/.../Alias.java` extends `Deployment` with an optional `presentAs` (`AliasPresentation`: `model`,
-`application`, `toolset`) and `target` (`AliasTarget`: `path`, and the reserved `id` and `version`, kept as fields
-only so that a config that sets them can be refused rather than silently read). `Alias.getEffectivePresentation`
+`application`, `toolset`) and `target` (`AliasTarget`: `path`). The design document's `id` and `version` are left
+out until deployments can be referenced by id. `Alias.getEffectivePresentation`
 answers `presentAs`, or the type the first path segment names (`models`, `applications`, `toolsets`); every caller
 uses it instead of `presentAs`. `Config.aliases` is a new map; `Config.selectDeployment` looks in it last. Being a
 `Deployment` gives the alias `userRoles`, display fields and the shared name space for free. Operational fields it
@@ -31,7 +31,7 @@ report, and by `deployment-alias-public` as the resource type.
 ### Validation at load
 `ConfigPostProcessor.processAliases` runs after toolsets, on the same `deploymentIds` set
 (`ConfigPostProcessor.skipOnDuplicate`), so a name clash fails the file load as it does for other deployments.
-`AliasTargets.validate` refuses: no `target.path`; `target.id` or `target.version`; an `aliases/` target; a resource
+`AliasTargets.validate` refuses: no `target.path`; an `aliases/` target; a resource
 path other than `applications/...` or `toolsets/...`; a config path that is not `<type>/<name>`; and a type that does
 not fit a config target the config has. Each is an `InvalidEntityException` (throw when loading the file,
 skip-and-record in the merged rebuild, as `processInterceptors` does). A missing config target is a `log.warn` only.

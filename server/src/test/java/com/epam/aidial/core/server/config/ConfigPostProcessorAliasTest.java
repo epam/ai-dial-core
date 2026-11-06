@@ -59,14 +59,6 @@ class ConfigPostProcessorAliasTest {
     }
 
     @Test
-    void reservedTargetFieldsAreRefused() {
-        assertRefused(alias("assistant", "model", "models/gpt-4-internal").replace("{\"path\"", "{\"id\": \"x\", \"path\""),
-                "target.id and target.version are not supported");
-        assertRefused(alias("assistant", "model", "models/gpt-4-internal").replace("{\"path\"", "{\"version\": \"1\", \"path\""),
-                "target.id and target.version are not supported");
-    }
-
-    @Test
     void presentAsDefaultsToTheTargetType() {
         Config config = load("""
                 "m": {"target": {"path": "models/gpt-4-internal"}},

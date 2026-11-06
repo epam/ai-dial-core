@@ -40,3 +40,19 @@ report, `/v1/admin/config/file/aliases`. Rebased on `development` 6dae044af.
 - Limits of a granted call use all the caller's roles (`RateLimiter.getLimitByUser`).
 - The alias pass relays the target's status and uses a fresh balancer per request.
 - Aliases to resources are left out of the listings answered from memory.
+
+## Review of PR #2235 (2026-11-06)
+
+- `target.id` and `target.version` removed: not reserved until there is a use for them.
+- An alias without `userRoles` takes the target's (`AliasService.hasConfigAccess`, `hasAccess`): the `userRoles` of
+  a config target, or read access to a resource target, checked when the target is read; open to all was unsafe.
+- `iconUrl`, `intro` and `descriptionKeywords` fall back to the target's, as the display name and description do;
+  `displayVersion`, `author`, the dates and the catalog fields describe the alias's own entry and do not.
+- The alias pass no longer parses the usage of the relayed answer as its own
+  (`BaseDeploymentPostController`), which counted the target's usage twice in the token stats.
+- Toolset sign-in through an alias: `ResourceCredentialsController` resolves the target with
+  `AliasService.toSecuredTarget` and stores the credentials under it; the toolset view carries the target's auth
+  settings without secrets, and `ToolSetController` sets the caller's statuses on it.
+- `/v1/admin/health/config` reads resource targets on the task executor (`AliasService.checkTarget`); the cheap
+  check stays for config load and listings.
+- Kept: one analytics row per pass. The alias's row is what shows which alias a call came through.

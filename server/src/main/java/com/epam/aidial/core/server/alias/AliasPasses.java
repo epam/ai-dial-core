@@ -95,9 +95,11 @@ public class AliasPasses {
 
     /**
      * The deployment a listing shows for {@code alias}: of the class {@code presentation} names, with the alias's
-     * name, roles and display fields, and the target's features, pricing, limits, defaults and interfaces. The display
-     * name and description fall back to the target's; no other field does. It carries no endpoint, credentials,
-     * default headers or other internals of the target.
+     * name, roles and display fields, and the target's features, pricing, limits, defaults and interfaces. The fields
+     * that describe what the alias serves (display name, description, icon, intro, keywords) fall back to the
+     * target's; those that describe the alias's own entry (display version, author, dates, catalog fields) do not. It
+     * carries no endpoint, credentials, default headers or other internals of the target; a toolset view carries the
+     * target's auth settings without their secrets, so that a caller knows to sign in.
      */
     public Deployment view(Alias alias, AliasPresentation presentation, Deployment target) {
         Deployment view = switch (presentation) {
@@ -112,6 +114,15 @@ public class AliasPasses {
         }
         if (view.getDescription() == null) {
             view.setDescription(target.getDescription());
+        }
+        if (view.getIconUrl() == null) {
+            view.setIconUrl(target.getIconUrl());
+        }
+        if (view.getIntro() == null) {
+            view.setIntro(target.getIntro());
+        }
+        if ((alias.getDescriptionKeywords() == null || alias.getDescriptionKeywords().isEmpty()) && target.getDescriptionKeywords() != null) {
+            view.setDescriptionKeywords(target.getDescriptionKeywords());
         }
         return view;
     }
@@ -146,6 +157,13 @@ public class AliasPasses {
             view.setAllowedTools(toolSet.getAllowedTools());
             view.setProvider(toolSet.getProvider());
             view.setVendorWebsite(toolSet.getVendorWebsite());
+            if (toolSet.getAuthSettings() != null) {
+                view.setAuthSettings(toolSet.getAuthSettings().toBuilder()
+                        .clientSecret(null)
+                        .clientSecretHint(null)
+                        .codeVerifier(null)
+                        .build());
+            }
         } else {
             view.setAllowedTools(((Application) target).getMcp().getAllowedTools());
         }
