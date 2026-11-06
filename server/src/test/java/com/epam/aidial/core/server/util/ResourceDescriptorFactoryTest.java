@@ -122,6 +122,15 @@ public class ResourceDescriptorFactoryTest {
     }
 
     @Test
+    public void testDotSegmentsAreRefused() {
+        for (String path : List.of("Acme/./Risk/a.txt", "Acme/%2E/Risk/a.txt", "Acme/../a.txt", "Acme/%2E%2E/a.txt", "Acme/.")) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> ResourceDescriptorFactory.fromEncoded(ResourceTypes.FILE, "public", "public/", path), path);
+        }
+        assertEquals("..a", ResourceDescriptorFactory.fromEncoded(ResourceTypes.FILE, "public", "public/", "Acme/..a").getName());
+    }
+
+    @Test
     public void testEmptyRelativePath() {
         assertEquals(
                 ResourceDescriptorFactory.fromEncoded(ResourceTypes.FILE, "bucket", "location/", "/"),

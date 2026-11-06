@@ -100,6 +100,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
                 .redirectUri(clientRegistrationResponse.getRedirectUris().getFirst())
                 .authorizationEndpoint(authServerMetadata.getAuthorizationEndpoint())
                 .tokenEndpoint(authServerMetadata.getTokenEndpoint())
+                .resource(resolveResource(protectedResourceMetadata, resourceEndpoint))
                 .scopesSupported(supportedScopes)
                 .tokenEndpointAuthMethod(tokenEndpointAuthMethod)
                 .build();
@@ -109,6 +110,18 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
 
         log.info("Finished dynamic registration for Resource: {}", resourceId);
         return clientRegistration;
+    }
+
+    /**
+     * The RFC 8707 resource indicator. The server's own metadata is authoritative; the endpoint stands in when it
+     * publishes none, which is safe here because an authorization server offering DCR to an MCP client follows the
+     * MCP authorization spec.
+     */
+    private static String resolveResource(AuthorizationServerProtectedResourceMetadata protectedResourceMetadata,
+                                          String resourceEndpoint) {
+        return Optional.ofNullable(protectedResourceMetadata)
+                .map(AuthorizationServerProtectedResourceMetadata::getResource)
+                .orElse(resourceEndpoint);
     }
 
     private List<String> collectRedirectUris(ResourceAuthSettings resourceAuthSettings) {
