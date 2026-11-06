@@ -27,7 +27,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
@@ -45,17 +47,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Integration tests for {@code POST /v1/admin/system-export}. The stall timeout is short, so that a client
- * that stops reading fails the export within the test.
+ * that stops reading fails the export within the test. A KMS provider is configured, so that encryption keys are
+ * exported; the AWS client is created lazily and no test asks it to encrypt or decrypt, so no credentials are needed.
  */
 public class AdminSystemExportApiTest extends ResourceBaseTest {
 
     private static final DateTimeFormatter FILE_NAME_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
+    private static final String WRAPPED_KEY = "w".repeat(60);
+    private static final String PLAIN_KEY = "p".repeat(32);
     private static final int LARGE_BLOBS = 32;
     private static final int LARGE_BLOB_SIZE = 2 * 1024 * 1024;
 
     @Override
     protected JsonObject additionalSettingsOverrides() {
-        return new JsonObject().put("adminSystemExport", new JsonObject().put("stallTimeout", 2000));
+        JsonObject kms = new JsonObject().put("provider", "aws").put("keyId", "test-key").put("region", "us-east-1");
+        return new JsonObject()
+                .put("adminSystemExport", new JsonObject().put("stallTimeout", 2000))
+                .put("toolsets", new JsonObject().put("security", new JsonObject().put("kms", kms)));
     }
 
     @Test
@@ -69,7 +77,7 @@ public class AdminSystemExportApiTest extends ResourceBaseTest {
         BlobStorage storage = dial.getStorage();
         storage.store("public/files/user1/a.txt", "text/plain", null, Map.of("k", "v"), "alpha".getBytes(StandardCharsets.UTF_8));
         storage.store("platform/models/m1", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
-        storage.store("public/encryption_keys/key1", "application/json", null, Map.of(), "secret".getBytes(StandardCharsets.UTF_8));
+        storage.store("public/encryption_keys/key1", "application/json", null, Map.of(), WRAPPED_KEY.getBytes(StandardCharsets.UTF_8));
         storage.store("platform/credentials/cred1", "application/json", null, Map.of(), "secret".getBytes(StandardCharsets.UTF_8));
 
         Download download = export("admin");
@@ -87,7 +95,78 @@ public class AdminSystemExportApiTest extends ResourceBaseTest {
         String metadata = new String(entries.get(".dial-system-export/metadata/public/files/user1/a.txt"), StandardCharsets.UTF_8);
         assertTrue(metadata.contains("text/plain"), metadata);
         assertTrue(metadata.contains("\"k\""), metadata);
-        assertFalse(entries.keySet().stream().anyMatch(name -> name.contains("encryption_keys") || name.contains("credentials")), entries.keySet().toString());
+        assertTrue(entries.containsKey("public/encryption_keys/key1"));
+        assertFalse(entries.keySet().stream().anyMatch(name -> name.contains("credentials")), entries.keySet().toString());
+    }
+
+    @Test
+    void testEncryptionKeysOfTheSelectedBucketsAreExported() throws Exception {
+        BlobStorage storage = dial.getStorage();
+        storage.store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY.getBytes(StandardCharsets.UTF_8));
+        storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY.getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(List.of("public/encryption_keys/cek", "platform/encryption_keys/cek"), contentEntries(export("admin", null)));
+        assertEquals(List.of("platform/encryption_keys/cek"), contentEntries(export("admin", "scope=platform")));
+    }
+
+    @Test
+    void testScopeSelectsTheBuckets() throws Exception {
+        BlobStorage storage = dial.getStorage();
+        storage.store("public/files/user1/a.txt", "text/plain", null, Map.of(), "alpha".getBytes(StandardCharsets.UTF_8));
+        storage.store("platform/models/m1", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(List.of("platform/models/m1"), contentEntries(export("admin", "scope=platform")));
+        assertEquals(List.of("public/files/user1/a.txt"), contentEntries(export("admin", "scope=PUBLIC")));
+        assertEquals(List.of("public/files/user1/a.txt"), contentEntries(export("admin", "scope=%20PUBLIC%20,%20public")));
+        assertEquals(List.of("public/files/user1/a.txt", "platform/models/m1"), contentEntries(export("admin", "scope=platform,public")));
+        assertEquals(List.of("public/files/user1/a.txt", "platform/models/m1"), contentEntries(export("admin", "scope=platform&scope=public")));
+        assertEquals(List.of("platform/models/m1"), contentEntries(export("admin", "scope=platform&scope=PLATFORM")));
+        assertEquals(List.of("public/files/user1/a.txt", "platform/models/m1"), contentEntries(export("admin", null)));
+
+        Download platformOnly = export("admin", "scope=platform");
+        assertEquals(200, platformOnly.status());
+        assertTrue(unzip(platformOnly.body()).containsKey(".dial-system-export/manifest.json"));
+    }
+
+    @Test
+    void testInvalidScopeIsRejected() throws Exception {
+        for (String query : List.of("scope=org", "scope=all", "scope=", "scope=public,", "scope=,platform", "scope=public&scope=", "scope=public&scope=org")) {
+            Download rejected = export("admin", query);
+
+            assertEquals(400, rejected.status(), query);
+            assertNull(rejected.contentDisposition());
+        }
+
+        assertEquals(200, export("admin").status(), "a rejected scope must not leave a lock behind");
+        assertEquals(403, export("user", "scope=org").status());
+    }
+
+    @Test
+    void testExportOfPublicBucketIgnoresTheLockOfPlatformBucket() throws Exception {
+        dial.getStorage().store("public/files/user1/a.txt", "text/plain", null, Map.of(), "alpha".getBytes(StandardCharsets.UTF_8));
+        LockService.Lock lock = lockService().tryLockBuckets(List.of("platform/"));
+        assertNotNull(lock);
+
+        Download scoped;
+        Download unscoped;
+        try {
+            scoped = export("admin", "scope=public");
+            unscoped = export("admin");
+        } finally {
+            lock.close();
+        }
+
+        assertEquals(200, scoped.status());
+        assertEquals(409, unscoped.status());
+    }
+
+    @Test
+    void testEncryptionKeyThatCannotBeWrappedIsNotExported() throws Exception {
+        BlobStorage storage = dial.getStorage();
+        storage.store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), WRAPPED_KEY.getBytes(StandardCharsets.UTF_8));
+        storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), PLAIN_KEY.getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(List.of("public/encryption_keys/cek"), contentEntries(export("admin", null)));
     }
 
     @Test
@@ -183,8 +262,25 @@ public class AdminSystemExportApiTest extends ResourceBaseTest {
         }
     }
 
+    private static List<String> contentEntries(Download download) throws Exception {
+        List<String> names = new ArrayList<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(download.body()))) {
+            for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
+                if (!entry.getName().startsWith(".dial-system-export/")) {
+                    names.add(entry.getName());
+                }
+            }
+        }
+        return names;
+    }
+
     private Download export(String authorization) throws Exception {
-        HttpUriRequest request = new HttpUriRequestBase("POST", URI.create("http://127.0.0.1:" + serverPort + "/v1/admin/system-export"));
+        return export(authorization, null);
+    }
+
+    private Download export(String authorization, String query) throws Exception {
+        String url = "http://127.0.0.1:" + serverPort + "/v1/admin/system-export" + (query == null ? "" : "?" + query);
+        HttpUriRequest request = new HttpUriRequestBase("POST", URI.create(url));
         request.setHeader("authorization", authorization);
         return client.execute(request, response -> new Download(
                 response.getCode(),

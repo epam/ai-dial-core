@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitRoleData;
 import com.epam.aidial.core.server.data.orgunit.RoleAssignment;
 import com.epam.aidial.core.server.data.orgunit.Subject;
+import com.epam.aidial.core.server.data.orgunit.UserOrgUnits;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -202,6 +203,32 @@ public class OrgUnitService {
             throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
         }
         return toData(key, list, recursive, visible);
+    }
+
+    /**
+     * The units the caller works in, parents before children: the ones the tree shows them, and the ones they hold a
+     * role in but reach only by path, without the units above. A DIAL admin gets every unit, with every permission;
+     * a caller who is not a person gets none.
+     */
+    public List<UserOrgUnits.Unit> unitsOf(ProxyContext context, boolean admin) {
+        if (!admin && !OrgUnitSubjects.isPerson(context)) {
+            return List.of();
+        }
+        OrgUnitList list = getUnitList();
+        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
+        Map<String, Set<String>> held = heldRolesByUnit(context, list);
+        List<UserOrgUnits.Unit> units = new ArrayList<>();
+        for (Map.Entry<String, OrgUnit> entry : list.units().entrySet()) {
+            String key = entry.getKey();
+            if (key.equals(SHARED_SPACE_KEY) || !admin && !isShown(roles, held, key)) {
+                continue;
+            }
+            List<String> roleNames = held.getOrDefault(key, Set.of()).stream().filter(roles::exists).sorted().toList();
+            OrgUnitData.Summary unit = summary(key, entry.getValue());
+            units.add(new UserOrgUnits.Unit(unit.id(), unit.name(), unit.displayName(), unit.path(), unit.folder(), roleNames,
+                    admin ? OrgUnitRoles.ALL_PERMISSIONS : roles.resolvePermissions(roleNames)));
+        }
+        return units;
     }
 
     /**
@@ -961,10 +988,18 @@ public class OrgUnitService {
      */
     private Predicate<String> visibleTo(ProxyContext context, OrgUnitList list) {
         OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
+        Map<String, Set<String>> held = heldRolesByUnit(context, list);
+        return key -> list.units().containsKey(key) && isShown(roles, held, key);
+    }
+
+    private static boolean isShown(OrgUnitRoles roles, Map<String, Set<String>> held, String key) {
+        return OrgUnitGrants.showsUnit(roles, held.getOrDefault(key, Set.of()), held.getOrDefault(parentKey(key), Set.of()));
+    }
+
+    private Map<String, Set<String>> heldRolesByUnit(ProxyContext context, OrgUnitList list) {
         Map<String, Set<String>> held = new HashMap<>();
         roleAssignmentsOfAll(list.units()).forEach((key, assignments) -> held.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
-        return key -> list.units().containsKey(key) && OrgUnitGrants.showsUnit(roles,
-                held.getOrDefault(key, Set.of()), held.getOrDefault(parentKey(key), Set.of()));
+        return held;
     }
 
     private static OrgUnitData toData(String key, OrgUnitList list, boolean recursive, Predicate<String> visible) {

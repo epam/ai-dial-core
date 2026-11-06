@@ -20,7 +20,7 @@ import java.util.Objects;
 public class KeyManagementServiceFactory {
 
     public KeyManagementService create(KmsSettings kmsSettings, BlockingCallTracer blockingCallTracer) {
-        if (kmsSettings == null || kmsSettings.getProvider() == null || "unencrypted".equals(kmsSettings.getProvider())) {
+        if (kmsSettings == null || kmsSettings.isUnencrypted()) {
             return new SimpleKeyManagementService();
         }
 
