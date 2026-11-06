@@ -222,8 +222,21 @@ budget plus a read of each model row. Round trips for a JWT caller of a model:
 
 The blob `list` before the upstream is new latency for Claude Code and Codex in `shadow` and `enforce`. The plain
 routes already pay it today. Its duration depends on the storage provider and is not measured here. It is counted
-in `RateLimiterTest` with Mockito spies on `ResourceService` and on the blob storage, which count `getResource`,
-`listResources`, `computeResource` and blob `list` calls per call (task 5.3).
+in `RateLimiterTest.testRoundTripsOfTheSpendCapRoutes` with Mockito spies on `ResourceService` and on the blob
+storage, which count `getResource`, `listResources`, `computeResource` and blob `list` calls per call (task 5.3).
+
+Measured for one spend-cap check and its charge, with one budget and token and request limits set. The counts
+include the service's calls to its own overloads, so one public call can count two or three times; the test
+asserts the differences between the modes.
+
+| | check: `getResource` | check: `computeResource` | check: `listResources` / blob `list` | charge: `computeResource` |
+|---|---|---|---|---|
+| `off` | 4 | 3 | 0 / 0 | 9 (three role records) |
+| `shadow` | 4 | 3 | 1 / 1 | 12 (+ the budget row) |
+| `enforce` | 2 (no role cost record) | 3 | 1 / 1 | 12 (+ the budget row) |
+
+The `enforce` usage read is one `listResources` and one blob `list` with one budget, and no call with two. That
+matches the table above.
 
 ## Risks / Trade-offs
 

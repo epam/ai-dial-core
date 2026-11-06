@@ -206,6 +206,10 @@ public class ResourceBaseTest {
                             return Future.succeededFuture(createClaims(authorization));
                         }
 
+                        if (authorization.startsWith("user@")) {
+                            return Future.succeededFuture(createClaims("user", authorization.substring("user@".length())));
+                        }
+
                         if (authorization.startsWith("azp:")) {
                             return Future.succeededFuture(createWorkloadClaims(authorization.substring("azp:".length())));
                         }
@@ -247,9 +251,14 @@ public class ResourceBaseTest {
     }
 
     static ExtractedClaims createClaims(String role) {
+        return createClaims(role, null);
+    }
+
+    // The same claims as createClaims(role), with the project claim set, as a projectPath IdP would give.
+    static ExtractedClaims createClaims(String role, String project) {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("title", "Manager");
-        return new ExtractedClaims(role, List.of(role), role, claims, null, role + " user");
+        return new ExtractedClaims(role, List.of(role), role, claims, project, role + " user");
     }
 
     // A workload (service-principal) JWT carrying an azp claim and no user roles.

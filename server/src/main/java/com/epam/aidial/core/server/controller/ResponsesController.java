@@ -156,7 +156,8 @@ public class ResponsesController extends BaseDeploymentPostController {
             headers = {
                     @ApiHeader(name = "x-codex-primary-used-percent",
                             description = "Spent share of the caller's reported DIAL day/week/month spend cap before this request, "
-                                    + "a whole percent rounded down. Sent only when the caller has such a cost limit; "
+                                    + "a whole percent rounded down. Sent only when the caller has such a cost limit, or with enforced "
+                                    + "budgets exactly one budget in their cost object; "
                                     + "the upstream's own `x-codex-*` headers are removed"),
                     @ApiHeader(name = "x-codex-primary-window-minutes", description = "`1440`, `10080` or `43200`: the reported cap's day, week or month"),
                     @ApiHeader(name = "x-codex-primary-reset-at", description = "When the reported cap resets, Unix seconds"),
@@ -169,10 +170,12 @@ public class ResponsesController extends BaseDeploymentPostController {
     @ApiResponse(code = 403)
     @ApiResponse(code = 404)
     @ApiResponse(code = 415)
-    @ApiResponse(code = 429, description = "DIAL limit reached. A reached day/week/month spend cap gives an error of type "
+    @ApiResponse(code = 429, description = "DIAL limit reached. A reached day/week/month spend cap, or with enforced budgets "
+            + "used-up budgets for the model, gives an error of type "
             + "`usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the "
             + "`x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error "
-            + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`",
+            + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`; "
+            + "with enforced budgets, no budget for the model gives an error naming the model and the cost object",
             body = @ApiSchema(implementation = ErrorData.class))
     @ApiResponse(code = 500)
     @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class))
