@@ -248,9 +248,9 @@ public class ResourceDependencyValidatorTest {
         Application application = new Application().setResourceDependencies(section);
 
         // the entries are invalid too, but over the cap none of them is inspected
-        assertEquals(List.of("resourceDependencies: the section exceeds "
-                + ResourceDependencyValidator.MAX_DECLARED_DEPENDENCIES + " entries"),
-                ResourceDependencyValidator.shapeIssues(application));
+        assertEquals("Invalid resource dependencies: resourceDependencies: the section exceeds "
+                + ResourceDependencyValidator.MAX_DECLARED_DEPENDENCIES + " entries",
+                ResourceDependencyValidator.findShapeError(application));
     }
 
     @Test
@@ -339,17 +339,25 @@ public class ResourceDependencyValidatorTest {
         assertDoesNotThrow(() -> validator.validateUserAuthored(new Application().setResourceDependencies(List.of())));
     }
 
-    // ---- shapeIssues ----
+    // ---- findShapeError ----
 
     @Test
-    void shapeIssuesListsAllProblemsWithoutThrowing() {
+    void findShapeErrorReportsEveryProblem() {
         Application application = appWith(
                 dependency("files/public/*/").setKind("wrong").setAccess(Set.of()),
                 dependency("users/x/y/"));
 
-        List<String> issues = ResourceDependencyValidator.shapeIssues(application);
+        String error = ResourceDependencyValidator.findShapeError(application);
 
-        assertTrue(issues.size() >= 5); // kind, access, wildcard, personal-target, and the second entry's issue
+        assertTrue(error.contains("[0]: kind must be"), error);
+        assertTrue(error.contains("[0]: wildcards are not allowed"), error);
+        assertTrue(error.contains("[0]: access must not be empty"), error);
+        assertTrue(error.contains("[1]: personal targets are declared as"), error);
+    }
+
+    @Test
+    void findShapeErrorIsNullForValidSection() {
+        assertEquals(null, ResourceDependencyValidator.findShapeError(appWith(dependency("skills/{current-user}/"))));
     }
 
     private static String validatorShapeMessage(ResourceDependencyValidator validator, Application application) {

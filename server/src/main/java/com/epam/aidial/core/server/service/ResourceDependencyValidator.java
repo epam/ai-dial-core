@@ -60,7 +60,7 @@ public class ResourceDependencyValidator {
 
     /** The shape violations as one message, or null when there are none. */
     public static String findShapeError(Application application) {
-        List<String> issues = shapeIssues(application);
+        List<String> issues = collectShapeIssues(application);
         return issues.isEmpty() ? null : "Invalid resource dependencies: " + String.join("; ", issues);
     }
 
@@ -76,7 +76,7 @@ public class ResourceDependencyValidator {
         }
     }
 
-    public static List<String> shapeIssues(Application application) {
+    private static List<String> collectShapeIssues(Application application) {
         List<String> issues = new ArrayList<>();
         List<ResourceDependency> section = application.getResourceDependencies();
         if (section == null || section.isEmpty()) {
@@ -102,7 +102,7 @@ public class ResourceDependencyValidator {
             } else if (!seenLinkIds.add(linkId)) {
                 issues.add(at + ": duplicate linkId '" + linkId + "'");
             }
-            issues.addAll(pathIssues(at, dependency));
+            issues.addAll(collectPathIssues(at, dependency));
             // An explicit JSON null defeats the field default, so guard for null alongside empty.
             if (dependency.getAccess() == null || dependency.getAccess().isEmpty()) {
                 issues.add(at + ": access must not be empty");
@@ -113,22 +113,17 @@ public class ResourceDependencyValidator {
         return issues;
     }
 
-    private static List<String> pathIssues(String at, ResourceDependency dependency) {
-        String path = pathOf(dependency);
+    private static List<String> collectPathIssues(String at, ResourceDependency dependency) {
+        String path = readTargetPath(dependency);
         if (path == null || path.replace(ResourceDescriptor.PATH_SEPARATOR, "").isEmpty()) {
             return List.of(at + ": target.path is required");
         }
         try {
-            validateTarget(path);
+            checkTarget(path);
             return List.of();
         } catch (IllegalArgumentException e) {
             return List.of(at + ": " + e.getMessage() + ": " + path);
         }
-    }
-
-    /** Write side: throws {@link IllegalArgumentException} unless {@code path} is a declarable target. */
-    public static void validateTarget(String path) {
-        checkTarget(path);
     }
 
     /**
@@ -138,9 +133,9 @@ public class ResourceDependencyValidator {
      */
     public static ResourceDescriptor resolveTarget(String path, AuthBucket initiator, EncryptionService encryption) {
         String[] segments = checkTarget(path);
-        return parsed(() -> isPlaceholder(segments[1])
+        return parseTarget(() -> isPlaceholder(segments[1])
                 ? ResourceDescriptorFactory.fromEncoded(ResourceTypes.of(UrlUtil.tryDecodePath(segments[0])),
-                        initiator.getUserBucket(), initiator.getUserBucketLocation(), restOf(path, segments))
+                        initiator.getUserBucket(), initiator.getUserBucketLocation(), stripTypeAndBucket(path, segments))
                 : ResourceDescriptorFactory.fromAnyUrl(path, encryption));
     }
 
@@ -173,13 +168,13 @@ public class ResourceDependencyValidator {
             throw new IllegalArgumentException("path must not contain empty segments");
         }
         String bucketElement = isPlaceholder(segments[1]) ? "" : segments[1] + ResourceDescriptor.PATH_SEPARATOR;
-        parsed(() -> ResourceDescriptorFactory.fromAnyUrl(segments[0] + ResourceDescriptor.PATH_SEPARATOR
-                + ResourceDescriptor.PUBLIC_LOCATION + bucketElement + restOf(path, segments), null));
+        parseTarget(() -> ResourceDescriptorFactory.fromAnyUrl(segments[0] + ResourceDescriptor.PATH_SEPARATOR
+                + ResourceDescriptor.PUBLIC_LOCATION + bucketElement + stripTypeAndBucket(path, segments), null));
         return segments;
     }
 
-    /** Runs the factory call; its failure is reported as not a valid url, then the declaration's element rules apply. */
-    private static ResourceDescriptor parsed(Supplier<ResourceDescriptor> factoryCall) {
+    /** Runs the factory call; its failure is reported as not a valid url. */
+    private static ResourceDescriptor parseTarget(Supplier<ResourceDescriptor> factoryCall) {
         ResourceDescriptor target;
         try {
             target = factoryCall.get();
@@ -192,6 +187,11 @@ public class ResourceDependencyValidator {
             }
             throw e;
         }
+        rejectWildcards(target);
+        return target;
+    }
+
+    private static void rejectWildcards(ResourceDescriptor target) {
         List<String> elements = new ArrayList<>(target.getParentFolders());
         if (target.getName() != null) {
             elements.add(target.getName());
@@ -201,19 +201,17 @@ public class ResourceDependencyValidator {
                 throw new IllegalArgumentException("wildcards are not allowed");
             }
         }
-        return target;
     }
 
     private static boolean isPlaceholder(String segment) {
         return CURRENT_USER_PLACEHOLDER.equals(UrlUtil.tryDecodePath(segment));
     }
 
-    /** The relative path after {type}/{bucket}/. */
-    private static String restOf(String path, String[] segments) {
+    private static String stripTypeAndBucket(String path, String[] segments) {
         return path.substring(segments[0].length() + segments[1].length() + 2);
     }
 
-    private static String pathOf(ResourceDependency dependency) {
+    private static String readTargetPath(ResourceDependency dependency) {
         if (dependency.getTarget() == null || dependency.getTarget().getPath() == null) {
             return null;
         }
