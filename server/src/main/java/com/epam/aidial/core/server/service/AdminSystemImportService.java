@@ -1,8 +1,6 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.server.config.MergedConfigStore;
-import com.epam.aidial.core.server.util.CoreVersion;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.InputStreamAdapter;
 import com.epam.aidial.core.storage.blobstore.BlobAttributes;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
@@ -14,7 +12,6 @@ import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TempFolderCleaner;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.jclouds.blobstore.domain.PageSet;
@@ -31,7 +28,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
@@ -62,31 +58,29 @@ public class AdminSystemImportService {
 
     private static final int PAGE_SIZE = 1000;
     private static final long NANOS_PER_MILLI = 1_000_000L;
-    private static final int MAX_NAME_BYTES = 1024;
-    private static final int MAX_METADATA_BYTES = 64 * 1024;
     private static final int MAX_BUFFERED_BLOB_BYTES = 5 * 1024 * 1024;
 
     private final BlobStorage blobStorage;
     private final LockService lockService;
     private final ResourceService resourceService;
     private final MergedConfigStore mergedConfigStore;
+    private final AdminSystemImportValidationService validationService;
     private final Executor executor;
     private final Settings settings;
     private final LongSupplier clock;
-    private final CoreVersion coreVersion;
     private final Supplier<String> idGenerator;
 
     public AdminSystemImportService(BlobStorage blobStorage, LockService lockService, ResourceService resourceService,
-                                    MergedConfigStore mergedConfigStore, Executor executor, Settings settings,
-                                    LongSupplier clock, CoreVersion coreVersion, Supplier<String> idGenerator) {
+                                    MergedConfigStore mergedConfigStore, AdminSystemImportValidationService validationService,
+                                    Executor executor, Settings settings, LongSupplier clock, Supplier<String> idGenerator) {
         this.blobStorage = blobStorage;
         this.lockService = lockService;
         this.resourceService = resourceService;
         this.mergedConfigStore = mergedConfigStore;
+        this.validationService = validationService;
         this.executor = executor;
         this.settings = settings;
         this.clock = clock;
-        this.coreVersion = coreVersion;
         this.idGenerator = idGenerator;
     }
 
@@ -268,19 +262,14 @@ public class AdminSystemImportService {
         TimedInputStream timed = new TimedInputStream(archive);
         ZipInputStream zip = new ZipInputStream(timed, StandardCharsets.UTF_8);
         ZipEntry first = zip.getNextEntry();
-        if (first == null || !AdminSystemExportService.MANIFEST_ENTRY.equals(first.getName())) {
-            throw rejected("Archive must start with " + AdminSystemExportService.MANIFEST_ENTRY);
-        }
-        Manifest manifest = readManifest(zip);
-        checkFormatVersion(manifest);
-        checkVersion(manifest);
+        validationService.validateManifest(first, zip);
 
         Set<Long> seenNames = new HashSet<>();
         seenNames.add(hash64(first.getName()));
 
         String pendingMetadataName = null;
         String pendingBlobPath = null;
-        SidecarMetadata pendingMetadata = null;
+        BlobAttributes pendingMetadata = null;
         long blobCount = 0;
 
         for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
@@ -294,11 +283,10 @@ public class AdminSystemImportService {
                     throw rejected("Metadata entry without its blob: " + pendingMetadataName);
                 }
                 String blobPath = name.substring(AdminSystemExportService.METADATA_ENTRY_PREFIX.length());
-                validateBlobName(blobPath);
-                checkNotExcluded(blobPath);
+                validationService.validateBlobName(blobPath);
                 pendingMetadataName = name;
                 pendingBlobPath = blobPath;
-                pendingMetadata = readSidecar(zip);
+                pendingMetadata = validationService.readMetadata(zip);
                 continue;
             }
 
@@ -309,10 +297,9 @@ public class AdminSystemImportService {
             if (pendingMetadata == null || !name.equals(pendingBlobPath)) {
                 throw rejected("Blob entry without its metadata: " + name);
             }
-            validateBlobName(name);
-            checkNotExcluded(name);
+            validationService.validateBlobName(name);
 
-            uploadStagedBlob(stagingPrefix, name, pendingMetadata, zip, uploads);
+            uploadStagedBlob(stagingPrefix + name, pendingMetadata, zip, uploads);
             blobCount++;
             pendingMetadata = null;
             pendingMetadataName = null;
@@ -331,12 +318,7 @@ public class AdminSystemImportService {
         return blobCount;
     }
 
-    private void uploadStagedBlob(String stagingPrefix, String name, SidecarMetadata metadata, ZipInputStream zip,
-                                  BlobCalls uploads) throws IOException {
-        Map<String, String> userMetadata = metadata.userMetadata() == null ? Map.of() : metadata.userMetadata();
-        BlobAttributes attributes = new BlobAttributes(metadata.contentType(), metadata.contentEncoding(),
-                metadata.contentDisposition(), metadata.contentLanguage(), metadata.cacheControl(), userMetadata);
-        String path = stagingPrefix + name;
+    private void uploadStagedBlob(String path, BlobAttributes attributes, ZipInputStream zip, BlobCalls uploads) throws IOException {
         byte[] head = zip.readNBytes(MAX_BUFFERED_BLOB_BYTES + 1);
         if (head.length <= MAX_BUFFERED_BLOB_BYTES) {
             uploads.submit(() -> blobStorage.upload(path, attributes, new ByteArrayInputStream(head)));
@@ -345,115 +327,6 @@ public class AdminSystemImportService {
                     new SequenceInputStream(new ByteArrayInputStream(head), new UnclosableInputStream(zip))));
         }
         zip.closeEntry();
-    }
-
-    private Manifest readManifest(ZipInputStream zip) throws IOException {
-        // capped like a sidecar: the manifest is attacker-controlled before any check has run, and a legitimate
-        // one is a few dozen bytes
-        byte[] bytes = zip.readNBytes(MAX_METADATA_BYTES + 1);
-        if (bytes.length > MAX_METADATA_BYTES) {
-            throw rejected("Manifest entry exceeds " + MAX_METADATA_BYTES + " bytes");
-        }
-        zip.closeEntry();
-        try {
-            return ProxyUtil.MAPPER.readValue(bytes, Manifest.class);
-        } catch (IOException e) {
-            throw rejected("Manifest is not valid JSON: " + e.getMessage());
-        }
-    }
-
-    private static void checkFormatVersion(Manifest manifest) {
-        if (manifest.formatVersion() == null || manifest.formatVersion() != AdminSystemExportService.FORMAT_VERSION) {
-            throw rejected("Unsupported format version: " + manifest.formatVersion() + ", supported: "
-                    + AdminSystemExportService.FORMAT_VERSION);
-        }
-    }
-
-    private void checkVersion(Manifest manifest) {
-        if (CoreVersion.parse(manifest.coreVersion()).compareTo(coreVersion) > 0) {
-            throw rejected("Archive coreVersion " + manifest.coreVersion() + " is newer than the running Core " + coreVersion);
-        }
-    }
-
-    private SidecarMetadata readSidecar(ZipInputStream zip) throws IOException {
-        byte[] bytes = zip.readNBytes(MAX_METADATA_BYTES + 1);
-        if (bytes.length > MAX_METADATA_BYTES) {
-            throw rejected("Metadata entry exceeds " + MAX_METADATA_BYTES + " bytes");
-        }
-        zip.closeEntry();
-
-        JsonNode node;
-        try {
-            node = ProxyUtil.MAPPER.readTree(bytes);
-        } catch (IOException e) {
-            throw rejected("Metadata entry is not valid JSON: " + e.getMessage());
-        }
-        checkNoControlChars(node);
-        try {
-            return ProxyUtil.MAPPER.treeToValue(node, SidecarMetadata.class);
-        } catch (IOException e) {
-            throw rejected("Metadata entry is not valid JSON: " + e.getMessage());
-        }
-    }
-
-    private static void checkNoControlChars(JsonNode node) {
-        if (node.isTextual()) {
-            String text = node.textValue();
-            for (int i = 0; i < text.length(); i++) {
-                if (Character.isISOControl(text.charAt(i))) {
-                    throw rejected("Metadata entry has a control character in a string value");
-                }
-            }
-        } else if (node.isObject() || node.isArray()) {
-            for (JsonNode child : node) {
-                checkNoControlChars(child);
-            }
-        }
-    }
-
-    private static void validateBlobName(String name) {
-        if (name.isEmpty()) {
-            throw rejected("Empty entry name");
-        }
-        if (name.indexOf('\\') >= 0) {
-            throw rejected("Entry name contains a backslash: " + name);
-        }
-        for (int i = 0; i < name.length(); i++) {
-            char c = name.charAt(i);
-            if (c == 0 || Character.isISOControl(c)) {
-                throw rejected("Entry name contains a control character: " + name);
-            }
-        }
-        if (name.startsWith(ResourceDescriptor.PATH_SEPARATOR)) {
-            throw rejected("Entry name starts with /: " + name);
-        }
-        if (name.getBytes(StandardCharsets.UTF_8).length > MAX_NAME_BYTES) {
-            throw rejected("Entry name is longer than " + MAX_NAME_BYTES + " bytes: " + name);
-        }
-
-        String[] segments = name.split(ResourceDescriptor.PATH_SEPARATOR, -1);
-        if (!ResourceDescriptor.PUBLIC_BUCKET.equals(segments[0]) && !ResourceDescriptor.PLATFORM_BUCKET.equals(segments[0])) {
-            throw rejected("Entry name must start with " + ResourceDescriptor.PUBLIC_LOCATION + " or "
-                    + ResourceDescriptor.PLATFORM_LOCATION + ": " + name);
-        }
-        for (String segment : segments) {
-            if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
-                throw rejected("Entry name has an invalid path segment: " + name);
-            }
-        }
-    }
-
-    private static void checkNotExcluded(String name) {
-        int firstSlash = name.indexOf('/');
-        if (firstSlash < 0) {
-            return;
-        }
-        String remainder = name.substring(firstSlash + 1);
-        for (String group : AdminSystemExportService.EXCLUDED_GROUPS) {
-            if (remainder.regionMatches(true, 0, group, 0, group.length())) {
-                throw rejected("Entry under an excluded group: " + name);
-            }
-        }
     }
 
     private static long hash64(String name) {
@@ -540,10 +413,6 @@ public class AdminSystemImportService {
         }
     }
 
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record Manifest(Integer formatVersion, String coreVersion) {
-    }
-
     private static final class TimedInputStream extends FilterInputStream {
         private long bytes;
         private long waitNanos;
@@ -579,11 +448,6 @@ public class AdminSystemImportService {
                 waitNanos += System.nanoTime() - startedAt;
             }
         }
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record SidecarMetadata(String contentType, String contentEncoding, String contentDisposition,
-                                    String contentLanguage, String cacheControl, Map<String, String> userMetadata) {
     }
 
     private static final class UnclosableInputStream extends FilterInputStream {

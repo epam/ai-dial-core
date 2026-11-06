@@ -140,8 +140,9 @@ class AdminSystemImportServiceTest {
 
     private AdminSystemImportService newService(AdminSystemImportService.Settings settings) {
         return new AdminSystemImportService(storage, lockService, resourceService, mergedConfigStore,
+                new AdminSystemImportValidationService(CoreVersion.parse(CORE_VERSION)),
                 command -> Thread.ofVirtual().start(command), settings,
-                clock::get, CoreVersion.parse(CORE_VERSION), () -> "import-" + idCounter.incrementAndGet());
+                clock::get, () -> "import-" + idCounter.incrementAndGet());
     }
 
     private static int freePort() throws IOException {
@@ -386,30 +387,6 @@ class AdminSystemImportServiceTest {
     }
 
     @Test
-    void testManifestNotFirstIsRejected() {
-        byte[] archive = zip(blob("public/models/m1", "{}"), manifest(CORE_VERSION));
-        AdminSystemImportRejectedException e = assertRejected(archive);
-        assertEquals(HttpStatus.BAD_REQUEST, e.getStatus());
-        assertNoBlobs();
-    }
-
-    @Test
-    void testUnsupportedFormatVersionIsRejected() {
-        String manifest = "{\"formatVersion\":2,\"coreVersion\":\"" + CORE_VERSION + "\"}";
-        byte[] archive = zip(new RawEntry(".dial-system-export/manifest.json", manifest.getBytes(StandardCharsets.UTF_8)));
-        assertRejected(archive);
-    }
-
-    @Test
-    void testOversizedManifestIsRejected() {
-        // the manifest is attacker-controlled before any check has run, so it is capped the same way a sidecar is
-        String padding = "\"padding\":\"" + "x".repeat(70_000) + "\"";
-        byte[] archive = zip(new RawEntry(".dial-system-export/manifest.json",
-                ("{\"formatVersion\":1,\"coreVersion\":\"" + CORE_VERSION + "\"," + padding + "}").getBytes(StandardCharsets.UTF_8)));
-        assertRejected(archive);
-    }
-
-    @Test
     void testArchiveFromNewerReleaseIsRejected() {
         byte[] archive = archiveOf("0.51.0", entry("public/models/m1", "{}"));
         assertRejected(archive);
@@ -424,58 +401,6 @@ class AdminSystemImportServiceTest {
             assertEquals(1, staged.blobCount());
             service.deleteStaging(staged);
         }
-    }
-
-    // ---- stage phase: names ----
-
-    @Test
-    void testPathTraversalIsRejected() {
-        assertRejected(archiveOf(CORE_VERSION, entry("public/../Users/alice/files/x", "a")));
-        assertNoBlobs();
-    }
-
-    @Test
-    void testOtherBucketIsRejected() {
-        assertRejected(archiveOf(CORE_VERSION, entry("Users/alice/files/x", "a")));
-    }
-
-    @Test
-    void testBackslashIsRejected() {
-        assertRejected(archiveOf(CORE_VERSION, entry("public\\files\\x", "a")));
-    }
-
-    @Test
-    void testControlCharacterIsRejected() {
-        assertRejected(archiveOf(CORE_VERSION, entry("public/files/a\u0001b", "a")));
-    }
-
-    @Test
-    void testLongNameIsRejected() {
-        String longName = "public/files/" + "a".repeat(1100);
-        assertRejected(archiveOf(CORE_VERSION, entry(longName, "a")));
-    }
-
-    @Test
-    void testCekEntryIsRejected() {
-        assertRejected(archiveOf(CORE_VERSION, entry("platform/encryption_keys/cek", "secret")));
-    }
-
-    @Test
-    void testCredentialsEntryIsRejected() {
-        assertRejected(archiveOf(CORE_VERSION, entry("public/credentials/x", "secret")));
-    }
-
-    @Test
-    void testExcludedGroupIsMatchedWithoutRegardToCase() {
-        assertRejected(archiveOf(CORE_VERSION, entry("public/Encryption_Keys/cek", "secret")));
-    }
-
-    @Test
-    void testExcludedWordsDeeperInThePathAreAccepted() {
-        byte[] archive = archiveOf(CORE_VERSION, entry("public/files/alice/encryption_keys/notes.txt", "notes"));
-        AdminSystemImportService.StagedImport staged = service.stage(stream(archive));
-        assertEquals(1, staged.blobCount());
-        assertTrue(storage.exists(staged.stagingPrefix() + "public/files/alice/encryption_keys/notes.txt"));
     }
 
     // ---- stage phase: sidecar pairing and duplicates ----
@@ -502,15 +427,6 @@ class AdminSystemImportServiceTest {
                 metadata("platform/roles/r1", "application/json"), blob("platform/roles/r1", "{}")));
         byte[] duplicateMetadata = localRecordsOnly(zip(metadata("platform/roles/r1", "application/json")));
         assertRejected(concat(mainPart, duplicateMetadata));
-    }
-
-    @Test
-    void testOversizedMetadataIsRejected() {
-        String bigMetadata = "{\"contentType\":\"text/plain\",\"userMetadata\":{\"k\":\"" + "x".repeat(70_000) + "\"}}";
-        byte[] archive = zip(manifest(CORE_VERSION),
-                new RawEntry(".dial-system-export/metadata/public/files/x", bigMetadata.getBytes(StandardCharsets.UTF_8)),
-                blob("public/files/x", "a"));
-        assertRejected(archive);
     }
 
     @Test

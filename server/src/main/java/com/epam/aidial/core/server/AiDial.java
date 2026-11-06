@@ -53,6 +53,7 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.service.AdminSystemImportService;
+import com.epam.aidial.core.server.service.AdminSystemImportValidationService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -433,11 +434,13 @@ public class AiDial {
             AdminSystemImportService.Settings adminSystemImportSettings = Json.decodeValue(
                     settings("adminSystemImport").toBuffer(), AdminSystemImportService.Settings.class);
             adminSystemImportSettings.validate();
+            AdminSystemImportValidationService adminSystemImportValidationService =
+                    new AdminSystemImportValidationService(CoreVersion.parse(version()));
             AdminSystemImportService adminSystemImportService = new AdminSystemImportService(storage, lockService, resourceService,
-                    mergedConfigStore, command -> taskExecutor.submit(() -> {
+                    mergedConfigStore, adminSystemImportValidationService, command -> taskExecutor.submit(() -> {
                         command.run();
                         return null;
-                    }), adminSystemImportSettings, clock, CoreVersion.parse(version()), generator);
+                    }), adminSystemImportSettings, clock, generator);
             TempFolderCleaner systemImportStagingCleaner = new TempFolderCleaner(
                     storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24));
             long systemImportStagingCleanupPeriodMs = Duration.ofHours(24).toMillis();
