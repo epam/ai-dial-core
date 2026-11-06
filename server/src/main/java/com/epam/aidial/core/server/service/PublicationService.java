@@ -853,6 +853,7 @@ public class PublicationService {
                     app.setReference(ProxyUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
+                applicationService.moveAdminConsent(from, to);
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,

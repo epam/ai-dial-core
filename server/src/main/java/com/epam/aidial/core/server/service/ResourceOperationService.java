@@ -132,6 +132,7 @@ public class ResourceOperationService {
         }
 
         if (destination.getType() == APPLICATION) {
+            applicationService.moveAdminConsent(source, destination);
             applicationService.deleteApplication(source, EtagHeader.ANY);
         } else if (destination.getType() == TOOL_SET) {
             toolSetService.deleteToolset(context, source, EtagHeader.ANY);

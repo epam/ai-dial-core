@@ -219,7 +219,7 @@ public class ConsentService {
         return deployment instanceof Application application ? Consent.toResourceEntries(application.getResourceDependencies()) : List.of();
     }
 
-    /** One record per application in the public bucket; a moved app gets a new key and is unconsented. */
+    /** One record per application in the public bucket. */
     public static ResourceDescriptor adminConsentDescriptor(String applicationName) {
         return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.ADMIN_CONSENT,
                 ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, applicationName);

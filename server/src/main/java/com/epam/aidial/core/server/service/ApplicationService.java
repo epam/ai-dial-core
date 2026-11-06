@@ -395,16 +395,21 @@ public class ApplicationService {
                 }
             }
         }
-        deleteAdminConsent(resource, application);
+        resourceService.deleteResource(adminConsentOf(resource), EtagHeader.ANY);
+    }
+
+    /** The approval follows a moved application: it binds the declared resources, which a move does not change. */
+    public void moveAdminConsent(ResourceDescriptor source, ResourceDescriptor destination) {
+        String grant = resourceService.getResource(adminConsentOf(source));
+        if (grant != null) {
+            resourceService.putResource(adminConsentOf(destination), grant, EtagHeader.ANY);
+        }
     }
 
     /** The record is keyed by the name requests resolve to: a platform application's config name, any other's url. */
-    private void deleteAdminConsent(ResourceDescriptor resource, Application application) {
-        String deploymentName = ResourceDescriptor.PLATFORM_BUCKET.equals(resource.getBucketName())
-                ? MergedConfigStore.resolveMapKeyFor(resource) : application.getName();
-        if (deploymentName != null) {
-            resourceService.deleteResource(ConsentService.adminConsentDescriptor(deploymentName), EtagHeader.ANY);
-        }
+    private static ResourceDescriptor adminConsentOf(ResourceDescriptor application) {
+        return ConsentService.adminConsentDescriptor(ResourceDescriptor.PLATFORM_BUCKET.equals(application.getBucketName())
+                ? MergedConfigStore.resolveMapKeyFor(application) : application.getUrl());
     }
 
     private ResourceDescriptor getAppFileBucket(ResourceDescriptor app) {

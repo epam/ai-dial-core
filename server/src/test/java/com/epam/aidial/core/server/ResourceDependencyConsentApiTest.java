@@ -206,6 +206,35 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testMovedApplicationKeepsItsApprovalAndCopyStartsUnapproved() {
+        verify(send(HttpMethod.PUT, "/v1/applications/public/move-src-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/applications/public/move-src-app", null,
+                reviewedResources("applications/public/move-src-app"), "authorization", "admin"), 200);
+
+        verify(send(HttpMethod.POST, "/v1/ops/resource/move", null, """
+                {"sourceUrl": "applications/public/move-src-app", "destinationUrl": "applications/public/move-dst-app"}
+                """, "authorization", "admin"), 200);
+        assertConsented("applications/public/move-dst-app", true);
+
+        // nothing is left behind at the old path
+        verify(send(HttpMethod.PUT, "/v1/applications/public/move-src-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        assertConsented("applications/public/move-src-app", false);
+
+        verify(send(HttpMethod.POST, "/v1/ops/resource/copy", null, """
+                {"sourceUrl": "applications/public/move-dst-app", "destinationUrl": "applications/public/copy-app"}
+                """, "authorization", "admin"), 200);
+        assertConsented("applications/public/copy-app", false);
+    }
+
+    private void assertConsented(String applicationId, boolean consented) {
+        Response status = send(HttpMethod.GET, "/v1/admin-consent/" + applicationId, null, "", "authorization", "admin");
+        verify(status, 200);
+        assertEquals(consented, new JsonObject(status.body()).getBoolean("consented"), () -> "Body: " + status.body());
+    }
+
+    @Test
     void testDeletingPlatformApplicationDeletesItsAdminConsent() {
         // a platform application is served from the config under its short name, not its url
         String reviewed = """
@@ -351,7 +380,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         }
     }
 
-    /** A user's application is approved after it is published; in the user's bucket it is out of an administrator's reach. */
+    /** A user's application is approved when it is published; in the user's bucket it is out of an administrator's reach. */
     public static class UserAuthoredApplications extends ResourceBaseTest {
 
         @Override
@@ -388,12 +417,14 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                     null, "", "authorization", "admin");
             verify(reviewCopy, 200);
             assertTrue(reviewCopy.body().contains("prompts/{current-user}/by-app/"), () -> "Body: " + reviewCopy.body());
+            // approved on the review copy; the approval moves with the application when the publication is approved
+            String reviewUrl = created.getJsonArray("resources").getJsonObject(0).getString("reviewUrl");
+            verify(send(HttpMethod.POST, "/v1/admin-consent/" + reviewUrl, null, reviewedResources(reviewUrl),
+                    "authorization", "admin"), 200);
             verify(send(HttpMethod.POST, "/v1/ops/publication/approve", null,
                     new JsonObject().put("url", created.getString("url")).encode(), "authorization", "admin"), 200);
 
             String publishedUrl = "applications/public/folder/user-dep-app";
-            verify(send(HttpMethod.POST, "/v1/admin-consent/" + publishedUrl, null, reviewedResources(publishedUrl),
-                    "authorization", "admin"), 200);
 
             String callerBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "user").body()).getString("bucket");
             AtomicReference<Integer> writeStatus = new AtomicReference<>();

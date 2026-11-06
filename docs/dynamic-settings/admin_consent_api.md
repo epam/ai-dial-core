@@ -16,7 +16,7 @@ All three are available to DIAL administrators only, as defined by `access.admin
 
 `{deployment_id}` is the application's deployment id, the same as in `/v1/consent/{deployment_id}`: the name of an application from the config file, or `applications/{bucket}/{path}` for an application created through the API. An id that does not name an application is answered with `404`.
 
-An administrator has no access to a user's bucket, so an application there cannot be approved (`403`). A user's application is approved after it is published: the administrator reviews the publication, approves it, then approves the published application's list.
+An administrator has no access to a user's bucket, so an application there cannot be approved (`403`). A user's application is approved when it is published: the administrator reviews the publication, approves the review copy's list and then the publication, and the approval moves with the application; or approves the published application's list afterwards.
 
 ---
 
@@ -136,7 +136,7 @@ Withdraws the approval. Calls started after the withdrawal no longer receive the
 
 * Any change of the application's `resource_dependencies` — an added, removed or reordered entry, or changed rights — requires a new approval. Until then the status is `stale` and the application receives nothing.
 * Deleting an application deletes its approval. An application created again at the same path starts unapproved.
-* Moving an application gives it a new deployment id; it starts unapproved at the new location. So does publishing: an approval given to a publication's review copy does not carry over to the published application.
+* Moving an application, publishing it included, takes its approval to the new deployment id. A copy is another application and starts unapproved.
 * An application removed from a config file keeps its approval until it is withdrawn.
 
 ---
