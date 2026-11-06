@@ -23,7 +23,7 @@ class OrgUnitSubjectsTest {
     void testOnlyPlainClaimSourcesMatch() {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode().put("email", "bob@acme.com");
         ProxyContext bob = mock(ProxyContext.class);
-        when(bob.getExtractedClaims()).thenReturn(new ExtractedClaims("bob", List.of(), "bob", claims, null, "Bob"));
+        when(bob.getExtractedClaims()).thenReturn(new ExtractedClaims("bob", List.of(), "bob", claims, null, "Bob", "bob@acme.com"));
         when(bob.getApiKeyData()).thenReturn(new ApiKeyData());
         when(bob.getUserRoles()).thenReturn(List.of());
 
