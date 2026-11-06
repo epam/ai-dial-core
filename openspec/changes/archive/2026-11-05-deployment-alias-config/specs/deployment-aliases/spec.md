@@ -101,6 +101,24 @@ through `/v1/deployments/<alias>/mcp` when the target has `mcp`. An alias of typ
 - **WHEN** an alias with `presentAs: toolset` targets an application with `mcp`, and a caller posts to `/v1/toolset/<alias>/mcp`
 - **THEN** the request reaches the application's MCP endpoint, and a chat completion to the alias answers as one to the toolset does
 
+### Requirement: Features, stored responses and consent through an alias
+For an alias of type `model` or `application`, Core SHALL serve `tokenize`, `truncate_prompt`, `configuration` and
+`rate` by the target in a target pass, and SHALL serve `GET`, `DELETE` and `cancel` of a response stored through the
+alias by the alias. Consent to the alias SHALL cover its target: the review SHALL list both, and the accepted consent
+SHALL let the caller call the alias without rights on the target.
+
+#### Scenario: Stored response
+- **WHEN** a caller stores a response through `multi-alias` and reads `/openai/v1/responses/<id>`
+- **THEN** the answer is `200` with that id
+
+#### Scenario: Tokenize and rate
+- **WHEN** a caller posts to `/v1/deployments/<alias>/tokenize` and `/v1/<alias>/rate` of an alias whose target has these endpoints
+- **THEN** both answer `200` and the target's endpoints receive the requests
+
+#### Scenario: Consent
+- **WHEN** the target of `consent-alias` requires consent, and the caller accepts the consent `GET /v1/consent/consent-alias` reviews
+- **THEN** the review lists the alias and the target as requiring consent, a call before accepting answers `403`, and a call after answers `200`
+
 ### Requirement: Alias calls are recorded as a call chain
 Core SHALL handle an alias call as two passes: the alias pass, with `execution_path` `[alias]`, and the target pass,
 with `execution_path` `[alias, target]`. Each pass SHALL have its own token-stats span and analytics row; the alias

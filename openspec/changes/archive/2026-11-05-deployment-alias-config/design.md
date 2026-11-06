@@ -58,8 +58,11 @@ per-call pass deployment built by `AliasPasses.build`:
 
 Both implement `AliasPass` (`alias`, `targetName`, `isResourceTarget`). Five call sites move from `findDeployment` to
 `findCallableDeployment`: `DeploymentPostController`, `ChatCompletionsController`, `ResponsesController`,
-`MessagesBaseController` and `McpProxyController`. Every other `findDeployment` caller (listing by id, consent,
-limits, credentials) keeps getting the `Alias`. `findDeployment` has no `aliases/...` resource case: an alias is
+`MessagesBaseController` and `McpProxyController`; after the review also `DeploymentFeatureController` and
+`ResponseItemController`. The pass's feature endpoints point to Core's own for the target (rate always, the others
+when the target has them). Consent review (`ConsentService.buildConsent`) gets the `Alias` and adds its target,
+resolved through the alias, under the name the target pass checks. Every other `findDeployment` caller (listing by
+id, limits, credentials) keeps getting the `Alias`. `findDeployment` has no `aliases/...` resource case: an alias is
 found only by its short name in `Config.aliases`, so a path never invokes one.
 
 A resolved application target is completed by its schema as `DeploymentController.resolveLocalApplication` does:
@@ -169,4 +172,4 @@ None. A config without `aliases` behaves as before.
 
 ## Open Questions
 
-Carried over from the design document: rewriting `model` in answers; consent across the alias hop.
+Carried over from the design document: rewriting `model` in answers.

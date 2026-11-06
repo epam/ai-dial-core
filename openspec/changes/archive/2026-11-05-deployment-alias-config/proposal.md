@@ -48,10 +48,9 @@ the right to call that target. Aliases are managed by admins only.
 - Follow-up change: `deployment-alias-public` (admin-managed aliases stored in `aliases/public/<name>`) depends on
   this change.
 - Out of scope: aliases stored as resources (the follow-up); private, shared or published aliases, which the design
-  document leaves out; the admin config resource API for aliases and its validation on `/v1/admin/apply`; deployment
-  feature endpoints (`tokenize`, `truncate_prompt`, `configuration`, `rate`, `/v1/toolset/{id}/tools`) through an
-  alias; Responses API item operations (`GET`/`DELETE`/`cancel` by id) through an alias; consent for a target that
-  requires it; rewriting `model` in answers; an alias to a resource in the listings answered from memory
+  document leaves out; the admin config resource API for aliases and its validation on `/v1/admin/apply`;
+  `/v1/toolset/{id}/tools` through an alias (feature endpoints, Responses API item operations and consent were added
+  after review); rewriting `model` in answers; an alias to a resource in the listings answered from memory
   (`/openai/models`, `/openai/deployments`, `/anthropic/v1/models`, the model part of `/v1/deployments`).
 - Code: `config` (new `Alias`, `AliasTarget`, `AliasPresentation`, `Config.aliases`), `storage`
   (`ResourceTypes.ALIAS`), `server` (config post-processing and merge, `DeploymentService`, `AliasService`, the

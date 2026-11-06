@@ -56,3 +56,14 @@ report, `/v1/admin/config/file/aliases`. Rebased on `development` 6dae044af.
 - `/v1/admin/health/config` reads resource targets on the task executor (`AliasService.checkTarget`); the cheap
   check stays for config load and listings.
 - Kept: one analytics row per pass. The alias's row is what shows which alias a call came through.
+- Stored responses: `ResponseItemController` resolves the mapping's deployment with `findCallableDeployment`, so
+  `GET`, `DELETE`, `cancel` and background polling of a response stored through an alias go through the alias pass
+  to the response its target pass stored (503 before).
+- Feature endpoints: `DeploymentFeatureController` uses `findCallableDeployment`, and the pass's `rate`, `tokenize`,
+  `truncate_prompt` and `configuration` endpoints point to Core's own for the target (403 for tokenize/truncate, a
+  dropped rating before).
+- Consent: `ConsentService.buildConsent` adds the alias's target, resolved through the alias, with the target's
+  requirement for both entries, so the accepted consent passes both passes' checks (the alias could not be called).
+- Checks: `AliasApiTest` (stored response, tokenize and rate, consent), `ResponseItemControllerTest`,
+  `ResponsesApiTest`, `FeaturesApiTest`, `ConsentApiTest` pass. `ConsentServiceTest` has 4 failures on Windows that
+  the base commit has too (CRLF in the expected JSON).

@@ -119,15 +119,27 @@ public class AliasService {
      * alias, and 403 when the caller may not use the alias.
      */
     public Deployment toPass(ProxyContext context, Alias alias) {
-        AliasPresentation presentation = alias.getEffectivePresentation();
+        Target target = resolveUsableTarget(context, alias);
+        return AliasPasses.build(alias, alias.getEffectivePresentation(), target.deployment(), target.name(), target.isResource(), localBaseUrl);
+    }
+
+    /**
+     * The deployment that serves {@code alias}, as its target pass finds it, under the name that pass runs by. Answers
+     * like {@link #toPass}.
+     */
+    public Deployment findTarget(ProxyContext context, Alias alias) {
+        return resolveUsableTarget(context, alias).deployment();
+    }
+
+    private Target resolveUsableTarget(ProxyContext context, Alias alias) {
         Target target = resolveTarget(context, alias, false);
-        if (target == null || !AliasTargets.fits(presentation, target.deployment())) {
+        if (target == null || !AliasTargets.fits(alias.getEffectivePresentation(), target.deployment())) {
             throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "The target of alias %s is not available".formatted(alias.getName()));
         }
         if (!hasAccess(context, alias, target)) {
             throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden deployment: " + alias.getName());
         }
-        return AliasPasses.build(alias, presentation, target.deployment(), target.name(), target.isResource(), localBaseUrl);
+        return target;
     }
 
     /**

@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.DeploymentInterface;
+import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
@@ -58,7 +59,7 @@ public class AliasPasses {
         // the target is named in the body of a Responses or Messages request, which EnhanceDeploymentRequestFn sets to
         // it; a body names a resource by its decoded url, the form the router hands to the deployment lookup
         pass.setOverrideName(resourceTarget ? UrlUtil.decodePath(targetName) : targetName);
-        pass.setFeatures(target.getFeatures());
+        pass.setFeatures(passFeatures(target.getFeatures(), base, targetSegment));
         pass.setInputAttachmentTypes(target.getInputAttachmentTypes());
         pass.setMaxInputAttachments(target.getMaxInputAttachments());
         Map<String, DeploymentInterface> interfaces = new LinkedHashMap<>();
@@ -81,6 +82,27 @@ public class AliasPasses {
             pass.setMcp(mcp);
         }
         return pass;
+    }
+
+    /**
+     * The target's features, with the endpoints of the deployment feature requests (rate, tokenize, truncate prompt,
+     * configuration) moved to Core's own for the target, so that these requests run as a target pass too. Rate always
+     * goes there: a target without a rate endpoint still records the rating. Never changes {@code target}.
+     */
+    private static Features passFeatures(Features target, String base, String targetSegment) {
+        Features features = Features.merge(new Features(), target);
+        String deployment = base + "/v1/deployments/" + targetSegment;
+        features.setRateEndpoint(base + "/v1/" + targetSegment + "/rate");
+        if (features.getTokenizeEndpoint() != null) {
+            features.setTokenizeEndpoint(deployment + "/tokenize");
+        }
+        if (features.getTruncatePromptEndpoint() != null) {
+            features.setTruncatePromptEndpoint(deployment + "/truncate_prompt");
+        }
+        if (features.getConfigurationEndpoint() != null) {
+            features.setConfigurationEndpoint(deployment + "/configuration");
+        }
+        return features;
     }
 
     private static Map<String, String> overridePaths(InterfaceType type, String targetSegment) {

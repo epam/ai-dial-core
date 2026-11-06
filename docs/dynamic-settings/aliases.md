@@ -121,8 +121,20 @@ caller's sign-in statuses, so that a client knows to sign in.
 
 An application shown as a toolset has no toolset sign-in; its external services sign in on the application.
 
-Not served through an alias yet: `tokenize`, `truncate_prompt`, `configuration`, `rate`, `/v1/toolset/<alias>/tools`,
-Responses API operations on a stored response (`GET`, `DELETE`, `cancel`), and targets that require consent.
+## Features, stored responses and consent
+
+`tokenize`, `truncate_prompt`, `configuration` and `rate` of an alias of type `model` or `application` are served by
+the target in a second pass, as calls are. A rating reaches the target's rate endpoint, or, when it has none, is
+recorded under the target as for a direct rating.
+
+A Responses API response stored through an alias is read, cancelled and deleted through the alias
+(`/openai/v1/responses/<id>`, `.../cancel`), by the callers who may use the alias.
+
+When the target requires consent (`features.consentRequired`), so does the alias. `GET /v1/consent/<alias>` lists the
+alias and its target, and the consent accepted with `POST /v1/consent/<alias>` covers both passes of the call; the
+caller needs no rights on the target.
+
+Not served through an alias yet: `/v1/toolset/<alias>/tools`.
 
 ## Listings
 

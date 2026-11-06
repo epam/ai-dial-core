@@ -34,6 +34,21 @@
         "openaiResponses": {},
         "anthropicMessages": {}
       }
+    },
+    "featured-model": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/featured/chat/completions",
+      "userRoles": ["power-user"],
+      "features": {
+        "tokenizeEndpoint": "http://localhost:4848/featured/tokenize",
+        "rateEndpoint": "http://localhost:4848/featured/rate"
+      }
+    },
+    "consent-model": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/consent/chat/completions",
+      "userRoles": ["power-user"],
+      "features": {"consentRequired": true}
     }
   },
   "applications": {
@@ -127,6 +142,16 @@
     "secured-tools": {
       "userRoles": ["default-user"],
       "target": {"path": "toolsets/secured-search"}
+    },
+    "featured-alias": {
+      "presentAs": "model",
+      "userRoles": ["default-user"],
+      "target": {"path": "models/featured-model"}
+    },
+    "consent-alias": {
+      "presentAs": "model",
+      "userRoles": ["default-user"],
+      "target": {"path": "models/consent-model"}
     }
   },
   "roles": {

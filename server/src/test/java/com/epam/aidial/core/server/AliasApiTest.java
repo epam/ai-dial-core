@@ -209,6 +209,74 @@ class AliasApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void storedResponseIsReadBackThroughTheAlias() {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/v1/responses", 200, RESPONSES_BODY, "Content-Type", "application/json");
+            server.map(HttpMethod.GET, "/openai/v1/responses/resp_1", 200, RESPONSES_BODY, "Content-Type", "application/json");
+
+            Response created = send(HttpMethod.POST, "/openai/v1/responses", null,
+                    "{\"model\":\"multi-alias\",\"input\":\"hello\"}",
+                    "api-key", "default-key", "Content-Type", "application/json");
+            assertEquals(200, created.status(), created.body());
+            String id = new JsonObject(created.body()).getString("id");
+
+            Response read = send(HttpMethod.GET, "/openai/v1/responses/" + id, null, null, "api-key", "default-key");
+            assertEquals(200, read.status(), read.body());
+            assertEquals(id, new JsonObject(read.body()).getString("id"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void featureRequestsReachTheTargetThroughTheAlias() {
+        AtomicReference<String> rating = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/featured/tokenize", 200, "{\"outputs\":[]}", "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/featured/rate", request -> {
+                rating.set(request.getBody().readUtf8());
+                return TestWebServer.createResponse(200, "", "Content-Type", "application/json");
+            });
+
+            Response tokenize = send(HttpMethod.POST, "/v1/deployments/featured-alias/tokenize", null, "{\"inputs\":[]}",
+                    "api-key", "default-key", "Content-Type", "application/json");
+            assertEquals(200, tokenize.status(), tokenize.body());
+
+            Response rate = send(HttpMethod.POST, "/v1/featured-alias/rate", null, "{\"responseId\":\"r1\",\"rate\":true}",
+                    "api-key", "default-key", "Content-Type", "application/json");
+            assertEquals(200, rate.status(), rate.body());
+        }
+        assertTrue(rating.get() != null && rating.get().contains("r1"), String.valueOf(rating.get()));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void consentToTheAliasCoversItsTarget() {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/consent/chat/completions", 200, CHAT_RESPONSE,
+                    "Content-Type", "application/json");
+
+            assertEquals(403, chat("consent-alias", "default-key").status());
+
+            Response review = send(HttpMethod.GET, "/v1/consent/consent-alias", null, null, "api-key", "default-key");
+            assertEquals(200, review.status(), review.body());
+            JsonObject consent = new JsonObject(review.body());
+            assertFalse(consent.getBoolean("accepted"));
+            JsonObject deployments = consent.getJsonObject("consent").getJsonObject("deployments");
+            assertTrue(deployments.getJsonObject("consent-alias").getBoolean("consentRequired"), review.body());
+            assertTrue(deployments.getJsonObject("consent-model").getBoolean("consentRequired"), review.body());
+
+            consent.remove("accepted");
+            Response accept = send(HttpMethod.POST, "/v1/consent/consent-alias", null, consent.encode(),
+                    "api-key", "default-key", "Content-Type", "application/json");
+            assertEquals(200, accept.status(), accept.body());
+
+            Response call = chat("consent-alias", "default-key");
+            assertEquals(200, call.status(), call.body());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void toolsetAliasReachesTheMcpApplication() {
         AtomicReference<String> mcpBody = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848)) {
