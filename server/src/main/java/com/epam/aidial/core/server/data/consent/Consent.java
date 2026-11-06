@@ -17,12 +17,7 @@ public class Consent {
 
     private Map<String, Deployment> deployments = new HashMap<>();
 
-    /**
-     * The resource half of the consent document: one entry per declared resource dependency
-     * (§6.5). Present only for applications that declare dependencies — the field stays null
-     * otherwise, so consent documents of non-declaring apps are byte-identical to before.
-     * Lombok {@code @Data} folds it into the content-binding compare automatically.
-     */
+    /** One entry per declared resource dependency; null for an application that declares none, so its document is unchanged. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private List<ResourceEntry> resources;
 

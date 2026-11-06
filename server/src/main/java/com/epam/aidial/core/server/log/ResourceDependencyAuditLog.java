@@ -50,10 +50,8 @@ public final class ResourceDependencyAuditLog {
     }
 
     /**
-     * One event per run listing declared targets that did not resolve — the initiator
-     * cannot reach them with the declared rights, the declaration is not admin-consented, or
-     * there is no per-request key to deliver grants into (MCP app with forwardPerRequestKey=false).
-     * No grant, no failure (unless a required record failed — see {@link #runtimeFail}).
+     * One event per run listing declared targets that did not resolve: the initiator cannot reach them with the declared
+     * rights, the declaration is not admin-consented, or there is no per-request key to deliver grants into.
      */
     public static void denial(ProxyContext context, String applicationId, List<Consent.ResourceEntry> unresolved) {
         if (unresolved.isEmpty()) {

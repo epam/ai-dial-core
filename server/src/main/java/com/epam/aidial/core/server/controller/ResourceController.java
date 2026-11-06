@@ -666,8 +666,6 @@ public class ResourceController extends AccessControlBaseController {
             validateSchemaBasedApplication(application);
             resourceDependencyValidator.validateShape(application);
             if (!accessService.hasExplicitAdminAccess(context)) {
-                // Governance ceiling, keyed on the author rather than the destination bucket: an admin
-                // prototyping in their own bucket authors an admin app, not a user-authored one.
                 resourceDependencyValidator.validateUserAuthored(application);
             }
             if (!application.getInterceptors().isEmpty()) {

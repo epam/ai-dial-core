@@ -50,8 +50,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.POST, "/v1/admin-consent/" + DECLARING_APP, null, reviewedResources(DECLARING_APP),
                 "authorization", "admin"), 200);
 
-        // The consent document now carries the resource half (§6.5), for a declaring app with no
-        // consentRequired flag anywhere — consent is never author-controlled (§6.1).
+        // the consent document carries the declared resources, though no deployment sets consentRequired
         Response consent = send(HttpMethod.GET, "/v1/consent/" + DECLARING_APP, null, "", "authorization", "admin");
         verify(consent, 200);
         assertTrue(consent.body().contains("skills/{current-user}/"), () -> "Body: " + consent.body());

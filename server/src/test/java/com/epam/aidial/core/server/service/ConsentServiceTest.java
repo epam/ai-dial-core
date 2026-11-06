@@ -649,7 +649,7 @@ public class ConsentServiceTest {
 
         ReviewConsentResponse response = service.buildConsent(context, "A");
 
-        // No deployment sets consentRequired, yet the declaration alone keeps the app off auto-accept (§6.1).
+        // No deployment sets consentRequired, yet the declaration alone keeps the app off auto-accept.
         verifyJson("""
                 {
                   "accepted" : false,

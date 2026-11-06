@@ -25,11 +25,8 @@ import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
 
 /**
- * Write-time validation of the {@code resourceDependencies} declaration section. This is the
- * pointer rule, not an access decision: creating a dependency requires no permission on the
- * target — whether the originating user can reach the target is a runtime question, verified
- * fresh per request at resolution time. Only the shape of the ask and the authoring governance
- * ceiling are checked here.
+ * Write-time rules for the {@code resourceDependencies} section: its shape, and whether a user-authored application may
+ * declare one. Declaring needs no permission on the target; the user's reach is checked per request.
  */
 @RequiredArgsConstructor
 public class ResourceDependencyValidator {
@@ -54,7 +51,6 @@ public class ResourceDependencyValidator {
 
     private final boolean allowUserResourceDependencies;
 
-    /** Throws on the first shape violation. Applied on every writer surface regardless of author. */
     public void validateShape(Application application) {
         String error = findShapeError(application);
         if (error != null) {
@@ -80,7 +76,6 @@ public class ResourceDependencyValidator {
         }
     }
 
-    /** Non-throwing form of {@link #validateShape}: the same rules, usable from any write surface. */
     public static List<String> shapeIssues(Application application) {
         List<String> issues = new ArrayList<>();
         List<ResourceDependency> section = application.getResourceDependencies();

@@ -394,8 +394,6 @@ public class AiDial {
             WellKnownResourceMetadataService wellKnownResourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
-            // Static settings, not hot-reloaded — restarting Core is required to change it. Default off:
-            // user-authored apps may not declare resource dependencies until an operator opts in.
             ResourceDependencyValidator resourceDependencyValidator = new ResourceDependencyValidator(
                     settings("config").getBoolean("allowUserResourceDependencies", false));
 

@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Every branch of the write-time rules: the shape table (400s) and the user-authored
- * governance ceiling (403s). These are pointer rules — no target permission is involved.
+ * governance ceiling (403s).
  */
 public class ResourceDependencyValidatorTest {
 
@@ -339,7 +339,7 @@ public class ResourceDependencyValidatorTest {
         assertDoesNotThrow(() -> validator.validateUserAuthored(new Application().setResourceDependencies(List.of())));
     }
 
-    // ---- the non-throwing form used by the lazy validator ----
+    // ---- shapeIssues ----
 
     @Test
     void shapeIssuesListsAllProblemsWithoutThrowing() {

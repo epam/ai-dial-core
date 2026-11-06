@@ -273,7 +273,7 @@ public class AccessService {
     }
 
     /**
-     * Permissions the request initiator holds on {@code resources} on their own standing; used by resource-dependency resolution.
+     * Permissions the request initiator holds on {@code resources} on their own standing.
      */
     public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupInitiatorPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context) {

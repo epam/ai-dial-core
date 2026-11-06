@@ -75,8 +75,7 @@ public class ConsentService {
                 }
             }
         }
-        // Consent is required for every declared dependency regardless of the author-controlled
-        // features.consentRequired flag (§6.1), so a declaring app is never auto-accepted.
+        // a declaring app is never auto-accepted, whatever its author set in features.consentRequired
         List<Consent.ResourceEntry> resources = resourceEntriesOf(rootDeployment);
         if (!resources.isEmpty()) {
             newConsent.setResources(resources);
@@ -134,7 +133,7 @@ public class ConsentService {
 
     /**
      * Approves the reviewed declaration for every user; 409 when it no longer equals the current one. The record is keyed
-     * by the resolved application's name, the identity the resolver reads, so a percent-encoded name cannot land on another app's record.
+     * by the resolved application's name, as the resolver reads it, never by the raw request id.
      */
     public ConsentGrant grantAdminConsent(ProxyContext context, String deploymentId, List<Consent.ResourceEntry> reviewed) {
         Application application = requireDeclaringApplication(context, deploymentId);

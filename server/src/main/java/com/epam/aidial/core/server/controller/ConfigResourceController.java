@@ -1475,8 +1475,6 @@ public class ConfigResourceController implements Controller {
             if (!requestNode.isObject()) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
             }
-            // Shape validation is pure CPU over the decoded body — run it before the bucket locks,
-            // not inside the cluster-wide critical section below.
             Application application = type == ResourceTypes.APPLICATION
                     ? ConfigEntityCodec.treeToEntity(requestNode, Application.class) : null;
             if (application != null) {
