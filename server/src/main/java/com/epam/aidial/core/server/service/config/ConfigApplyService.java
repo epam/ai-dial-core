@@ -327,12 +327,9 @@ public class ConfigApplyService {
 
     private EntityResult applyApplication(Application application, String id, ParsedName parsed,
                                           Config scratch, List<EntityChange> pending) {
-        // Same shape rules as every other application write surface; always admin context here, so the
-        // user-authored governance ceiling does not apply.
-        List<String> dependencyIssues = ResourceDependencyValidator.shapeIssues(application);
-        if (!dependencyIssues.isEmpty()) {
-            return new EntityResult(id, AdminApplyStatus.FAILED,
-                    "Invalid resource dependencies: " + String.join("; ", dependencyIssues));
+        String dependencyError = ResourceDependencyValidator.findShapeError(application);
+        if (dependencyError != null) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, dependencyError);
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.APPLICATION, parsed.bucket(), parsed.location(), parsed.name());

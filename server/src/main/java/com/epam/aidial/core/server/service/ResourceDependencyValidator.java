@@ -56,10 +56,16 @@ public class ResourceDependencyValidator {
 
     /** Throws on the first shape violation. Applied on every writer surface regardless of author. */
     public void validateShape(Application application) {
-        List<String> issues = shapeIssues(application);
-        if (!issues.isEmpty()) {
-            throw new HttpException(BAD_REQUEST, "Invalid resource dependencies: " + String.join("; ", issues));
+        String error = findShapeError(application);
+        if (error != null) {
+            throw new HttpException(BAD_REQUEST, error);
         }
+    }
+
+    /** The shape violations as one message, or null when there are none. */
+    public static String findShapeError(Application application) {
+        List<String> issues = shapeIssues(application);
+        return issues.isEmpty() ? null : "Invalid resource dependencies: " + String.join("; ", issues);
     }
 
     /** User-authored apps may declare dependencies only while allowUserResourceDependencies is on; admin-authored writes are not gated here. */
