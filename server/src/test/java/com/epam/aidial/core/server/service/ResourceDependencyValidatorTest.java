@@ -53,6 +53,14 @@ public class ResourceDependencyValidatorTest {
     }
 
     @Test
+    void acceptsProjectTargets() {
+        ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
+
+        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("projects/{current-user}/"))));
+        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("projects/public/team-project/"))));
+    }
+
+    @Test
     void acceptsFileTargetWithoutTrailingSlash() {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
 

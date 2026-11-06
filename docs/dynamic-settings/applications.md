@@ -269,7 +269,7 @@ Supported configuration parameters:
 
 #### applications.<application_name>.resourceDependencies
 
-A list of DIAL resources outside the application — files, prompts, conversations, skills, other applications and toolsets, or folders of them — that the application may read or write on behalf of the user who calls it. In API requests and responses the field is named `resource_dependencies`.
+A list of DIAL resources outside the application — files, prompts, conversations, skills, projects, other applications and toolsets, or folders of them — that the application may read or write on behalf of the user who calls it. In API requests and responses the field is named `resource_dependencies`.
 
 An entry is a request, not a grant: it gives the application no access of its own. On every call DIAL Core checks each entry against the calling user's own access — their own bucket, resources shared with them, and public resources — and against an administrator's approval of the list. The entries that pass are added to the [per request API key](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/3.per-request-keys.md) the application receives for that call. An entry the user cannot access, or a list no administrator has approved, adds nothing. When the application calls another application, that application's own `resourceDependencies` are checked for the same user.
 
@@ -281,7 +281,7 @@ Each entry is an object with the following fields:
 
 * `kind`: Always `dial.resourceLink`.
 * `link_id`: The entry identifier, unique within the application.
-* `target.path`: The resource or folder: `<type>/{current-user}/<path>` for one in the bucket of whoever calls the application, or `<type>/<bucket>/<path>` for a fixed location. `<type>` is one of `applications`, `conversations`, `files`, `prompts`, `skills`, `toolsets`. A path ending with `/` is a folder and covers everything inside it.
+* `target.path`: The resource or folder: `<type>/{current-user}/<path>` for one in the bucket of whoever calls the application, or `<type>/<bucket>/<path>` for a fixed location. `<type>` is one of `applications`, `conversations`, `files`, `projects`, `prompts`, `skills`, `toolsets`. A path ending with `/` is a folder and covers everything inside it.
 * `access`: A non-empty list of `read` and `write`.
 * `required`: If `true`, a call fails with `403` when the entry cannot be granted. Default is `false`: the call goes on without the entry.
 

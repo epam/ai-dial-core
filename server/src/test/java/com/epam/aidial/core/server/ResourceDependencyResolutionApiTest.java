@@ -122,7 +122,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/chat/completions", request -> {
                 String perRequestKey = request.getHeader("Api-Key");
-                skillStatus.set(uploadSkill(userBucket + "/created-by-app", perRequestKey).status());
+                skillStatus.set(uploadComplex("skills/" + userBucket + "/created-by-app", perRequestKey, "SKILL.md", SKILL_MANIFEST).status());
                 promptStatus.set(send(HttpMethod.PUT, "/v1/prompts/%s/outside-scope".formatted(userBucket), null,
                         "{\"id\":\"p\",\"folderId\":\"f\",\"name\":\"p\",\"content\":\"c\"}", "api-key", perRequestKey).status());
                 return TestWebServer.createResponse(200,
@@ -139,6 +139,47 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
         assertEquals(200, skillStatus.get(), "the declared skills folder must be writable by the app's key");
         assertEquals(403, promptStatus.get(), "the user's other resources must stay off-limits");
         Response written = send(HttpMethod.GET, "/v2/skills/%s/created-by-app/files/SKILL.md".formatted(userBucket), null, "",
+                "authorization", "user");
+        assertEquals(200, written.status(), () -> "Body: " + written.body());
+    }
+
+    @Test
+    void testAppWritesProjectIntoUsersProjectsThroughItsKey() {
+        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "user");
+        String userBucket = new JsonObject(response.body()).getString("bucket");
+        String appUrl = "applications/public/dep-project-app";
+
+        verify(send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                  "endpoint": "http://localhost:4848/chat/completions",
+                  "display_name": "Project Builder",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_projects",
+                     "target": {"path": "projects/{current-user}/"}, "access": ["read", "write"], "required": true}
+                  ]
+                }
+                """, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, reviewedResources(appUrl),
+                "authorization", "admin"), 200);
+
+        AtomicReference<Integer> projectStatus = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                projectStatus.set(uploadComplex("projects/" + userBucket + "/built-by-app", request.getHeader("Api-Key"),
+                        "README.md", "# Built by the app").status());
+                return TestWebServer.createResponse(200,
+                        "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
+                        "Content-Type", "application/json");
+            });
+
+            Response completion = send(HttpMethod.POST, "/openai/deployments/%s/chat/completions".formatted(appUrl), null, """
+                    {"messages":[{"role":"user","content":"build me a project"}]}
+                    """, "authorization", "user", "Content-Type", "application/json");
+            assertEquals(200, completion.status(), () -> "Body: " + completion.body());
+        }
+
+        assertEquals(200, projectStatus.get(), "the declared projects folder must be writable by the app's key");
+        Response written = send(HttpMethod.GET, "/v2/projects/%s/built-by-app/files/README.md".formatted(userBucket), null, "",
                 "authorization", "user");
         assertEquals(200, written.status(), () -> "Body: " + written.body());
     }
@@ -625,14 +666,15 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                 "a grant already held by the calling app must not satisfy the called app's reach check over MCP");
     }
 
+    /** Writes a skill or a project, a complex resource uploaded as a file tree. */
     @SneakyThrows
-    private Response uploadSkill(String path, String apiKey) {
-        HttpUriRequest request = new HttpUriRequestBase(HttpMethod.PUT.name(), URI.create("http://127.0.0.1:" + serverPort + "/v2/skills/" + path));
+    private Response uploadComplex(String typeAndPath, String apiKey, String fileName, String content) {
+        HttpUriRequest request = new HttpUriRequestBase(HttpMethod.PUT.name(), URI.create("http://127.0.0.1:" + serverPort + "/v2/" + typeAndPath));
         request.setHeader("api-key", apiKey);
         MultipartEntityBuilder builder = MultipartEntityBuilder.create();
         builder.setMode(HttpMultipartMode.LEGACY);
         builder.setCharset(StandardCharsets.UTF_8);
-        builder.addBinaryBody("SKILL.md", SKILL_MANIFEST.getBytes(StandardCharsets.UTF_8), ContentType.DEFAULT_BINARY, "SKILL.md");
+        builder.addBinaryBody(fileName, content.getBytes(StandardCharsets.UTF_8), ContentType.DEFAULT_BINARY, fileName);
         request.setEntity(builder.build());
         return client.execute(request, ResourceBaseTest::toResponse);
     }

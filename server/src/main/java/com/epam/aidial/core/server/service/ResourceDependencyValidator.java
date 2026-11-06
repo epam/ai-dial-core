@@ -42,7 +42,7 @@ public class ResourceDependencyValidator {
 
     /** The resource types a declaration may address; internal engine types (credentials, keys, models, …) never are. */
     private static final Set<ResourceTypes> DECLARABLE_RESOURCE_TYPES = Set.of(ResourceTypes.FILE, ResourceTypes.PROMPT,
-            ResourceTypes.CONVERSATION, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL);
+            ResourceTypes.CONVERSATION, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL, ResourceTypes.PROJECT);
 
     private static final String DECLARABLE_TYPES_LIST = DECLARABLE_RESOURCE_TYPES.stream()
             .map(ResourceTypes::group).sorted().collect(Collectors.joining(", "));

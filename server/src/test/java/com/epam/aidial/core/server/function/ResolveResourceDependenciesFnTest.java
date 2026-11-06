@@ -178,6 +178,22 @@ public class ResolveResourceDependenciesFnTest {
     }
 
     @Test
+    void apply_resolvesProjectsAgainstTheInitiatorsBucket() {
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(dependency("projects/{current-user}/", false)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+        ResourceDescriptor userProjects = com.epam.aidial.core.server.util.ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.PROJECT, USER_BUCKET, "Users/user-sub/", "");
+        when(accessService.lookupInitiatorPermissions(eq(Set.of(userProjects)), eq(context)))
+                .thenReturn(Map.of(userProjects, Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
+
+        assertFalse(fn.apply(request));
+
+        assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
+                proxyApiKeyData.getPerRequestSharedResources().get(userProjects.getUrl()).permissions());
+    }
+
+    @Test
     void apply_failsChainedHopWhenRequiredDependencyDoesNotResolve() {
         // a required dependency that does not resolve on a chained hop fails the call, as at the root
         when(context.getDeployment()).thenReturn(application);
