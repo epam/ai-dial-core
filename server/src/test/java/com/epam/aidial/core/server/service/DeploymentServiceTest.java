@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -69,6 +70,7 @@ public class DeploymentServiceTest {
         Application application = new Application();
         application.setUserRoles(Set.of("power-user"));
         when(config.selectDeployment("id")).thenReturn(application);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
 
         assertThrows(PermissionDeniedException.class, () -> service.findDeployment(context, "id"));
     }

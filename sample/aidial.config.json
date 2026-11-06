@@ -262,6 +262,14 @@
             "role": "default"
         }
     },
+    "aliases": {
+        "assistant-v1": {
+            "displayName": "Assistant",
+            "description": "General-purpose assistant.",
+            "userRoles": ["role1"],
+            "target": {"path": "models/chat-gpt-35-turbo"}
+        }
+    },
     "rateLimitSchedule": {
         "timezone": "UTC",
         "weekStartDay": "Mon",

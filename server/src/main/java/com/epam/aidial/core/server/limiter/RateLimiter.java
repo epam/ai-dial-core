@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.data.UserLimitStats;
 import com.epam.aidial.core.server.limiter.budget.BudgetCounterStore;
 import com.epam.aidial.core.server.limiter.budget.BudgetEnforcer;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ModelCostCalculator;
@@ -762,7 +763,8 @@ public class RateLimiter {
     private Limit getLimitByUser(ProxyContext context, RoleBasedEntity roleBasedEntity) {
         String name = roleBasedEntity.getName();
         List<String> userRoles;
-        if (roleBasedEntity.getUserRoles() == null) {
+        // the target pass of an alias call: the caller reaches the target through the alias, not through its roles
+        if (roleBasedEntity.getUserRoles() == null || DeploymentService.isLent(context, roleBasedEntity)) {
             // find limits for all user roles
             userRoles = context.getUserRoles();
         } else {

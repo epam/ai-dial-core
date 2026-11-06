@@ -38,6 +38,8 @@ public class Config {
     private Map<String, Application> applications = Map.of();
     // key: deployment id (short name); shared namespace with models/applications/interceptors
     private Map<String, ToolSet> toolsets = Map.of();
+    // key: deployment id (short name); shared namespace with models/applications/toolsets/interceptors
+    private Map<String, Alias> aliases = Map.of();
     // key: raw API key secret (file-sourced) or canonical id "keys/<bucket>/<name>" (blob/API-sourced)
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private Map<String, Key> keys = new HashMap<>();
@@ -104,7 +106,12 @@ public class Config {
             return toolSet;
         }
 
-        return interceptors.get(deploymentId);
+        Interceptor interceptor = interceptors.get(deploymentId);
+        if (interceptor != null) {
+            return interceptor;
+        }
+
+        return aliases.get(deploymentId);
     }
 
     public boolean isDeploymentExists(String deploymentId) {
