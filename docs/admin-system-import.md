@@ -22,7 +22,8 @@ curl -fsS -X POST -H "Authorization: Bearer <admin token>" -H "Content-Type: app
    for, except `encryption_keys/`; write every staged blob at its real path with the content type, encoding,
    disposition, language, cache control and user metadata from its archive metadata; drop the cached and queued
    entries of those buckets in Redis (including a cached `encryption_keys/cek`), tell every pod to drop its in-memory
-   copy of their keys; then rebuild the merged config on the pod that ran the import.
+   copy of their keys; then rebuild the merged config on the pod that ran the import and tell every other pod to
+   rebuild theirs.
 3. The staging is deleted in the background after the response, whether the system import succeeded or was
    rejected.
 
@@ -86,8 +87,9 @@ all. There is no limit on the number of entries or on the archive size.
   replace that runs longer than that lets the locks lapse — it still finishes and Core logs a warning, but a second
   system import, a write, or an export running at that point can interleave with it. Do not start a second system
   import, or an export, before the first has answered.
-- **Other pods** keep serving their old in-memory config for up to `config.reload` (60 s by default) after a
-  system import; they rebuild on their own, under the bucket locks, once that fires.
+- **Other pods** are told to rebuild their merged config and do so as soon as the import releases the bucket locks.
+  A pod that missed the message, or a response with the warning "The other pods were not told to rebuild", rebuilds within
+  `config.reload` (60 s by default).
 - **Speed.** Each phase makes one blob storage call per blob, at most `adminSystemImport.parallelism` (4 by default) at
   a time; every delete of the wipe finishes before the first copy. A larger value shortens a large import, but above 5
   also raise the JVM option `-Dhttp.maxConnections` to at least that value: the JDK keeps at most 5 idle connections per

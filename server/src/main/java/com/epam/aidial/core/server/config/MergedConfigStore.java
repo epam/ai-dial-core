@@ -91,6 +91,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     private static final long REBUILD_DEBOUNCE_MS = 500;
     private static final long NO_PENDING_TIMER = -1L;
+    static final String REBUILD_EVENT_URL = "config/rebuild";
     private static final String REASON_PARSE = "parse_error";
     private static final String REASON_VALIDATION = "validation_error";
     public static final String REASON_DECRYPTION = "decryption_error";
@@ -298,6 +299,10 @@ public final class MergedConfigStore implements ConfigStore {
     private void onResourceEvent(ResourceEvent event) {
         String senderPodId = event.getSenderPodId();
         if (senderPodId != null && senderPodId.equals(thisPodId)) {
+            return;
+        }
+        if (REBUILD_EVENT_URL.equals(event.getUrl())) {
+            requestRebuild();
             return;
         }
         if (!isManagedEventUrl(event.getUrl())) {
@@ -620,6 +625,14 @@ public final class MergedConfigStore implements ConfigStore {
         if (previous != NO_PENDING_TIMER) {
             vertx.cancelTimer(previous);
         }
+    }
+
+    /**
+     * Tells every other pod to rebuild its merged config, for a change that writes many blobs without a per-entity event.
+     * Each pod rebuilds through {@link #requestRebuild()}, so it waits for the bucket locks the caller may still hold.
+     */
+    public void requestRebuildOnAllPods() {
+        resourceService.publishUpdate(REBUILD_EVENT_URL);
     }
 
     private void onRebuildTimerFire(long firingId) {

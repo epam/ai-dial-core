@@ -164,13 +164,7 @@ public class AdminSystemImportService {
         long invalidateEndedAt = clock.getAsLong();
 
         progress.setPhase(Progress.Phase.REBUILD);
-        try {
-            mergedConfigStore.rebuildNowUnderBucketLocks();
-        } catch (Throwable e) {
-            log.warn("Merged config rebuild failed after a system import; this pod's config may be stale until the next "
-                    + "periodic rebuild", e);
-            warnings.add("Merged config rebuild failed; this pod's config may be stale until the next periodic rebuild.");
-        }
+        rebuildMergedConfig(warnings);
         long endedAt = clock.getAsLong();
 
         long totalMillis = endedAt - startedAt;
@@ -185,6 +179,23 @@ public class AdminSystemImportService {
         }
 
         return new ImportResult(copied, deleted, warnings);
+    }
+
+    private void rebuildMergedConfig(List<String> warnings) {
+        try {
+            mergedConfigStore.rebuildNowUnderBucketLocks();
+        } catch (Throwable e) {
+            log.warn("Merged config rebuild failed after a system import; this pod's config may be stale until the next "
+                    + "periodic rebuild", e);
+            warnings.add("Merged config rebuild failed; this pod's config may be stale until the next periodic rebuild.");
+        }
+        try {
+            mergedConfigStore.requestRebuildOnAllPods();
+        } catch (Throwable e) {
+            log.warn("Failed to tell the other pods to rebuild the merged config after a system import; they rebuild on their "
+                    + "own schedule", e);
+            warnings.add("The other pods were not told to rebuild; they rebuild the merged config on their own schedule.");
+        }
     }
 
     private long wipeBuckets(List<String> bucketLocations, Progress progress) {

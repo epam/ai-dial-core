@@ -1027,8 +1027,16 @@ public class ResourceService implements AutoCloseable {
      * service, such as a direct blob copy.
      */
     public void publishUpdate(ResourceDescriptor descriptor) {
+        publishUpdate(descriptor.getUrl());
+    }
+
+    /**
+     * Same as {@link #publishUpdate(ResourceDescriptor)} for an event that is not about one resource, with a
+     * {@code url} that no resource has.
+     */
+    public void publishUpdate(String url) {
         ResourceEvent event = new ResourceEvent()
-                .setUrl(descriptor.getUrl())
+                .setUrl(url)
                 .setAction(ResourceEvent.Action.UPDATE)
                 .setTimestamp(System.currentTimeMillis())
                 .setSenderPodId(senderPodIdSupplier.get());

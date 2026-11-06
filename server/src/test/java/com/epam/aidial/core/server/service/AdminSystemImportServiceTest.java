@@ -711,6 +711,23 @@ class AdminSystemImportServiceTest {
     }
 
     @Test
+    void testOtherPodsAreToldToRebuild() {
+        runImport(archiveOf(CORE_VERSION, entry("public/models/m1", "{}")));
+
+        Mockito.verify(mergedConfigStore).requestRebuildOnAllPods();
+    }
+
+    @Test
+    void testFailureToTellOtherPodsIsReportedAsWarning() {
+        Mockito.doThrow(new RuntimeException("redis down")).when(mergedConfigStore).requestRebuildOnAllPods();
+
+        AdminSystemImportService.ImportResult result = runImport(archiveOf(CORE_VERSION, entry("public/models/m1", "{}")));
+
+        assertEquals(1, result.warnings().size());
+        assertTrue(storage.exists("public/models/m1"), "the blobs stay replaced");
+    }
+
+    @Test
     void testSlowReplaceIsNotAborted() {
         AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/m1", "{}"))));
         when(mergedConfigStore.rebuildNowUnderBucketLocks()).thenAnswer(invocation -> {
