@@ -16,6 +16,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit approvers deciding publication requests: "user" requests, "azp:approver1" approves Acme, "azp:other" approves nothing.
@@ -243,20 +244,23 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
     @Test
     void testApproverEditsWithinTheirUnits() {
         String url = request("public/Acme/", "Acme/a.txt", null);
-        String approverBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", APPROVER).body()).getString("bucket");
-        String ownSource = "files/" + approverBucket + "/b.txt";
-        assertEquals(200, upload(HttpMethod.PUT, "/v1/" + ownSource, null, "b", "authorization", APPROVER).status());
+        String removed = "files/" + userBucket + "/Acme-removed.txt";
+        assertEquals(200, upload(HttpMethod.PUT, "/v1/" + removed, null, "r", "authorization", "user").status());
+        JsonObject withTwo = new JsonObject(decide("get", url, "admin").body());
+        withTwo.getJsonArray("resources").add(new JsonObject().put("action", "ADD").put("sourceUrl", removed)
+                .put("targetUrl", "files/public/Acme/removed.txt"));
+        assertEquals(200, update(withTwo, "admin").status());
 
         JsonObject edited = new JsonObject(decide("get", url, APPROVER).body());
         edited.getJsonArray("resources").getJsonObject(0).put("targetUrl", "files/public/Acme/renamed.txt");
-        edited.getJsonArray("resources").add(new JsonObject().put("action", "ADD").put("sourceUrl", ownSource)
-                .put("targetUrl", "files/public/Acme/b.txt"));
+        edited.getJsonArray("resources").remove(1);
+        edited.put("displayAuthor", "Risk team");
         Response updated = update(edited, APPROVER);
         assertEquals(200, updated.status(), updated.body());
 
         assertEquals(200, decide("approve", url, APPROVER).status());
         assertEquals("a", send(HttpMethod.GET, "/v1/files/public/Acme/renamed.txt", null, null, "authorization", "user").body());
-        assertEquals("b", send(HttpMethod.GET, "/v1/files/public/Acme/b.txt", null, null, "authorization", "user").body());
+        assertEquals(404, send(HttpMethod.GET, "/v1/files/public/Acme/removed.txt", null, null, "authorization", "user").status());
     }
 
     @Test
@@ -313,10 +317,11 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
         assertEquals(200, decide("approve", request("public/Acme/", "Acme/existing.txt", null), APPROVER).status());
         String url = request("public/Acme/", "Acme/a.txt", null);
 
+        // an unpublish item an admin added, carrying the client's source and review urls
         JsonObject planted = new JsonObject(decide("get", url, APPROVER).body());
         planted.getJsonArray("resources").add(new JsonObject().put("action", "DELETE").put("targetUrl", "files/public/Acme/existing.txt")
                 .put("sourceUrl", secret).put("reviewUrl", secret));
-        Response stored = update(planted, APPROVER);
+        Response stored = update(planted, "admin");
         assertEquals(200, stored.status(), stored.body());
         JsonObject unpublish = new JsonObject(stored.body()).getJsonArray("resources").getJsonObject(1);
         assertEquals("DELETE", unpublish.getString("action"));
@@ -330,18 +335,31 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testApproverAddsOnlySourcesTheyRead() {
+    void testApproverAddsNothingToRequests() {
+        assertEquals(200, decide("approve", request("public/Acme/", "Acme/existing.txt", null), APPROVER).status());
         String url = request("public/Acme/", "Acme/a.txt", null);
+        String approverBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", APPROVER).body()).getString("bucket");
+        String own = "files/" + approverBucket + "/own.txt";
+        assertEquals(200, upload(HttpMethod.PUT, "/v1/" + own, null, "o", "authorization", APPROVER).status());
         String unreadable = "files/" + userBucket + "/private.txt";
         assertEquals(200, upload(HttpMethod.PUT, "/v1/" + unreadable, null, "p", "authorization", "user").status());
+        JsonObject original = new JsonObject(decide("get", url, APPROVER).body());
 
-        JsonObject edited = new JsonObject(decide("get", url, APPROVER).body());
-        edited.getJsonArray("resources").add(new JsonObject().put("action", "ADD").put("sourceUrl", unreadable)
-                .put("targetUrl", "files/public/Acme/private.txt"));
-        Response refused = update(edited, APPROVER);
-        assertEquals(403, refused.status());
-        assertEquals("You don't have permission to access resource " + unreadable, refused.body());
-        assertEquals(200, update(edited, "admin").status());
+        List<JsonObject> additions = List.of(
+                new JsonObject().put("action", "ADD").put("sourceUrl", own).put("targetUrl", "files/public/Acme/own.txt"),
+                new JsonObject().put("action", "ADD").put("sourceUrl", unreadable).put("targetUrl", "files/public/Acme/private.txt"),
+                new JsonObject().put("action", "DELETE").put("targetUrl", "files/public/Acme/existing.txt"));
+        for (JsonObject addition : additions) {
+            JsonObject edited = original.copy();
+            edited.getJsonArray("resources").add(addition);
+            Response refused = update(edited, APPROVER);
+            assertEquals(403, refused.status(), addition.encode());
+            assertTrue(refused.body().startsWith("Only admin can add resources to a publication request: "), refused.body());
+
+            assertEquals(200, update(edited, "admin").status(), addition.encode());
+            assertEquals(200, update(original, "admin").status());
+        }
+        assertEquals(original, new JsonObject(decide("get", url, APPROVER).body()));
     }
 
     @Test

@@ -293,7 +293,7 @@ public class PublicationService {
 
     /**
      * DIAL admins edit any pending request; a unit approver one they may decide, before and after the edit, so an edit
-     * never takes a request out of their units. Only sources the editor may read are added.
+     * never takes a request out of their units, and adds nothing to it.
      */
     public Publication updatePublication(ProxyContext context, Publication publication) {
         boolean admin = accessService.hasAdminAccess(context);
@@ -346,15 +346,23 @@ public class PublicationService {
                     sourceUrlToResource.put(resource.getSourceUrl(), resource);
                 }
             }
+            // an approver only reshapes what the requester asked for: whatever they add would be approved by no one else
+            Set<String> unpublishedTargetUrls = existingPublication.getResources().stream()
+                    .filter(resource -> resource.getAction() == Publication.ResourceAction.DELETE)
+                    .map(Publication.Resource::getTargetUrl)
+                    .collect(Collectors.toSet());
             Set<String> newSourceUrls = new HashSet<>();
             for (Publication.Resource resource : publication.getResources()) {
                 Publication.Resource existingResource = sourceUrlToResource.get(resource.getSourceUrl());
+                if (resource.getAction() == Publication.ResourceAction.DELETE && !admin && !unpublishedTargetUrls.contains(resource.getTargetUrl())) {
+                    throw new PermissionDeniedException("Only admin can add resources to a publication request: " + resource.getTargetUrl());
+                }
                 if (resource.getAction() == Publication.ResourceAction.ADD || resource.getAction() == Publication.ResourceAction.ADD_IF_ABSENT) {
                     if (existingResource == null) {
-                        ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
-                        if (!admin && !accessService.hasReadAccess(from, context)) {
-                            throw new PermissionDeniedException("You don't have permission to access resource " + resource.getSourceUrl());
+                        if (!admin) {
+                            throw new PermissionDeniedException("Only admin can add resources to a publication request: " + resource.getSourceUrl());
                         }
+                        ResourceDescriptor from = ResourceDescriptorFactory.fromPrivateUrl(resource.getSourceUrl(), encryption);
                         if (!hasResource(from)) {
                             throw new IllegalArgumentException("Source resource does not exist: " + resource.getSourceUrl());
                         }

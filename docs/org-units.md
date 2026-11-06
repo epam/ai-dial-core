@@ -246,9 +246,11 @@ stays with DIAL admins.
 Such an approver also edits and deletes these requests, as a DIAL admin does, through `/v1/ops/publication/update` and
 `/delete`. An edit must leave the request in units they decide: the request as stored and as edited must both pass the
 check above, so it can't be moved into another unit, the shared space or outside every unit, and only pending requests
-change. Sources an edit adds must be readable by the editor, and, as for a requester, they need `read` at the targets on
-the types the request publishes; sources already in the request are kept without a check. Delete works in any status and
-removes nothing if the request changed after it was checked. A caller who decides no unit is refused as before.
+change. An approver's edit only reshapes what the requester asked for: it renames, retargets or removes items and changes
+the folder or the displayed author, and, as for a requester, the approver needs `read` at the targets on the types the
+request publishes. Adding a source or an unpublish item stays with DIAL admins, since the approver would then approve
+their own addition. Delete works in any status and removes nothing if the request changed after it was checked. A
+caller who decides no unit is refused as before.
 
 Rules sent with a request into a unit are dropped when it is created or updated, since roles decide who reads there:
 Chat's empty list, the rules the admin panel copies onto a moved folder and a cleared rules list all pass. A request
