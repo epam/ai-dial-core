@@ -400,7 +400,7 @@ Refer to [Admin system export](docs/admin-system-export.md) to learn more.
 
 | Setting                                       | Default | Required | Description                                                                                                                                                                                                                     |
 |-----------------------------------------------|:-------:|:--------:|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| config.allowUserResourceDependencies          |  false  |    No    | Whether user-authored applications may declare `resource_dependencies` (scoped access to the calling user's resources outside the appdata sandbox). Admin-authored applications are not gated. **Note**: static settings — changing it requires a Core restart. Other `config.*` settings: see [sample](sample/aidial.settings.json). |
+| config.allowUserResourceDependencies          |  false  |    No    | Whether user-authored applications may declare `resource_dependencies` (scoped access to the calling user's resources outside the appdata sandbox). Admin-authored applications are not gated. The setting gates writes only: an application saved earlier keeps resolving while its admin consent stands; withdraw the consent to stop it. **Note**: static settings — changing it requires a Core restart. Other `config.*` settings: see [sample](sample/aidial.settings.json). |
 
 </details>
 
