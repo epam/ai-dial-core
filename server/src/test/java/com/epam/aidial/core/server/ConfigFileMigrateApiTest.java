@@ -426,6 +426,8 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         assertTrue(settings.get("globalInterceptors").isArray());
         assertTrue(settings.get("retriableErrorCodes").isArray());
         assertEquals("UTC", settings.get("rateLimitSchedule").get("timezone").asText());
+        assertEquals("shadow", settings.get("spendingLimits").get("mode").asText());
+        assertEquals("PERSONAL", settings.get("spendingLimits").get("defaultCostObject").asText());
     }
 
     @Test

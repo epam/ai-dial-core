@@ -31,6 +31,7 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.OrgUnitRoles;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.PathTemplateUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -123,6 +124,7 @@ public final class ConfigPostProcessor {
         processRoles(config);
         processInterceptors(config, deploymentIds, onSkip);
         processToolSets(config, deploymentIds, onSkip);
+        OrgUnitRoles.validate(config.getOrgUnitRoles());
 
         if (apiKeyStore != null) {
             apiKeyStore.addProjectKeys(fileKeysBySecret, apiKeysByCanonicalId);
@@ -304,7 +306,7 @@ public final class ConfigPostProcessor {
 
     /**
      * Targeted per-type helper for {@link MergedConfigStore}'s partial-update path — validates the
-     * single written route's upstreams via {@link #validateRouteUpstreams}, after the route sort that
+     * single written route via {@link #validateRouteInvariants}, after the route sort that
      * already runs for every ROUTE write ({@link #sortRoutesInPlace}).
      */
     static void validateSingleRoute(Config config, String mapKey,
@@ -314,7 +316,7 @@ public final class ConfigPostProcessor {
             return;
         }
         List<ValidationWarning> warnings = new ArrayList<>();
-        validateRouteUpstreams("Route", mapKey, route, warnings);
+        validateRouteInvariants(route, warnings);
         if (warnings.isEmpty()) {
             return;
         }
@@ -397,7 +399,7 @@ public final class ConfigPostProcessor {
     /**
      * Validates every top-level route's upstreams. Routes have no deployment-id namespace to
      * dedupe (the config map key is already unique), so unlike {@link #processModels} this only
-     * runs {@link #validateRouteUpstreams}.
+     * runs {@link #validateRouteInvariants}.
      */
     private static void processRoutes(Config config, @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
         Iterator<Map.Entry<String, Route>> iterator = config.getRoutes().entrySet().iterator();
@@ -406,7 +408,7 @@ public final class ConfigPostProcessor {
             String name = entry.getKey();
             Route route = entry.getValue();
             List<ValidationWarning> warnings = new ArrayList<>();
-            validateRouteUpstreams("Route", name, route, warnings);
+            validateRouteInvariants(route, warnings);
             if (warnings.isEmpty()) {
                 continue;
             }
@@ -419,12 +421,20 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * Validates an upstream declaring {@code authType: BEARER}: it must also carry a {@code key}, or
-     * the route-forwarding path silently falls back to sending the caller's own per-request DIAL key
-     * under {@code API-KEY} instead, ignoring {@code authType} entirely.
+     * Route checks the rebuild enforces unconditionally; pre-write paths call this so nothing is stored that
+     * the next rebuild would reject.
      */
-    public static void validateRouteUpstreams(String entityLabel, @Nullable String entityName, Route route,
-                                              List<ValidationWarning> warnings) {
+    public static void validateRouteInvariants(Route route, List<ValidationWarning> warnings) {
+        validateRouteUpstreams(route, warnings);
+    }
+
+    /**
+     * Validates an upstream declaring an {@code authType} other than {@code API_KEY} ({@code BEARER} or
+     * {@code CUSTOM_HEADER}): it must also carry a {@code key}, or the route-forwarding path silently falls
+     * back to sending the caller's own per-request DIAL key under {@code API-KEY} instead, ignoring
+     * {@code authType} entirely.
+     */
+    public static void validateRouteUpstreams(Route route, List<ValidationWarning> warnings) {
         List<Upstream> upstreams = route.getUpstreams();
         if (upstreams == null) {
             return;
@@ -434,7 +444,7 @@ public final class ConfigPostProcessor {
             UpstreamAuthType authType = upstream.getAuthType().type();
             if (authType != UpstreamAuthType.API_KEY && upstream.getKey() == null) {
                 warnings.add(new ValidationWarning("upstreams[" + i + "].authType",
-                        messageWithEntityPrefix(entityLabel, entityName, "authType '" + authType + "' requires a key")));
+                        messageWithEntityPrefix("Route", route.getName(), "authType '" + authType + "' requires a key")));
             }
         }
     }
@@ -517,7 +527,7 @@ public final class ConfigPostProcessor {
      * {@code prompt}/{@code completion} rate has no such restriction, since it's just a per-character
      * price under that unit.
      */
-    public static void validatePricing(Model model, List<ValidationWarning> warnings) {
+    private static void validatePricing(Model model, List<ValidationWarning> warnings) {
         Pricing pricing = model.getPricing();
         if (pricing == null || "token".equals(pricing.getUnit())) {
             return;
@@ -543,7 +553,7 @@ public final class ConfigPostProcessor {
      * identifies an upstream to {@code X-UPSTREAM-ID} routing and to prompt-cache pinning, and this
      * shape does not have one.
      */
-    public static void validateUpstreamInterfaces(Model model, List<ValidationWarning> warnings) {
+    private static void validateUpstreamInterfaces(Model model, List<ValidationWarning> warnings) {
         List<Upstream> upstreams = model.getUpstreams();
         for (int i = 0; i < upstreams.size(); i++) {
             Upstream upstream = upstreams.get(i);
@@ -612,7 +622,7 @@ public final class ConfigPostProcessor {
      * Named translator references are resolved against {@code translators} — the registry of the config the
      * model is entering — exactly as the request path resolves them.
      */
-    public static void validateDeploymentInterfaces(Model model, Map<String, Translator> translators,
+    private static void validateDeploymentInterfaces(Model model, Map<String, Translator> translators,
                                                     List<ValidationWarning> warnings) {
         Map<String, DeploymentInterface> interfaces = model.getInterfaces();
         if (interfaces == null) {

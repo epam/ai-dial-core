@@ -47,6 +47,7 @@ public abstract class BaseAuthSettingsValidator implements AuthSettingsValidator
         addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.CODE_VERIFIER, resourceAuthSettings.getCodeVerifier());
         addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.CODE_CHALLENGE_METHOD, resourceAuthSettings.getCodeChallengeMethod());
         addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.API_KEY_HEADER, resourceAuthSettings.getApiKeyHeader());
+        addIfHasValue(fieldsWithValues, ResourceAuthSettingsField.RESOURCE, resourceAuthSettings.getResource());
 
         List<String> scopesSupported = resourceAuthSettings.getScopesSupported();
         if (scopesSupported != null && !scopesSupported.isEmpty()) {

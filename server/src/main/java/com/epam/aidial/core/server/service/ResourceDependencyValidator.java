@@ -203,9 +203,6 @@ public class ResourceDependencyValidator {
             if (element.contains("*")) {
                 throw new IllegalArgumentException("wildcards are not allowed");
             }
-            if (".".equals(element) || "..".equals(element)) {
-                throw new IllegalArgumentException("relative path segments are not allowed");
-            }
         }
         return target;
     }

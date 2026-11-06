@@ -9,14 +9,19 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.SpendingLimitMode;
+import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.policy.CostObjectIndex;
 import com.epam.aidial.core.config.policy.Policy;
 import com.epam.aidial.core.config.policy.PolicyAssignment;
+import com.epam.aidial.core.config.policy.PolicyKind;
+import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.limiter.budget.EffectiveBudgets;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
@@ -38,6 +43,7 @@ import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -227,6 +233,10 @@ public final class MergedConfigStore implements ConfigStore {
 
         Gauge.builder("dial_policy_assignments", this, store -> store.config == null ? 0 : store.config.getPolicyAssignments().size())
                 .description("Number of policy assignments in the in-memory Config")
+                .register(Metrics.globalRegistry);
+
+        Gauge.builder("dial_budget_personal_missing", this, store -> store.config != null && isPersonalBudgetMissing(store.config) ? 1 : 0)
+                .description("1 when spending limits are on and the personal cost object has no budget")
                 .register(Metrics.globalRegistry);
 
         // GLOBAL_SETTINGS is not in MANAGED_TYPES (it's a singleton overlay, not a union-by-key),
@@ -561,8 +571,8 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
-     * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule}
-     * fields in the current {@link Config} were sourced from the API-managed settings singleton blob
+     * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule} /
+     * {@code spendingLimits} fields in the current {@link Config} were sourced from the API-managed settings singleton blob
      * ({@code platform/settings/global}) rather than from the file-defined defaults.
      * Drives the blob-only {@code 404} path on {@code GET /v1/settings/platform/global}
      * (slice U.1): when {@code false}, the per-entity endpoint returns {@code 404} and
@@ -816,7 +826,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Settings singleton overlay write (slice 4S.4). Applies {@code globalInterceptors} +
-     * {@code retriableErrorCodes} + {@code rateLimitSchedule} fields from the supplied
+     * {@code retriableErrorCodes} + {@code rateLimitSchedule} + {@code spendingLimits} fields from the supplied
      * {@link GlobalSettings}, flips {@code settingsFromApi} to {@code true}.
      */
     public Config applySettingsWrite(GlobalSettings settings) {
@@ -829,6 +839,8 @@ public final class MergedConfigStore implements ConfigStore {
                     ? Set.of() : settings.getRetriableErrorCodes());
             next.setRateLimitSchedule(settings.getRateLimitSchedule() == null
                     ? new RateLimitSchedule() : settings.getRateLimitSchedule());
+            next.setSpendingLimits(settings.getSpendingLimits() == null
+                    ? new SpendingLimits() : settings.getSpendingLimits());
             this.config = next;
             this.settingsFromApi = true;
             return next;
@@ -839,8 +851,8 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Settings singleton overlay delete (slice 4S.4). Restores {@code globalInterceptors} +
-     * {@code retriableErrorCodes} + {@code rateLimitSchedule} from the file-derived {@link Config}
-     * and flips {@code settingsFromApi} to {@code false}.
+     * {@code retriableErrorCodes} + {@code rateLimitSchedule} + {@code spendingLimits} from the
+     * file-derived {@link Config} and flips {@code settingsFromApi} to {@code false}.
      */
     public Config applySettingsDelete() {
         rebuildLock.lock();
@@ -850,6 +862,7 @@ public final class MergedConfigStore implements ConfigStore {
             next.setGlobalInterceptors(base.getGlobalInterceptors());
             next.setRetriableErrorCodes(base.getRetriableErrorCodes());
             next.setRateLimitSchedule(base.getRateLimitSchedule());
+            next.setSpendingLimits(base.getSpendingLimits());
             this.config = next;
             this.settingsFromApi = false;
             return next;
@@ -907,6 +920,29 @@ public final class MergedConfigStore implements ConfigStore {
     private static void refreshCostObjectIndex(Config next, Set<ResourceTypes> touched) {
         if (touched.contains(ResourceTypes.POLICY) || touched.contains(ResourceTypes.POLICY_ASSIGNMENT)) {
             next.setCostObjectIndex(CostObjectIndex.build(next.getPolicies(), next.getPolicyAssignments()));
+        }
+    }
+
+    static boolean isPersonalBudgetMissing(Config config) {
+        SpendingLimits limits = config.getSpendingLimits();
+        if (limits.getMode() == SpendingLimitMode.OFF) {
+            return false;
+        }
+        Instant now = Instant.now();
+        return config.getCostObjectIndex().getInstances(limits.getDefaultCostObject()).stream()
+                .noneMatch(instance -> instance.policy().getKind() == PolicyKind.BUDGET
+                        && instance.policy().getQuantity() == PolicyQuantity.COST
+                        && !EffectiveBudgets.isExpired(instance, now));
+    }
+
+    private static void warnIfPersonalBudgetMissing(Config config) {
+        try {
+            if (isPersonalBudgetMissing(config)) {
+                log.warn("Spending limits mode is {} but the personal cost object {} has no budget, so its calls have no budget to charge",
+                        config.getSpendingLimits().getMode().toValue(), config.getSpendingLimits().getDefaultCostObject());
+            }
+        } catch (RuntimeException e) {
+            log.warn("Failed to check the personal budget", e);
         }
     }
 
@@ -996,6 +1032,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setPolicies(base.getPolicies());
         next.setPolicyAssignments(base.getPolicyAssignments());
         next.setCostObjectIndex(base.getCostObjectIndex());
+        next.setOrgUnitRoles(base.getOrgUnitRoles());
         return next;
     }
 
@@ -1192,6 +1229,7 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
         merged.setRateLimitSchedule(base.getRateLimitSchedule());
+        merged.setOrgUnitRoles(base.getOrgUnitRoles());
         merged.setSpendingLimits(base.getSpendingLimits());
         // Wire the (still-being-populated) local maps onto merged now rather than after the blob
         // scan below — same references either way, but it lets addBlobEntity/removeAddedEntity
@@ -1340,6 +1378,7 @@ public final class MergedConfigStore implements ConfigStore {
         boolean overlayFromApi = applySettingsOverlay(merged, pendingInvalid);
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> finalInvalid =
                 pendingInvalid.isEmpty() ? Map.of() : Collections.unmodifiableMap(pendingInvalid);
+        warnIfPersonalBudgetMissing(merged);
         this.config = merged;
         this.invalidEntities = finalInvalid;
         this.settingsFromApi = overlayFromApi;
@@ -1349,8 +1388,8 @@ public final class MergedConfigStore implements ConfigStore {
     /**
      * Singleton overlay (design 02 §4): when the API-managed settings blob exists at
      * {@code platform/settings/global}, its fields replace the file-derived
-     * {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule} on the
-     * merged {@link Config}.
+     * {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule} /
+     * {@code spendingLimits} on the merged {@link Config}.
      * GlobalSettings is intentionally NOT in {@link #MANAGED_TYPES} — it is a singleton overlay,
      * not a union-by-key like other types. Returns {@code true} iff the blob is present and
      * parses; on parse failure records an {@link InvalidEntityRecord} under {@code GLOBAL_SETTINGS}
@@ -1386,6 +1425,8 @@ public final class MergedConfigStore implements ConfigStore {
                     settings.getRetriableErrorCodes() == null ? Set.of() : settings.getRetriableErrorCodes());
             merged.setRateLimitSchedule(
                     settings.getRateLimitSchedule() == null ? new RateLimitSchedule() : settings.getRateLimitSchedule());
+            merged.setSpendingLimits(
+                    settings.getSpendingLimits() == null ? new SpendingLimits() : settings.getSpendingLimits());
             return true;
         } catch (Exception parseError) {
             log.warn("Failed to bind settings singleton blob to GlobalSettings", parseError);

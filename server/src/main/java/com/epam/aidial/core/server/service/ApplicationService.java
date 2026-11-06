@@ -205,6 +205,26 @@ public class ApplicationService {
                                                                    Application application, boolean preserveForwardAuthToken,
                                                                    AdminManagedFieldsWriteMode adminManagedFieldsWriteMode,
                                                                    ExternalServicesWriteMode externalServicesWriteMode) {
+        return writeApplication(resource, etag, author, application, preserveForwardAuthToken, false,
+                adminManagedFieldsWriteMode, externalServicesWriteMode);
+    }
+
+    /**
+     * A write allowed by roles in an org unit: like any non-admin write, except that {@code forward_auth_token} keeps
+     * its stored value rather than being cleared, so editing an app never turns forwarding off, nor on.
+     */
+    public Pair<ResourceItemMetadata, Application> putApplicationByUnitRole(ResourceDescriptor resource, EtagHeader etag,
+                                                                            String author, Application application,
+                                                                            ExternalServicesWriteMode externalServicesWriteMode) {
+        return writeApplication(resource, etag, author, application, true, true,
+                AdminManagedFieldsWriteMode.INHERIT_ONLY, externalServicesWriteMode);
+    }
+
+    private Pair<ResourceItemMetadata, Application> writeApplication(ResourceDescriptor resource, EtagHeader etag, String author,
+                                                                      Application application, boolean preserveForwardAuthToken,
+                                                                      boolean inheritForwardAuthToken,
+                                                                      AdminManagedFieldsWriteMode adminManagedFieldsWriteMode,
+                                                                      ExternalServicesWriteMode externalServicesWriteMode) {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
         MutableObject<List<String>> purgeableExternalServices = new MutableObject<>(List.of());
@@ -214,6 +234,9 @@ public class ApplicationService {
             verifySchemaRichApp(application, existing);
             prepareApplicationFunction(resource, application, existing);
             prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
+            if (inheritForwardAuthToken) {
+                application.setForwardAuthToken(existing != null && existing.isForwardAuthToken());
+            }
             List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
             purgeableExternalServices.setValue(externalServices);
             Application merged = mergePreservingOmittedRouteSecrets(json, application);

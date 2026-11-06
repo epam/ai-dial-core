@@ -161,8 +161,8 @@ public class ResourceDependencyValidatorTest {
             assertTrue(validatorShapeMessage(validator, appWith(dependency(path))).contains("not a valid resource url"), path);
         }
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files/*/x/"))).contains("wildcards"));
-        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/../x/"))).contains("relative path segments"));
-        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/%2e%2e/x/"))).contains("relative path segments"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/../x/"))).contains("not a valid resource url"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/%2e%2e/x/"))).contains("not a valid resource url"));
     }
 
     @Test
@@ -176,10 +176,11 @@ public class ResourceDependencyValidatorTest {
 
     @Test
     void rejectsWildcardsAndRelativeSegments() {
+        // dot segments are rejected by ResourceDescriptorFactory (#2165)
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
 
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/*/folder/"))).contains("wildcards"));
-        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/../users/x/"))).contains("relative path segments"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/../users/x/"))).contains("not a valid resource url"));
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public//folder/"))).contains("empty segments"));
     }
 
@@ -188,7 +189,7 @@ public class ResourceDependencyValidatorTest {
         // the bans apply to decoded elements, so encoding a banned token does not smuggle it through
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
 
-        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%2e%2e/x/"))).contains("relative path segments"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%2e%2e/x/"))).contains("not a valid resource url"));
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%2a/"))).contains("wildcards"));
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/%7Bcurrent-user%7D/f/"))).contains("only as the bucket segment"));
         assertTrue(validatorShapeMessage(validator, appWith(dependency("%75sers/bob/files/"))).contains("{current-user}"));
