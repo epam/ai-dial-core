@@ -309,7 +309,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                       "spec": {
                         "endpoint": "http://example.com/v1/completions",
                         "resourceDependencies": [
-                          {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"path": "users/bob/files/f/"}, "access": ["read"]}
+                          {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"url": "users/bob/files/f/"}, "access": ["read"]}
                         ]
                       }
                     }

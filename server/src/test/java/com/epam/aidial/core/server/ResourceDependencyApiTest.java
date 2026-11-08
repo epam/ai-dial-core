@@ -68,7 +68,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
     }
 
     private static final String REQUIRED_WRITE_PROMPTS = """
-            {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
+            {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
             """;
 
     private static final String MESSAGES_BODY = """
@@ -123,7 +123,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
     @Test
     void testRequiredDependencyWithoutConsentFailsTheCall() {
         verify(putDeclaringApp("""
-                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
+                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
                 """), 200);
         String bucket = userBucket();
 
@@ -137,7 +137,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
     @Test
     void testOptionalDependencyWithoutConsentDegradesSilently() {
         verify(putDeclaringApp("""
-                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": false}
+                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": false}
                 """), 200);
         String bucket = userBucket();
 
@@ -151,7 +151,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
     @Test
     void testConsentedRequiredDependencyGrantsAndFailsAfterWithdrawal() {
         verify(putDeclaringApp("""
-                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
+                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
                 """), 200);
         verify(grantConsent(), 200);
         String bucket = userBucket();
@@ -172,13 +172,13 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
     @Test
     void testDeclarationChangeInvalidatesTheGrant() {
         verify(putDeclaringApp("""
-                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
+                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
                 """), 200);
         verify(grantConsent(), 200);
         // Any declaration change re-requires the grant — content binding.
         verify(putDeclaringApp("""
-                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true},
-                {"kind": "dial.resourceLink", "link_id": "lnk_extra", "target": {"path": "prompts/{current-user}/other/"}, "access": ["read"]}
+                {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true},
+                {"kind": "dial.resourceLink", "link_id": "lnk_extra", "target": {"url": "prompts/{current-user}/other/"}, "access": ["read"]}
                 """), 200);
         String bucket = userBucket();
 
@@ -200,8 +200,8 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
         dial.getProxy().getRuleService().storeRules("public/dep-restricted/", List.of(adminsOnly));
 
         verify(putDeclaringApp("""
-                {"kind": "dial.resourceLink", "link_id": "lnk_open", "target": {"path": "files/public/dep-open/"}, "access": ["read"]},
-                {"kind": "dial.resourceLink", "link_id": "lnk_restricted", "target": {"path": "files/public/dep-restricted/"}, "access": ["read"]}
+                {"kind": "dial.resourceLink", "link_id": "lnk_open", "target": {"url": "files/public/dep-open/"}, "access": ["read"]},
+                {"kind": "dial.resourceLink", "link_id": "lnk_restricted", "target": {"url": "files/public/dep-restricted/"}, "access": ["read"]}
                 """), 200);
         verify(grantConsent(), 200);
 
@@ -239,7 +239,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
                   "endpoint": "http://localhost:4849/chat/completions",
                   "display_name": "Dependency E2E App",
                   "resource_dependencies": [
-                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
                   ],
                   "interceptors": ["interceptor1"]
                 }
@@ -290,7 +290,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
         String bucket = userBucket();
         List<String> events = captureAuditEvents("applications/public/dep-e2e-app", () -> {
             verify(putDeclaringApp("""
-                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": false}
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": false}
                     """), 200);
 
             // optional, unconsented: the call succeeds and the denial is audited
@@ -299,7 +299,7 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
 
             // required, unconsented: the call fails and the runtime failure is audited
             verify(putDeclaringApp("""
-                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
                     """), 200);
             AtomicReference<Integer> failedStatus = new AtomicReference<>();
             assertEquals(403, chat(failedStatus, "/v1/prompts/%s/dep-smoke/prompt-by-app".formatted(bucket)).status());

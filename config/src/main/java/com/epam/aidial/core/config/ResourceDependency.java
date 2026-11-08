@@ -53,6 +53,6 @@ public class ResourceDependency {
          *   <li>{@code <type>/{current-user}/<path>}, the calling user's own bucket: {@code skills/{current-user}/}</li>
          * </ul>
          */
-        private String path;
+        private String url;
     }
 }

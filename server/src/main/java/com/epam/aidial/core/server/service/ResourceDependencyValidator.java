@@ -100,7 +100,7 @@ public class ResourceDependencyValidator {
             } else if (!seenLinkIds.add(linkId)) {
                 issues.add(at + ": duplicate linkId '" + linkId + "'");
             }
-            issues.addAll(collectPathIssues(at, dependency));
+            issues.addAll(collectUrlIssues(at, dependency));
             // An explicit JSON null defeats the field default, so guard for null alongside empty.
             if (dependency.getAccess() == null || dependency.getAccess().isEmpty()) {
                 issues.add(at + ": access must not be empty");
@@ -111,30 +111,30 @@ public class ResourceDependencyValidator {
         return issues;
     }
 
-    private static List<String> collectPathIssues(String at, ResourceDependency dependency) {
-        String path = readTargetPath(dependency);
-        if (path == null || path.replace(ResourceDescriptor.PATH_SEPARATOR, "").isEmpty()) {
-            return List.of(at + ": target.path is required");
+    private static List<String> collectUrlIssues(String at, ResourceDependency dependency) {
+        String url = readTargetUrl(dependency);
+        if (url == null || url.replace(ResourceDescriptor.PATH_SEPARATOR, "").isEmpty()) {
+            return List.of(at + ": target.url is required");
         }
         try {
-            checkTarget(path);
+            checkTarget(url);
             return List.of();
         } catch (IllegalArgumentException e) {
-            return List.of(at + ": " + e.getMessage() + ": " + path);
+            return List.of(at + ": " + e.getMessage() + ": " + url);
         }
     }
 
     /**
-     * Read side: the descriptor {@code path} names, {@code {current-user}} standing for the initiator's bucket.
+     * Read side: the descriptor {@code url} names, {@code {current-user}} standing for the initiator's bucket.
      *
-     * @throws IllegalArgumentException when {@code path} is not a declarable target
+     * @throws IllegalArgumentException when {@code url} is not a declarable target
      */
-    public static ResourceDescriptor resolveTarget(String path, AuthBucket initiator, EncryptionService encryption) {
-        String[] segments = checkTarget(path);
+    public static ResourceDescriptor resolveTarget(String url, AuthBucket initiator, EncryptionService encryption) {
+        String[] segments = checkTarget(url);
         return parseTarget(() -> isPlaceholder(segments[1])
                 ? ResourceDescriptorFactory.fromEncoded(ResourceTypes.of(UrlUtil.tryDecodePath(segments[0])),
-                        initiator.getUserBucket(), initiator.getUserBucketLocation(), stripTypeAndBucket(path, segments))
-                : ResourceDescriptorFactory.fromAnyUrl(path, encryption));
+                        initiator.getUserBucket(), initiator.getUserBucketLocation(), stripTypeAndBucket(url, segments))
+                : ResourceDescriptorFactory.fromAnyUrl(url, encryption));
     }
 
     /**
@@ -142,8 +142,8 @@ public class ResourceDependencyValidator {
      * and whether it is reachable, is a request-time question — so it is parsed as an ordinary element under public,
      * which still puts it through the factory's decoding and name rules.
      */
-    private static String[] checkTarget(String path) {
-        String[] segments = path.split(ResourceDescriptor.PATH_SEPARATOR, -1);
+    private static String[] checkTarget(String url) {
+        String[] segments = url.split(ResourceDescriptor.PATH_SEPARATOR, -1);
         for (int i = 2; i < segments.length; i++) {
             if (isPlaceholder(segments[i])) {
                 throw new IllegalArgumentException("the " + CURRENT_USER_PLACEHOLDER
@@ -153,7 +153,7 @@ public class ResourceDependencyValidator {
         String type = UrlUtil.tryDecodePath(segments[0]);
         if ("users".equals(type)) {
             throw new IllegalArgumentException("personal targets are declared as {type}/" + CURRENT_USER_PLACEHOLDER
-                    + "/…, not as a concrete users/… path");
+                    + "/…, not as a concrete users/… url");
         }
         if (!isDeclarable(type)) {
             throw new IllegalArgumentException("target must start with a declarable resource type (" + DECLARABLE_TYPES_LIST + ")");
@@ -162,12 +162,12 @@ public class ResourceDependencyValidator {
             throw new IllegalArgumentException(
                     "target must address a folder or resource within a bucket ({type}/{bucket}/…), not the type root");
         }
-        if (path.contains("//")) {
-            throw new IllegalArgumentException("path must not contain empty segments");
+        if (url.contains("//")) {
+            throw new IllegalArgumentException("target must not contain empty segments");
         }
         String bucketElement = isPlaceholder(segments[1]) ? "" : segments[1] + ResourceDescriptor.PATH_SEPARATOR;
         parseTarget(() -> ResourceDescriptorFactory.fromAnyUrl(segments[0] + ResourceDescriptor.PATH_SEPARATOR
-                + ResourceDescriptor.PUBLIC_LOCATION + bucketElement + stripTypeAndBucket(path, segments), null));
+                + ResourceDescriptor.PUBLIC_LOCATION + bucketElement + stripTypeAndBucket(url, segments), null));
         return segments;
     }
 
@@ -209,15 +209,15 @@ public class ResourceDependencyValidator {
         return CURRENT_USER_PLACEHOLDER.equals(UrlUtil.tryDecodePath(segment));
     }
 
-    private static String stripTypeAndBucket(String path, String[] segments) {
-        return path.substring(segments[0].length() + segments[1].length() + 2);
+    private static String stripTypeAndBucket(String url, String[] segments) {
+        return url.substring(segments[0].length() + segments[1].length() + 2);
     }
 
-    private static String readTargetPath(ResourceDependency dependency) {
-        if (dependency.getTarget() == null || dependency.getTarget().getPath() == null) {
+    private static String readTargetUrl(ResourceDependency dependency) {
+        if (dependency.getTarget() == null || dependency.getTarget().getUrl() == null) {
             return null;
         }
-        String path = dependency.getTarget().getPath().trim();
-        return path.isEmpty() ? null : path;
+        String url = dependency.getTarget().getUrl().trim();
+        return url.isEmpty() ? null : url;
     }
 }

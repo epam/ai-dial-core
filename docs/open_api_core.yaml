@@ -19768,7 +19768,7 @@ components:
     ResourceDependencyTarget:
       type: object
       properties:
-        path:
+        url:
           description: |
             A DIAL resource URL in one of two forms: `<type>/<bucket>/<path>`, a concrete bucket (e.g. "files/public/policies/"), or `<type>/{current-user}/<path>`, the calling user's own bucket (e.g. "skills/{current-user}/"). Checked when the application is written through the API; an application from a config file is not checked on load, and an entry that does not follow the grammar never resolves.
           type: string

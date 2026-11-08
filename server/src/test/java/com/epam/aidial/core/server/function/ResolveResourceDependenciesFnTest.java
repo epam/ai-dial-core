@@ -93,11 +93,11 @@ public class ResolveResourceDependenciesFnTest {
         lenient().when(encryptionService.encrypt(anyString())).thenReturn(USER_BUCKET);
     }
 
-    private static ResourceDependency dependency(String path, boolean required) {
+    private static ResourceDependency dependency(String url, boolean required) {
         return new ResourceDependency()
                 .setKind(ResourceDependency.KIND)
                 .setLinkId("lnk_1")
-                .setTarget(new ResourceDependency.Target().setPath(path))
+                .setTarget(new ResourceDependency.Target().setUrl(url))
                 .setAccess(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE))
                 .setRequired(required);
     }
@@ -268,10 +268,10 @@ public class ResolveResourceDependenciesFnTest {
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(
                 new ResourceDependency().setKind(ResourceDependency.KIND).setLinkId("lnk_w")
-                        .setTarget(new ResourceDependency.Target().setPath("files/public/p/"))
+                        .setTarget(new ResourceDependency.Target().setUrl("files/public/p/"))
                         .setAccess(Set.of(ResourceAccessType.WRITE)),
                 new ResourceDependency().setKind(ResourceDependency.KIND).setLinkId("lnk_r")
-                        .setTarget(new ResourceDependency.Target().setPath("files/public/p/"))
+                        .setTarget(new ResourceDependency.Target().setUrl("files/public/p/"))
                         .setAccess(Set.of(ResourceAccessType.READ))));
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
         ResourceDescriptor target = com.epam.aidial.core.server.util.ResourceDescriptorFactory
@@ -370,12 +370,12 @@ public class ResolveResourceDependenciesFnTest {
         application.setResourceDependencies(List.of(
                 new ResourceDependency().setKind("dial.resource") // wrong kind — still parsed
                         .setLinkId("lnk_bad")
-                        .setTarget(new ResourceDependency.Target().setPath("files/public/p/"))
+                        .setTarget(new ResourceDependency.Target().setUrl("files/public/p/"))
                         .setAccess(Set.of(ResourceAccessType.READ)),
                 dependency("buckets/unknown/root/", false), // unknown root — no descriptor resolvable
                 new ResourceDependency().setKind(ResourceDependency.KIND)
                         .setLinkId("lnk_share")
-                        .setTarget(new ResourceDependency.Target().setPath("files/public/p/"))
+                        .setTarget(new ResourceDependency.Target().setUrl("files/public/p/"))
                         .setAccess(Set.of(ResourceAccessType.SHARE)))); // SHARE is not a dependency right
         when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
 
@@ -411,7 +411,7 @@ public class ResolveResourceDependenciesFnTest {
     }
 
     @Test
-    void apply_neverResolvesTypeRootOrBucketLevelPathWithoutSlash() {
+    void apply_neverResolvesTypeRootOrBucketLevelUrlWithoutSlash() {
         when(context.getDeployment()).thenReturn(application);
         application.setResourceDependencies(List.of(
                 dependency("files/", false), dependency("skills/{current-user}", false), dependency("files/public", false)));

@@ -699,7 +699,7 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                   "endpoint": "http://application1/v1/completions",
                   "display_name": "Platform App",
                   "resource_dependencies": [
-                    {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"path": "users/bob/files/f/"}, "access": ["read"]}
+                    {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"url": "users/bob/files/f/"}, "access": ["read"]}
                   ]
                 }
                 """;
@@ -713,7 +713,7 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
                   "endpoint": "http://application1/v1/completions",
                   "display_name": "Platform App",
                   "resource_dependencies": [
-                    {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"path": "skills/{current-user}/"}, "access": ["write"]}
+                    {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"url": "skills/{current-user}/"}, "access": ["write"]}
                   ]
                 }
                 """;

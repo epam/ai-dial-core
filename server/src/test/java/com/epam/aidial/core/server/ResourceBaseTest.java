@@ -649,7 +649,7 @@ public class ResourceBaseTest {
         for (Object dependency : new JsonObject(app.body()).getJsonArray("resource_dependencies")) {
             JsonObject declared = (JsonObject) dependency;
             resources.add(new JsonObject()
-                    .put("url", declared.getJsonObject("target").getString("path"))
+                    .put("url", declared.getJsonObject("target").getString("url"))
                     .put("access", declared.getJsonArray("access")));
         }
         return new JsonObject().put("resources", resources).encode();

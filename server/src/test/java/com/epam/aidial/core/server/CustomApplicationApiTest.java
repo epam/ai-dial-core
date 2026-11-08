@@ -2202,42 +2202,42 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         // Admin-authored (public bucket): a valid section is accepted.
         Response response = send(HttpMethod.PUT, "/v1/applications/public/resource-dependency-app", null,
                 dependencyAppBody("""
-                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true},
-                        {"kind": "dial.resourceLink", "link_id": "lnk_policies", "target": {"path": "files/public/policies/"}, "access": ["read"]}"""),
+                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"], "required": true},
+                        {"kind": "dial.resourceLink", "link_id": "lnk_policies", "target": {"url": "files/public/policies/"}, "access": ["read"]}"""),
                 "authorization", "admin");
         verify(response, 200);
 
         // User-authored (own bucket) with the flag off — the default: rejected wholesale.
         response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                 dependencyAppBody("""
-                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"]}"""));
+                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"]}"""));
         verify(response, 403);
 
         // with the flag off a user learns nothing about the shape rules: 403, not 400
         response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                 dependencyAppBody("""
-                        {"kind": "dial.resourceLink", "link_id": "lnk_bad", "target": {"path": "files/public/*/"}, "access": ["read"]}"""));
+                        {"kind": "dial.resourceLink", "link_id": "lnk_bad", "target": {"url": "files/public/*/"}, "access": ["read"]}"""));
         verify(response, 403);
 
         // The ceiling is keyed on the author, not the destination bucket: an admin prototyping in
         // their own bucket authors an admin app — the section is accepted even with the flag off.
         response = send(HttpMethod.PUT, "/v1/applications/" + adminBucket() + "/resource-dependency-app", null,
                 dependencyAppBody("""
-                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"]}"""),
+                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"]}"""),
                 "authorization", "admin");
         verify(response, 200);
 
         // Shape violations are rejected for every author; admin + public bucket isolates shape from the ceiling.
         String[][] invalidSections = {
-                {"wrong kind", "{\"kind\": \"dial.resource\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/f/\"}, \"access\": [\"read\"]}"},
-                {"concrete personal path", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"users/bob/files/f/\"}, \"access\": [\"read\"]}"},
-                {"wildcard", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/*/\"}, \"access\": [\"read\"]}"},
+                {"wrong kind", "{\"kind\": \"dial.resource\", \"link_id\": \"lnk_1\", \"target\": {\"url\": \"files/public/f/\"}, \"access\": [\"read\"]}"},
+                {"concrete personal url", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"url\": \"users/bob/files/f/\"}, \"access\": [\"read\"]}"},
+                {"wildcard", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"url\": \"files/public/*/\"}, \"access\": [\"read\"]}"},
                 {"placeholder off the bucket slot",
-                        "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/%7Bcurrent-user%7D/f/\"}, \"access\": [\"read\"]}"},
-                {"unknown root", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"buckets/public/f/\"}, \"access\": [\"read\"]}"},
+                        "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"url\": \"files/public/%7Bcurrent-user%7D/f/\"}, \"access\": [\"read\"]}"},
+                {"unknown root", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"url\": \"buckets/public/f/\"}, \"access\": [\"read\"]}"},
                 {"share is not a dependency right",
-                        "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/f/\"}, \"access\": [\"share\"]}"},
-                {"empty access", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"path\": \"files/public/f/\"}, \"access\": []}"},
+                        "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"url\": \"files/public/f/\"}, \"access\": [\"share\"]}"},
+                {"empty access", "{\"kind\": \"dial.resourceLink\", \"link_id\": \"lnk_1\", \"target\": {\"url\": \"files/public/f/\"}, \"access\": []}"},
         };
         for (String[] casePair : invalidSections) {
             response = send(HttpMethod.PUT, "/v1/applications/public/resource-dependency-app", null,
@@ -2282,19 +2282,19 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         void testUserAuthoredDependenciesWhileFlagOn() {
             Response response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                     dependencyAppBody("""
-                            {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true}"""));
+                            {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"], "required": true}"""));
             verify(response, 200);
 
             // {current-user}/ alone is not a typed target: 400
             response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                     dependencyAppBody("""
-                            {"kind": "dial.resourceLink", "link_id": "lnk_root", "target": {"path": "{current-user}/"}, "access": ["write"]}"""));
+                            {"kind": "dial.resourceLink", "link_id": "lnk_root", "target": {"url": "{current-user}/"}, "access": ["write"]}"""));
             verify(response, 400);
 
             // the old current-user/… spelling: 400
             response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                     dependencyAppBody("""
-                            {"kind": "dial.resourceLink", "link_id": "lnk_untyped", "target": {"path": "current-user/rootstuff/"}, "access": ["write"]}"""));
+                            {"kind": "dial.resourceLink", "link_id": "lnk_untyped", "target": {"url": "current-user/rootstuff/"}, "access": ["write"]}"""));
             verify(response, 400);
         }
     }
@@ -2311,7 +2311,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         void testUserAuthoredDependenciesRejectedWithoutAdminRules() {
             Response response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                     dependencyAppBody("""
-                            {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"]}"""));
+                            {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"]}"""));
             verify(response, 403);
         }
     }

@@ -35,7 +35,7 @@ public class Consent {
                 continue;
             }
             ResourceEntry entry = new ResourceEntry();
-            entry.setUrl(dependency.getTarget() == null ? null : dependency.getTarget().getPath());
+            entry.setUrl(dependency.getTarget() == null ? null : dependency.getTarget().getUrl());
             entry.setAccess(dependency.getAccess() == null ? Set.of() : dependency.getAccess());
             entries.add(entry);
         }
@@ -47,7 +47,7 @@ public class Consent {
         private boolean consentRequired;
     }
 
-    /** A declared target as consented to: the path exactly as declared (placeholders unresolved), and the access rights. */
+    /** A declared target as consented to: the url exactly as declared (placeholders unresolved), and the access rights. */
     @Data
     public static class ResourceEntry {
         private String url;

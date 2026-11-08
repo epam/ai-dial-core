@@ -636,7 +636,7 @@ public class ConsentServiceTest {
                   "applications": {
                     "A": {
                        "resource_dependencies": [
-                         {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"path": "skills/{current-user}/"}, "access": ["WRITE"]}
+                         {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"url": "skills/{current-user}/"}, "access": ["WRITE"]}
                        ]
                     }
                   }
@@ -873,19 +873,19 @@ public class ConsentServiceTest {
         return declaringApplication("skills/{current-user}/");
     }
 
-    private static Application declaringApplication(String... paths) {
+    private static Application declaringApplication(String... urls) {
         Application application = new Application();
         application.setName("app");
-        application.setResourceDependencies(declaration(paths));
+        application.setResourceDependencies(declaration(urls));
         return application;
     }
 
-    private static List<ResourceDependency> declaration(String... paths) {
-        return Arrays.stream(paths)
-                .map(path -> new ResourceDependency()
+    private static List<ResourceDependency> declaration(String... urls) {
+        return Arrays.stream(urls)
+                .map(url -> new ResourceDependency()
                         .setKind(ResourceDependency.KIND)
-                        .setLinkId("lnk_" + path.hashCode())
-                        .setTarget(new ResourceDependency.Target().setPath(path))
+                        .setLinkId("lnk_" + url.hashCode())
+                        .setTarget(new ResourceDependency.Target().setUrl(url))
                         .setAccess(Set.of(ResourceAccessType.WRITE)))
                 .toList();
     }

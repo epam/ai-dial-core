@@ -23,11 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class ResourceDependencyValidatorTest {
 
-    private static ResourceDependency dependency(String path) {
+    private static ResourceDependency dependency(String url) {
         return new ResourceDependency()
                 .setKind(ResourceDependency.KIND)
                 .setLinkId("lnk_1")
-                .setTarget(new ResourceDependency.Target().setPath(path))
+                .setTarget(new ResourceDependency.Target().setUrl(url))
                 .setAccess(Set.of(ResourceAccessType.READ));
     }
 
@@ -91,11 +91,11 @@ public class ResourceDependencyValidatorTest {
     }
 
     @Test
-    void rejectsMissingTargetPath() {
+    void rejectsMissingTargetUrl() {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
         Application application = appWith(dependency(null));
 
-        assertTrue(validatorShapeMessage(validator, application).contains("target.path is required"));
+        assertTrue(validatorShapeMessage(validator, application).contains("target.url is required"));
     }
 
     @Test
@@ -129,7 +129,7 @@ public class ResourceDependencyValidatorTest {
     // ---- shape: the target language ----
 
     @Test
-    void rejectsConcreteUsersPathAsShapeError() {
+    void rejectsConcreteUsersUrlAsShapeError() {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
         Application application = appWith(dependency("users/someone/files/folder/"));
 
@@ -148,7 +148,7 @@ public class ResourceDependencyValidatorTest {
     void rejectsPlaceholderOutsideTheBucketSlot() {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
 
-        // Token at i == 2 — a folder literally named {current-user} deeper in the path.
+        // Token at i == 2 — a folder literally named {current-user} deeper in the url.
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files/public/{current-user}/folder/")))
                 .contains("only as the bucket segment"));
 
@@ -166,8 +166,8 @@ public class ResourceDependencyValidatorTest {
         // the bucket is opaque at write time, but must still be a valid path element
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
 
-        for (String path : List.of("files/%0A/x/", "files/a%2Fb/x/", "files/{curent-user}/notes/", "files/%7Bfoo%7D/x/", "files/a%zz/x/")) {
-            assertTrue(validatorShapeMessage(validator, appWith(dependency(path))).contains("not a valid resource url"), path);
+        for (String url : List.of("files/%0A/x/", "files/a%2Fb/x/", "files/{curent-user}/notes/", "files/%7Bfoo%7D/x/", "files/a%zz/x/")) {
+            assertTrue(validatorShapeMessage(validator, appWith(dependency(url))).contains("not a valid resource url"), url);
         }
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files/*/x/"))).contains("wildcards"));
         assertTrue(validatorShapeMessage(validator, appWith(dependency("files/../x/"))).contains("not a valid resource url"));
@@ -175,11 +175,11 @@ public class ResourceDependencyValidatorTest {
     }
 
     @Test
-    void rejectsPathThatIsNotValidUrlEncoding() {
+    void rejectsTargetThatIsNotValidUrlEncoding() {
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
 
-        for (String path : List.of("files/public/my folder/", "files/public/100%/", "files/public/a%0Ab/")) {
-            assertTrue(validatorShapeMessage(validator, appWith(dependency(path))).contains("not a valid resource url"), path);
+        for (String url : List.of("files/public/my folder/", "files/public/100%/", "files/public/a%0Ab/")) {
+            assertTrue(validatorShapeMessage(validator, appWith(dependency(url))).contains("not a valid resource url"), url);
         }
     }
 
@@ -293,12 +293,12 @@ public class ResourceDependencyValidatorTest {
     }
 
     @Test
-    void rejectsSlashOnlyTargetPath() {
-        // A path of slashes only splits to zero segments — a shape error, not a crash.
+    void rejectsSlashOnlyTargetUrl() {
+        // A url of slashes only splits to zero segments — a shape error, not a crash.
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
         ResourceDependencyValidator flagOnValidator = new ResourceDependencyValidator(true);
 
-        assertTrue(validatorShapeMessage(validator, appWith(dependency("//"))).contains("target.path is required"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("//"))).contains("target.url is required"));
         assertDoesNotThrow(() -> flagOnValidator.validateUserAuthored(appWith(dependency("//"))));
     }
 

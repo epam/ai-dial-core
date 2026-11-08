@@ -34,7 +34,7 @@ Returns the approval state of the application's current `resource_dependencies`:
 * `stale`: `true` when an approval exists but the list has changed since; absent when there is no approval.
 * `grantedBy`: Who approved: the administrator's user id, or the project of the API key used.
 * `grantedAt`: When the approval was given, in epoch milliseconds.
-* `grantedResources`: The approved resources, as declared at approval time: `url` is the declared `target.path`, `access` the approved rights.
+* `grantedResources`: The approved resources, as declared at approval time: `url` is the declared `target.url`, `access` the approved rights.
 
 An application without `resource_dependencies` is answered with `{"consented": false}`.
 
@@ -86,7 +86,7 @@ Approved, but the list has changed since — the application receives nothing un
 
 #### **Description**
 
-Approves the application's `resource_dependencies` for every user. The request body lists the resources the administrator reviewed, one entry per declared dependency, in declaration order: `url` is the entry's `target.path`, `access` its `access`. DIAL Core stores the approval only when this list equals the application's current list; if the list changed after the administrator read it, the call fails with `409` and nothing is stored, so an approval always covers exactly what the administrator saw. Read the application's current list right before approving it — from `GET /v1/applications/{bucket}/{path}` or, for an application from a config file, from `GET /v1/admin/config/file/applications/{name}`.
+Approves the application's `resource_dependencies` for every user. The request body lists the resources the administrator reviewed, one entry per declared dependency, in declaration order: `url` is the entry's `target.url`, `access` its `access`. DIAL Core stores the approval only when this list equals the application's current list; if the list changed after the administrator read it, the call fails with `409` and nothing is stored, so an approval always covers exactly what the administrator saw. Read the application's current list right before approving it — from `GET /v1/applications/{bucket}/{path}` or, for an application from a config file, from `GET /v1/admin/config/file/applications/{name}`.
 
 Approving again replaces the previous approval.
 

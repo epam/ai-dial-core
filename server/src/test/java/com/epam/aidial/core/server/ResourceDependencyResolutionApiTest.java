@@ -56,7 +56,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "display_name": "Dependency Smoke App",
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_prompts",
-                     "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
+                     "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -110,7 +110,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "display_name": "Skill Creator",
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_skills",
-                     "target": {"path": "skills/{current-user}/"}, "access": ["read", "write"], "required": true}
+                     "target": {"url": "skills/{current-user}/"}, "access": ["read", "write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -155,7 +155,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "display_name": "Project Builder",
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_projects",
-                     "target": {"path": "projects/{current-user}/"}, "access": ["read", "write"], "required": true}
+                     "target": {"url": "projects/{current-user}/"}, "access": ["read", "write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -202,7 +202,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "display_name": "Dependency Chained App",
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk",
-                     "target": {"path": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
+                     "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -253,7 +253,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "display_name": "Dependency Chained Required App",
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk",
-                     "target": {"path": "files/%s/secret.txt"}, "access": ["read"], "required": true}
+                     "target": {"url": "files/%s/secret.txt"}, "access": ["read"], "required": true}
                   ]
                 }
                 """.formatted(adminBucket), "authorization", "admin", "If-None-Match", "*"), 200);
@@ -287,7 +287,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
         // a grant held by the calling app must not satisfy the called app's reach check
         String adminBucket = new JsonObject(
                 send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin").body()).getString("bucket");
-        String targetPath = "files/" + adminBucket + "/secret.txt";
+        String targetUrl = "files/" + adminBucket + "/secret.txt";
         String appUrl = "applications/public/dep-laundering-app";
 
         verify(send(HttpMethod.PUT, "/v1/applications/public/dep-laundering-app", null, """
@@ -296,10 +296,10 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "display_name": "Dependency Laundering App",
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk",
-                     "target": {"path": "%s"}, "access": ["write"], "required": false}
+                     "target": {"url": "%s"}, "access": ["write"], "required": false}
                   ]
                 }
-                """.formatted(targetPath), "authorization", "admin", "If-None-Match", "*"), 200);
+                """.formatted(targetUrl), "authorization", "admin", "If-None-Match", "*"), 200);
         verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, reviewedResources(appUrl),
                 "authorization", "admin"), 200);
 
@@ -307,14 +307,14 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
         // no reach to the admin's bucket on their own standing.
         ApiKeyData orchestratorKey = createAppKey("user", Map.of());
         orchestratorKey.setExecutionPath(List.of("orchestrator"));
-        orchestratorKey.getPerRequestSharedResources().put(targetPath,
+        orchestratorKey.getPerRequestSharedResources().put(targetUrl,
                 new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.WRITE))));
         apiKeyStore.assignPerRequestApiKey(orchestratorKey);
 
         AtomicReference<Integer> targetStatus = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4846)) {
             server.map(HttpMethod.POST, "/chat/completions", request -> {
-                targetStatus.set(send(HttpMethod.PUT, "/v1/" + targetPath, null,
+                targetStatus.set(send(HttpMethod.PUT, "/v1/" + targetUrl, null,
                         "{\"content\":\"nope\"}", "api-key", request.getHeader("Api-Key")).status());
                 return TestWebServer.createResponse(200,
                         "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
@@ -328,7 +328,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
             });
             assertEquals(1, events.size(), () -> "Events: " + events);
             assertTrue(events.get(0).startsWith("event=resource_dependency_denial"), events.get(0));
-            assertTrue(events.get(0).contains("targets=" + targetPath), events.get(0));
+            assertTrue(events.get(0).contains("targets=" + targetUrl), events.get(0));
             assertTrue(events.get(0).contains("source_deployment=testapp"), events.get(0));
         }
 
@@ -350,7 +350,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "mcp": {"endpoint": "http://localhost:4845/mcp", "transport": "HTTP"},
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_skills",
-                     "target": {"path": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
+                     "target": {"url": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -396,7 +396,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "mcp": {"endpoint": "http://localhost:4844/mcp", "transport": "HTTP"},
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_skills",
-                     "target": {"path": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
+                     "target": {"url": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -446,7 +446,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "mcp": {"endpoint": "http://localhost:4843/mcp", "transport": "HTTP"},
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_skills",
-                     "target": {"path": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
+                     "target": {"url": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -475,7 +475,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "mcp": {"endpoint": "http://localhost:4842/mcp", "transport": "HTTP", "forwardPerRequestKey": false},
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_skills",
-                     "target": {"path": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": false}
+                     "target": {"url": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": false}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -512,7 +512,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "mcp": {"endpoint": "http://localhost:4838/mcp", "transport": "HTTP", "forwardPerRequestKey": false},
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_skills",
-                     "target": {"path": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
+                     "target": {"url": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -547,7 +547,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "mcp": {"endpoint": "http://localhost:4837/mcp", "transport": "HTTP"},
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_skills",
-                     "target": {"path": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
+                     "target": {"url": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -588,7 +588,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "mcp": {"endpoint": "http://localhost:4841/mcp", "transport": "HTTP"},
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk_skills",
-                     "target": {"path": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
+                     "target": {"url": "prompts/{current-user}/mcp-demo/"}, "access": ["write"], "required": true}
                   ]
                 }
                 """, "authorization", "admin", "If-None-Match", "*"), 200);
@@ -625,7 +625,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
         // the orchestrator's own grant on the target must not satisfy the called app's reach check
         String adminBucket = new JsonObject(
                 send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin").body()).getString("bucket");
-        String targetPath = "files/" + adminBucket + "/secret.txt";
+        String targetUrl = "files/" + adminBucket + "/secret.txt";
         String appUrl = "applications/public/dep-mcp-laundering-app";
 
         verify(send(HttpMethod.PUT, "/v1/applications/public/dep-mcp-laundering-app", null, """
@@ -634,23 +634,23 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
                   "mcp": {"endpoint": "http://localhost:4839/mcp", "transport": "HTTP"},
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk",
-                     "target": {"path": "%s"}, "access": ["write"], "required": false}
+                     "target": {"url": "%s"}, "access": ["write"], "required": false}
                   ]
                 }
-                """.formatted(targetPath), "authorization", "admin", "If-None-Match", "*"), 200);
+                """.formatted(targetUrl), "authorization", "admin", "If-None-Match", "*"), 200);
         verify(send(HttpMethod.POST, "/v1/admin-consent/" + appUrl, null, reviewedResources(appUrl),
                 "authorization", "admin"), 200);
 
         ApiKeyData orchestratorKey = createAppKey("user", Map.of());
         orchestratorKey.setExecutionPath(List.of("orchestrator"));
-        orchestratorKey.getPerRequestSharedResources().put(targetPath,
+        orchestratorKey.getPerRequestSharedResources().put(targetUrl,
                 new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.WRITE))));
         apiKeyStore.assignPerRequestApiKey(orchestratorKey);
 
         AtomicReference<Integer> targetStatus = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4839)) {
             server.map(HttpMethod.POST, "/mcp", request -> {
-                targetStatus.set(send(HttpMethod.PUT, "/v1/" + targetPath, null,
+                targetStatus.set(send(HttpMethod.PUT, "/v1/" + targetUrl, null,
                         "{\"content\":\"nope\"}", "api-key", request.getHeader(Proxy.HEADER_API_KEY)).status());
                 return TestWebServer.createResponse(200, "{\"result\":\"ok\"}", "Content-Type", "application/json");
             });
@@ -663,7 +663,7 @@ public class ResourceDependencyResolutionApiTest extends ResourceBaseTest {
             });
             assertEquals(1, events.size(), () -> "Events: " + events);
             assertTrue(events.get(0).startsWith("event=resource_dependency_denial"), events.get(0));
-            assertTrue(events.get(0).contains("targets=" + targetPath), events.get(0));
+            assertTrue(events.get(0).contains("targets=" + targetUrl), events.get(0));
             assertTrue(events.get(0).contains("source_deployment=testapp"), events.get(0));
         }
 

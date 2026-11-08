@@ -38,7 +38,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
               "endpoint": "http://application1/v1/completions",
               "display_name": "Dependency Consent App",
               "resource_dependencies": [
-                {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true}
+                {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"], "required": true}
               ]
             }
             """;
@@ -97,8 +97,8 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                   "endpoint": "http://application1/v1/completions",
                   "display_name": "Dependency Consent App",
                   "resource_dependencies": [
-                    {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"path": "skills/{current-user}/"}, "access": ["write"], "required": true},
-                    {"kind": "dial.resourceLink", "link_id": "lnk_files", "target": {"path": "files/{current-user}/"}, "access": ["write"]}
+                    {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"], "required": true},
+                    {"kind": "dial.resourceLink", "link_id": "lnk_files", "target": {"url": "files/{current-user}/"}, "access": ["write"]}
                   ]
                 }
                 """, "authorization", "admin"), 200);
@@ -165,7 +165,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                   "endpoint": "http://application1/v1/completions",
                   "display_name": "Dependency Consent App",
                   "resource_dependencies": [
-                    {"kind": "dial.resourceLink", "link_id": "lnk_extra", "target": {"path": "files/{current-user}/dep-extra/"}, "access": ["read"]}
+                    {"kind": "dial.resourceLink", "link_id": "lnk_extra", "target": {"url": "files/{current-user}/dep-extra/"}, "access": ["read"]}
                   ]
                 }
                 """, "authorization", "admin"), 200);
@@ -402,7 +402,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                       "display_name": "User Dependency App",
                       "resource_dependencies": [
                         {"kind": "dial.resourceLink", "link_id": "lnk_prompts",
-                         "target": {"path": "prompts/{current-user}/by-app/"}, "access": ["write"], "required": true}
+                         "target": {"url": "prompts/{current-user}/by-app/"}, "access": ["write"], "required": true}
                       ]
                     }
                     """), 200);

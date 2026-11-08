@@ -136,9 +136,9 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         if (dependency == null) {
             return;
         }
-        String path = dependency.getTarget() == null ? null : dependency.getTarget().getPath();
+        String url = dependency.getTarget() == null ? null : dependency.getTarget().getUrl();
         if (dependency.isRequired()) {
-            requiredFailures.add(path == null ? "<missing target.path>" : path);
+            requiredFailures.add(url == null ? "<missing target.url>" : url);
         }
         unresolvedDeps.add(dependency);
     }
@@ -161,17 +161,17 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
     }
 
     /**
-     * Resolves a declared target path to a descriptor: a {@code {type}/{current-user}/<path…>}
-     * path against the initiator's own bucket, a concrete {@code {type}/{bucket}/<path…>}
-     * path as-is. Null when the record is malformed — config-file apps bypass write-time validation.
+     * Resolves a declared target url to a descriptor: a {@code {type}/{current-user}/<path…>}
+     * url against the initiator's own bucket, a concrete {@code {type}/{bucket}/<path…>}
+     * url as-is. Null when the record is malformed — config-file apps bypass write-time validation.
      */
     @Nullable
     private ResourceDescriptor resolveTarget(ResourceDependency dependency, AuthBucket userBucket) {
-        if (dependency.getTarget() == null || dependency.getTarget().getPath() == null) {
+        if (dependency.getTarget() == null || dependency.getTarget().getUrl() == null) {
             return null;
         }
         try {
-            return ResourceDependencyValidator.resolveTarget(dependency.getTarget().getPath().trim(), userBucket, proxy.getEncryptionService());
+            return ResourceDependencyValidator.resolveTarget(dependency.getTarget().getUrl().trim(), userBucket, proxy.getEncryptionService());
         } catch (IllegalArgumentException e) {
             return null;
         }

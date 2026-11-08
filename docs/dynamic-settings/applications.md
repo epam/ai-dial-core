@@ -281,7 +281,7 @@ Each entry is an object with the following fields:
 
 * `kind`: Always `dial.resourceLink`.
 * `link_id`: The entry identifier, unique within the application.
-* `target.path`: The resource or folder: `<type>/{current-user}/<path>` for one in the bucket of whoever calls the application, or `<type>/<bucket>/<path>` for a fixed location. `<type>` is one of `applications`, `conversations`, `files`, `projects`, `prompts`, `skills`, `toolsets`. A path ending with `/` is a folder and covers everything inside it.
+* `target.url`: The resource or folder: `<type>/{current-user}/<path>` for one in the bucket of whoever calls the application, or `<type>/<bucket>/<path>` for a fixed location. `<type>` is one of `applications`, `conversations`, `files`, `projects`, `prompts`, `skills`, `toolsets`. A URL ending with `/` is a folder and covers everything inside it.
 * `access`: A non-empty list of `read` and `write`.
 * `required`: If `true`, a call fails with `403` when the entry cannot be granted. Default is `false`: the call goes on without the entry.
 
@@ -297,7 +297,7 @@ An application may declare up to 100 entries. A list that breaks these rules is 
             {
                 "kind": "dial.resourceLink",
                 "link_id": "lnk_reports",
-                "target": { "path": "files/{current-user}/reports/" },
+                "target": { "url": "files/{current-user}/reports/" },
                 "access": ["read", "write"],
                 "required": true
             }
