@@ -652,6 +652,21 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void failingAliasCandidateSkipped() {
+        verdict.set("{\"candidates\": [\"alias-m1\", \"m2\"]}");
+        try (TestWebServer server = server()) {
+            server.map(HttpMethod.POST, "/openai/deployments/m1/chat/completions", request -> {
+                received.add(request);
+                return TestWebServer.createResponse(503, "{\"error\":{\"message\":\"busy\"}}", "content-type", "application/json");
+            });
+            verify(sendChat("r1"), 200, COMPLETION);
+        }
+        single(request -> request.getPath().equals("/openai/deployments/m1/chat/completions"));
+        single(request -> request.getPath().equals("/openai/deployments/m2/chat/completions"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void failingFirstCandidateSkippedOnMessages() {
         verdict.set("{\"candidates\": [\"m1\", \"m2\"]}");
         try (TestWebServer server = new TestWebServer(4848, request -> {
@@ -1186,6 +1201,22 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     void globalInterceptorBeforeTheDecisionOnTheResponsesApi() {
         assertDecidedAfterTheInterceptor("/openai/v1/responses", "{\"model\":\"r1\",\"store\":false,\"input\":\"hi\"}",
                 "/i1/openai/v1/responses", "/openai/v1/responses", "/openai/v1/responses", RESPONSE);
+    }
+
+    @Test
+    @DialConfigLocation(INTERCEPTOR_CONFIG)
+    void aliasCandidateAfterGlobalInterceptor() {
+        verdict.set("{\"candidates\": [\"alias-gpt\"]}");
+        try (TestWebServer server = server()) {
+            server.map(HttpMethod.POST, "/openai/deployments/i1/chat/completions", request -> {
+                received.add(request);
+                Response callback = send(HttpMethod.POST, "/openai/deployments/interceptor/chat/completions", null,
+                        request.getBody().readUtf8(), "api-key", request.getHeader("api-key"), "content-type", "application/json");
+                return TestWebServer.createResponse(callback.status(), callback.body(), "content-type", "application/json");
+            });
+            verify(sendChat("r1"), 200);
+        }
+        single(request -> request.getPath().equals("/openai/deployments/gpt-4/chat/completions"));
     }
 
     @Test

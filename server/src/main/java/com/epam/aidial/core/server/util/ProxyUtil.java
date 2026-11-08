@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
-import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -45,8 +44,6 @@ public class ProxyUtil {
     public static final JsonMapper MAPPER = JsonMapper.builder()
             .enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS)
             .build();
-
-    // a header value is sent as ISO-8859-1: a non-ASCII user id has to travel as a JSON escape
 
     private static final MultiMap TRACE_HEADERS = MultiMap.caseInsensitiveMultiMap()
             .add("traceparent", "whatever")

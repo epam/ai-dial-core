@@ -489,7 +489,7 @@ public class DeploymentService {
     public List<String> getInterceptors(ProxyContext context, Deployment deployment) {
         if (deployment instanceof AliasPass) {
             // global and target interceptors run in the target pass, once
-            return List.of();
+            return new ArrayList<>();
         }
         List<String> result = new ArrayList<>(context.getConfig().getGlobalInterceptors());
         if (deployment instanceof Application application) {

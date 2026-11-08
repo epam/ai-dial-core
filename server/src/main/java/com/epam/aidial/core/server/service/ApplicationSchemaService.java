@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
+import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -220,6 +221,19 @@ public class ApplicationSchemaService {
             log.warn("Failed to download application schema: {}", url, e);
             throw new ApplicationTypeSchemaProcessingException("Failed to download application schema: " + url, e);
         }
+    }
+
+    /**
+     * The rules a router write must pass before its blob is written: the invariants the rebuild enforces, against
+     * {@code config}'s translators, then its properties against the schema {@code config} holds.
+     */
+    public List<ValidationWarning> validateRouter(Config config, String name, Router router) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateRouterInvariants(name, router, config.getTranslators(), warnings);
+        if (warnings.isEmpty() && router.getApplicationTypeSchemaId() != null) {
+            validateProperties(config, router.getApplicationTypeSchemaId(), router.getApplicationProperties(), warnings);
+        }
+        return warnings;
     }
 
     /**

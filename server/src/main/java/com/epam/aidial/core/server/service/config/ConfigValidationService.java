@@ -115,13 +115,8 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminRouterManifest routerManifest -> {
-                    List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateRouterInvariants(parsed.name().name(), routerManifest.spec(),
-                            scratch.getTranslators(), warnings);
-                    if (warnings.isEmpty() && routerManifest.spec().getApplicationTypeSchemaId() != null) {
-                        applicationSchemaService.validateProperties(scratch, routerManifest.spec().getApplicationTypeSchemaId(),
-                                routerManifest.spec().getApplicationProperties(), warnings);
-                    }
+                    List<ValidationWarning> warnings = applicationSchemaService.validateRouter(scratch, parsed.name().name(),
+                            routerManifest.spec());
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }

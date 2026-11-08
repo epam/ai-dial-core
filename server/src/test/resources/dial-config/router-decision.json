@@ -117,6 +117,12 @@
       }
     }
   },
+  "aliases": {
+    "alias-m1": {
+      "presentAs": "model",
+      "target": {"path": "models/m1"}
+    }
+  },
   "keys": {
     "proxyKey1": {"project": "p1", "role": "analysts"},
     "securedKey1": {"project": "p1", "role": "analysts", "secured": true}

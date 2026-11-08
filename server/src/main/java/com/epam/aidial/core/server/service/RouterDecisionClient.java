@@ -207,7 +207,7 @@ public class RouterDecisionClient {
     }
 
     /**
-     * {@code candidates}, a non-empty array of names, or {@code deployment}, one name. Unknown fields are ignored.
+     * {@code candidates}, a non-empty array of names. Unknown fields are ignored.
      */
     static List<String> parseCandidates(Buffer answer) {
         JsonNode tree;

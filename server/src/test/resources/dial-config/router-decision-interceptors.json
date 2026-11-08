@@ -21,6 +21,12 @@
       "interfaces": {"openaiChatCompletions": {}, "openaiResponses": {}}
     }
   },
+  "aliases": {
+    "alias-gpt": {
+      "presentAs": "model",
+      "target": {"path": "models/gpt-4"}
+    }
+  },
   "keys": {
     "proxyKey1": {"project": "p1", "role": "default"}
   }

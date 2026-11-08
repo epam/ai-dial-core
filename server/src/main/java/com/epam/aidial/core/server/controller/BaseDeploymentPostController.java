@@ -561,8 +561,9 @@ public class BaseDeploymentPostController {
     }
 
     protected boolean isRetriableError(int statusCode) {
-        if (context.getDeployment() instanceof AliasPass) {
-            // the target pass has already retried its own upstreams; the alias relays its answer
+        if (context.getDeployment() instanceof AliasPass && context.getDecision() == null) {
+            // the target pass has already retried its own upstreams; the alias relays its answer, unless a decision
+            // can skip to its next candidate
             return false;
         }
         return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode)

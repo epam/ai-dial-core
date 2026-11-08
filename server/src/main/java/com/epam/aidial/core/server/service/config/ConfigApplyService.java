@@ -245,13 +245,7 @@ public class ConfigApplyService {
             }
         }
         if (type == ResourceTypes.ROUTER) {
-            List<ValidationWarning> warnings = new ArrayList<>();
-            Router router = (Router) entity;
-            ConfigPostProcessor.validateRouterInvariants(parsed.name(), router, scratch.getTranslators(), warnings);
-            if (warnings.isEmpty() && router.getApplicationTypeSchemaId() != null) {
-                applicationSchemaService.validateProperties(scratch, router.getApplicationTypeSchemaId(),
-                        router.getApplicationProperties(), warnings);
-            }
+            List<ValidationWarning> warnings = applicationSchemaService.validateRouter(scratch, parsed.name(), (Router) entity);
             if (!warnings.isEmpty()) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
             }

@@ -2276,13 +2276,7 @@ public class ConfigResourceController implements Controller {
      */
     private void checkRouter(Router entity) {
         Config snapshot = mergedConfigStore.get();
-        Map<String, Translator> translators = snapshot != null ? snapshot.getTranslators() : Map.of();
-        List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateRouterInvariants(path, entity, translators, warnings);
-        if (warnings.isEmpty() && entity.getApplicationTypeSchemaId() != null) {
-            applicationSchemaService.validateProperties(snapshot != null ? snapshot : new Config(),
-                    entity.getApplicationTypeSchemaId(), entity.getApplicationProperties(), warnings);
-        }
+        List<ValidationWarning> warnings = applicationSchemaService.validateRouter(snapshot != null ? snapshot : new Config(), path, entity);
         if (!warnings.isEmpty()) {
             rejectWithValidationWarnings(warnings);
         }
