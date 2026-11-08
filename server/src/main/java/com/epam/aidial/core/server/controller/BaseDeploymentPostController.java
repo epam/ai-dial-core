@@ -561,9 +561,11 @@ public class BaseDeploymentPostController {
     }
 
     protected boolean isRetriableError(int statusCode) {
-        if (context.getDeployment() instanceof AliasPass && context.getDecision() == null) {
+        RouterDecision decision = context.getDecision();
+        if (context.getDeployment() instanceof AliasPass
+                && (decision == null || !decision.hasNext() && !canRedecide(decision))) {
             // the target pass has already retried its own upstreams; the alias relays its answer, unless a decision
-            // can skip to its next candidate
+            // has a candidate left to fall back to
             return false;
         }
         return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode)
@@ -596,14 +598,18 @@ public class BaseDeploymentPostController {
         if (!(context.getDeployment() instanceof Router router)) {
             return Future.succeededFuture(false);
         }
-        try {
-            context.setRouterPropertiesHeader(proxy.getApplicationSchemaService().routerPropertiesHeader(router));
-        } catch (HttpException e) {
-            return Future.failedFuture(e);
-        }
-        if (DeploymentEndpointUtil.resolveMode(router, type) != InterfaceMode.DECISION) {
-            return Future.succeededFuture(false);
-        }
+        // a typed router's schema may have to be downloaded and compiled, which blocks
+        Future<Void> properties = router.getApplicationTypeSchemaId() == null ? Future.succeededFuture()
+                : proxy.getTaskExecutor().submit(() -> {
+                    context.setRouterPropertiesHeader(proxy.getApplicationSchemaService().routerPropertiesHeader(router));
+                    return null;
+                });
+        return properties.compose(ignore -> DeploymentEndpointUtil.resolveMode(router, type) == InterfaceMode.DECISION
+                ? decideWith(router, type, body)
+                : Future.succeededFuture(false));
+    }
+
+    private Future<Boolean> decideWith(Router router, InterfaceType type, Future<Buffer> body) {
         // only a pass below this router's own decision has it in its path: a deployment it chose calls it back
         List<String> path = context.getApiKeyData().getExecutionPath();
         if (path != null && path.contains(router.getName())) {
@@ -638,6 +644,8 @@ public class BaseDeploymentPostController {
                     decision.setEntry(entry);
                     decision.setKeyTemplate(key);
                     decision.setHop(routerHop(router));
+                    // Core's own headers (CORS, trace ids), restored when a candidate's half-copied answer is dropped
+                    decision.setResponseHeaders(MultiMap.caseInsensitiveMultiMap().addAll(context.getResponse().headers()));
                     context.setDecision(decision);
                     return true;
                 });
@@ -817,7 +825,7 @@ public class BaseDeploymentPostController {
             // drop the half-read upstream and the headers its answer already copied to the client response
             context.getProxyRequest().reset();
             context.setProxyResponse(null);
-            response.headers().clear();
+            response.headers().clear().addAll(decision.getResponseHeaders());
             response.setChunked(false);
         }
         // the failed pass ends without answering, so its key would otherwise live until its TTL

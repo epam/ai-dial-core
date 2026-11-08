@@ -289,7 +289,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
                 if (context.getDecision() != null || context.getDeployment() instanceof Router) {
                     context.setOriginalRequestBody(body);
                     // an interceptor of the chosen deployment reads the body from the context
-                    context.setRequestBody(body);
+                    context.setRequestBodyWithTimestamp(body);
                 }
             });
         }

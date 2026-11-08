@@ -150,7 +150,7 @@ public class DeploymentFeatureController {
         setupProxyApiKeyData(proxyApiKeyData);
 
         proxy.getTaskExecutor().submit(() -> {
-            if (runEnhancementFunctions(requestBody)) {
+            if (resolveRouterProperties() && runEnhancementFunctions(requestBody)) {
                 proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
                 return true;
             }
@@ -161,6 +161,21 @@ public class DeploymentFeatureController {
             }
         }).onFailure(this::handleError);
 
+    }
+
+    /**
+     * A typed router's properties header, built on a worker: its schema may have to be downloaded and compiled.
+     */
+    private boolean resolveRouterProperties() {
+        if (context.getDeployment() instanceof Router router) {
+            try {
+                context.setRouterPropertiesHeader(proxy.getApplicationSchemaService().routerPropertiesHeader(router));
+            } catch (HttpException e) {
+                respond(e.getStatus(), e.getMessage());
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean runEnhancementFunctions(Buffer requestBody) {
@@ -191,14 +206,6 @@ public class DeploymentFeatureController {
 
     @SneakyThrows
     private void sendRequest(String endpoint) {
-        if (context.getDeployment() instanceof Router router) {
-            try {
-                context.setRouterPropertiesHeader(proxy.getApplicationSchemaService().routerPropertiesHeader(router));
-            } catch (HttpException e) {
-                respond(e.getStatus(), e.getMessage());
-                return;
-            }
-        }
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(new URL(endpoint))
                 .setMethod(context.getRequest().method())

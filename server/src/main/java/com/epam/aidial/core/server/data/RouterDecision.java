@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.Router;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import io.vertx.core.MultiMap;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -52,6 +53,9 @@ public class RouterDecision {
     // where the router row sits in the call tree, fixed when the router answered
     @Setter
     private Hop hop;
+    // the client response's headers before any candidate answered
+    @Setter
+    private MultiMap responseHeaders;
     // the router row is written, or left to the poller of the background job this request started
     private boolean rowTaken;
 

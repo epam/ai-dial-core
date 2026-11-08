@@ -179,7 +179,7 @@ public class TokenStatsTracker {
         void addSpan(ProxyContext context) {
             String spanId = context.getSpanId();
             String parentSpanId = context.getParentSpanId();
-            // a deciding router names no span: what its calls cost goes to no aggregated-cost record
+            // a router names no span: it is never charged limits, so what its calls cost goes to no aggregated-cost record
             String deploymentName = context.getDeployment() == null || context.getDeployment() instanceof Router
                     ? null : context.getDeployment().getName();
             TokenStats existing = spans.get(spanId);

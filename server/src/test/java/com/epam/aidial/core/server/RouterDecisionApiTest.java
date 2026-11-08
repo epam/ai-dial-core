@@ -667,6 +667,24 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void lastAliasCandidateRelaysItsTargetAnswer() {
+        verdict.set("{\"candidates\": [\"alias-m1\"]}");
+        try (TestWebServer server = server()) {
+            server.map(HttpMethod.POST, "/openai/deployments/m1/chat/completions", request -> {
+                received.add(request);
+                return TestWebServer.createResponse(429, "{\"error\":{\"message\":\"slow down\"}}",
+                        "content-type", "application/json", "Retry-After", "30");
+            });
+            // the target pass answers 503 with Retry-After once its only upstream is throttled; with no candidate
+            // and no decision left, the alias relays it rather than its own 502 "No route"
+            Response response = sendChat("r1");
+            verify(response, 503);
+            assertTrue(response.headers().keySet().stream().anyMatch("retry-after"::equalsIgnoreCase), response.headers().toString());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void failingFirstCandidateSkippedOnMessages() {
         verdict.set("{\"candidates\": [\"m1\", \"m2\"]}");
         try (TestWebServer server = new TestWebServer(4848, request -> {
@@ -851,6 +869,8 @@ class RouterDecisionApiTest extends ResourceBaseTest {
             HttpResponse<String> response = rawStream("r1");
             assertEquals(200, response.statusCode(), response.body());
             assertEquals(1, response.headers().allValues("content-type").size(), response.headers().map().toString());
+            // Core's own headers survive dropping the broken answer's
+            assertEquals(List.of("*"), response.headers().allValues("access-control-allow-origin"), response.headers().map().toString());
             assertTrue(response.body().contains("[DONE]"), response.body());
         }
         single(request -> request.getPath().contains("/m2/"));
