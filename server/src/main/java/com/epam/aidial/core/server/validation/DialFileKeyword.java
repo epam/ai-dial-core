@@ -72,6 +72,7 @@ public class DialFileKeyword implements Keyword {
                     return Set.of();
                 }
                 fileCollector.combine(List.of(nodeValue));
+                MarkerRecorder.record(collectorContext, MarkerKind.FILE, jsonNodePath, nodeValue);
                 if (isServerProp) {
                     ListCollector<String> serverFileCollector = (ListCollector<String>) collectorContext.getCollectorMap()
                             .computeIfAbsent(ListCollector.ResourceCollectorType.ONLY_SERVER_RESOURCES.getValue(), k -> new ListCollector<String>());

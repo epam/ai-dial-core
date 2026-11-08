@@ -647,7 +647,7 @@ class AdminSystemExportServiceTest {
     @Test
     void testDiscardReleasesDeflaterWithoutFinishingArchive() throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        AdminSystemExportService.DiscardableZipOutputStream zip = new AdminSystemExportService.DiscardableZipOutputStream(out);
+        DiscardableZipOutputStream zip = new DiscardableZipOutputStream(out);
         zip.putNextEntry(new ZipEntry("a"));
         zip.write(new byte[100]);
 

@@ -71,6 +71,7 @@ public class DialResourceKeyKeyword implements Keyword {
                     return Set.of();
                 }
                 resourceCollector.combine(List.of(nodeValue));
+                MarkerRecorder.record(collectorContext, MarkerKind.RESOURCE, jsonNodePath, nodeValue);
                 if (isServerProp) {
                     ListCollector<String> serverResourceCollector = (ListCollector<String>) collectorContext.getCollectorMap()
                             .computeIfAbsent(ListCollector.ResourceCollectorType.ONLY_SERVER_RESOURCES.getValue(), k -> new ListCollector<String>());

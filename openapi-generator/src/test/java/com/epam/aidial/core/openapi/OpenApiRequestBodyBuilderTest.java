@@ -19,6 +19,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OpenApiRequestBodyBuilderTest {
 
     @Test
+    void requestBodyOfAnEndpointThatAcceptsAnEmptyBodyIsOptional() {
+        EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
+                "POST",
+                "/v1/admin/export",
+                "exportAdminBuckets",
+                ApiSchemaBuilder.forImplementation(String.class),
+                new String[]{"Admin"},
+                "application/json",
+                new ApiParameter[0],
+                new ApiResponse[0],
+                new ApiExtension[0],
+                false,
+                ""
+        );
+        DtoSchemaGenerator schemaGenerator = new DtoSchemaGenerator();
+        OpenApiRequestBodyBuilder.registerRequestBodySchemas(endpoint, schemaGenerator);
+
+        RequestBody requestBody = OpenApiRequestBodyBuilder.build(endpoint, schemaGenerator);
+
+        assertNotNull(requestBody);
+        assertFalse(requestBody.getRequired());
+    }
+
+    @Test
     void multipartBinaryUploadUsesObjectSchemaWithFileProperty() {
         EndpointMetadata.Endpoint endpoint = new EndpointMetadata.Endpoint(
                 "PUT",

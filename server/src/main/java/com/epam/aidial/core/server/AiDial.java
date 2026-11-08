@@ -52,6 +52,7 @@ import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.AdminExportSettings;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -61,6 +62,7 @@ import com.epam.aidial.core.server.service.BackgroundJobService.Settings;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.ExportBodyRedactor;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
@@ -425,6 +427,8 @@ public class AiDial {
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
+            AdminExportSettings adminExportSettings = Json.decodeValue(settings("adminExport").toBuffer(), AdminExportSettings.class);
+            adminExportSettings.validate();
             AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), readKmsSettings().isEnabled(),
                     readEncryptionSettings().getKeySize() / Byte.SIZE);
             AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
@@ -444,7 +448,9 @@ public class AiDial {
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminSystemExportService, adminSystemExportSettings, orgUnitService);
+                    adminExportSettings, adminSystemExportService, adminSystemExportSettings, orgUnitService);
+            // the redaction of the bodies of an export of selected Applications; without it that export answers 503 and writes no body
+            proxy.setExportBodyRedactor(new ExportBodyRedactor());
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn

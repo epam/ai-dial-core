@@ -255,24 +255,6 @@ public class AdminSystemExportService {
     }
 
     /**
-     * A failed system export must not write the central directory, so the stream is never closed on failure,
-     * and its native deflater is released by {@link #discard()} instead.
-     */
-    static final class DiscardableZipOutputStream extends ZipOutputStream {
-
-        DiscardableZipOutputStream(OutputStream out) {
-            super(out);
-        }
-
-        /**
-         * Releases the deflater without finishing the archive. Safe to call after {@link #close()}.
-         */
-        void discard() {
-            def.end();
-        }
-    }
-
-    /**
      * Counts the bytes and refuses to write once the bucket locks may have expired, so that the archive is
      * never completed from blobs that were read without them.
      */
@@ -335,8 +317,9 @@ public class AdminSystemExportService {
         }
     }
 
+    /** The sidecar of a blob; the selective export (ExportArchive) writes the same record. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    private record BlobMetadata(String contentType, String contentEncoding, String contentDisposition, String contentLanguage,
+    record BlobMetadata(String contentType, String contentEncoding, String contentDisposition, String contentLanguage,
                                 String cacheControl, String creationDate, String lastModified, Map<String, String> userMetadata) {
     }
 }

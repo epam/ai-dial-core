@@ -368,6 +368,25 @@ Refer to [Admin system export](docs/admin-system-export.md) to learn more.
 
 </details>
 
+<details>
+<summary><b>Admin Export Configurations</b></summary>
+
+Settings of `POST /v1/admin/export`, which exports selected Applications with their dependencies as a ZIP archive.
+Refer to [Admin export](docs/admin-export.md) to learn more.
+
+| Setting                    | Default | Required | Description                                                                                                                                              |
+|----------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| adminExport.maxRoots       | 100     |    No    | Applications that one export may name; more is `400`. |
+| adminExport.maxNodes       | 500     |    No    | Resources in the closure of one export; more is `413`. |
+| adminExport.maxDepth       | 10      |    No    | Longest chain of references followed from a root; more is `413`. |
+| adminExport.maxEdges       | 10000   |    No    | References found in one body and in all bodies of one export together; more is `413`. |
+| adminExport.maxResourceMiB | 4       |    No    | String length of one stored body, in MiB; more is `413`. |
+| adminExport.maxRetainedMiB | 32      |    No    | Limit in MiB of two sums of one export: the string length of the stored bodies read, and the byte length of the redacted bytes held until the archive is written. Either above it is `413`. The heap for bodies is up to about twice this value plus the largest body being read. |
+| adminExport.deadline       | 180000  |    No    | Milliseconds from the start of an export to its last byte; later is `504`. It and `stallTimeout` together must be below the 5 minute lock period (300000), because the slot is a lease of that length that is not renewed. |
+| adminExport.stallTimeout   | 60000   |    No    | Time in milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail. It must be positive and below the 5 minute lock period (300000), otherwise Core does not start. |
+
+</details>
+
 <details> 
 <summary><b>Redis Configurations</b></summary>
 

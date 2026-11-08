@@ -10,31 +10,46 @@ import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
+import com.epam.aidial.core.server.validation.CollectionIssue;
+import com.epam.aidial.core.server.validation.CollectionIssueKind;
+import com.epam.aidial.core.server.validation.MarkerCollection;
+import com.epam.aidial.core.server.validation.MarkerCollection.MarkerReference;
+import com.epam.aidial.core.server.validation.MarkerKind;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -927,5 +942,595 @@ public class ApplicationSchemaServiceTest {
         Assertions.assertEquals("{\"a\":1}", result1);
         Assertions.assertEquals("{\"b\":2}", result2);
         Assertions.assertEquals(2, service.schemaCacheSize());
+    }
+
+    // ----------------------------------------------------------------------------------------------------------
+    // Marker collection: the structured references (kind, pointer, value) and the issues of a schema and the properties it describes.
+
+    private static final URI SCHEMA_ID = URI.create("schemaId");
+
+    private static Map<String, Object> properties(Object... keyValues) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            result.put((String) keyValues[i], keyValues[i + 1]);
+        }
+        return result;
+    }
+
+    /**
+     * Collects as the export does: builds the schema of the application from the given configuration, and either reports why it cannot be
+     * used or collects the properties against it.
+     */
+    private MarkerCollection collect(ApplicationSchemaService under, Config source) {
+        ApplicationSchemaService.ExportSchema built = under.buildExportSchema(application.getApplicationTypeSchemaId(), source);
+        return built.issue() != null ? MarkerCollection.ofIssue(built.issue()) : under.collectMarkerReferences(application, built.schema());
+    }
+
+    private MarkerCollection collect(Config source) {
+        return collect(service, source);
+    }
+
+    private MarkerCollection collectFrom(String mergedSchema, Map<String, Object> applicationProperties) {
+        application.setApplicationTypeSchemaId(SCHEMA_ID);
+        application.setApplicationProperties(applicationProperties);
+        when(config.getCustomApplicationSchema(SCHEMA_ID)).thenReturn(mergedSchema);
+        return collect(config);
+    }
+
+    private static MarkerReference resourceReference(String pointer, String value) {
+        return new MarkerReference(MarkerKind.RESOURCE, pointer, value);
+    }
+
+    private static MarkerReference fileReference(String pointer, String value) {
+        return new MarkerReference(MarkerKind.FILE, pointer, value);
+    }
+
+    @Test
+    public void collectMarkerReferences_returnsKindPointerAndValueOfEachMarker() {
+        String mergedSchema = """
+                {"type":"object","properties":{
+                  "first":{"type":"string","dial:resource":true},
+                  "second":{"type":"string","dial:file":true}}}""";
+
+        MarkerCollection result = collectFrom(mergedSchema,
+                properties("first", "toolsets/platform/a", "second", "files/public/x"));
+
+        Assertions.assertEquals(List.of(resourceReference("/first", "toolsets/platform/a"),
+                fileReference("/second", "files/public/x")), result.references());
+        Assertions.assertTrue(result.issues().isEmpty());
+        Assertions.assertTrue(result.isComplete());
+    }
+
+    @Test
+    public void collectMarkerReferences_collectsThroughOneOfAnyOfAndAllOfAndCollapsesRepeatedVisitsOfOneLocation() {
+        String mergedSchema = """
+                {"type":"object","properties":{
+                  "viaOneOf":{"oneOf":[{"type":"string","dial:resource":true},{"type":"integer"}]},
+                  "viaAnyOf":{"anyOf":[{"type":"string","dial:file":true},{"type":"null"}]},
+                  "viaAllOf":{"allOf":[{"type":"string","dial:resource":true},{"minLength":1}]},
+                  "visitedTwice":{"oneOf":[
+                    {"type":"string","minLength":100,"dial:resource":true},
+                    {"type":"string","dial:resource":true}]}}}""";
+
+        MarkerCollection result = collectFrom(mergedSchema,
+                properties("viaOneOf", "toolsets/platform/a", "viaAnyOf", "files/public/x", "viaAllOf", "toolsets/platform/b",
+                        "visitedTwice", "toolsets/platform/c"));
+
+        Assertions.assertEquals(List.of(resourceReference("/viaOneOf", "toolsets/platform/a"),
+                fileReference("/viaAnyOf", "files/public/x"),
+                resourceReference("/viaAllOf", "toolsets/platform/b"),
+                resourceReference("/visitedTwice", "toolsets/platform/c")), result.references());
+        Assertions.assertTrue(result.isComplete());
+    }
+
+    @Test
+    public void collectMarkerReferences_keepsOtherReferencesAndRecordsIssueWhenOnePropertyIsInvalid() {
+        String mergedSchema = """
+                {"type":"object","required":["absent"],"properties":{
+                  "broken":{"type":"integer"},
+                  "good":{"type":"string","dial:resource":true}}}""";
+
+        MarkerCollection result = collectFrom(mergedSchema,
+                properties("broken", "not-a-number", "good", "toolsets/platform/a"));
+
+        Assertions.assertEquals(List.of(resourceReference("/good", "toolsets/platform/a")), result.references());
+        Assertions.assertEquals(List.of("", "/broken"), result.issues().stream().map(CollectionIssue::pointer).toList(),
+                "an issue of the root has the empty pointer");
+        for (CollectionIssue issue : result.issues()) {
+            Assertions.assertEquals(CollectionIssueKind.INSTANCE_INVALID, issue.kind());
+        }
+        Assertions.assertFalse(result.isComplete());
+    }
+
+    @Test
+    public void collectMarkerReferences_keepsMarkedValueThatViolatesItsFormat() {
+        String mergedSchema = """
+                {"type":"object","properties":{
+                  "file":{"type":"string","format":"dial-file-encoded","dial:file":true}}}""";
+
+        MarkerCollection result = collectFrom(mergedSchema, properties("file", "not-a-file-url"));
+
+        Assertions.assertEquals(List.of(fileReference("/file", "not-a-file-url")), result.references());
+        Assertions.assertEquals(1, result.issues().size());
+        Assertions.assertEquals(CollectionIssueKind.INSTANCE_INVALID, result.issues().get(0).kind());
+        Assertions.assertEquals("/file", result.issues().get(0).pointer());
+    }
+
+    @Test
+    public void collectMarkerReferences_returnsMalformedAndExternalValuesRaw() {
+        String mergedSchema = """
+                {"type":"object","properties":{
+                  "url":{"type":"string","dial:resource":true},
+                  "shortName":{"type":"string","dial:resource":true},
+                  "spaced":{"type":"string","dial:resource":true}}}""";
+        String external = "https://user:secret@example.com/x?token=abc";
+
+        MarkerCollection result = collectFrom(mergedSchema,
+                properties("url", external, "shortName", "gpt-4o", "spaced", "files/b/a b"));
+
+        Assertions.assertEquals(List.of(resourceReference("/url", external),
+                resourceReference("/shortName", "gpt-4o"),
+                resourceReference("/spaced", "files/b/a b")), result.references());
+        Assertions.assertTrue(result.issues().isEmpty());
+    }
+
+    @Test
+    public void collectMarkerReferences_ignoresEmptyValueLikeTheKeywordsDo() {
+        String mergedSchema = """
+                {"type":"object","properties":{"empty":{"type":"string","dial:resource":true}}}""";
+
+        MarkerCollection result = collectFrom(mergedSchema, properties("empty", ""));
+
+        Assertions.assertTrue(result.references().isEmpty());
+        Assertions.assertTrue(result.issues().isEmpty());
+    }
+
+    @Test
+    public void collectMarkerReferences_reportsSchemaNotFoundWithoutThrowing() {
+        application.setApplicationTypeSchemaId(SCHEMA_ID);
+        application.setApplicationProperties(properties("first", "toolsets/platform/a"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(SCHEMA_ID)).thenReturn(null);
+
+        MarkerCollection result = collect(configStore.get());
+
+        Assertions.assertTrue(result.references().isEmpty());
+        Assertions.assertEquals(1, result.issues().size());
+        Assertions.assertEquals(CollectionIssueKind.SCHEMA_NOT_FOUND, result.issues().get(0).kind());
+        Assertions.assertFalse(result.isComplete());
+    }
+
+    private void givenSchemaWithRemoteEndpoint(URI schemaId) {
+        application.setApplicationTypeSchemaId(schemaId);
+        application.setApplicationProperties(properties("first", "toolsets/platform/a"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn("""
+                {"dial:applicationTypeSchemaEndpoint":"http://runner.example/schema"}""");
+    }
+
+    @Test
+    public void buildExportSchema_propagatesAnUnexpectedRuntimeExceptionInsteadOfRecordingAnIssue() {
+        Config failing = mock(Config.class);
+        when(failing.getCustomApplicationSchema(SCHEMA_ID)).thenThrow(new IllegalStateException("boom"));
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                () -> service.buildExportSchema(SCHEMA_ID, failing));
+
+        Assertions.assertEquals("boom", thrown.getMessage());
+    }
+
+    static Stream<Arguments> issuesAndWhetherTheCollectionIsComplete() {
+        return Stream.of(
+                Arguments.of("no issue", List.of(), true),
+                Arguments.of("properties that violate the schema",
+                        List.of(new CollectionIssue(CollectionIssueKind.INSTANCE_INVALID, "/a", "internal")), false),
+                Arguments.of("schema not found",
+                        List.of(new CollectionIssue(CollectionIssueKind.SCHEMA_NOT_FOUND, "", "internal")), false),
+                Arguments.of("schema unavailable",
+                        List.of(new CollectionIssue(CollectionIssueKind.SCHEMA_UNAVAILABLE, "", "internal")), false));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("issuesAndWhetherTheCollectionIsComplete")
+    public void markerCollectionComplete_isFalseWhenThereIsAnIssue(String description, List<CollectionIssue> issues,
+                                                                                boolean expectedComplete) {
+        Assertions.assertEquals(expectedComplete, new MarkerCollection(List.of(), issues).isComplete(), description);
+    }
+
+    @Test
+    public void collectMarkerReferences_acceptsLocalRefsOfSchemaWithAbsoluteId() {
+        String mergedSchema = """
+                {"$id":"https://mydial.example/custom_application_schemas/quick","type":"object",
+                 "properties":{"a":{"$ref":"#/$defs/res"}},
+                 "$defs":{"res":{"type":"string","dial:resource":true}}}""";
+
+        MarkerCollection result = collectFrom(mergedSchema, properties("a", "toolsets/platform/a"));
+
+        Assertions.assertEquals(List.of(resourceReference("/a", "toolsets/platform/a")), result.references());
+        Assertions.assertTrue(result.isComplete());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"remote", "local file"})
+    public void collectMarkerReferences_refusesRefOutsideTheDocumentWithoutFetchingOrReadingIt(String kind) throws IOException {
+        AtomicInteger requests = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/ref.json", exchange -> {
+            requests.incrementAndGet();
+            byte[] body = "{\"type\":\"string\"}".getBytes();
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        java.nio.file.Path file = java.nio.file.Files.createTempFile("ref", ".json");
+        try {
+            java.nio.file.Files.writeString(file, "{\"type\":\"string\"}");
+            String address = kind.equals("remote") ? "http://127.0.0.1:" + server.getAddress().getPort() + "/ref.json" : file.toUri().toString();
+            String mergedSchema = "{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"" + address + "\"}}}";
+
+            MarkerCollection result = collectFrom(mergedSchema, properties("a", "toolsets/platform/a"));
+
+            Assertions.assertEquals(0, requests.get(), "a schema document must not make Core send a request");
+            Assertions.assertTrue(result.references().isEmpty());
+            Assertions.assertEquals(1, result.issues().size());
+            CollectionIssue issue = result.issues().get(0);
+            Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, issue.kind());
+            Assertions.assertFalse(issue.message().contains(address), "the issue must not carry the IRI");
+            Assertions.assertFalse(result.isComplete());
+        } finally {
+            server.stop(0);
+            java.nio.file.Files.deleteIfExists(file);
+        }
+    }
+
+    @Test
+    public void collectMarkerReferences_returnsIssuesInStableOrderWithoutTheLibraryMessage() {
+        String mergedSchema = """
+                {"type":"object","properties":{
+                  "b":{"type":"integer"},
+                  "a":{"type":"integer"}}}""";
+
+        MarkerCollection result = collectFrom(mergedSchema, properties("b", "secret-value-b", "a", "secret-value-a"));
+
+        Assertions.assertEquals(List.of("/a", "/b"), result.issues().stream().map(CollectionIssue::pointer).toList());
+        for (CollectionIssue issue : result.issues()) {
+            Assertions.assertFalse(issue.message().contains("secret-value"), "the message must not hold the instance value");
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------
+    // The collector checks no existence, unlike the request-time getters
+
+    @Test
+    public void collectMarkerReferences_checksNoExistenceOfTheResources() {
+        MarkerCollection collection = collectFrom(schema, customProperties);
+
+        Assertions.assertEquals(2, collection.references().size());
+        Assertions.assertTrue(collection.issues().isEmpty());
+        verifyNoInteractions(resourceService, complexResourceService);
+    }
+
+    // ---- the export reuses the service's own Runner download: live, no cache, same guarantees ----------------
+
+    private static final String RUNNER_SCHEMA = """
+            {"type":"object","properties":{"first":{"type":"string","dial:resource":true}}}""";
+
+    private void givenRunnerAnswers(String body) throws IOException, InterruptedException {
+        HttpResponse<String> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.body()).thenReturn(body);
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenReturn(response);
+    }
+
+    private ApplicationSchemaService serviceWithTheRealClient() {
+        return new ApplicationSchemaService(resourceService, configStore, complexResourceService, encryptionService,
+                (java.net.ProxySelector) null);
+    }
+
+    private void givenSchemaWhoseRunnerIs(URI schemaId, String runnerUrl) {
+        application.setApplicationTypeSchemaId(schemaId);
+        application.setApplicationProperties(properties("first", "toolsets/platform/a"));
+        when(configStore.get()).thenReturn(config);
+        when(config.getCustomApplicationSchema(schemaId)).thenReturn(
+                "{\"dial:applicationTypeSchemaEndpoint\":\"" + runnerUrl + "\"}");
+    }
+
+    @Test
+    public void collectMarkerReferences_doesNotReplaceTheSchemaThatRequestProcessingUses()
+            throws IOException, InterruptedException {
+        URI schemaId = URI.create("schemaId");
+        givenSchemaWithRemoteEndpoint(schemaId);
+        givenRunnerAnswers(RUNNER_SCHEMA);
+
+        MarkerCollection beforeAnythingIsCached = collect(configStore.get());
+
+        Assertions.assertEquals(List.of(resourceReference("/first", "toolsets/platform/a")), beforeAnythingIsCached.references());
+        Assertions.assertEquals(0, service.schemaCacheSize(), "the export neither reads nor fills the cache");
+
+        String cachedByRequestProcessing = service.getSchema(schemaId, false);
+        givenRunnerAnswers("{\"type\":\"object\",\"properties\":{\"first\":{\"type\":\"string\"}}}");
+
+        MarkerCollection result = collect(configStore.get());
+
+        Assertions.assertTrue(result.references().isEmpty(), "the export evaluated the live document, not the cached one");
+        Assertions.assertEquals(cachedByRequestProcessing, service.getSchema(schemaId, false),
+                "request processing still sees what it cached");
+        Assertions.assertEquals(1, service.schemaCacheSize());
+    }
+
+    @Test
+    public void getSchema_withForceReloadStillReplacesTheCachedSchema() throws IOException, InterruptedException {
+        URI schemaId = URI.create("schemaId");
+        givenSchemaWithRemoteEndpoint(schemaId);
+        givenRunnerAnswers(RUNNER_SCHEMA);
+        String before = service.getSchema(schemaId, false);
+        givenRunnerAnswers("{\"type\":\"object\",\"properties\":{}}");
+
+        String reloaded = service.getSchema(schemaId, true);
+
+        Assertions.assertNotEquals(before, reloaded);
+        Assertions.assertEquals(reloaded, service.getSchema(schemaId, false), "existing callers keep the refresh semantics");
+    }
+
+    @Test
+    public void collectMarkerReferences_withTheRealClientGetsTheRunnersSchemaAndSendsNoCredentials() throws IOException {
+        AtomicInteger requests = new AtomicInteger();
+        java.util.concurrent.CopyOnWriteArrayList<String> headerNames = new java.util.concurrent.CopyOnWriteArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/schema", exchange -> {
+            requests.incrementAndGet();
+            exchange.getRequestHeaders().keySet().forEach(name -> headerNames.add(name.toLowerCase()));
+            byte[] body = RUNNER_SCHEMA.getBytes();
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            givenSchemaWhoseRunnerIs(URI.create("schemaId"), "http://127.0.0.1:" + server.getAddress().getPort() + "/schema");
+
+            MarkerCollection result = collect(serviceWithTheRealClient(), configStore.get());
+
+            Assertions.assertEquals(List.of(resourceReference("/first", "toolsets/platform/a")), result.references());
+            Assertions.assertTrue(result.isComplete());
+            Assertions.assertEquals(1, requests.get());
+            Assertions.assertFalse(headerNames.contains("authorization") || headerNames.contains("cookie")
+                    || headerNames.contains("proxy-authorization"), "no credential is sent: " + headerNames);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void collectMarkerReferences_withTheRealClientDoesNotFollowRedirectOfTheRunner() throws IOException {
+        AtomicInteger targetRequests = new AtomicInteger();
+        HttpServer target = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        target.createContext("/other", exchange -> {
+            targetRequests.incrementAndGet();
+            byte[] body = RUNNER_SCHEMA.getBytes();
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        target.start();
+        AtomicInteger runnerRequests = new AtomicInteger();
+        HttpServer runner = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        runner.createContext("/schema", exchange -> {
+            runnerRequests.incrementAndGet();
+            exchange.getResponseHeaders().add("Location", "http://127.0.0.1:" + target.getAddress().getPort() + "/other");
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+        runner.start();
+        try {
+            givenSchemaWhoseRunnerIs(URI.create("schemaId"), "http://127.0.0.1:" + runner.getAddress().getPort() + "/schema");
+
+            MarkerCollection result = collect(serviceWithTheRealClient(), configStore.get());
+
+            Assertions.assertEquals(1, runnerRequests.get());
+            Assertions.assertEquals(0, targetRequests.get(), "the redirect target is never contacted");
+            Assertions.assertEquals(1, result.issues().size());
+            Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, result.issues().get(0).kind());
+            Assertions.assertFalse(result.isComplete());
+        } finally {
+            runner.stop(0);
+            target.stop(0);
+        }
+    }
+
+    private static final class LogCapture implements AutoCloseable {
+        private final ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(ApplicationSchemaService.class);
+        private final ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+
+        private final ch.qos.logback.classic.Level level = logger.getLevel();
+
+        LogCapture() {
+            appender.start();
+            logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+            logger.addAppender(appender);
+        }
+
+        String text() {
+            StringBuilder out = new StringBuilder();
+            for (ch.qos.logback.classic.spi.ILoggingEvent event : appender.list) {
+                out.append(event.getFormattedMessage());
+                if (event.getThrowableProxy() != null) {
+                    out.append(' ').append(ch.qos.logback.classic.spi.ThrowableProxyUtil.asString(event.getThrowableProxy()));
+                }
+                out.append('\n');
+            }
+            return out.toString();
+        }
+
+        @Override
+        public void close() {
+            logger.setLevel(level);
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    public void collectMarkerReferences_logsNoEndpointAndNoExceptionWhenTheDownloadFails()
+            throws IOException, InterruptedException {
+        givenSchemaWhoseRunnerIs(URI.create("schemaId"), "http://runner.example/SECRET-PATH?token=abc");
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString())))
+                .thenThrow(new IOException("cannot reach http://runner.example/SECRET-PATH?token=abc"));
+
+        try (LogCapture logs = new LogCapture()) {
+            MarkerCollection result = collect(configStore.get());
+
+            Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, result.issues().get(0).kind());
+            Assertions.assertFalse(logs.text().isBlank(), "the failure is still logged");
+            Assertions.assertFalse(logs.text().contains("SECRET-PATH") || logs.text().contains("token=abc")
+                    || logs.text().contains("runner.example"), "no IRI in the export's log: " + logs.text());
+        }
+    }
+
+    private static final String LOG_MARKERS_URL = "http://user:PASSWORD-MARKER@runner.example/PATH-MARKER?token=TOKEN-MARKER";
+
+    private void givenRunnerFailsWith(int status) throws IOException, InterruptedException {
+        HttpResponse<String> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(status);
+        when(response.body()).thenReturn("BODY-MARKER");
+        org.mockito.Mockito.lenient().when(response.headers()).thenReturn(java.net.http.HttpHeaders.of(
+                Map.of("X-Secret", List.of("HEADER-MARKER")), (name, value) -> true));
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenReturn(response);
+    }
+
+    private static void assertNoMarkerIsLogged(String logged) {
+        for (String marker : List.of("PASSWORD-MARKER", "PATH-MARKER", "TOKEN-MARKER", "BODY-MARKER", "HEADER-MARKER", "runner.example")) {
+            Assertions.assertFalse(logged.contains(marker), marker + " is logged: " + logged);
+        }
+    }
+
+    @Test
+    public void collectMarkerReferences_logsOnlyTheStatusForAnErrorAnswer() throws IOException, InterruptedException {
+        givenSchemaWhoseRunnerIs(URI.create("schemaId"), LOG_MARKERS_URL);
+        givenRunnerFailsWith(503);
+
+        try (LogCapture logs = new LogCapture()) {
+            collect(configStore.get());
+
+            assertNoMarkerIsLogged(logs.text());
+            Assertions.assertTrue(logs.text().contains("503"), "the status code is still logged: " + logs.text());
+        }
+    }
+
+    @Test
+    public void getSchema_withForceReloadKeepsTheEndpointAndTheCauseOfFailedDownloadInTheLogAndInTheException()
+            throws IOException, InterruptedException {
+        URI schemaId = URI.create("schemaId");
+        givenSchemaWhoseRunnerIs(schemaId, "http://runner.example/schema");
+        IOException failure = new IOException("cannot reach the runner");
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenThrow(failure);
+
+        try (LogCapture logs = new LogCapture()) {
+            ApplicationTypeSchemaProcessingException thrown = assertThrows(ApplicationTypeSchemaProcessingException.class,
+                    () -> service.getSchema(schemaId, true));
+
+            // request processing is unchanged by the export: the endpoint and the cause are logged and wrapped
+            Assertions.assertEquals("Failed to download application schema: http://runner.example/schema", thrown.getMessage());
+            Assertions.assertSame(failure, thrown.getCause());
+            Assertions.assertTrue(logs.text().contains("http://runner.example/schema"), "the endpoint is logged: " + logs.text());
+        }
+    }
+
+    @Test
+    public void getSchema_withForceReloadWrapsAnInterruptLikeAnyOtherFailureOfTheDownload() throws IOException, InterruptedException {
+        URI schemaId = URI.create("schemaId");
+        givenSchemaWhoseRunnerIs(schemaId, "http://runner.example/schema");
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenThrow(new InterruptedException("interrupted"));
+
+        try {
+            ApplicationTypeSchemaProcessingException thrown = assertThrows(ApplicationTypeSchemaProcessingException.class,
+                    () -> service.getSchema(schemaId, true));
+
+            Assertions.assertTrue(thrown.getCause() instanceof InterruptedException, "the request path wraps the interrupt, as before");
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    // ---- a Runner failure makes the schema unavailable, whatever its cause -------------------------------------------------------------
+
+    private MarkerCollection collectAfterRunnerFailure() {
+        URI schemaId = URI.create("schemaId");
+        givenSchemaWhoseRunnerIs(schemaId, "http://runner.example/schema");
+        return collect(configStore.get());
+    }
+
+    private static void assertSchemaUnavailable(MarkerCollection result) {
+        Assertions.assertEquals(1, result.issues().size());
+        Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, result.issues().get(0).kind());
+        Assertions.assertFalse(result.isComplete());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"connection failure", "timeout", "status 418", "body that is a JSON array", "body that is not JSON"})
+    public void collectMarkerReferences_aRunnerFailureOfAnyCauseIsSchemaUnavailable(String cause) throws IOException, InterruptedException {
+        switch (cause) {
+            case "connection failure" -> when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString())))
+                    .thenThrow(new java.net.ConnectException("Connection refused"));
+            case "timeout" -> when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString())))
+                    .thenThrow(new java.net.http.HttpTimeoutException("request timed out"));
+            case "status 418" -> givenRunnerFailsWith(418);
+            case "body that is a JSON array" -> givenRunnerAnswers("[1,2]");
+            case "body that is not JSON" -> givenRunnerAnswers("this is not json");
+            default -> throw new IllegalArgumentException(cause);
+        }
+
+        assertSchemaUnavailable(collectAfterRunnerFailure());
+    }
+
+    @Test
+    public void getSchema_withForceReloadKeepsItsExceptionAndItsCause() throws IOException, InterruptedException {
+        URI schemaId = URI.create("schemaId");
+        givenSchemaWhoseRunnerIs(schemaId, "http://runner.example/schema");
+        givenRunnerFailsWith(418);
+
+        ApplicationTypeSchemaProcessingException thrown = assertThrows(ApplicationTypeSchemaProcessingException.class,
+                () -> service.getSchema(schemaId, true));
+
+        Assertions.assertTrue(thrown.getCause() instanceof com.epam.aidial.core.storage.http.HttpException, "the request path keeps its cause");
+    }
+
+    @Test
+    public void collectMarkerReferences_withGivenConfigLooksTheSchemaUpThereAndNotInTheLiveStore() {
+        URI schemaId = URI.create("schemaId");
+        application.setApplicationTypeSchemaId(schemaId);
+        application.setApplicationProperties(properties("first", "toolsets/platform/a"));
+        Config snapshotConfig = mock(Config.class);
+        when(snapshotConfig.getCustomApplicationSchema(schemaId)).thenReturn("""
+                {"type":"object","properties":{"first":{"type":"string","dial:resource":true}}}""");
+
+        MarkerCollection result = collect(snapshotConfig);
+
+        Assertions.assertEquals(List.of(resourceReference("/first", "toolsets/platform/a")), result.references());
+        Assertions.assertTrue(result.isComplete());
+        verifyNoInteractions(configStore);
+        Assertions.assertEquals(0, service.schemaCacheSize());
+    }
+
+    @Test
+    public void collectMarkerReferences_propagatesInterruptInsteadOfRecordingSchemaFailure() throws Exception {
+        application.setApplicationTypeSchemaId(URI.create("schemaId"));
+        String staticSchema = """
+                {
+                  "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+                  "$id": "https://mydial.epam.com/custom_application_schemas/specific_application_type",
+                  "dial:applicationTypeSchemaEndpoint": "http://mydial.epam.com/schema"
+                }""";
+        when(config.getCustomApplicationSchema(any())).thenReturn(staticSchema);
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenThrow(new InterruptedException("deadline"));
+
+        try {
+            Assertions.assertThrows(InterruptedException.class, () -> collect(config));
+            Assertions.assertTrue(Thread.currentThread().isInterrupted(), "the flag is restored for the caller");
+        } finally {
+            Thread.interrupted();
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
@@ -13,10 +14,12 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
+import com.epam.aidial.core.server.validation.CollectionIssueKind;
 import com.epam.aidial.core.server.validation.DialFileKeyword;
 import com.epam.aidial.core.server.validation.DialMetaKeyword;
 import com.epam.aidial.core.server.validation.DialResourceKeyKeyword;
 import com.epam.aidial.core.server.validation.ListCollector;
+import com.epam.aidial.core.server.validation.MarkerCollection;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
@@ -31,8 +34,10 @@ import com.networknt.schema.CollectorContext;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.JsonMetaSchema;
 import com.networknt.schema.JsonSchema;
+import com.networknt.schema.JsonSchemaException;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.resource.DisallowSchemaLoader;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
@@ -81,6 +86,16 @@ public class ApplicationSchemaService {
     private static final JsonSchemaFactory SCHEMA_FACTORY = JsonSchemaFactory.builder()
             .metaSchema(DIAL_META_SCHEMA)
             .defaultMetaSchemaIri(DIAL_META_SCHEMA.getIri())
+            .build();
+
+    /**
+     * The factory of the export: the same meta-schema and keywords as {@link #SCHEMA_FACTORY}, but it refuses every
+     * {@code $ref} that is not local to the document, so a schema document cannot make Core fetch or read anything.
+     */
+    private static final JsonSchemaFactory EXPORT_SCHEMA_FACTORY = JsonSchemaFactory.builder()
+            .metaSchema(DIAL_META_SCHEMA)
+            .defaultMetaSchemaIri(DIAL_META_SCHEMA.getIri())
+            .schemaLoaders(loaders -> loaders.add(DisallowSchemaLoader.getInstance()))
             .build();
 
     private static final TypeReference<LinkedHashMap<String, Route>> APP_ROUTE_TYPE_REF = new TypeReference<>() {
@@ -188,28 +203,51 @@ public class ApplicationSchemaService {
                 return cached;
             }
         }
-        String customApplicationSchema = configStore.get().getCustomApplicationSchema(schemaId);
-        if (customApplicationSchema == null) {
+        CachedSchema result = buildSchema(configStore.get().getCustomApplicationSchema(schemaId), false);
+        if (result == null) {
             schemaCache.remove(schemaId);
             return null;
         }
+        schemaCache.put(schemaId, result);
+        return result;
+    }
+
+    /**
+     * Builds the schema from its stored document and, when it declares {@code dial:applicationTypeSchemaEndpoint}, from a
+     * download of the runner's document. It neither reads nor writes the cache.
+     *
+     * @param quiet true for the export: a failed download then writes no endpoint, response or exception to a log, raises an exception that
+     *              carries no endpoint and no cause, and an interrupt is restored and rethrown. Request processing passes false and
+     *              behaves exactly as before: the endpoint and the cause are logged and wrapped, an interrupt included
+     */
+    @SneakyThrows
+    @Nullable
+    private CachedSchema buildSchema(@Nullable String customApplicationSchema, boolean quiet) {
+        if (customApplicationSchema == null) {
+            return null;
+        }
         JsonNode schema = ProxyUtil.MAPPER.readTree(customApplicationSchema);
-        CachedSchema result;
         if (schema.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
             String url = schema.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT).textValue();
             try {
-                ObjectNode appSchema = downloadAppSchema(url);
+                ObjectNode appSchema = downloadAppSchema(url, quiet);
                 merge(appSchema, schema);
-                result = new CachedSchema(appSchema.toString(), appSchema);
+                return new CachedSchema(appSchema.toString(), appSchema);
             } catch (Exception e) {
+                if (quiet) {
+                    if (e instanceof InterruptedException) {
+                        // an interrupt is neither a failure of the runner nor a reason to go on
+                        Thread.currentThread().interrupt();
+                        throw e;
+                    }
+                    log.warn("Failed to download application schema");
+                    throw new ApplicationTypeSchemaProcessingException("Failed to download application schema");
+                }
                 log.warn("Failed to download application schema: {}", url, e);
                 throw new ApplicationTypeSchemaProcessingException("Failed to download application schema: " + url, e);
             }
-        } else {
-            result = new CachedSchema(customApplicationSchema, schema);
         }
-        schemaCache.put(schemaId, result);
-        return result;
+        return new CachedSchema(customApplicationSchema, schema);
     }
 
     @SneakyThrows
@@ -241,7 +279,7 @@ public class ApplicationSchemaService {
     }
 
     @SneakyThrows
-    private ObjectNode downloadAppSchema(String url) {
+    private ObjectNode downloadAppSchema(String url, boolean quiet) {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(java.time.Duration.ofSeconds(5))
@@ -251,8 +289,12 @@ public class ApplicationSchemaService {
         int status = response.statusCode();
         String body = response.body();
         if (status != 200) {
-            log.debug("Error of downloading application schema {}: status {}, response {}, headers: {}",
-                    request.uri(), response.statusCode(), response.body(), response.headers());
+            if (quiet) {
+                log.debug("Error of downloading application schema: status {}", status);
+            } else {
+                log.debug("Error of downloading application schema {}: status {}, response {}, headers: {}",
+                        request.uri(), response.statusCode(), response.body(), response.headers());
+            }
             throw new HttpException(status, "Application runner returned error on downloading application schema");
         }
         JsonNode tree = ProxyUtil.MAPPER.readTree(body);
@@ -442,6 +484,56 @@ public class ApplicationSchemaService {
     public List<ResourceDescriptor> getDeployments(Application application) {
         return getApplicationResources(application, Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET),
                 ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
+    }
+
+    /**
+     * The schema of an application as the export holds it: evaluable, or the reason why it is not.
+     *
+     * @param schema the schema, built with the factory that refuses a {@code $ref} outside the document; {@code null} when there is an issue
+     * @param issue  {@code SCHEMA_NOT_FOUND} when nothing holds the id, {@code SCHEMA_UNAVAILABLE} when the schema, or the document of its
+     *               Runner, cannot be evaluated; {@code null} when there is a schema
+     */
+    public record ExportSchema(@Nullable JsonSchema schema, @Nullable CollectionIssueKind issue) {
+    }
+
+    /**
+     * Builds the schema with the given id from the given configuration, so that an export which holds one snapshot looks the schema up in
+     * the same generation as everything else. The schema is built as request processing builds it, through the same download of the
+     * Runner's document, but live: the cache is neither read nor written, so the export never sees a stale schema and never replaces the
+     * one that request processing uses. A missing schema and an unusable remote part are an {@link ExportSchema} with an issue, not an
+     * exception; any other failure propagates.
+     */
+    public ExportSchema buildExportSchema(URI schemaId, Config config) {
+        CachedSchema cached;
+        try {
+            cached = buildSchema(config.getCustomApplicationSchema(schemaId), true);
+        } catch (ApplicationTypeSchemaProcessingException e) {
+            return new ExportSchema(null, CollectionIssueKind.SCHEMA_UNAVAILABLE);
+        }
+        if (cached == null) {
+            return new ExportSchema(null, CollectionIssueKind.SCHEMA_NOT_FOUND);
+        }
+        try {
+            return new ExportSchema(EXPORT_SCHEMA_FACTORY.getSchema(cached.raw), null);
+        } catch (JsonSchemaException e) {
+            return new ExportSchema(null, CollectionIssueKind.SCHEMA_UNAVAILABLE);
+        }
+    }
+
+    /**
+     * Collects the marked values of the application's properties against a schema that the caller already holds. The collector parses
+     * nothing, checks no existence and authorizes nothing: it returns the original values with their marker kind and RFC 6901 pointer.
+     *
+     * <p>Issues carry no library message and no value, because a message can hold the instance value or an IRI.
+     */
+    public MarkerCollection collectMarkerReferences(Application application, JsonSchema schema) {
+        String propertiesJson;
+        try {
+            propertiesJson = ProxyUtil.MAPPER.writeValueAsString(application.getApplicationProperties());
+        } catch (JsonProcessingException e) {
+            throw new ApplicationTypeSchemaProcessingException("Failed to serialize the properties of the application", e);
+        }
+        return MarkerCollection.collect(schema, propertiesJson);
     }
 
     @SuppressWarnings("unchecked")

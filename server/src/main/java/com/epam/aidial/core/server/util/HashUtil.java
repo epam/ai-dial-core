@@ -11,9 +11,12 @@ import java.util.HexFormat;
 public class HashUtil {
 
     public static String sha256Hex(String value) {
+        return sha256Hex(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static String sha256Hex(byte[] value) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

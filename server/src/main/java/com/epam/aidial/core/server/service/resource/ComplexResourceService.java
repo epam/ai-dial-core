@@ -338,6 +338,17 @@ public class ComplexResourceService {
     }
 
     /**
+     * Streams a single file of a given version, which is how an export reads the version that it pinned: the files of a version are immutable, so
+     * the version stays the same while a newer one replaces it as the current one, until the old one is removed. Returns {@code null} if the file
+     * no longer exists in that version.
+     */
+    @SneakyThrows
+    public ResourceService.ResourceStream getVersionFileStream(ResourceDescriptor resource, String versionId, String relativePath) {
+        ResourceDescriptor file = versionFile(resource, versionId, normalizePath(relativePath));
+        return resourceService.getResourceStream(file, EtagHeader.ANY);
+    }
+
+    /**
      * Adds or replaces a single file via copy-on-write of a new version: the current version is copied
      * server-side to a fresh {@code v/{versionId}/} prefix, the single file is written, then the marker is
      * committed under the folder-scoped lock. Returns the new aggregate etag.

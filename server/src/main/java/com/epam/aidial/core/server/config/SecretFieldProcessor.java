@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.annotation.EncryptedField;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -18,6 +19,7 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -88,34 +90,48 @@ public class SecretFieldProcessor {
 
     private static void applyStrip(ObjectNode target, Class<?> entityClass) {
         for (Field field : declaredFieldsIncludingInherited(entityClass)) {
-            String name = field.getName();
-            if (field.isAnnotationPresent(EncryptedField.class)) {
-                target.remove(name);
-            }
-            Class<?> nestedType = elementClassWithEncryptedField(field);
-            if (nestedType != null) {
-                JsonNode arr = target.get(name);
-                if (arr != null && arr.isArray()) {
-                    for (JsonNode item : arr) {
-                        if (item instanceof ObjectNode itemObj) {
-                            applyStrip(itemObj, nestedType);
+            // stored JSON may spell a property by any name that Jackson accepts for the field, so a secret or a container of
+            // secrets is found under every one of them
+            for (String name : acceptedNames(field)) {
+                if (field.isAnnotationPresent(EncryptedField.class)) {
+                    target.remove(name);
+                }
+                Class<?> nestedType = elementClassWithEncryptedField(field);
+                if (nestedType != null) {
+                    JsonNode arr = target.get(name);
+                    if (arr != null && arr.isArray()) {
+                        for (JsonNode item : arr) {
+                            if (item instanceof ObjectNode itemObj) {
+                                applyStrip(itemObj, nestedType);
+                            }
                         }
                     }
                 }
-            }
-            Class<?> valueType = valueClassWithEncryptedField(field);
-            if (valueType != null && target.get(name) instanceof ObjectNode entries) {
-                for (JsonNode entry : entries) {
-                    if (entry instanceof ObjectNode entryObj) {
-                        applyStrip(entryObj, valueType);
+                Class<?> valueType = valueClassWithEncryptedField(field);
+                if (valueType != null && target.get(name) instanceof ObjectNode entries) {
+                    for (JsonNode entry : entries) {
+                        if (entry instanceof ObjectNode entryObj) {
+                            applyStrip(entryObj, valueType);
+                        }
                     }
                 }
-            }
-            Class<?> objectType = objectClassWithEncryptedField(field);
-            if (objectType != null && target.get(name) instanceof ObjectNode nested) {
-                applyStrip(nested, objectType);
+                Class<?> objectType = objectClassWithEncryptedField(field);
+                if (objectType != null && target.get(name) instanceof ObjectNode nested) {
+                    applyStrip(nested, objectType);
+                }
             }
         }
+    }
+
+    /** The field name and every {@code @JsonAlias} of the field, which are the spellings that Jackson reads into it. */
+    private static Set<String> acceptedNames(Field field) {
+        Set<String> names = new LinkedHashSet<>();
+        names.add(field.getName());
+        JsonAlias alias = field.getAnnotation(JsonAlias.class);
+        if (alias != null) {
+            names.addAll(List.of(alias.value()));
+        }
+        return names;
     }
 
     public ObjectNode mergePreservingOmittedSecrets(JsonNode existingBlobNode,
