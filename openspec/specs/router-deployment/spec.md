@@ -135,45 +135,53 @@ as app-to-model-accounting states.
   with its per-request key and the model answers `200` with `usage.total_tokens: 15`
 - **THEN** the `gpt-4/tokens` limit record under the initiator's bucket grows by 15
 
-### Requirement: Decision interface mode
-Core SHALL read `interfaces.<type>.mode: decision` on a router, with the entry's own `base_url` as the URL of the
-decide request, an optional `context.body` (default `false`) and an optional `decisionTimeoutMs` (default 5000,
-must be positive). Core SHALL reject `decision` on any deployment that is not a router (`Mode 'decision' is allowed on a
-router only`), a decision entry without its own `base_url` (`Mode 'decision' requires base_url`) and one declaring a
-`translator`.
+### Requirement: Decision mode
+Core SHALL read a router's `mode`, `proxy` (the default when absent) or `decision`. In decision mode every interface the
+router declares is decided at its decide URL: the interface's `base_url`, or the router's `baseUrl` when it declares
+none, followed by `/decide`. No interface entry of any deployment SHALL accept `mode: decision`.
 
-#### Scenario: Decision mode on a model or application rejected
-- **WHEN** the config declares `models.m` with `interfaces.openaiChatCompletions: {"mode": "decision", "base_url": "http://r/decide"}`,
-  or `applications.a` with the same entry
-- **THEN** the config is rejected with a message containing `Mode 'decision' is allowed on a router only`, and an
-  admin `PUT /v1/applications/platform/a` with that entry is answered `422` with the same message
+#### Scenario: Decision mode on an interface entry rejected
+- **WHEN** an admin sends `PUT /v1/applications/platform/a` with `interfaces.openaiChatCompletions: {"mode": "decision"}`
+- **THEN** Core answers `400` and stores nothing
 
-#### Scenario: Decision entry needs its own url
-- **WHEN** the config declares `routers.r1` with `baseUrl: http://router` and `interfaces.openaiChatCompletions: {"mode": "decision"}`
-- **THEN** the config is rejected with a message containing `Mode 'decision' requires base_url`
+#### Scenario: Decide URL per interface
+- **WHEN** `routers.r3` declares `baseUrl: http://router`, `mode: decision`,
+  `interfaces.openaiChatCompletions: {"base_url": "http://router/body"}` and `interfaces.openaiResponses: {}`
+- **THEN** a chat completion for `r3` is decided by `POST http://router/body/decide` and a Responses request for `r3`
+  by `POST http://router/decide`, and neither request is forwarded to the router
 
-#### Scenario: Decision for one interface, proxy for another
-- **WHEN** `routers.r1` declares `interfaces.anthropicMessages: {"mode": "decision", "base_url": "http://router/decide"}`
-  and `interfaces.openaiResponses: {"base_url": "http://router"}`
-- **THEN** the config loads; a Messages request for `r1` triggers a decide request and a Responses request for `r1`
-  is proxied to `http://router/openai/v1/responses`
+### Requirement: Decision settings
+Core SHALL read a router's optional `decision` object with `body` (default `false`), `timeoutMs` (default 5000, must be
+positive) and `maxDecisions` (see Decision limit), and SHALL reject it on a router not in decision mode (`decision
+requires mode 'decision'`). Core SHALL reject a translated interface on a router in decision mode (`A router in mode
+'decision' serves no interface through a translator`).
+
+#### Scenario: Decision settings without decision mode rejected
+- **WHEN** the config declares `routers.r1` with `baseUrl: http://router`, `decision: {"maxDecisions": 2}` and no `mode`
+- **THEN** the config is rejected with a message containing `decision requires mode 'decision'`
+
+#### Scenario: Translated interface on a decision router rejected
+- **WHEN** the config declares `routers.r1` with `baseUrl: http://router`, `mode: decision` and
+  `interfaces.anthropicMessages: {"mode": "translator", "translator": {"out": "openaiChatCompletions", "baseUrl": "http://t"}}`
+- **THEN** the config is rejected with a message containing `A router in mode 'decision' serves no interface through a
+  translator`
 
 ### Requirement: Decide request
-For a request to a router whose interface is in decision mode, Core SHALL send `POST <base_url>` with the client's
+For a request to a router in decision mode, Core SHALL send `POST` to the interface's decide URL with the client's
 headers as it forwards them to any origin, the router's `defaultHeaders` for the interface where the client sent
 none, `X-DIAL-ROUTER` (router name), `X-DIAL-API` (interface type) and `API-KEY` (the decide request key), and an
-empty body, or the client's request bytes unchanged when `context.body` is `true`.
+empty body, or the client's request bytes unchanged when `decision.body` is `true`.
 
 #### Scenario: Headers and empty body
-- **WHEN** `routers.r1` declares `defaultHeaders: {"X-DIAL-ROUTER-TIER": "medium"}` and
-  `interfaces.openaiChatCompletions: {"mode": "decision", "base_url": "http://router/decide"}`, and a client with
+- **WHEN** `routers.r1` declares `baseUrl: http://router`, `mode: decision`,
+  `defaultHeaders: {"X-DIAL-ROUTER-TIER": "medium"}` and `interfaces.openaiChatCompletions: {}`, and a client with
   project key `p1` sends `POST /openai/deployments/r1/chat/completions` with `X-CONVERSATION-ID: c1`
 - **THEN** the router receives `POST http://router/decide` with `X-CONVERSATION-ID: c1`, `X-DIAL-ROUTER-TIER: medium`,
-  `X-DIAL-ROUTER: r1`, `X-DIAL-API: openaiChatCompletions`, an `API-KEY` that is not `p1`'s key, no
-  `X-DIAL-USER-INFO` and an empty body, and the model that serves the request receives no `X-DIAL-ROUTER-TIER` header
+  `X-DIAL-ROUTER: r1`, `X-DIAL-API: openaiChatCompletions`, an `API-KEY` that is not `p1`'s key and an empty body,
+  and the model that serves the request receives no `X-DIAL-ROUTER-TIER` header
 
 #### Scenario: Body on request
-- **WHEN** the same interface declares `context: {"body": true}` and the client sends body `{"model":"r1","messages":[]}`
+- **WHEN** the router declares `decision: {"body": true}` and the client sends body `{"model":"r1","messages":[]}`
 - **THEN** the decide request's body is exactly `{"model":"r1","messages":[]}` with `Content-Type: application/json`
 
 ### Requirement: Verdict
@@ -268,13 +276,13 @@ interceptor hand-off.
 - **THEN** `m2`'s stream reaches the client with one `Content-Type` header
 
 ### Requirement: Decision failures
-For the first decide request of a request, Core SHALL answer `504` when it exceeds `decisionTimeoutMs` (connecting included), `502` when the
+For the first decide request of a request, Core SHALL answer `504` when it exceeds `decision.timeoutMs` (connecting included), `502` when the
 router is unreachable, answers `5xx`, or names a candidate that does not exist or is a router, or when the router is
 re-entered through a deployment it chose, and SHALL relay a router `4xx` status and body to the client. In every
 case Core SHALL send nothing to any candidate and SHALL write no analytics row for the request.
 
 #### Scenario: Slow router
-- **WHEN** `decisionTimeoutMs: 200` and the router takes 2 s to answer
+- **WHEN** the router declares `decision: {"timeoutMs": 200}` and takes 2 s to answer
 - **THEN** Core answers `504` within the second
 
 #### Scenario: Router rejects the request
@@ -333,7 +341,7 @@ record across decisions).
 - **THEN** Core writes both rows, and the router row carries the `decision` object
 
 #### Scenario: Router row when every candidate fails
-- **WHEN** the router `r-two`, with `maxDecisions: 2`, answers `{"candidates": ["m1"]}` to both decide requests and
+- **WHEN** the router `r-two`, with `decision: {"maxDecisions": 2}`, answers `{"candidates": ["m1"]}` to both decide requests and
   `m1` answers `503` each time
 - **THEN** the client receives `502` and Core writes only the router row, with `response.status: "502"`,
   `decision.decisions: 2`, `decision.deployment: "m1"` and `decision.attempts: [{"deployment": "m1", "status": 502,
@@ -392,8 +400,6 @@ nothing, when the schema is unknown or the properties do not validate, whatever 
 For a router with `applicationTypeSchemaId`, Core SHALL send `X-DIAL-APPLICATION-PROPERTIES`, the JSON of the
 properties the schema declares taken from `applicationProperties`, on requests to the router's own interfaces and
 feature endpoints and on decide requests, unless the schema sets `dial:appendApplicationPropertiesHeader: false`.
-A translator in front of a router interface, a Responses item call and the deployment a decision chose SHALL NOT
-receive it.
 
 #### Scenario: Proxied request
 - **WHEN** a client sends `POST /openai/deployments/r3/chat/completions` to the typed router `r3` whose properties
@@ -403,7 +409,7 @@ receive it.
   `{"tier": "medium", "preferredModels": ["gpt-4"]}`
 
 #### Scenario: Decide request
-- **WHEN** the typed router's `openaiChatCompletions` interface is in decision mode and its verdict names `gpt-4`
+- **WHEN** the typed router is in decision mode and its verdict names `gpt-4`
 - **THEN** the decide request carries the same `X-DIAL-APPLICATION-PROPERTIES`, and the request `gpt-4` receives
   carries none
 
@@ -418,6 +424,20 @@ receive it.
 #### Scenario: Router without a schema
 - **WHEN** a client calls router `r1`, which declares no `applicationTypeSchemaId`
 - **THEN** the router receives no `X-DIAL-APPLICATION-PROPERTIES`
+
+### Requirement: Router properties kept to the router
+Core SHALL NOT send `X-DIAL-APPLICATION-PROPERTIES` to a translator in front of a router interface (the router receives
+it when the translator calls Core back), on a Responses item call (as for an application), or to the deployment a
+decision chose (the properties are the router's). Core SHALL drop a client-sent header of that name, as for every
+deployment.
+
+#### Scenario: Client-sent properties dropped
+- **WHEN** a client sends `X-DIAL-APPLICATION-PROPERTIES: {"tier": "premium"}` to the typed router `r3`
+- **THEN** the router receives only the header Core built from `r3`'s properties
+
+#### Scenario: Translator in front of a typed router
+- **WHEN** a typed router serves `anthropicMessages` through a translator and a client sends a Messages request to it
+- **THEN** the translator's request carries no `X-DIAL-APPLICATION-PROPERTIES`
 
 ### Requirement: Router properties that no longer match
 Core SHALL build a typed router's properties header once per request, before it connects to the router, and SHALL
@@ -455,14 +475,13 @@ validate against it, in proxy and in decision mode.
 - **THEN** Core answers `403`, then `200` with `object: "router"`
 
 ### Requirement: Router identity through user info
-Core SHALL NOT send `X-DIAL-USER-INFO` to a router, on a forwarded request, a feature endpoint call, a Responses item
-call or a decide request, and SHALL drop a client-sent header of that name. A router SHALL get the caller's identity
-from `GET /v1/user/info` called with the `API-KEY` Core sent it.
+A router SHALL get the caller's identity from `GET /v1/user/info` called with the `API-KEY` Core sent it; Core sends
+it no identity header of its own.
 
-#### Scenario: No identity header, user info through the key
-- **WHEN** a client with project key `p1` sends `POST /openai/deployments/r1/chat/completions` with
-  `X-DIAL-USER-INFO: {"roles": ["admin"]}`, and the router calls `GET /v1/user/info` with the `API-KEY` it received
-- **THEN** the router's request carries no `X-DIAL-USER-INFO`, and the user info answer has `project: "p1"`
+#### Scenario: Project key caller's identity through the key
+- **WHEN** a client with project key `p1` sends `POST /openai/deployments/r1/chat/completions`, and the router calls
+  `GET /v1/user/info` with the `API-KEY` it received
+- **THEN** the user info answer has `project: "p1"`
 
 #### Scenario: JWT caller's identity through the key
 - **WHEN** a client authenticated by a JWT with user id `u1` and roles `["analysts", "b"]` calls router `r1`, and the
@@ -491,18 +510,28 @@ the served pass's `statistics.usage_per_model`. Core SHALL invalidate the key wh
 - **WHEN** the decide call has ended and the router calls `GET /v1/user/info` with the decide request's `API-KEY`
 - **THEN** Core answers `401`
 
+### Requirement: Decide request key reads the attachments
+When the decide request carries the client's body, its key SHALL also grant read access to the files and folders the
+body attaches, as the chosen deployment's key does, and Core SHALL answer `403` without a decide request when the
+caller may not read one of them.
+
+#### Scenario: Router reads an attachment while deciding
+- **WHEN** the router declares `decision: {"body": true}`, the client attaches a file of its own bucket to a chat
+  completion, and the router reads that file with the decide request's `API-KEY`
+- **THEN** Core answers the read `200`
+
 ### Requirement: Decision limit
-A decision-mode interface entry SHALL accept an optional `maxDecisions`, the number of decide requests one client
-request may need, the first included, from 1 to 10; it defaults to `3`. Core SHALL reject a value outside that range
-with `maxDecisions must be between 1 and 10`. Like `decisionTimeoutMs`, it is ignored on an entry not in decision mode.
+A router's `decision` object SHALL accept an optional `maxDecisions`, the number of decide requests one client request
+may need, the first included, from 1 to 10; it defaults to `3`. Core SHALL reject a value outside that range with
+`decision.maxDecisions must be between 1 and 10`.
 
 #### Scenario: Limit out of range rejected
-- **WHEN** the config declares `routers.r1` with `interfaces.openaiChatCompletions: {"mode": "decision", "base_url":
-  "http://router/decide", "maxDecisions": 0}`, or the same with `"maxDecisions": 11`
-- **THEN** the config is rejected with a message containing `maxDecisions must be between 1 and 10`
+- **WHEN** the config declares `routers.r1` with `mode: decision` and `decision: {"maxDecisions": 0}`, or the same with
+  `"maxDecisions": 11`
+- **THEN** the config is rejected with a message containing `decision.maxDecisions must be between 1 and 10`
 
 ### Requirement: Re-decide after the candidates
-When every candidate of a verdict has failed, the client is still connected and fewer than `maxDecisions` decide
+When every candidate of a verdict has failed, the client is still connected and fewer than `decision.maxDecisions` decide
 requests were sent, Core SHALL send another decide request, built as the first one with a new key, plus
 `X-DIAL-ROUTER-ATTEMPTS`, the JSON array of every attempt so far, and try the new verdict's candidates in the same
 way, a candidate that already failed included. When the re-decide fails or no decision is left, Core SHALL answer
@@ -516,7 +545,7 @@ the last candidate's failure.
   request and the client receives `200`
 
 #### Scenario: Limit reached
-- **WHEN** `maxDecisions` is `2` and both verdicts name only `m1`, whose only upstream answers `503`
+- **WHEN** `decision.maxDecisions` is `2` and both verdicts name only `m1`, whose only upstream answers `503`
 - **THEN** the router receives two decide requests, `m1` is called twice, and the client receives `502`
 
 #### Scenario: Re-decide fails
@@ -529,7 +558,7 @@ the last candidate's failure.
 - **THEN** `m2` serves the request and nothing is sent to `private-model`
 
 #### Scenario: Body sent again
-- **WHEN** the interface has `context: {"body": true}` and Core decides again
+- **WHEN** the router declares `decision: {"body": true}` and Core decides again
 - **THEN** the second decide request's body is the client's request bytes, as the first one's was
 
 ### Requirement: Router headers set by Core only
@@ -543,7 +572,7 @@ and SHALL set them only as this capability states.
 
 ### Requirement: Mid-stream notice
 When a candidate's answer fails after bytes of it reached the client, outside an interceptor hand-off, Core SHALL end
-the client's response as for any broken answer and SHALL send the decide `base_url`, without waiting, a notice request
+the client's response as for any broken answer and SHALL send the decide URL, without waiting, a notice request
 with the decide request's client and default headers, `X-DIAL-ROUTER`, `X-DIAL-API`, `X-DIAL-ROUTER-NOTICE: true` and
 `X-DIAL-ROUTER-ATTEMPTS`, no `API-KEY` and an empty body. Core SHALL ignore its answer; it is not a decision.
 

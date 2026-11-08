@@ -923,85 +923,55 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
-    void testDecisionModeOnModelRejected() {
+    void testDecisionSettingsNeedDecisionMode() {
         Config config = newMutableConfig();
-        Model model = new Model();
-        model.setInterfaces(Map.of("openaiChatCompletions", decision("http://r/decide")));
-        config.getModels().put("m", model);
+        Router router = router("http://router", "openaiChatCompletions", new DeploymentInterface());
+        router.setDecision(decision(null, 2));
+        config.getRouters().put("r1", router);
 
         InvalidEntityException error = assertThrows(InvalidEntityException.class,
                 () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
-        assertTrue(error.getMessage().contains("Mode 'decision' is allowed on a router only"), error.getMessage());
+        assertTrue(error.getMessage().contains("decision requires mode 'decision'"), error.getMessage());
     }
 
     @Test
-    void testDecisionModeOnApplicationRejected() {
+    void testDecisionRouterNeedsUrlForEachInterface() {
         Config config = newMutableConfig();
-        Application application = new Application();
-        application.setEndpoint("http://app/chat");
-        application.setInterfaces(Map.of("openaiChatCompletions", decision("http://r/decide")));
-        config.getApplications().put("a", application);
+        config.getRouters().put("r1", decisionRouter(null, null));
 
         InvalidEntityException error = assertThrows(InvalidEntityException.class,
                 () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
-        assertTrue(error.getMessage().contains("Mode 'decision' is allowed on a router only"), error.getMessage());
+        assertTrue(error.getMessage().contains("declares no base_url and the router declares no baseUrl"), error.getMessage());
     }
 
     @Test
-    void testDecisionModeOnInterceptorRejected() {
+    void testDecisionRouterWithTranslatorRejected() {
         Config config = newMutableConfig();
-        Interceptor interceptor = new Interceptor();
-        interceptor.setEndpoint("http://i/chat");
-        interceptor.setInterfaces(Map.of("openaiChatCompletions", decision("http://r/decide")));
-        config.getInterceptors().put("i", interceptor);
+        Router router = decisionRouter("http://router", null);
+        router.setInterfaces(Map.of("anthropicMessages", translated(TranslatorRef.inline(new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://t")))));
+        config.getRouters().put("r1", router);
 
         InvalidEntityException error = assertThrows(InvalidEntityException.class,
                 () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
-        assertTrue(error.getMessage().contains("Mode 'decision' is allowed on a router only"), error.getMessage());
-    }
-
-    @Test
-    void testDecisionEntryNeedsItsOwnUrl() {
-        Config config = newMutableConfig();
-        config.getRouters().put("r1", router("http://router", "openaiChatCompletions", decision(null)));
-
-        InvalidEntityException error = assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
-        assertTrue(error.getMessage().contains("Mode 'decision' requires base_url"), error.getMessage());
-    }
-
-    @Test
-    void testDecisionWithTranslatorRejected() {
-        Config config = newMutableConfig();
-        DeploymentInterface declared = decision("http://router/decide");
-        declared.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://t")));
-        config.getRouters().put("r1", router(null, "anthropicMessages", declared));
-
-        InvalidEntityException error = assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
-        assertTrue(error.getMessage().contains("Mode 'decision' excludes translator"), error.getMessage());
+        assertTrue(error.getMessage().contains("A router in mode 'decision' serves no interface through a translator"), error.getMessage());
     }
 
     @Test
     void testMaxDecisionsOutOfRangeRejected() {
         for (int value : new int[] {0, 11}) {
             Config config = newMutableConfig();
-            DeploymentInterface declared = decision("http://router/decide");
-            declared.setMaxDecisions(value);
-            config.getRouters().put("r1", router(null, "openaiChatCompletions", declared));
+            config.getRouters().put("r1", decisionRouter("http://router", decision(null, value)));
 
             InvalidEntityException error = assertThrows(InvalidEntityException.class,
                     () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
-            assertTrue(error.getMessage().contains("maxDecisions must be between 1 and 10"), error.getMessage());
+            assertTrue(error.getMessage().contains("decision.maxDecisions must be between 1 and 10"), error.getMessage());
         }
     }
 
     @Test
     void testMaxDecisionsAtTheCapAccepted() {
         Config config = newMutableConfig();
-        DeploymentInterface declared = decision("http://router/decide");
-        declared.setMaxDecisions(10);
-        config.getRouters().put("r1", router(null, "openaiChatCompletions", declared));
+        config.getRouters().put("r1", decisionRouter("http://router", decision(null, 10)));
 
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
 
@@ -1011,31 +981,24 @@ public class ConfigPostProcessorTest {
     @Test
     void testDecisionTimeoutMustBePositive() {
         Config config = newMutableConfig();
-        DeploymentInterface declared = decision("http://router/decide");
-        declared.setDecisionTimeoutMs(0L);
-        config.getRouters().put("r1", router(null, "openaiChatCompletions", declared));
+        config.getRouters().put("r1", decisionRouter("http://router", decision(0L, null)));
 
         InvalidEntityException error = assertThrows(InvalidEntityException.class,
                 () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
-        assertTrue(error.getMessage().contains("decisionTimeoutMs must be positive"), error.getMessage());
+        assertTrue(error.getMessage().contains("decision.timeoutMs must be positive"), error.getMessage());
     }
 
     @Test
-    void testValidDecisionEntryAccepted() {
+    void testValidDecisionRouterAccepted() {
         Config config = newMutableConfig();
-        DeploymentInterface declared = decision("http://router/decide");
-        declared.setDecisionTimeoutMs(200L);
-        config.getRouters().put("r1", router(null, "openaiChatCompletions", declared));
+        Router router = decisionRouter(null, decision(200L, null));
+        // an interface's base_url serves a router that declares no baseUrl
+        router.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface("http://router")));
+        config.getRouters().put("r1", router);
 
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
 
         assertTrue(config.getRouters().containsKey("r1"));
-    }
-
-    @Test
-    void testDecisionModeKeepsTheLimitFlag() {
-        // a router is exempt as a router; the flag must not exempt another deployment kind
-        assertTrue(InterfaceMode.DECISION.isSubjectToLimits());
     }
 
     @Test
@@ -1057,10 +1020,18 @@ public class ConfigPostProcessorTest {
         return declared;
     }
 
-    private static DeploymentInterface decision(String baseUrl) {
-        DeploymentInterface declared = new DeploymentInterface(baseUrl);
-        declared.setMode(InterfaceMode.DECISION);
-        return declared;
+    private static Router decisionRouter(String baseUrl, Router.Decision decision) {
+        Router router = router(baseUrl, "openaiChatCompletions", new DeploymentInterface());
+        router.setMode(Router.Mode.DECISION);
+        router.setDecision(decision);
+        return router;
+    }
+
+    private static Router.Decision decision(Long timeoutMs, Integer maxDecisions) {
+        Router.Decision decision = new Router.Decision();
+        decision.setTimeoutMs(timeoutMs);
+        decision.setMaxDecisions(maxDecisions);
+        return decision;
     }
 
     private static Config newMutableConfig() {

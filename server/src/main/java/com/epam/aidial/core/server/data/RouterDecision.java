@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.data;
 
-import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -46,8 +45,6 @@ public class RouterDecision {
     // what a new decide request is built from; not part of the analytics row
     @Setter
     private Router routerConfig;
-    @Setter
-    private DeploymentInterface entry;
     @Setter
     private ApiKeyData keyTemplate;
     // where the router row sits in the call tree, fixed when the router answered

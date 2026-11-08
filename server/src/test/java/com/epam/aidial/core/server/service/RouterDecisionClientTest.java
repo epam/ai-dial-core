@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.DeploymentInterface;
-import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.Proxy;
@@ -70,14 +69,14 @@ class RouterDecisionClientTest {
     void candidatesInOrder() throws Exception {
         server.enqueue(json(200, "{\"candidates\": [\"a\", \"b\"], \"reason\": \"cheap\"}"));
 
-        assertEquals(List.of("a", "b"), decide(entry(null), null));
+        assertEquals(List.of("a", "b"), decide(router(null), null));
     }
 
     @Test
     void shorthandNoLongerRead() {
         server.enqueue(json(200, "{\"deployment\": \"a\", \"ttl\": 60}"));
 
-        assertEquals(502, failure(entry(null)).getStatus().getCode());
+        assertEquals(502, failure(router(null)).getStatus().getCode());
     }
 
     @Test
@@ -86,7 +85,7 @@ class RouterDecisionClientTest {
                 "{\"candidates\": [\" \"]}")) {
             server.enqueue(json(200, body));
 
-            assertEquals(502, failure(entry(null)).getStatus().getCode(), body);
+            assertEquals(502, failure(router(null)).getStatus().getCode(), body);
         }
     }
 
@@ -95,7 +94,7 @@ class RouterDecisionClientTest {
         String body = "{\"error\": {\"message\": \"state either tier or target\"}}";
         server.enqueue(json(400, body));
 
-        HttpException error = failure(entry(null));
+        HttpException error = failure(router(null));
 
         assertEquals(400, error.getStatus().getCode());
         assertEquals(body, error.getMessage());
@@ -106,45 +105,41 @@ class RouterDecisionClientTest {
     void unlistedRouterClientErrorStaysClientError() {
         server.enqueue(json(418, "{}"));
 
-        assertEquals(400, failure(entry(null)).getStatus().getCode());
+        assertEquals(400, failure(router(null)).getStatus().getCode());
     }
 
     @Test
     void routerServerErrorAnswered502() {
         server.enqueue(json(500, "{}"));
 
-        assertEquals(502, failure(entry(null)).getStatus().getCode());
+        assertEquals(502, failure(router(null)).getStatus().getCode());
     }
 
     @Test
     void slowRouterAnswered504() {
         server.enqueue(json(200, "{\"candidates\": [\"a\"]}").setHeadersDelay(2, TimeUnit.SECONDS));
-        DeploymentInterface entry = entry(null);
-        entry.setDecisionTimeoutMs(100L);
-
         long start = System.currentTimeMillis();
-        assertEquals(504, failure(entry).getStatus().getCode());
+        assertEquals(504, failure(router(100L)).getStatus().getCode());
         assertTrue(System.currentTimeMillis() - start < 1000);
     }
 
     @Test
     void unreachableRouterAnswered502() throws Exception {
-        String url = server.url("/decide").toString();
+        Router router = router(null);
         server.shutdown();
-        DeploymentInterface entry = new DeploymentInterface(url);
-        entry.setMode(InterfaceMode.DECISION);
 
-        assertEquals(502, failure(entry).getStatus().getCode());
+        assertEquals(502, failure(router).getStatus().getCode());
     }
 
     @Test
     void decideRequestHeaders() throws Exception {
         server.enqueue(json(200, "{\"candidates\": [\"a\"]}"));
-        clientHeaders.add("Authorization", "Bearer secret").add("X-DIAL-USER-INFO", "forged").add("api-key", "p1-key")
+        clientHeaders.add("Authorization", "Bearer secret").add("api-key", "p1-key")
                 .add("X-CONVERSATION-ID", "c1").add("X-DIAL-ROUTER-TIER", "high");
-        Router router = router(Map.of("X-DIAL-ROUTER-TIER", "medium", "X-DEFAULT", "d"));
+        Router router = router(null);
+        router.setDefaultHeaders(Map.of("X-DIAL-ROUTER-TIER", "medium", "X-DEFAULT", "d"));
 
-        RouterDecisionClient.decide(context, router, entry(null), InterfaceType.ANTHROPIC_MESSAGES, null, "decide-key", List.of())
+        RouterDecisionClient.decide(context, router, InterfaceType.ANTHROPIC_MESSAGES, null, "decide-key", List.of())
                 .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
 
         RecordedRequest request = server.takeRequest(5, TimeUnit.SECONDS);
@@ -152,7 +147,6 @@ class RouterDecisionClientTest {
         assertEquals("/decide", request.getPath());
         assertNull(request.getHeader("Authorization"));
         assertEquals("decide-key", request.getHeader("api-key"));
-        assertNull(request.getHeader("X-DIAL-USER-INFO"));
         assertEquals("c1", request.getHeader("X-CONVERSATION-ID"));
         assertEquals("high", request.getHeader("X-DIAL-ROUTER-TIER"));
         assertEquals("d", request.getHeader("X-DEFAULT"));
@@ -166,7 +160,7 @@ class RouterDecisionClientTest {
         server.enqueue(json(200, "{\"candidates\": [\"b\"]}"));
         clientHeaders.add("X-DIAL-ROUTER-ATTEMPTS", "forged").add("X-DIAL-ROUTER-NOTICE", "true");
 
-        RouterDecisionClient.decide(context, router(Map.of()), entry(null), InterfaceType.OPENAI_CHAT_COMPLETIONS, null, "decide-key",
+        RouterDecisionClient.decide(context, router(null), InterfaceType.OPENAI_CHAT_COMPLETIONS, null, "decide-key",
                         List.of(new RouterDecision.Attempt("a", 502, "body", true, false)))
                 .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
 
@@ -181,8 +175,9 @@ class RouterDecisionClientTest {
         server.enqueue(json(200, "{}"));
         clientHeaders.add("X-CONVERSATION-ID", "c1").add("X-DIAL-ROUTER-NOTICE", "false");
 
-        RouterDecisionClient.notice(context, router(Map.of("X-DEFAULT", "d")), entry(null), InterfaceType.OPENAI_CHAT_COMPLETIONS,
-                List.of(new RouterDecision.Attempt("a", 200, "stream", true, true)));
+        Router router = router(null);
+        router.setDefaultHeaders(Map.of("X-DEFAULT", "d"));
+        RouterDecisionClient.notice(context, router, InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of(new RouterDecision.Attempt("a", 200, "stream", true, true)));
 
         RecordedRequest request = server.takeRequest(5, TimeUnit.SECONDS);
         assertEquals("POST", request.getMethod());
@@ -201,34 +196,35 @@ class RouterDecisionClientTest {
     void nonAsciiDeploymentNamesEscaped() throws Exception {
         server.enqueue(json(200, "{\"candidates\": [\"b\"]}"));
 
-        RouterDecisionClient.decide(context, router(Map.of()), entry(null), InterfaceType.OPENAI_CHAT_COMPLETIONS, null, "decide-key",
+        RouterDecisionClient.decide(context, router(null), InterfaceType.OPENAI_CHAT_COMPLETIONS, null, "decide-key",
                         List.of(new RouterDecision.Attempt("modèle", 502, "upstream")))
                 .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
 
         assertTrue(server.takeRequest(5, TimeUnit.SECONDS).getHeader("X-DIAL-ROUTER-ATTEMPTS").contains("mod\\u00E8le"));
     }
 
-    private List<String> decide(DeploymentInterface entry, Buffer body) throws Exception {
-        return RouterDecisionClient.decide(context, router(Map.of()), entry, InterfaceType.OPENAI_CHAT_COMPLETIONS, body, "decide-key", List.of())
+    private List<String> decide(Router router, Buffer body) throws Exception {
+        return RouterDecisionClient.decide(context, router, InterfaceType.OPENAI_CHAT_COMPLETIONS, body, "decide-key", List.of())
                 .toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
     }
 
-    private HttpException failure(DeploymentInterface entry) {
-        ExecutionException error = assertThrows(ExecutionException.class, () -> decide(entry, null));
+    private HttpException failure(Router router) {
+        ExecutionException error = assertThrows(ExecutionException.class, () -> decide(router, null));
         return assertInstanceOf(HttpException.class, error.getCause());
     }
 
-    private DeploymentInterface entry(Long timeoutMs) {
-        DeploymentInterface entry = new DeploymentInterface(server.url("/decide").toString());
-        entry.setMode(InterfaceMode.DECISION);
-        entry.setDecisionTimeoutMs(timeoutMs);
-        return entry;
-    }
-
-    private static Router router(Map<String, String> defaultHeaders) {
+    /**
+     * A router in decision mode at the mock server's root, serving chat completions and Messages.
+     */
+    private Router router(Long timeoutMs) {
         Router router = new Router();
         router.setName("r1");
-        router.setDefaultHeaders(defaultHeaders);
+        router.setBaseUrl(server.url("/").toString());
+        router.setMode(Router.Mode.DECISION);
+        Router.Decision decision = new Router.Decision();
+        decision.setTimeoutMs(timeoutMs);
+        router.setDecision(decision);
+        router.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface(), "anthropicMessages", new DeploymentInterface()));
         return router;
     }
 

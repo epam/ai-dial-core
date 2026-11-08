@@ -86,7 +86,6 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertEquals("openaiChatCompletions", decide.getHeader("X-DIAL-API"));
         assertNotNull(decide.getHeader("api-key"));
         assertNotEquals("proxyKey1", decide.getHeader("api-key"));
-        assertNull(decide.getHeader("X-DIAL-USER-INFO"));
         assertEquals(0, decide.getBodySize());
 
         RecordedRequest model = single(request -> request.getPath().startsWith("/openai/deployments/gpt-4-real/"));
@@ -194,10 +193,31 @@ class RouterDecisionApiTest extends ResourceBaseTest {
                     "content-type", "application/json"), 200);
         }
         RecordedRequest decide = single(this::isDecide);
-        assertEquals("/decide-body", decide.getPath());
+        // the interface's base_url stands in for the router's baseUrl
+        assertEquals("/body/decide", decide.getPath());
         assertEquals(body, decide.getBody().readUtf8());
         assertEquals("application/json", decide.getHeader("content-type"));
         single(request -> request.getPath().equals("/openai/deployments/m1/chat/completions"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void decideKeyReadsTheAttachmentsOfTheBodyItCarries() {
+        String file = "files/" + bucket + "/note.txt";
+        verify(upload(HttpMethod.PUT, "/v1/" + file, null, "hello"), 200);
+        String body = "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\",\"custom_content\":{\"attachments\":[{\"url\":\"" + file + "\"}]}}]}";
+        AtomicInteger read = new AtomicInteger();
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (!isDecide(request)) {
+                return answer(request);
+            }
+            read.set(send(HttpMethod.GET, "/v1/" + file, null, null, "api-key", request.getHeader("api-key")).status());
+            return TestWebServer.createResponse(200, verdict.get(), "content-type", "application/json");
+        })) {
+            verify(send(HttpMethod.POST, "/openai/deployments/r3/chat/completions", null, body, "content-type", "application/json"), 200);
+        }
+        assertEquals(200, read.get());
     }
 
     @Test
@@ -338,17 +358,6 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         RecordedRequest model = single(request -> !isDecide(request));
         assertEquals("/anthropic/v1/messages/count_tokens", model.getPath());
         assertEquals("claude", model.getHeader(DEPLOYMENT_ID));
-    }
-
-    @Test
-    @DialConfigLocation(CONFIG)
-    void decisionForOneInterfaceProxyForAnother() {
-        try (TestWebServer server = server()) {
-            verify(send(HttpMethod.POST, "/openai/v1/responses", null,
-                    "{\"model\":\"r1\",\"store\":false,\"input\":\"hi\"}", "content-type", "application/json"), 200);
-        }
-        RecordedRequest router = single(request -> true);
-        assertEquals("/openai/v1/responses", router.getPath());
     }
 
     @Test
@@ -1077,7 +1086,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     @DialConfigLocation(CONFIG)
     void slowRouter() {
         try (TestWebServer server = server()) {
-            server.map(HttpMethod.POST, "/decide-slow", request -> TestWebServer.createResponse(200, verdict.get(), "content-type", "application/json")
+            server.map(HttpMethod.POST, "/slow/decide", request -> TestWebServer.createResponse(200, verdict.get(), "content-type", "application/json")
                     .setHeadersDelay(2, TimeUnit.SECONDS));
             long start = System.currentTimeMillis();
             verify(sendChat("r-slow"), 504);
@@ -1356,7 +1365,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     }
 
     private boolean isDecide(RecordedRequest request) {
-        return request.getPath().startsWith("/decide");
+        return request.getPath().endsWith("/decide");
     }
 
     private RecordedRequest single(Predicate<RecordedRequest> filter) {

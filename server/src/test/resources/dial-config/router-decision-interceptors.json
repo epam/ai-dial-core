@@ -8,10 +8,9 @@
   },
   "routers": {
     "r1": {
-      "interfaces": {
-        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4848/decide"},
-        "openaiResponses": {"mode": "decision", "base_url": "http://localhost:4848/decide"}
-      }
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "interfaces": {"openaiChatCompletions": {}, "openaiResponses": {}}
     }
   },
   "models": {

@@ -78,10 +78,9 @@ included, under its `openaiChatCompletions` interface.
 - **THEN** Core answers `503`
 
 ### Requirement: Interface mode
-Core SHALL read `interfaces.<type>.mode` as `passthrough` (the default when absent), `translator` or `decision`. An
-entry in `translator` mode SHALL be served by its translator's `baseUrl` only, never by a `base_url`, the
-deployment-level `baseUrl`, `endpoint` or `responsesEndpoint`. An entry in `decision` mode (routers only, see
-router-deployment) SHALL never have the client's request forwarded to its `base_url`.
+Core SHALL read `interfaces.<type>.mode` as `passthrough` (the default when absent) or `translator`. An entry in
+`translator` mode SHALL be served by its translator's `baseUrl` only, never by a `base_url`, the deployment-level
+`baseUrl`, `endpoint` or `responsesEndpoint`.
 
 #### Scenario: Translated interface goes to the translator
 - **WHEN** a model declares `baseUrl: http://adapter` and `interfaces.anthropicMessages: {"mode": "translator",
@@ -93,11 +92,6 @@ router-deployment) SHALL never have the client's request forwarded to its `base_
 - **WHEN** a model declares `endpoint: http://legacy/chat` and
   `interfaces.openaiChatCompletions: {"mode": "translator", "translator": "missing"}` and no `translators.missing`
 - **THEN** a chat completion for it is answered `503` and nothing is sent to `http://legacy/chat`
-
-#### Scenario: Decision interface is not proxied
-- **WHEN** a router declares `interfaces.openaiChatCompletions: {"mode": "decision", "base_url": "http://router/decide"}`
-  and a client sends `POST /openai/deployments/<router>/chat/completions`
-- **THEN** `http://router/decide` receives a decide request and never the client's chat completion
 
 ### Requirement: Translator reference
 Core SHALL read `interfaces.<type>.translator` as either a string naming a `translators` entry or an inline object

@@ -35,7 +35,6 @@ class RouterApiTest extends ResourceBaseTest {
             + "\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":10,\"total_tokens\":15}}";
     private static final String MESSAGE = "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\","
             + "\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
-    private static final String USER_INFO = "X-DIAL-USER-INFO";
     private static final String TYPED = "dial-config/routers-typed.json";
     private static final String PROPERTIES = "X-DIAL-APPLICATION-PROPERTIES";
 
@@ -155,9 +154,8 @@ class RouterApiTest extends ResourceBaseTest {
         AtomicReference<String> userInfo = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848, askingUserInfo(received, userInfo))) {
             verify(send(HttpMethod.POST, "/openai/deployments/r1/chat/completions", null, CHAT_BODY,
-                    "authorization", "u1-token", USER_INFO, "{\"roles\": [\"admin\"]}", "content-type", "application/json"), 200);
+                    "authorization", "u1-token", "content-type", "application/json"), 200);
         }
-        assertNull(received.getFirst().getHeader(USER_INFO));
         JsonNode info = ProxyUtil.MAPPER.readTree(userInfo.get());
         assertEquals("u1", info.get("userId").asText());
         assertEquals(List.of("analysts", "b"), ProxyUtil.MAPPER.convertValue(info.get("roles"), List.class));
@@ -170,9 +168,8 @@ class RouterApiTest extends ResourceBaseTest {
         AtomicReference<String> userInfo = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848, askingUserInfo(received, userInfo))) {
             verify(send(HttpMethod.POST, "/openai/deployments/r1/chat/completions", null, CHAT_BODY,
-                    "api-key", "proxyKey1", USER_INFO, "{\"roles\": [\"admin\"]}", "content-type", "application/json"), 200);
+                    "api-key", "proxyKey1", "content-type", "application/json"), 200);
         }
-        assertNull(received.getFirst().getHeader(USER_INFO));
         JsonNode info = ProxyUtil.MAPPER.readTree(userInfo.get());
         assertEquals("p1", info.get("project").asText());
         assertEquals(List.of("analysts"), ProxyUtil.MAPPER.convertValue(info.get("roles"), List.class));
@@ -180,19 +177,7 @@ class RouterApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void featureEndpointCallCarriesNoIdentityHeader() {
-        List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
-        try (TestWebServer server = new TestWebServer(4848, recording(received, "{}"))) {
-            verify(send(HttpMethod.POST, "/v1/r2/rate", null, "{}", USER_INFO, "{\"roles\": [\"admin\"]}",
-                    "content-type", "application/json"), 200);
-        }
-        assertEquals("/rate", received.getFirst().getPath());
-        assertNull(received.getFirst().getHeader(USER_INFO));
-    }
-
-    @Test
-    @DialConfigLocation(CONFIG)
-    void responseItemCallCarriesNoIdentityHeader() throws Exception {
+    void responseItemCallForwardedToTheRouter() throws Exception {
         List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/v1/responses", recording(received,
@@ -203,12 +188,11 @@ class RouterApiTest extends ResourceBaseTest {
             verify(created, 200);
             String dialId = ProxyUtil.MAPPER.readTree(created.body()).get("id").asText();
 
-            verify(send(HttpMethod.GET, "/openai/v1/responses/" + dialId, null, null, USER_INFO, "{\"roles\": [\"admin\"]}"), 200);
+            verify(send(HttpMethod.GET, "/openai/v1/responses/" + dialId, null, null), 200);
         }
         assertEquals(2, received.size());
         RecordedRequest get = received.get(1);
         assertEquals("/openai/v1/responses/resp_1", get.getPath());
-        assertNull(get.getHeader(USER_INFO));
         assertNotNull(get.getHeader("api-key"));
     }
 
@@ -222,28 +206,6 @@ class RouterApiTest extends ResourceBaseTest {
             userInfo.set(info.body());
             return TestWebServer.createResponse(200, COMPLETION, "content-type", "application/json");
         };
-    }
-
-    @Test
-    @DialConfigLocation(CONFIG)
-    void identityHeaderNotAddedForApplication() {
-        List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
-        try (TestWebServer server = new TestWebServer(4848, recording(received, COMPLETION))) {
-            verify(send(HttpMethod.POST, "/openai/deployments/app/chat/completions", null, CHAT_BODY,
-                    "content-type", "application/json"), 200);
-        }
-        assertNull(received.getFirst().getHeaders().get(USER_INFO));
-    }
-
-    @Test
-    @DialConfigLocation(CONFIG)
-    void clientIdentityHeaderDroppedForModel() {
-        List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
-        try (TestWebServer server = new TestWebServer(4848, recording(received, COMPLETION))) {
-            verify(send(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", null, CHAT_BODY,
-                    USER_INFO, "{\"roles\": [\"admin\"]}", "content-type", "application/json"), 200);
-        }
-        assertNull(received.getFirst().getHeaders().get(USER_INFO));
     }
 
     @Test
@@ -264,9 +226,11 @@ class RouterApiTest extends ResourceBaseTest {
         List<RecordedRequest> received = Collections.synchronizedList(new ArrayList<>());
         try (TestWebServer server = new TestWebServer(4848, recording(received, COMPLETION))) {
             verify(send(HttpMethod.POST, "/openai/deployments/r3/chat/completions", null, CHAT_BODY,
-                    "content-type", "application/json"), 200);
+                    PROPERTIES, "{\"tier\": \"premium\"}", "content-type", "application/json"), 200);
         }
         RecordedRequest request = received.getFirst();
+        // the client's own header is dropped: the router gets exactly the configured properties
+        assertEquals(List.of(), request.getHeaders().values(PROPERTIES).stream().filter(value -> value.contains("premium")).toList());
         assertEquals(ProxyUtil.MAPPER.readTree("{\"tier\": \"medium\", \"preferredModels\": [\"gpt-4\"]}"),
                 ProxyUtil.MAPPER.readTree(request.getHeader(PROPERTIES)));
         assertNull(request.getHeader("X-DIAL-APPLICATION-ID"));

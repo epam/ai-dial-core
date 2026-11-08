@@ -69,34 +69,7 @@ public class DeploymentInterface {
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private Map<String, String> overridePaths = Map.of();
 
-    /**
-     * What the decide request carries besides the headers, when {@link #mode} is {@link InterfaceMode#DECISION}.
-     */
-    private DecisionContext context;
-
-    /**
-     * How long the decide request may take, connecting included, when {@link #mode} is
-     * {@link InterfaceMode#DECISION}. Absent means 5000 ms.
-     */
-    private Long decisionTimeoutMs;
-
-    /**
-     * How many decide requests one client request may need, the first included, from 1 to 10, when {@link #mode} is
-     * {@link InterfaceMode#DECISION}. Absent means 3.
-     */
-    private Integer maxDecisions;
-
     public DeploymentInterface(String baseUrl) {
         this.baseUrl = baseUrl;
-    }
-
-    @Data
-    @NoArgsConstructor
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    public static class DecisionContext {
-        /**
-         * Whether the decide request carries the client's request body, byte for byte. Absent means false.
-         */
-        private Boolean body;
     }
 }

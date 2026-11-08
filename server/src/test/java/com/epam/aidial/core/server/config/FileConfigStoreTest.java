@@ -1,8 +1,6 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.config.DeploymentInterface;
-import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import io.vertx.core.Handler;
@@ -167,13 +165,12 @@ public class FileConfigStoreTest {
 
         Config config = new FileConfigStore(vertx, settings, apiKeyStore, List.of()).get();
 
-        DeploymentInterface chat = config.getRouters().get("r1").getInterfaces().get("openaiChatCompletions");
-        assertEquals(InterfaceMode.DECISION, chat.getMode());
-        assertEquals("http://localhost:4848/decide", chat.getBaseUrl());
-        assertNull(chat.getContext());
-        assertNull(chat.getDecisionTimeoutMs());
-        assertEquals(Boolean.TRUE, config.getRouters().get("r3").getInterfaces().get("openaiChatCompletions").getContext().getBody());
-        assertEquals(200L, config.getRouters().get("r-slow").getInterfaces().get("openaiChatCompletions").getDecisionTimeoutMs());
+        Router r1 = config.getRouters().get("r1");
+        assertEquals(Router.Mode.DECISION, r1.getMode());
+        assertNull(r1.getDecision());
+        assertNull(config.getRouters().get("r2").getMode());
+        assertEquals(Boolean.TRUE, config.getRouters().get("r3").getDecision().getBody());
+        assertEquals(200L, config.getRouters().get("r-slow").getDecision().getTimeoutMs());
     }
 
     @Test

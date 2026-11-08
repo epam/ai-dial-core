@@ -18829,17 +18829,6 @@ components:
           $ref: "#/components/schemas/Features"
         overridePaths:
           $ref: "#/components/schemas/MapStringString"
-        context:
-          $ref: "#/components/schemas/DeploymentInterfaceDecisionContext"
-        decisionTimeoutMs:
-          type: integer
-        maxDecisions:
-          type: integer
-    DeploymentInterfaceDecisionContext:
-      type: object
-      properties:
-        body:
-          type: boolean
     DeploymentNameData:
       type: object
       properties:
@@ -19365,7 +19354,6 @@ components:
       enum:
       - passthrough
       - translator
-      - decision
     InterfaceType:
       type: string
       enum:
@@ -20879,6 +20867,10 @@ components:
         applicationTypeSchemaId:
           type: string
           format: uri
+        decision:
+          $ref: "#/components/schemas/RouterDecision"
+        mode:
+          $ref: "#/components/schemas/RouterMode"
     RouterData:
       type: object
       properties:
@@ -20943,6 +20935,20 @@ components:
           type: string
         updated_at:
           type: integer
+    RouterDecision:
+      type: object
+      properties:
+        body:
+          type: boolean
+        maxDecisions:
+          type: integer
+        timeoutMs:
+          type: integer
+    RouterMode:
+      type: string
+      enum:
+      - proxy
+      - decision
     RpcRequest:
       type: object
       properties:

@@ -44,7 +44,6 @@ import java.util.function.Function;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
-import static com.epam.aidial.core.server.Proxy.HEADER_USER_INFO;
 
 @Slf4j
 public class DeploymentFeatureController {
@@ -253,7 +252,6 @@ public class DeploymentFeatureController {
         }
         excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
-        excludeHeaders.add(HEADER_USER_INFO, "whatever");
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
         ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);

@@ -289,16 +289,16 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testApplicationPutWithDecisionEntryReturns422() {
+    void testApplicationPutWithDecisionModeRejected() {
+        // decision mode is a router setting: no interface of any deployment kind takes it
         String body = """
                 {
                   "endpoint": "http://localhost:7003/chat",
-                  "interfaces": {"openaiChatCompletions": {"mode": "decision", "base_url": "http://r/decide"}}
+                  "interfaces": {"openaiChatCompletions": {"mode": "decision", "base_url": "http://r"}}
                 }
                 """;
         Response put = send(HttpMethod.PUT, "/v1/applications/platform/a", null, body, "authorization", "admin");
-        verify(put, 422);
-        assertTrue(put.body().contains("Mode 'decision' is allowed on a router only"), put.body());
+        verify(put, 400);
 
         verify(send(HttpMethod.GET, "/v1/applications/platform/a", null, "", "authorization", "admin"), 404);
     }

@@ -1,11 +1,11 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.RouterDecision;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -36,12 +36,11 @@ import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
-import static com.epam.aidial.core.server.Proxy.HEADER_USER_INFO;
 
 /**
  * Asks a router in decision mode which deployments may serve a request. The decide request is the client's
- * request as Core forwards it to any origin, without its body unless the entry asks for it, and with no
- * per-request key: nothing is minted for the call.
+ * request as Core forwards it to any origin, without its body unless the router asks for it, with the decide
+ * request's own per-request key.
  */
 @Slf4j
 @UtilityClass
@@ -57,24 +56,33 @@ public class RouterDecisionClient {
     /**
      * The TTL of the decide request's key: the decision budget plus a minute.
      */
-    public Duration keyTtl(DeploymentInterface entry) {
-        return Duration.ofMillis(timeoutMs(entry) + KEY_TTL_SLACK_MS);
+    public Duration keyTtl(Router router) {
+        return Duration.ofMillis(timeoutMs(router) + KEY_TTL_SLACK_MS);
     }
 
     /**
-     * How many decide requests one client request may need on this entry, the first included.
+     * How many decide requests one client request may need, the first included.
      */
-    public int maxDecisions(DeploymentInterface entry) {
-        return entry.getMaxDecisions() == null ? DEFAULT_MAX_DECISIONS : entry.getMaxDecisions();
+    public int maxDecisions(Router router) {
+        Router.Decision decision = router.getDecision();
+        return decision == null || decision.getMaxDecisions() == null ? DEFAULT_MAX_DECISIONS : decision.getMaxDecisions();
     }
 
-    private long timeoutMs(DeploymentInterface entry) {
-        return entry.getDecisionTimeoutMs() == null ? DEFAULT_TIMEOUT_MS : entry.getDecisionTimeoutMs();
+    /**
+     * Whether the decide request carries the client's body.
+     */
+    public boolean withBody(Router router) {
+        return router.getDecision() != null && Boolean.TRUE.equals(router.getDecision().getBody());
+    }
+
+    private long timeoutMs(Router router) {
+        Router.Decision decision = router.getDecision();
+        return decision == null || decision.getTimeoutMs() == null ? DEFAULT_TIMEOUT_MS : decision.getTimeoutMs();
     }
 
     /**
      * The candidates in order of preference. Fails with the {@link HttpException} Core answers the client:
-     * 504 when the router takes longer than the entry's {@code decisionTimeoutMs}, connecting included, 502
+     * 504 when the router takes longer than its {@code decision.timeoutMs}, connecting included, 502
      * when it is unreachable or answers 5xx or an invalid verdict, and the router's own status, body and
      * content type for a 4xx.
      *
@@ -82,12 +90,12 @@ public class RouterDecisionClient {
      * @param apiKey the decide request's per-request key, sent as {@code API-KEY}
      * @param attempts what was tried so far, sent as {@code X-DIAL-ROUTER-ATTEMPTS} when not empty
      */
-    public Future<List<String>> decide(ProxyContext context, Router router, DeploymentInterface entry, InterfaceType type,
+    public Future<List<String>> decide(ProxyContext context, Router router, InterfaceType type,
                                        @Nullable Buffer body, String apiKey, List<RouterDecision.Attempt> attempts) {
         Proxy proxy = context.getProxy();
-        long timeoutMs = timeoutMs(entry);
+        long timeoutMs = timeoutMs(router);
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(entry.getBaseUrl())
+                .setAbsoluteURI(DeploymentEndpointUtil.resolveDecideUri(router, type))
                 .setMethod(HttpMethod.POST)
                 .setTraceOperation("Ask %s router for a decision".formatted(router.getName()))
                 .setConnectTimeout(Math.min(proxy.getClientOptions().getConnectTimeout(), timeoutMs))
@@ -125,14 +133,13 @@ public class RouterDecisionClient {
      *
      * @param attempts every attempt, the broken one last
      */
-    public void notice(ProxyContext context, Router router, DeploymentInterface entry, InterfaceType type,
-                       List<RouterDecision.Attempt> attempts) {
+    public void notice(ProxyContext context, Router router, InterfaceType type, List<RouterDecision.Attempt> attempts) {
         Proxy proxy = context.getProxy();
-        long timeoutMs = timeoutMs(entry);
+        long timeoutMs = timeoutMs(router);
         MultiMap headers = routerHeaders(context, router, type, attempts);
         headers.set(Proxy.HEADER_ROUTER_NOTICE, "true");
         RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(entry.getBaseUrl())
+                .setAbsoluteURI(DeploymentEndpointUtil.resolveDecideUri(router, type))
                 .setMethod(HttpMethod.POST)
                 .setTraceOperation("Tell %s router about a broken answer".formatted(router.getName()))
                 .setConnectTimeout(Math.min(proxy.getClientOptions().getConnectTimeout(), timeoutMs))
@@ -155,7 +162,6 @@ public class RouterDecisionClient {
         }
         excludeHeaders.add(HEADER_APPLICATION_PROPERTIES, "whatever");
         excludeHeaders.add(HEADER_APPLICATION_ID, "whatever");
-        excludeHeaders.add(HEADER_USER_INFO, "whatever");
         excludeHeaders.add(Proxy.HEADER_ROUTER_ATTEMPTS, "whatever");
         excludeHeaders.add(Proxy.HEADER_ROUTER_NOTICE, "whatever");
 

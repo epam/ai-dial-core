@@ -1,12 +1,13 @@
 {
   "routers": {
     "r1": {
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
       "defaultHeaders": {"X-DIAL-ROUTER-TIER": "medium"},
       "interfaces": {
-        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4848/decide"},
-        "openaiEmbeddings": {"mode": "decision", "base_url": "http://localhost:4848/decide"},
-        "anthropicMessages": {"mode": "decision", "base_url": "http://localhost:4848/decide"},
-        "openaiResponses": {"base_url": "http://localhost:4848"}
+        "openaiChatCompletions": {},
+        "openaiEmbeddings": {},
+        "anthropicMessages": {}
       }
     },
     "r2": {
@@ -14,25 +15,30 @@
       "interfaces": {"openaiChatCompletions": {}}
     },
     "r3": {
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "decision": {"body": true},
       "interfaces": {
-        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4848/decide-body", "context": {"body": true}},
-        "openaiResponses": {"mode": "decision", "base_url": "http://localhost:4848/decide"}
+        "openaiChatCompletions": {"base_url": "http://localhost:4848/body"},
+        "openaiResponses": {}
       }
     },
     "r-slow": {
-      "interfaces": {
-        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4848/decide-slow", "decisionTimeoutMs": 200}
-      }
+      "baseUrl": "http://localhost:4848/slow",
+      "mode": "decision",
+      "decision": {"timeoutMs": 200},
+      "interfaces": {"openaiChatCompletions": {}}
     },
     "r-down": {
-      "interfaces": {
-        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4849/decide"}
-      }
+      "baseUrl": "http://localhost:4849",
+      "mode": "decision",
+      "interfaces": {"openaiChatCompletions": {}}
     },
     "r-two": {
-      "interfaces": {
-        "openaiChatCompletions": {"mode": "decision", "base_url": "http://localhost:4848/decide", "maxDecisions": 2}
-      }
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "decision": {"maxDecisions": 2},
+      "interfaces": {"openaiChatCompletions": {}}
     }
   },
   "models": {

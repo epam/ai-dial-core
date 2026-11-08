@@ -89,11 +89,10 @@
         ],
         "undeclared": 1
       },
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
       "interfaces": {
-        "openaiChatCompletions": {
-          "mode": "decision",
-          "base_url": "http://localhost:4848/decide"
-        }
+        "openaiChatCompletions": {}
       }
     },
     "r5": {
