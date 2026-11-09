@@ -51,6 +51,12 @@ info:
     The value is a JSON object with the features of the deployment: the flags configured in `features` of the model or application in the DIAL Core config.
 
     DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
+
+    # Deployment id
+
+    DIAL Core adds the `X-DIAL-DEPLOYMENT-ID` header with the name of the called deployment to every request it forwards to a deployment, whatever the interface mode. When the deployment has `overrideName`, the path and `X-DIAL-OVERRIDE-NAME` carry that name, and this header still carries the DIAL deployment name.
+
+    DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
   version: 0.0.0
   license:
     name: Apache-2.0
