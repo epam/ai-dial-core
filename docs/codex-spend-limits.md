@@ -47,6 +47,42 @@ A user can have several cost caps (day, week, month). Codex shows two windows, p
 Unlimited windows (total is 0 or at least 2^53) are skipped. A user with no cap gets no headers. The per-minute cost
 limit is never reported.
 
+## Budgets (`enforce` mode)
+
+When `spendingLimits.mode` is `enforce`, a user signed in with a JWT is limited by budgets on calls to models,
+instead of by the role `costLimit` (see the `spendingLimits` row in the README). The `x-codex-*` headers and the
+429s then describe a budget.
+
+- **Which budget.** DIAL looks at the budgets of the user's cost object: the project in the token's project claim
+  (`identityProviders.<idp>.projectPath`), or `spendingLimits.defaultCostObject` when the token has none. Set
+  `projectPath` to the claim that holds the project, for example `project` for the identity provider the `dial`
+  launcher uses. The `aud` or `azp` of the sample settings would make the OAuth client id the cost object.
+- **Reported only with one budget.** DIAL reports a budget only when the user has exactly one unexpired budget in
+  that cost object, whatever models it covers. With several, or none, a 200 answer carries no `x-codex-*` header,
+  because no single budget says what the user can still spend. `GET /v1/user/usage` still lists every budget in
+  `budgets[]`.
+- **Windows.** The budget's `day` and `month` amounts are its caps; a budget has no week window. Primary and
+  secondary follow the rules above, and an amount of 2^53 or more is not reported.
+- **Used up.** When no budget that covers the model has room in every window it sets, the request is rejected before
+  it goes upstream with the `usage_limit_reached` 429 below, with `display_message` `You've exceeded your daily cost
+  limit` or `You've exceeded your monthly cost limit`. It names the used-up window and the reset of the budget that
+  can pay again first, the first by priority on a tie. This holds with one budget or several, and wins over a token
+  or request limit.
+- **No budget for the model.** 429 with the DIAL error body, whose `message` names the model and the cost object,
+  with no `retry-after` and no `x-codex-*` header.
+- **Counter unreadable.** A token or request limit that rejects decides the answer. Otherwise the request gets the
+  "could not read your spend limit" 429 below when a budget below 2^53 covers the model, and the usual 500 when
+  none does.
+- **Translated deployments** only read the budget. With one budget they get its headers, even when it covers other
+  models only, and the `usage_limit_reached` 429 once it is used up. In every other case the request is forwarded
+  without `x-codex-*` headers, and the translator's call back to DIAL is checked and charged.
+- **Applications** keep the role `costLimit`. An application's own call to a model is checked against the budget of
+  the user who called the application.
+- **Charging.** In `shadow` and `enforce`, a call to a model is charged to the budget that pays for it, as on every
+  other model route.
+- **`shadow` mode** keeps reporting and enforcing the role `costLimit`. Budgets are checked and charged but never
+  reject, and an unreadable budget counter fails the call with 500.
+
 ## Headers on a 200 answer
 
 The upstream's own `x-codex-*` response headers are always removed, whatever the status. For a capped user, a 200
