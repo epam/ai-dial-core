@@ -1034,8 +1034,9 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * A router in decision mode never forwards the client's request, so no interface of it is served by a translator.
-     * The decide request settings are read in decision mode only: on a router in proxy mode they would do nothing.
+     * A router in decision mode never forwards the client's request, so no interface of it is served by a translator,
+     * and its decide request goes to a URL, so no interface of it is served by a plugin. The decide request settings are
+     * read in decision mode only: on a router in proxy mode they would do nothing.
      */
     private static void validateDecision(String name, Router router, List<ValidationWarning> warnings) {
         Router.Decision decision = router.getDecision();
@@ -1050,6 +1051,10 @@ public final class ConfigPostProcessor {
                 if (declared != null && (declared.getMode() == InterfaceMode.TRANSLATOR || declared.getTranslator() != null)) {
                     warnings.add(new ValidationWarning("interfaces." + type, messageWithEntityPrefix("Router", name,
                             "A router in mode 'decision' serves no interface through a translator")));
+                }
+                if (declared != null && (declared.getMode() == InterfaceMode.EMBEDDED || declared.getPlugin() != null)) {
+                    warnings.add(new ValidationWarning("interfaces." + type, messageWithEntityPrefix("Router", name,
+                            "A router in mode 'decision' serves no interface through a plugin")));
                 }
             });
         }

@@ -1075,6 +1075,18 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
+    void testDecisionRouterWithEmbeddedInterfaceRejected() {
+        Config config = newMutableConfig();
+        Router router = decisionRouter("http://router", null);
+        router.setInterfaces(Map.of("anthropicMessages", embedded("p1")));
+        config.getRouters().put("r1", router);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class,
+                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
+        assertTrue(error.getMessage().contains("A router in mode 'decision' serves no interface through a plugin"), error.getMessage());
+    }
+
+    @Test
     void testMaxDecisionsOutOfRangeRejected() {
         for (int value : new int[] {0, 11}) {
             Config config = newMutableConfig();

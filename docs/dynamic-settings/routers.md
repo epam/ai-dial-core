@@ -119,7 +119,7 @@ The mode is the router's: every interface the router declares is decided. A rout
 * `decision.timeoutMs`: How long the decide request may take, connecting included. Default `5000`; must be positive.
 * `decision.maxDecisions`: How many decide requests one client request may need, the first included (see [Fallback and re-decide](#fallback-and-re-decide)). Default `3`; from 1 to 10.
 
-The decide request of an interface goes to its `base_url`, or to the router's `baseUrl` when it declares none, followed by `/decide`. DIAL Core rejects a `decision` object on a router in proxy mode (`decision requires mode 'decision'`) and a translated interface on a router in decision mode (`A router in mode 'decision' serves no interface through a translator`).
+The decide request of an interface goes to its `base_url`, or to the router's `baseUrl` when it declares none, followed by `/decide`. DIAL Core rejects a `decision` object on a router in proxy mode (`decision requires mode 'decision'`) and, on a router in decision mode, a translated interface (`A router in mode 'decision' serves no interface through a translator`) and an [embedded](plugins.md) one (`A router in mode 'decision' serves no interface through a plugin`).
 
 **Example**: `r1` decides chat completions and Messages requests at `http://localhost:4848/decide`, and embeddings at `http://localhost:4949/decide`.
 

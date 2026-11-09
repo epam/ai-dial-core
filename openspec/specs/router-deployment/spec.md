@@ -153,8 +153,8 @@ none, followed by `/decide`. No interface entry of any deployment SHALL accept `
 ### Requirement: Decision settings
 Core SHALL read a router's optional `decision` object with `body` (default `false`), `timeoutMs` (default 5000, must be
 positive) and `maxDecisions` (see Decision limit), and SHALL reject it on a router not in decision mode (`decision
-requires mode 'decision'`). Core SHALL reject a translated interface on a router in decision mode (`A router in mode
-'decision' serves no interface through a translator`).
+requires mode 'decision'`). On a router in decision mode Core SHALL reject a translated interface (`A router in mode
+'decision' serves no interface through a translator`) and an embedded one (`... through a plugin`).
 
 #### Scenario: Decision settings without decision mode rejected
 - **WHEN** the config declares `routers.r1` with `baseUrl: http://router`, `decision: {"maxDecisions": 2}` and no `mode`
@@ -165,6 +165,12 @@ requires mode 'decision'`). Core SHALL reject a translated interface on a router
   `interfaces.anthropicMessages: {"mode": "translator", "translator": {"out": "openaiChatCompletions", "baseUrl": "http://t"}}`
 - **THEN** the config is rejected with a message containing `A router in mode 'decision' serves no interface through a
   translator`
+
+#### Scenario: Embedded interface on a decision router rejected
+- **WHEN** the config declares `routers.r1` with `baseUrl: http://router`, `mode: decision` and
+  `interfaces.anthropicMessages: {"mode": "embedded", "plugin": "p1"}`
+- **THEN** the config is rejected with a message containing `A router in mode 'decision' serves no interface through a
+  plugin`
 
 ### Requirement: Decide request
 For a request to a router in decision mode, Core SHALL send `POST` to the interface's decide URL with the client's
