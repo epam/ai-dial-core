@@ -80,8 +80,10 @@ in the code on the branch; each names the tests that verify it.
   covering entries in `findPermissions`. Verify with `AccessServiceTest` (`testLookupInitiatorPermissions_*`,
   `testLookupPermissions_PerRequestGrantsUnionAcrossCoveringEntries`, `testLookupPermissions_UnaffectedByTheNewRuleList`), and
   over HTTP `ResourceDependencyApiTest.testAdminStandingDoesNotWidenTheReach` (mutation: with the full rule list the
-  public write is granted and the test fails). (Scenarios: Administrator standing does not reach, Covering entries add
-  up.)
+  public write is granted and the test fails). A folder spanning org units needs the initiator's read in each:
+  `ResourceDependencyOrgUnitApiTest` (`testFolderSpanningAnUnreadableUnitIsNotGranted`,
+  `testChainedHopJudgesTheUnitsByTheInitiator`; mutation: without the check the app reads the unit file, 200).
+  (Scenarios: Administrator standing does not reach, Folder spanning an unreadable unit, Covering entries add up.)
 - [x] 4.2 `ResolveResourceDependenciesFn` (no-op without a section, approval check, reach check, copy-on-write merge,
   `required` → `403`, `500` for an unexpected failure), appended to the chat chain. Verify with
   `ResolveResourceDependenciesFnTest` and `ResourceDependencyResolutionApiTest`:

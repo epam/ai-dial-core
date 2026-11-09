@@ -51,6 +51,9 @@ All run locally on JDK 21:
 - `testApplicationCopiedOverAnApprovedOneStartsUnapproved` (`ResourceDependencyConsentApiTest`, 18 tests with the two nested classes, passed):
   copying an application with the same list and another endpoint over an approved one leaves it unapproved. Mutation:
   without the delete in `copyResource` only this test fails (`consented: true`).
+- `ResourceDependencyOrgUnitApiTest` (2 tests, passed): a dependency on `files/public/` is not granted to a user without
+  a role in a unit under it, directly or on a chained hop, and is granted once the user reads every unit (audit lines).
+  Found by the final security review; mutation: without the check the app reads `files/public/Acme/Risk/r.txt` (200).
 - `npx -y @fission-ai/openspec@1.14.3 validate resource-dependencies --strict`: valid.
 
 ## Not done

@@ -135,6 +135,13 @@ only. It leaves out the calling key's attachments and grants (an app could laund
 reach), the application's `appdata` and its read of its own definition, admin, global-reader and review standing, and
 org-unit roles. A `write` entry on a public target therefore never grants.
 
+A grant on a folder reaches everything under it, so a public folder that spans org units counts only when the
+initiator's unit roles read every unit under it (`OrgUnitGrants.spansUnit` / `readsEveryUnitUnder`, judged on the
+initiator's claims at any hop), as for a folder attachment or a folder passed on through the per-request permission
+API. The existing `hasReadAccessToEverythingUnder` / `mayPassOnFolder` are not reused: they first read the calling
+key's own grants. A subfolder with stricter publication rules under a granted public folder is still covered, as it
+is for a folder attachment today.
+
 Rejected: the full `permissionRules`. It reads the calling key's grants and would let an administrator's call widen any
 declaration to the public bucket.
 
@@ -213,6 +220,8 @@ describe, so the deltas leave them out.
 - **Public targets are read-only, and admin, global-reader and review standing do not reach.** An administrator calling
   an app that declares `files/public/policies/` with `write` gets no grant. → Deliberate (decision 6); raised with the
   team.
+- **A granted public folder covers its subfolders' stricter publication rules**, as a folder attachment does.
+  → Raised with the team (it is Core-wide, not specific to dependencies).
 - **Org-unit roles do not reach.** A user who reads a unit folder through a unit role cannot have it granted. → Out of
   scope; raised with the team.
 - **The approval is bound to the list, not to the endpoint.** A changed endpoint keeps the approval. → Raised with the

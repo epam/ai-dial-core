@@ -273,11 +273,17 @@ public class AccessService {
     }
 
     /**
-     * Permissions the request initiator holds on {@code resources} on their own standing.
+     * Permissions the request initiator holds on {@code resources} on their own standing. A folder that spans org units
+     * counts only when the initiator reads every one of them. Not {@link #mayPassOnFolder}: it also counts the calling
+     * key's grants and admin standing, which an initiator's reach must not.
      */
     public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupInitiatorPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        return lookupPermissions(resources, context, ResourceAccessType.ALL, initiatorPermissionRules);
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
+                lookupPermissions(resources, context, ResourceAccessType.ALL, initiatorPermissionRules);
+        permissions.replaceAll((resource, access) -> resource.isFolder() && orgUnitGrants.spansUnit(resource)
+                && !orgUnitGrants.readsEveryUnitUnder(context, resource) ? Set.of() : access);
+        return permissions;
     }
 
     @VisibleForTesting

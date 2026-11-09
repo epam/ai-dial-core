@@ -250,12 +250,19 @@ receives each entry the initiator can reach with every declared right. Entries f
 The initiator (the user who started the request) SHALL reach their own bucket, resources shared with them, and public
 resources the folder rules let them read, read-only. Nothing else SHALL count: not the calling key's attachments or
 grants, the calling application's `appdata` or own definition, admin, global-reader or review standing, or org-unit
-roles. A `{current-user}` target resolves to the initiator's bucket.
+roles, which only restrict: a folder target that spans org units SHALL count only when the initiator's unit roles
+read every one of them.
 
 #### Scenario: Public target as far as the user reaches
 - **WHEN** an approved application declares `files/public/dep-open/` and `files/public/dep-restricted/` (`read`) and the
   user can read only the first under the folder rules
 - **THEN** the application reads the first with its key and gets `403` on the second
+
+#### Scenario: Folder spanning an unreadable unit
+- **WHEN** org units are on, an approved application declares `files/public/` (`read`), and a user without a role in
+  unit `public/Acme/Risk` calls it, directly or through another application's key
+- **THEN** the folder is not granted and the application gets `403` on `files/public/Acme/Risk/r.txt`; once the user
+  holds a role in every unit the folder spans, it is granted
 
 #### Scenario: Administrator standing does not reach
 - **WHEN** an admin, who may write `prompts/public/dep-smoke/`, calls an approved application declaring that folder and
