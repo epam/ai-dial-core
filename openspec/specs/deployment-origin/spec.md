@@ -79,8 +79,7 @@ the route holds a cached upstream entry.
 For an application with `applicationTypeSchemaId`, Core SHALL add `X-DIAL-APPLICATION-ID` with the deployment name,
 and `X-DIAL-APPLICATION-PROPERTIES` when the schema asks for it. On every request it forwards to a deployment's origin
 (any interface in any mode, the deployment feature endpoints and Responses item operations), Core SHALL set
-`X-DIAL-DEPLOYMENT-ID` to the deployment name, replacing any value the client sent; an Anthropic Messages request
-carries the id the client wrote instead.
+`X-DIAL-DEPLOYMENT-ID` to the deployment name, replacing any value the client sent.
 
 #### Scenario: Schema application id
 - **WHEN** an application with an `applicationTypeSchemaId` is called

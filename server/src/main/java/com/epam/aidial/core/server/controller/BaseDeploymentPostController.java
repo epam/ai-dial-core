@@ -444,8 +444,7 @@ public class BaseDeploymentPostController {
         }
 
         // the path and the body's model may carry overrideName, so the origin learns the deployment the client
-        // called from here; it replaces any value the client sent. MessagesBaseController overrides it below
-        // with the id the client itself wrote.
+        // called from here; it replaces any value the client sent
         proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, context.getDeployment().getName());
 
         enrichProxyRequestHeaders(proxyRequest);
