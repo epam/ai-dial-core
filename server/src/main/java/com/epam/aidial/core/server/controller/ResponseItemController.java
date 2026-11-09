@@ -221,7 +221,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> sendRequest(ResponseMapping mapping, String targetUrl, Upstream upstream, String perRequestKey) {
-        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey)
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, context.getDeployment().getName(), upstream, perRequestKey)
                 .compose(response -> {
                     context.setProxyResponse(response);
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);

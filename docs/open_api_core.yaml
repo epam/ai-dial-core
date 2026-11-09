@@ -51,6 +51,12 @@ info:
     The value is a JSON object with the features of the deployment: the flags configured in `features` of the model or application in the DIAL Core config.
 
     DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
+
+    # Deployment id
+
+    DIAL Core adds the `X-DIAL-DEPLOYMENT-ID` header with the name of the called deployment to every request it forwards to a deployment, whatever the interface mode. When the deployment has `overrideName`, the path and `X-DIAL-OVERRIDE-NAME` carry that name, and this header still carries the DIAL deployment name.
+
+    DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
   version: 0.0.0
   license:
     name: Apache-2.0
@@ -162,7 +168,7 @@ paths:
               schema:
                 type: string
             anthropic-ratelimit-unified-status:
-              description: "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. Sent only when the caller has a day/week/month cost limit; the upstream's own `anthropic-ratelimit-*` headers are removed"
+              description: "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. Sent only when the caller has a day/week/month cost limit, or with enforced budgets exactly one budget in their cost object; the upstream's own `anthropic-ratelimit-*` headers are removed"
               required: false
               schema:
                 type: string
@@ -1516,7 +1522,7 @@ paths:
           description: Success
           headers:
             x-codex-primary-used-percent:
-              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit; the upstream's own `x-codex-*` headers are removed"
+              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit, or with enforced budgets exactly one budget in their cost object; the upstream's own `x-codex-*` headers are removed"
               required: false
               schema:
                 type: string
@@ -1887,7 +1893,7 @@ paths:
                   $ref: "#/components/schemas/CreateChatCompletionStreamResponse"
           headers:
             x-codex-primary-used-percent:
-              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit; the upstream's own `x-codex-*` headers are removed"
+              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit, or with enforced budgets exactly one budget in their cost object; the upstream's own `x-codex-*` headers are removed"
               required: false
               schema:
                 type: string

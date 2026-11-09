@@ -260,6 +260,7 @@ public class DeploymentFeatureController {
                 proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, context.getRouterPropertiesHeader());
             }
         }
+        proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, deployment.getName());
 
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             try {

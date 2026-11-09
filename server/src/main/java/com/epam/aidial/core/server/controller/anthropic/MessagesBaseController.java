@@ -50,13 +50,6 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     protected final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
-    /**
-     * The {@code model} value as it arrived in the request body, i.e. the DIAL deployment id. Captured before
-     * {@link EnhanceDeploymentRequestFn} rewrites the body model to the deployment's {@code overrideName}, and
-     * forwarded upstream as {@link Proxy#HEADER_DEPLOYMENT_ID}.
-     */
-    private String deploymentId;
-
     protected MessagesBaseController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
         this.enhancementFunctions = buildEnhancementFunctions();
@@ -85,7 +78,6 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 .map(this::parseBody)
                 .compose(request -> {
                     String model = request.getModel();
-                    deploymentId = model;
                     return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
                             .compose(ignore -> decisions.decideIfRouter(InterfaceType.ANTHROPIC_MESSAGES,
                                     Future.succeededFuture(context.getOriginalRequestBody()), this::reenterWithCandidate))
@@ -99,12 +91,10 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     /**
      * Serves the decision's current candidate as if the client had called it, with the body {@code model} set to
-     * its name so the chain applies its override name. A translator behind it calls the candidate back, not the
-     * router, so the candidate is also the id forwarded in {@link Proxy#HEADER_DEPLOYMENT_ID}.
+     * its name so the chain applies its override name.
      */
     private Future<Void> serveCandidate(MessagesApiRequest request) {
         String candidate = context.getDecision().current();
-        deploymentId = candidate;
         return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(candidate)))
                 .compose(ignore -> {
                     request.setModel(candidate);
@@ -234,15 +224,6 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         sendProxyRequest(proxyRequest, InterfaceType.ANTHROPIC_MESSAGES)
                 .onSuccess(this::handleProxyResponse)
                 .onFailure(this::handleProxyResponseError);
-    }
-
-    /**
-     * The body's {@code model} may have been replaced by {@code overrideName}, so the deployment id is
-     * carried to the adapter out of band.
-     */
-    @Override
-    protected void enrichProxyRequestHeaders(HttpClientRequest proxyRequest) {
-        proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, deploymentId);
     }
 
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
