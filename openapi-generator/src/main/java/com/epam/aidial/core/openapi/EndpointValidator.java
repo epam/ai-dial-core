@@ -65,6 +65,12 @@ public final class EndpointValidator {
         new RouteInfo("PUT", RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA.getPattern()),
         new RouteInfo("DELETE", RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA.getPattern()),
 
+        new RouteInfo("POST", RouteTemplate.ALIAS_RESOURCE.getPattern()),
+
+        new RouteInfo("POST", RouteTemplate.ALIAS_RESOURCE_METADATA.getPattern()),
+        new RouteInfo("PUT", RouteTemplate.ALIAS_RESOURCE_METADATA.getPattern()),
+        new RouteInfo("DELETE", RouteTemplate.ALIAS_RESOURCE_METADATA.getPattern()),
+
         new RouteInfo("POST", RouteTemplate.ADMIN_FILE_CONFIG.getPattern()),
         new RouteInfo("PUT", RouteTemplate.ADMIN_FILE_CONFIG.getPattern()),
         new RouteInfo("DELETE", RouteTemplate.ADMIN_FILE_CONFIG.getPattern())

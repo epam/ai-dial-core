@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
@@ -211,6 +212,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         assertTrue(MergedConfigStore.isManagedEventUrl("keys/platform/proj-a"));
         assertTrue(MergedConfigStore.isManagedEventUrl("routes/public/rt-1"));
         assertTrue(MergedConfigStore.isManagedEventUrl("settings/platform/global"));
+        assertTrue(MergedConfigStore.isManagedEventUrl("routers/platform/r1"));
 
         assertFalse(MergedConfigStore.isManagedEventUrl("conversations/x"));
         assertFalse(MergedConfigStore.isManagedEventUrl("prompts/x"));
@@ -405,6 +407,24 @@ public class MergedConfigStoreReplicaUpdateTest {
         assertEquals("GPT-4", applied.getDisplayName().getPlainValue());
         verify(secretFieldProcessor).decryptFields(any(Model.class), eq(descriptor));
         verifyNoInteractions(apiKeyStore);
+    }
+
+    @Test
+    public void routerCreateAndDeleteFromAnotherPodApplied() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("routers/platform/r1", null);
+        when(resourceService.getResource(descriptor))
+                .thenReturn("{\"baseUrl\":\"http://router\",\"interfaces\":{\"openaiChatCompletions\":{}}}");
+
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.CREATE, null);
+
+        Router applied = store.get().getRouters().get("r1");
+        assertEquals("http://router", applied.getBaseUrl());
+        assertEquals("r1", applied.getName());
+
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.DELETE, null);
+
+        assertFalse(store.get().getRouters().containsKey("r1"));
     }
 
     @Test

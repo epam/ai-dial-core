@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -114,7 +115,8 @@ public class DeploymentFeatureController {
     )
     public Future<?> handle(String deploymentId, Function<Deployment, String> endpointGetter, boolean requireEndpoint) {
         // make sure request.body() called before request.resume()
-        return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findDeployment(context, deploymentId)).map(dep -> {
+        // an alias forwards the request to Core for its target, which then runs it as a target pass
+        return proxy.getTaskExecutor().submit(() -> proxy.getDeploymentService().findCallableDeployment(context, deploymentId)).map(dep -> {
             if (dep instanceof Application application) {
                 dep = proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(application);
             }
@@ -147,7 +149,7 @@ public class DeploymentFeatureController {
         setupProxyApiKeyData(proxyApiKeyData);
 
         proxy.getTaskExecutor().submit(() -> {
-            if (runEnhancementFunctions(requestBody)) {
+            if (resolveRouterProperties() && runEnhancementFunctions(requestBody)) {
                 proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
                 return true;
             }
@@ -158,6 +160,21 @@ public class DeploymentFeatureController {
             }
         }).onFailure(this::handleError);
 
+    }
+
+    /**
+     * A typed router's properties header, built on a worker: its schema may have to be downloaded and compiled.
+     */
+    private boolean resolveRouterProperties() {
+        if (context.getDeployment() instanceof Router router) {
+            try {
+                context.setRouterPropertiesHeader(proxy.getApplicationSchemaService().routerPropertiesHeader(router));
+            } catch (HttpException e) {
+                respond(e.getStatus(), e.getMessage());
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean runEnhancementFunctions(Buffer requestBody) {
@@ -238,6 +255,12 @@ public class DeploymentFeatureController {
 
         ProxyUtil.copyHeaders(request.headers(), proxyRequest.headers(), excludeHeaders);
         ProxyUtil.setOverrideNameHeader(proxyRequest, deployment);
+        if (deployment instanceof Router) {
+            if (context.getRouterPropertiesHeader() != null) {
+                proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, context.getRouterPropertiesHeader());
+            }
+        }
+        proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, deployment.getName());
 
         if ((deployment instanceof Application application && application.hasApplicationTypeSchemaId())) {
             try {

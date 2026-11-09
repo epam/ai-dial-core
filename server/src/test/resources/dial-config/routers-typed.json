@@ -1,0 +1,142 @@
+{
+  "applicationTypeSchemas": [
+    {
+      "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+      "$id": "https://dial.test/router-type",
+      "dial:applicationTypeDisplayName": "Router type",
+      "properties": {
+        "tier": {
+          "type": "string",
+          "dial:meta": {
+            "dial:propertyKind": "server",
+            "dial:propertyOrder": 1
+          }
+        },
+        "preferredModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "dial:meta": {
+            "dial:propertyKind": "client",
+            "dial:propertyOrder": 2
+          }
+        }
+      },
+      "required": [
+        "tier"
+      ]
+    },
+    {
+      "$schema": "https://dial.epam.com/application_type_schemas/schema#",
+      "$id": "https://dial.test/router-quiet",
+      "dial:applicationTypeDisplayName": "Router type",
+      "properties": {
+        "tier": {
+          "type": "string",
+          "dial:meta": {
+            "dial:propertyKind": "server",
+            "dial:propertyOrder": 1
+          }
+        },
+        "preferredModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "dial:meta": {
+            "dial:propertyKind": "client",
+            "dial:propertyOrder": 2
+          }
+        }
+      },
+      "required": [
+        "tier"
+      ],
+      "dial:appendApplicationPropertiesHeader": false
+    }
+  ],
+  "routers": {
+    "r1": {
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {
+        "openaiChatCompletions": {}
+      }
+    },
+    "r3": {
+      "baseUrl": "http://localhost:4848",
+      "applicationTypeSchemaId": "https://dial.test/router-type",
+      "applicationProperties": {
+        "tier": "medium",
+        "preferredModels": [
+          "gpt-4"
+        ],
+        "undeclared": 1
+      },
+      "features": {
+        "rateEndpoint": "http://localhost:4848/rate"
+      },
+      "interfaces": {
+        "openaiChatCompletions": {}
+      }
+    },
+    "r4": {
+      "applicationTypeSchemaId": "https://dial.test/router-type",
+      "applicationProperties": {
+        "tier": "medium",
+        "preferredModels": [
+          "gpt-4"
+        ],
+        "undeclared": 1
+      },
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "interfaces": {
+        "openaiChatCompletions": {}
+      }
+    },
+    "r5": {
+      "baseUrl": "http://localhost:4848",
+      "applicationTypeSchemaId": "https://dial.test/router-quiet",
+      "applicationProperties": {
+        "tier": "medium",
+        "preferredModels": [
+          "gpt-4"
+        ],
+        "undeclared": 1
+      },
+      "interfaces": {
+        "openaiChatCompletions": {}
+      }
+    },
+    "r6": {
+      "baseUrl": "http://localhost:4848",
+      "applicationTypeSchemaId": "https://dial.test/router-type",
+      "applicationProperties": {
+        "tier": "medium"
+      },
+      "interfaces": {
+        "openaiChatCompletions": {},
+        "anthropicMessages": {
+          "mode": "translator",
+          "translator": {
+            "out": "openaiChatCompletions",
+            "baseUrl": "http://localhost:4848"
+          }
+        }
+      }
+    }
+  },
+  "models": {
+    "gpt-4": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/gpt-4/chat/completions"
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "p1",
+      "role": "default"
+    }
+  }
+}

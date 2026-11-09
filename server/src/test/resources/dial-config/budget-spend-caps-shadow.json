@@ -1,0 +1,154 @@
+{
+  "spendingLimits": {
+    "mode": "shadow"
+  },
+  "models": {
+    "claude-spend": {
+      "type": "chat",
+      "interfaces": {
+        "anthropicMessages": {
+          "base_url": "http://localhost:4848"
+        }
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    },
+    "claude-other": {
+      "type": "chat",
+      "interfaces": {
+        "anthropicMessages": {
+          "base_url": "http://localhost:4848"
+        }
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    },
+    "claude-burst": {
+      "type": "chat",
+      "interfaces": {
+        "anthropicMessages": {
+          "base_url": "http://localhost:4848"
+        }
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    },
+    "claude-translated": {
+      "type": "chat",
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      },
+      "interfaces": {
+        "openaiChatCompletions": {
+          "base_url": "http://localhost:4848"
+        },
+        "anthropicMessages": {
+          "mode": "translator",
+          "translator": {
+            "out": "openaiChatCompletions",
+            "baseUrl": "http://localhost:4848"
+          }
+        }
+      }
+    },
+    "gpt-spend": {
+      "type": "chat",
+      "interfaces": {
+        "openaiResponses": {
+          "base_url": "http://localhost:4848"
+        }
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    },
+    "gpt-other": {
+      "type": "chat",
+      "interfaces": {
+        "openaiResponses": {
+          "base_url": "http://localhost:4848"
+        }
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    },
+    "gpt-translated": {
+      "type": "chat",
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      },
+      "interfaces": {
+        "openaiChatCompletions": {
+          "base_url": "http://localhost:4848"
+        },
+        "openaiResponses": {
+          "mode": "translator",
+          "translator": {
+            "out": "openaiChatCompletions",
+            "baseUrl": "http://localhost:4848"
+          }
+        }
+      }
+    }
+  },
+  "applications": {
+    "app-chain": {
+      "endpoint": "http://localhost:4848/openai/deployments/app-chain/chat/completions"
+    },
+    "app-claude": {
+      "interfaces": {
+        "anthropicMessages": {
+          "base_url": "http://localhost:4848"
+        }
+      }
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "spend",
+      "role": "user"
+    }
+  },
+  "roles": {
+    "user": {
+      "limits": {
+        "claude-spend": {},
+        "claude-other": {},
+        "claude-burst": {
+          "minute": "10"
+        },
+        "claude-translated": {},
+        "gpt-spend": {},
+        "gpt-other": {},
+        "gpt-translated": {},
+        "app-chain": {},
+        "app-claude": {}
+      },
+      "costLimit": {
+        "day": "10",
+        "month": "100"
+      }
+    },
+    "default": {
+      "limits": {}
+    }
+  }
+}

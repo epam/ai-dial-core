@@ -18,7 +18,6 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
-import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -160,7 +159,14 @@ public class BackgroundJobService {
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
         BackgroundJobRecord record = BackgroundJobRecord.from(context, key -> encryptKey(descriptor, key));
         String json = ProxyUtil.convertToString(record);
-        return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY)).mapEmpty();
+        return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY))
+                .onSuccess(ignore -> {
+                    if (context.getDecision() != null) {
+                        // this job's poller writes the router row when the job ends
+                        context.getDecision().takeRow();
+                    }
+                })
+                .mapEmpty();
     }
 
     private Future<Boolean> deleteJobRecord(String dialId) {
@@ -245,27 +251,39 @@ public class BackgroundJobService {
                                 });
                     }
 
-                    Future<List<UsagePerModel>> statsFuture = limitFuture.compose(ignored -> {
-                        if (!hasUsage || traceId == null || spanId == null) {
-                            return Future.succeededFuture(List.of());
+                    Future<TokenStatsTracker.UsageStats> statsFuture = limitFuture.compose(ignored -> {
+                        if (traceId == null || spanId == null) {
+                            return Future.succeededFuture(TokenStatsTracker.UsageStats.EMPTY);
+                        }
+                        if (!hasUsage) {
+                            // the router row's cost is what the job's span rolled up
+                            return jobRecord.routerHop() == null
+                                    ? Future.succeededFuture(TokenStatsTracker.UsageStats.EMPTY)
+                                    : tokenStatsTracker.getUsageStats(traceId, spanId).otherwise(TokenStatsTracker.UsageStats.EMPTY);
                         }
                         // a job started by a child usually ends after its root, whose endSpan deletes the record
                         boolean rootMayHaveEnded = !Boolean.TRUE.equals(jobRecord.isRootSpan());
                         return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage, rootMayHaveEnded)
                                 .compose(stats -> recordAggregatedCosts(stats.aggregatedCosts(), responseMapping.getInitiatorBucket())
-                                        .map(ignored2 -> stats.usagePerModel()));
+                                        .map(ignored2 -> stats));
                     });
 
                     if (traceId != null && Boolean.TRUE.equals(jobRecord.isRootSpan())) {
-                        statsFuture = statsFuture.compose(list -> tokenStatsTracker.endSpan(traceId).map(ignored -> list));
+                        statsFuture = statsFuture.compose(stats -> tokenStatsTracker.endSpan(traceId).map(ignored -> stats));
                     }
 
-                    Future<List<UsagePerModel>> finalStatsFuture = statsFuture;
+                    Future<TokenStatsTracker.UsageStats> finalStatsFuture = statsFuture;
                     statsFuture.eventually(() -> invalidatePerRequestKey(perRequestKey))
                             .onComplete(ignored -> {
-                                List<UsagePerModel> usagePerModel = finalStatsFuture.succeeded()
-                                        ? finalStatsFuture.result() : List.of();
-                                logStore.save(AnalyticsLogContext.from(jobRecord, result, usagePerModel));
+                                TokenStatsTracker.UsageStats stats = finalStatsFuture.succeeded()
+                                        ? finalStatsFuture.result() : TokenStatsTracker.UsageStats.EMPTY;
+                                // without usage of its own, the span was only read for the router row
+                                AnalyticsLogContext serving = AnalyticsLogContext.from(jobRecord, result,
+                                        hasUsage ? stats.usagePerModel() : List.of());
+                                logStore.save(serving);
+                                if (jobRecord.routerHop() != null) {
+                                    logStore.save(AnalyticsLogContext.routerRow(serving, jobRecord.decision(), jobRecord.routerHop(), stats));
+                                }
                             })
                             .onFailure(error -> log.error("Failed to finalize background job {}", responseId, error));
                 });

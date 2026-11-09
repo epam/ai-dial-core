@@ -18,12 +18,14 @@ import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentMan
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRouterManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
 import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.policy.PolicyAssignmentPrecheck;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
@@ -47,12 +49,14 @@ public class ConfigValidationService {
     private final ResourceService resourceService;
     private final boolean softValidation;
     private final CatalogSchemaService catalogSchemaService;
+    private final ApplicationSchemaService applicationSchemaService;
 
     public ConfigValidationService(ResourceService resourceService, boolean softValidation,
-                                   CatalogSchemaService catalogSchemaService) {
+                                   CatalogSchemaService catalogSchemaService, ApplicationSchemaService applicationSchemaService) {
         this.resourceService = resourceService;
         this.softValidation = softValidation;
         this.catalogSchemaService = catalogSchemaService;
+        this.applicationSchemaService = applicationSchemaService;
     }
 
     public PolicyAssignmentPrecheck newPolicyPrecheck() {
@@ -106,6 +110,18 @@ public class ConfigValidationService {
                     }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                             scratch, ResourceTypes.INTERCEPTOR, parsed.name());
+                    if (dupError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, dupError);
+                    }
+                }
+                case AdminRouterManifest routerManifest -> {
+                    List<ValidationWarning> warnings = applicationSchemaService.validateRouter(scratch, parsed.name().name(),
+                            routerManifest.spec());
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                    String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
+                            scratch, ResourceTypes.ROUTER, parsed.name());
                     if (dupError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                     }

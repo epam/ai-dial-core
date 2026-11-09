@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.config;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
@@ -9,6 +10,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.config.ToolSet;
@@ -104,6 +106,7 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.APP_TYPE_SCHEMA,
             ResourceTypes.CATALOG_SCHEMA,
             ResourceTypes.INTERCEPTOR,
+            ResourceTypes.ROUTER,
             ResourceTypes.TRANSLATOR,
             ResourceTypes.ROLE,
             ResourceTypes.PROJECT_KEY,
@@ -499,6 +502,7 @@ public final class MergedConfigStore implements ConfigStore {
         return switch (type) {
             case MODEL -> BLOB_MAPPER.treeToValue(node, Model.class);
             case INTERCEPTOR -> BLOB_MAPPER.treeToValue(node, Interceptor.class);
+            case ROUTER -> BLOB_MAPPER.treeToValue(node, Router.class);
             case TRANSLATOR -> BLOB_MAPPER.treeToValue(node, Translator.class);
             case ROLE -> BLOB_MAPPER.treeToValue(node, Role.class);
             case PROJECT_KEY -> BLOB_MAPPER.treeToValue(node, Key.class);
@@ -816,6 +820,7 @@ public final class MergedConfigStore implements ConfigStore {
                     ConfigPostProcessor.validateSingleInterceptor(next, mapKey, onSkip);
                     resurrectInvalidModels(next, nextInvalid);
                 }
+                case ROUTER -> ConfigPostProcessor.validateSingleRouter(next, mapKey, onSkip);
                 case TRANSLATOR -> ConfigPostProcessor.validateSingleTranslator(next, mapKey, onSkip);
                 case ROLE -> ConfigPostProcessor.setRoleNameAsMapKey(next.getRoles(), mapKey);
                 case APPLICATION -> ConfigPostProcessor.validateSingleApplication(next, mapKey, onSkip);
@@ -1045,6 +1050,8 @@ public final class MergedConfigStore implements ConfigStore {
         next.setCatalogSchemas(base.getCatalogSchemas());
         next.setApplications(base.getApplications());
         next.setToolsets(base.getToolsets());
+        next.setRouters(base.getRouters());
+        next.setAliases(base.getAliases());
         next.setRetriableErrorCodes(base.getRetriableErrorCodes());
         next.setGlobalInterceptors(base.getGlobalInterceptors());
         next.setRateLimitSchedule(base.getRateLimitSchedule());
@@ -1089,6 +1096,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.setModels(new LinkedHashMap<>(config.getModels()));
             case INTERCEPTOR -> config.setInterceptors(new LinkedHashMap<>(config.getInterceptors()));
+            case ROUTER -> config.setRouters(new LinkedHashMap<>(config.getRouters()));
             case TRANSLATOR -> config.setTranslators(new LinkedHashMap<>(config.getTranslators()));
             case ROLE -> config.setRoles(new HashMap<>(config.getRoles()));
             case PROJECT_KEY -> config.setKeys(new HashMap<>(config.getKeys()));
@@ -1107,6 +1115,7 @@ public final class MergedConfigStore implements ConfigStore {
         return switch (type) {
             case MODEL -> config.getModels().get(mapKey);
             case INTERCEPTOR -> config.getInterceptors().get(mapKey);
+            case ROUTER -> config.getRouters().get(mapKey);
             case TRANSLATOR -> config.getTranslators().get(mapKey);
             case ROLE -> config.getRoles().get(mapKey);
             case PROJECT_KEY -> config.getKeys().get(mapKey);
@@ -1125,6 +1134,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.getModels().put(mapKey, (Model) entity);
             case INTERCEPTOR -> config.getInterceptors().put(mapKey, (Interceptor) entity);
+            case ROUTER -> config.getRouters().put(mapKey, (Router) entity);
             case TRANSLATOR -> config.getTranslators().put(mapKey, (Translator) entity);
             case ROLE -> config.getRoles().put(mapKey, (Role) entity);
             case PROJECT_KEY -> config.getKeys().put(mapKey, (Key) entity);
@@ -1143,6 +1153,7 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.getModels().remove(mapKey);
             case INTERCEPTOR -> config.getInterceptors().remove(mapKey);
+            case ROUTER -> config.getRouters().remove(mapKey);
             case TRANSLATOR -> config.getTranslators().remove(mapKey);
             case ROLE -> config.getRoles().remove(mapKey);
             case PROJECT_KEY -> config.getKeys().remove(mapKey);
@@ -1244,6 +1255,8 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, String> catalogSchemas = new LinkedHashMap<>(base.getCatalogSchemas());
         Map<String, Application> applications = new LinkedHashMap<>(base.getApplications());
         Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
+        Map<String, Router> routers = new LinkedHashMap<>(base.getRouters());
+        Map<String, Alias> aliases = new LinkedHashMap<>(base.getAliases());
         Map<String, Translator> translators = new LinkedHashMap<>(base.getTranslators());
         Map<String, Policy> policies = new HashMap<>();
         Map<String, PolicyAssignment> policyAssignments = new HashMap<>();
@@ -1266,6 +1279,8 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setCatalogSchemas(catalogSchemas);
         merged.setApplications(applications);
         merged.setToolsets(toolsets);
+        merged.setRouters(routers);
+        merged.setAliases(aliases);
         merged.setPolicies(policies);
         merged.setPolicyAssignments(policyAssignments);
 
@@ -1601,7 +1616,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     public static boolean isShortNameKeyed(ResourceTypes type) {
         return switch (type) {
-            case MODEL, INTERCEPTOR, TRANSLATOR, ROLE, APPLICATION, TOOL_SET -> true;
+            case MODEL, INTERCEPTOR, ROUTER, TRANSLATOR, ROLE, APPLICATION, TOOL_SET -> true;
             default -> false;
         };
     }
@@ -1623,6 +1638,12 @@ public final class MergedConfigStore implements ConfigStore {
             case INTERCEPTOR -> {
                 Interceptor entity = BLOB_MAPPER.treeToValue(node, Interceptor.class);
                 Object previous = config.getInterceptors().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
+            case ROUTER -> {
+                Router entity = BLOB_MAPPER.treeToValue(node, Router.class);
+                Object previous = config.getRouters().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
@@ -1714,6 +1735,7 @@ public final class MergedConfigStore implements ConfigStore {
             case CATALOG_SCHEMA -> restore(config.getCatalogSchemas(), mapKey, (String) previous);
             case APPLICATION -> restore(config.getApplications(), mapKey, (Application) previous);
             case TOOL_SET -> restore(config.getToolsets(), mapKey, (ToolSet) previous);
+            case ROUTER -> restore(config.getRouters(), mapKey, (Router) previous);
             case POLICY -> restore(config.getPolicies(), mapKey, (Policy) previous);
             case POLICY_ASSIGNMENT -> restore(config.getPolicyAssignments(), mapKey, (PolicyAssignment) previous);
             default -> { /* no-op */ }

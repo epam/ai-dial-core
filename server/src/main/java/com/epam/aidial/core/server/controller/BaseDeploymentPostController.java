@@ -6,13 +6,17 @@ import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.FeaturesData;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -43,7 +47,6 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
-import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
@@ -58,7 +61,6 @@ import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 
 @Slf4j
-@AllArgsConstructor
 public class BaseDeploymentPostController {
     private static final Set<Integer> DEFAULT_RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
@@ -66,6 +68,13 @@ public class BaseDeploymentPostController {
 
     protected final Proxy proxy;
     protected final ProxyContext context;
+    protected final RouterDecisionFlow decisions;
+
+    public BaseDeploymentPostController(Proxy proxy, ProxyContext context) {
+        this.proxy = proxy;
+        this.context = context;
+        this.decisions = new RouterDecisionFlow(proxy, context);
+    }
 
     protected BufferingReadStream createResponseStream(HttpClientResponse proxyResponse,
                                                        Supplier<BufferingReadStream.BaseEventListener> listenerSupplier) {
@@ -126,7 +135,11 @@ public class BaseDeploymentPostController {
     protected void finalizeRequest() {
         // every terminal path of all four LLM surfaces reaches here, including the respond(...) helpers above
         GenAiTraceAttributes.setLatencyAttributes(context);
-        proxy.getTokenStatsTracker().endSpan(context).onFailure(error -> log.error("Error occurred at completing span", error));
+        // the router row reads the span's stats, which a root's endSpan deletes
+        decisions.writeRouterRow()
+                .onFailure(error -> log.warn("Router row is not written", error))
+                .onComplete(ignore -> proxy.getTokenStatsTracker().endSpan(context)
+                        .onFailure(error -> log.error("Error occurred at completing span", error)));
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData != null) {
             proxy.getApiKeyStore().invalidatePerRequestApiKey(proxyApiKeyData)
@@ -142,6 +155,12 @@ public class BaseDeploymentPostController {
      * Called when proxy failed to connect to the origin.
      */
     protected void handleProxyConnectionError(Throwable error) {
+        String reason = context.getProxyResponse() != null ? "body" : "connect";
+        if (decisions.retryWithNextCandidate(HttpStatus.BAD_GATEWAY.getCode(), reason, () -> handleProxyConnectionError(error))) {
+            log.warn("Can't connect to origin, trying the next candidate. Deployment: {}. Address: {}. Error: {}",
+                    context.getDeployment().getName(), context.getProxyRequestUri(), error.getMessage());
+            return;
+        }
         ErrorData response = new ErrorData();
         response.getError().setCode(String.valueOf(HttpStatus.BAD_GATEWAY));
         String errorMessage = "Failed to connect to upstream server";
@@ -162,6 +181,20 @@ public class BaseDeploymentPostController {
      * Called when proxy failed to send response to the client.
      */
     protected void handleResponseError(Throwable error, BufferingReadStream responseStream) {
+        RouterDecision decision = context.getDecision();
+        // the client is still there, so the upstream broke: fall back while the client saw nothing, else tell the router
+        if (decision != null && !context.getResponse().closed()) {
+            if (!context.getResponse().headWritten()) {
+                if (decisions.retryWithNextCandidate(HttpStatus.BAD_GATEWAY.getCode(), "stream",
+                        () -> respond(HttpStatus.BAD_GATEWAY, "The upstream answer broke"))) {
+                    log.warn("Answer of {} broke before reaching the client, trying the next candidate: {}",
+                            context.getDeployment().getName(), error.getMessage());
+                    return;
+                }
+            } else if (!decision.isClosed()) {
+                decisions.noticeRouter();
+            }
+        }
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
         log.warn("Can't send response to client. Error:", error);
         Deployment deployment = context.getDeployment();
@@ -180,6 +213,8 @@ public class BaseDeploymentPostController {
         } else {
             // drop connection to stop application responding
             context.getProxyRequest().reset();
+            // the pass keeps its key and span to their TTLs, but the router row is written
+            decisions.writeRouterRow().onFailure(e -> log.warn("Router row is not written", e));
         }
     }
 
@@ -236,13 +271,15 @@ public class BaseDeploymentPostController {
         }
 
         // Application/Assistant: any deployment may self-report usage in its own response body;
-        // capture it alongside whatever its descendant Model spans already reported.
-        TokenUsage ownUsage = parseTokenUsage(responseBody);
+        // capture it alongside whatever its descendant Model spans already reported. An alias relays its target's
+        // answer, whose usage the target pass has reported already, so the alias reports none of its own.
+        TokenUsage ownUsage = context.getDeployment() instanceof AliasPass ? null : parseTokenUsage(responseBody);
         return trackDeploymentStats(context.getDeployment().getName(), ownUsage, true);
     }
 
     protected boolean isSubjectToLimits(Deployment deployment) {
-        return DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
+        // a router has no limits of its own: the deployments it calls back through Core are checked and charged
+        return !(deployment instanceof Router) && DeploymentEndpointUtil.resolveMode(deployment, interfaceType()).isSubjectToLimits();
     }
 
     /**
@@ -299,6 +336,9 @@ public class BaseDeploymentPostController {
             }
             TokenStatsTracker.UsageStats stats = result.result();
             context.setUsagePerModel(stats.usagePerModel());
+            if (context.getDecision() != null) {
+                context.setSpanUsageStats(stats);
+            }
             if (updateTokenUsage) {
                 TokenUsage forLog = hasOwnUsage ? ownUsage : new TokenUsage();
                 if (stats.total() != null) {
@@ -364,6 +404,9 @@ public class BaseDeploymentPostController {
         JsonNode tree = JsonUtil.tryParse(body.getBytes());
         if (!tree.isObject() || !(tree instanceof ObjectNode object)) {
             return body;
+        }
+        if (context.getDecision() != null) {
+            RouterModelFn.rewrite(object, context.getDecision().getRouterName());
         }
         List<UsagePerModel> usagePerModel = context.getUsagePerModel();
         if (usagePerModel == null || usagePerModel.isEmpty()) {
@@ -442,12 +485,15 @@ public class BaseDeploymentPostController {
             });
         }
 
-        // a translator has to know which deployment to call Core back for, and by the time it reads the body
-        // the model may already have been rewritten to overrideName. MessagesBaseController carries the id
-        // the client itself wrote and overrides this below; every other interface has only the deployment.
-        if (DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) == InterfaceMode.TRANSLATOR) {
-            proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, context.getDeployment().getName());
+        if (context.getDeployment() instanceof Router) {
+            // a translator calls Core back on the router's own interface, and that pass carries the properties
+            if (context.getRouterPropertiesHeader() != null
+                    && DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) != InterfaceMode.TRANSLATOR) {
+                proxyRequest.putHeader(HEADER_APPLICATION_PROPERTIES, context.getRouterPropertiesHeader());
+            }
         }
+
+        proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, context.getDeployment().getName());
 
         enrichProxyRequestHeaders(proxyRequest);
 
@@ -465,6 +511,11 @@ public class BaseDeploymentPostController {
     }
 
     protected boolean isRetriableError(int statusCode) {
+        if (context.getDeployment() instanceof AliasPass && !decisions.hasFallback()) {
+            // the target pass has already retried its own upstreams; the alias relays its answer, unless a decision
+            // has a candidate left to fall back to
+            return false;
+        }
         return DEFAULT_RETRIABLE_HTTP_CODES.contains(statusCode)
                 || context.getConfig().getRetriableErrorCodes().contains(statusCode);
     }
@@ -475,10 +526,25 @@ public class BaseDeploymentPostController {
             route.next();
             return true;
         } catch (HttpException e) {
-            respond(e);
             log.warn("No route. Deployment: {}", context.getDeployment().getName());
+            if (!decisions.retryWithNextCandidate(e.getStatus().getCode(), "upstream", () -> respond(e))) {
+                respond(e);
+            }
         }
 
         return false;
+    }
+
+    /**
+     * The deployment's interceptors for this pass. In the pass an interceptor chain hands to a router, the chosen
+     * deployment skips the interceptors that chain already ran, as a direct call runs them once.
+     */
+    protected List<String> resolveInterceptors(Deployment deployment) {
+        List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, deployment);
+        if (context.getDecision() != null && context.getApiKeyData().isInterceptor()) {
+            List<String> ran = context.getApiKeyData().getInterceptors();
+            return interceptors.stream().filter(interceptor -> !ran.contains(interceptor)).toList();
+        }
+        return interceptors;
     }
 }
