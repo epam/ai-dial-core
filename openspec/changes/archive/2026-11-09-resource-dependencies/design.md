@@ -257,8 +257,9 @@ Effect per request:
   key write: the grants go into the key write the request already makes.
 - MCP proxy: one hop to a virtual thread per request; for an application with key forwarding, one key per request instead
   of one per re-entry.
-- Application delete and application copy: one more storage delete. Move and publication approval: one more read, and a
-  write only when a record exists.
+- Application delete, copy, move and publication approval: nothing for an application without `resource_dependencies`;
+  for one with a list (or overwriting one), one more delete, or for a move and approval one more read and a write or
+  delete.
 No measurement was made; no cost claim goes beyond these counts.
 
 ## Migration Plan

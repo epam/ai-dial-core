@@ -47,11 +47,9 @@ Changes to existing behaviour for requests that use no `resource_dependencies`:
   runs its enhancement chain on the task executor, not the event loop, so an exception there now gets an error answer.
 - A platform application `PUT` decodes its body on the event loop, before the bucket locks (before, on the task
   executor inside them).
-- Deleting an application, and copying one through `/v1/ops/resource/copy`, also deletes the admin-consent record of
-  the deleted application or of the copy's destination: one more storage delete.
-- Moving an application or approving its publication reads the admin-consent record of the source and writes it to the
-  destination, or deletes the destination's record when the source has none: one more read and one more write or delete.
-  An absent record is cached as such in Redis for the type's TTL.
+- Copying, moving, approving the publication of or deleting an application touches the admin-consent store only when
+  the copied, overwritten or deleted application declares `resource_dependencies`; for other applications these
+  operations make no extra storage call.
 - `/v1/admin-consent/...` is a built-in route: a configured global route matching that prefix no longer receives it.
 - `POST /v1/consent/{id}` accepts a `resources` section in the consent document (before, an unknown property was `400`);
   request-time user consent checks ignore it.
