@@ -123,7 +123,8 @@ public class BudgetEnforcer {
                     // no display message: a client builds it from the cap's period, as for the translated path
                     return reject(settings, BUDGET_EXHAUSTED, claims.userId(), costObject, model,
                             buildExhaustedResult(costObject, null, outcome, timestamp)
-                                    .withSpendCaps(new SpendCaps(List.of(outcome.earliestCap), outcome.earliestCap)));
+                                    .withSpendCaps(outcome.earliestCap == null
+                                            ? SpendCaps.EMPTY : new SpendCaps(List.of(outcome.earliestCap), outcome.earliestCap)));
                 });
     }
 
@@ -284,7 +285,8 @@ public class BudgetEnforcer {
 
     /**
      * @param payerUsage  the payer's spend as loaded, null when no candidate pays
-     * @param earliestCap the cap of the dry candidate that pays again first, null when a candidate pays
+     * @param earliestCap the cap of the dry candidate that pays again first, null when a candidate pays or when the
+     *                    dry candidate only has a window of 0, which is enforced but never reported
      */
     private record Outcome(@Nullable BudgetPayer payer, @Nullable BudgetUsage payerUsage, long earliestResetAt,
                            @Nullable SpendCap earliestCap) {

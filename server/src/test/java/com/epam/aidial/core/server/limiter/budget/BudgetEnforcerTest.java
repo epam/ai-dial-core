@@ -320,6 +320,18 @@ class BudgetEnforcerTest {
     }
 
     @Test
+    void testWithSpendCapsRejectsZeroCapWithoutReportingIt() {
+        index(Map.of("p", policy(1, "0", null)), Map.of("ORG/a", assignment("p")));
+        usage("ORG/a", "0", "0");
+
+        RateLimitResult result = enforcer.checkWithSpendCaps(context, model, NOW, SCHEDULE).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(SpendCaps.EMPTY, result.spendCaps());
+        assertEquals(Math.ceilDiv(DAY_RESET - NOW, 1000L), result.replyAfterSeconds());
+    }
+
+    @Test
     void testTieKeepsTheEarlierBudget() {
         long lastDayOfMonth = Instant.parse("2026-11-30T10:00:00Z").toEpochMilli();
         index(Map.of("first", policy(1, null, "20"), "second", policy(2, "10", null)),
