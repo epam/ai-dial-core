@@ -35,7 +35,7 @@ public class RouterModelFn extends BaseResponseFunction {
      * The stream functions with this one first when the request was decided, so the others see what the client gets.
      */
     public static List<BaseResponseFunction> withRouterModel(Proxy proxy, ProxyContext context, List<BaseResponseFunction> functions) {
-        return withRouterModel(proxy, context, context.getDecision() == null ? null : context.getDecision().getRouter(), functions);
+        return withRouterModel(proxy, context, context.getDecision() == null ? null : context.getDecision().getRouterName(), functions);
     }
 
     /**

@@ -205,7 +205,8 @@ public class DeploymentPostController extends BaseChatCompletionController {
                         } else if (context.getDeployment() instanceof Router) {
                             // the request stays paused until this future completes: the body read is registered
                             // now and the decision runs outside it, or a decide waiting for the body never ends
-                            decideIfRouter(requestedInterface(), readRequestBody())
+                            decisions.decideIfRouter(requestedInterface(), readRequestBody(),
+                                            () -> handleDeployment(context.getDecision().current()))
                                     .compose(decided -> decided ? handleDeployment(context.getDecision().current()).mapEmpty()
                                             : handleRateLimitSuccess().mapEmpty())
                                     .otherwise(error -> {
@@ -237,13 +238,8 @@ public class DeploymentPostController extends BaseChatCompletionController {
         }
     }
 
-    @Override
-    protected void reenterWithCandidate() {
-        handleDeployment(context.getDecision().current());
-    }
-
     private void handleRequestError(String deploymentId, Throwable error) {
-        error = nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
+        error = decisions.nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
         if (error == null) {
             return;
         }
@@ -306,7 +302,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
             result.throwIfError();
         } catch (HttpException e) {
             log.warn("Rate limit error {}. Deployment: {}", result.errorMessage(), deploymentId);
-            Throwable error = nextCandidateOrError(e, failure -> respond((HttpException) failure));
+            Throwable error = decisions.nextCandidateOrError(e, failure -> respond((HttpException) failure));
             if (error != null) {
                 respond((HttpException) error);
             }

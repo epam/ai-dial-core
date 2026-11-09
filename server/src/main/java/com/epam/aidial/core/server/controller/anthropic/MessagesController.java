@@ -212,7 +212,7 @@ public class MessagesController extends MessagesBaseController {
     private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer upstreamBody) {
         // the one buffered answer Core does not otherwise re-serialize: a decided request pays a parse for the router name
         Buffer body = context.getDecision() != null && proxyResponse.statusCode() == 200
-                ? RouterModelFn.rewrite(upstreamBody, context.getDecision().getRouter()) : upstreamBody;
+                ? RouterModelFn.rewrite(upstreamBody, context.getDecision().getRouterName()) : upstreamBody;
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();

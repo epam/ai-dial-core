@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +15,7 @@ class RouterDecisionTest {
 
     @Test
     void newVerdictAppendsAndMovesToItsFirstCandidate() {
-        RouterDecision decision = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 10);
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 10);
         decision.setResolving(false);
         decision.fail(502, "upstream", false);
 
@@ -31,7 +32,7 @@ class RouterDecisionTest {
 
     @Test
     void failRecordsWithoutMoving() {
-        RouterDecision decision = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1", "m2"), 1);
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1", "m2"), 1);
 
         decision.fail(502, "body", true);
 
@@ -41,36 +42,36 @@ class RouterDecisionTest {
 
     @Test
     void limitAndExhaustStopTheLoop() {
-        RouterDecision decision = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 1);
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 1);
         assertTrue(decision.canRedecide(2));
         decision.redecided(List.of("m1"), 1);
         assertFalse(decision.canRedecide(2), "two decisions of two");
 
-        RouterDecision other = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 1);
+        RouterDecision other = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 1);
         other.exhaust();
         assertFalse(other.canRedecide(3));
-        RouterDecision closed = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 1);
+        RouterDecision closed = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 1);
         closed.close();
         assertFalse(closed.canRedecide(3));
     }
 
     @Test
     void plainFallbackRowKeepsItsShape() throws Exception {
-        RouterDecision decision = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1", "m2"), 12);
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1", "m2"), 12);
         decision.skip(502, "upstream");
 
         assertEquals("{\"router\":\"r1\",\"api\":\"openaiChatCompletions\",\"candidates\":[\"m1\",\"m2\"],\"deployment\":\"m2\","
                 + "\"decide_ms\":12,\"attempts\":[{\"deployment\":\"m1\",\"status\":502,\"reason\":\"upstream\"}]}",
-                ProxyUtil.MAPPER.writeValueAsString(decision.toRow()));
+                ProxyUtil.MAPPER.writeValueAsString(decision.toAnalyticsDecision()));
     }
 
     @Test
     void redecidedRowCarriesDecisionsAndReceived() throws Exception {
-        RouterDecision decision = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 3);
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 3);
         decision.fail(502, "body", true);
         decision.redecided(List.of("m2"), 4);
 
-        String json = ProxyUtil.MAPPER.writeValueAsString(decision.toRow());
+        String json = ProxyUtil.MAPPER.writeValueAsString(decision.toAnalyticsDecision());
 
         assertEquals("{\"router\":\"r1\",\"api\":\"openaiChatCompletions\",\"candidates\":[\"m1\",\"m2\"],\"deployment\":\"m2\","
                 + "\"decide_ms\":7,\"attempts\":[{\"deployment\":\"m1\",\"status\":502,\"reason\":\"body\",\"received\":true}],"
@@ -79,8 +80,14 @@ class RouterDecisionTest {
 
     @Test
     void routerRowTakenOnce() {
-        RouterDecision decision = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 1);
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 1);
         assertTrue(decision.takeRow());
         assertFalse(decision.takeRow());
+    }
+
+    private static Router router(String name) {
+        Router router = new Router();
+        router.setName(name);
+        return router;
     }
 }

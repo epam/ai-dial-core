@@ -87,8 +87,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                     String model = request.getModel();
                     deploymentId = model;
                     return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
-                            .compose(ignore -> decideIfRouter(InterfaceType.ANTHROPIC_MESSAGES,
-                                    Future.succeededFuture(context.getOriginalRequestBody())))
+                            .compose(ignore -> decisions.decideIfRouter(InterfaceType.ANTHROPIC_MESSAGES,
+                                    Future.succeededFuture(context.getOriginalRequestBody()), this::reenterWithCandidate))
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request))
                             .otherwise(error -> handleRequestError(model, error));
                 })
@@ -113,8 +113,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 .otherwise(error -> handleRequestError(candidate, error));
     }
 
-    @Override
-    protected void reenterWithCandidate() {
+    private void reenterWithCandidate() {
         // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
         serveCandidate(parseBody(context.getOriginalRequestBody()));
     }
@@ -285,7 +284,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected abstract void processResponse(HttpClientResponse proxyResponse);
 
     protected Void handleRequestError(String deploymentId, Throwable error) {
-        error = nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
+        error = decisions.nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
         if (error == null) {
             return null;
         }

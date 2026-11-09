@@ -100,7 +100,7 @@ public class ApiKeyData {
         String receiver = null;
         if (context.getDecision() != null) {
             // the deployment the client called, so the router is the parent of the one it chose
-            currentPath.add(context.getDecision().getRouter());
+            currentPath.add(context.getDecision().getRouterName());
         }
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();

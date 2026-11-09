@@ -20,12 +20,22 @@ import java.util.List;
 @Getter
 public class RouterDecision {
 
-    private final String router;
+    /**
+     * The router that decided, as configured when it was asked.
+     */
+    private final Router router;
     private final InterfaceType api;
+    /**
+     * The deployments the router named, in order of preference, each verdict's after the previous one's: the ones
+     * that may serve the request, tried one after another until one serves it.
+     */
     private final List<String> candidates;
     private final List<Attempt> attempts = new ArrayList<>();
     private long decideMs;
     private int decisions = 1;
+    /**
+     * The position in {@link #candidates} of the candidate being served now.
+     */
     private int index;
     /**
      * True while the current candidate is being resolved and limit-checked: a refusal then skips to the next
@@ -42,11 +52,18 @@ public class RouterDecision {
      * True once a new verdict could not be had: the walk then answers the last failure instead of deciding again.
      */
     private boolean exhausted;
-    // what a new decide request is built from; not part of the analytics row
+    /**
+     * The key of the first decide request, invalidated once that request ended. A later decide request's key is a
+     * copy of it, with the caller's identity, the execution path up to the router and the attachment grants.
+     */
     @Setter
-    private Router routerConfig;
+    private ApiKeyData firstDecideKey;
+    /**
+     * Serves {@link #current()} from the start of the deciding controller's flow, the resolve included: run for each
+     * candidate that replaces a failed one.
+     */
     @Setter
-    private ApiKeyData keyTemplate;
+    private Runnable reenter;
     // where the router row sits in the call tree, fixed when the router answered
     @Setter
     private Hop hop;
@@ -56,11 +73,15 @@ public class RouterDecision {
     // the router row is written, or left to the poller of the background job this request started
     private boolean rowTaken;
 
-    public RouterDecision(String router, InterfaceType api, List<String> candidates, long decideMs) {
+    public RouterDecision(Router router, InterfaceType api, List<String> candidates, long decideMs) {
         this.router = router;
         this.api = api;
         this.candidates = new ArrayList<>(candidates);
         this.decideMs = decideMs;
+    }
+
+    public String getRouterName() {
+        return router.getName();
     }
 
     public String current() {
@@ -129,8 +150,8 @@ public class RouterDecision {
         rowTaken = false;
     }
 
-    public Row toRow() {
-        return new Row(router, api.getValue(), List.copyOf(candidates), current(), decideMs, List.copyOf(attempts),
+    public AnalyticsDecision toAnalyticsDecision() {
+        return new AnalyticsDecision(router.getName(), api.getValue(), List.copyOf(candidates), current(), decideMs, List.copyOf(attempts),
                 decisions > 1 ? decisions : null);
     }
 
@@ -138,8 +159,8 @@ public class RouterDecision {
      * The {@code decision} object of the analytics row. {@code decisions} only when the request needed more than one.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Row(String router, String api, List<String> candidates, String deployment, long decideMs, List<Attempt> attempts,
-                      @JsonInclude(JsonInclude.Include.NON_NULL) Integer decisions) {
+    public record AnalyticsDecision(String router, String api, List<String> candidates, String deployment, long decideMs,
+                                    List<Attempt> attempts, @JsonInclude(JsonInclude.Include.NON_NULL) Integer decisions) {
     }
 
     /**

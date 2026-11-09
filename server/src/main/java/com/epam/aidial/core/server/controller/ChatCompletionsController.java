@@ -118,7 +118,8 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                         context.setInitialDeployment(context.getDeployment().getName());
                         return handleInterceptor(0);
                     }
-                    return decideIfRouter(InterfaceType.OPENAI_CHAT_COMPLETIONS, Future.succeededFuture(context.getOriginalRequestBody()))
+                    return decisions.decideIfRouter(InterfaceType.OPENAI_CHAT_COMPLETIONS, Future.succeededFuture(context.getOriginalRequestBody()),
+                                    this::reenterWithCandidate)
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName, false));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));
@@ -134,10 +135,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                 .compose(ignore -> {
                     request.setModel(candidate);
                     if (context.hasNextInterceptor()) {
-                        context.getDecision().setResolving(false);
-                        context.getDecision().close();
-                        writeRequestBody(request);
-                        context.setInitialDeployment(candidate);
+                        decisions.handOffToInterceptors(request, candidate);
                         return handleInterceptor(0);
                     }
                     return proceedToDeployment(request, candidate, true);
@@ -145,8 +143,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                 .otherwise(error -> handleRequestError(candidate, error));
     }
 
-    @Override
-    protected void reenterWithCandidate() {
+    private void reenterWithCandidate() {
         // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
         serveCandidate(parseBody(context.getOriginalRequestBody()));
     }
@@ -213,7 +210,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
     }
 
     private Void handleRequestError(String deploymentId, Throwable error) {
-        error = nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
+        error = decisions.nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
         if (error == null) {
             return null;
         }

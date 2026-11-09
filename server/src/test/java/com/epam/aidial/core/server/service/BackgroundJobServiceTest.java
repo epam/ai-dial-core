@@ -1,17 +1,22 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -52,10 +57,12 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -382,6 +389,43 @@ class BackgroundJobServiceTest {
         await(ctx);
         verify(rateLimiter).recordAggregatedCost(eq("inner-app"), eq(mapping.getInitiatorBucket()), eq(new BigDecimal("0.40")));
         verify(rateLimiter).recordAggregatedCost(eq("router-app"), eq(mapping.getInitiatorBucket()), eq(new BigDecimal("0.40")));
+    }
+
+    @Test
+    void decidedJobWithoutUsageLeavesTheSpanRollUpToTheRouterRow(VertxTestContext ctx) throws Throwable {
+        Router router = new Router();
+        router.setName("r1");
+        RouterDecision decision = new RouterDecision(router, InterfaceType.OPENAI_RESPONSES, List.of(DEPLOYMENT_NAME), 1);
+        decision.setHop(new RouterDecision.Hop("hop-span", null, null, List.of("r1")));
+        when(proxyContext.getDecision()).thenReturn(decision);
+        when(configStore.get()).thenReturn(mock(Config.class));
+        ApiKeyData key = new ApiKeyData();
+        key.setTraceId("trace-id");
+        key.setSpanId("span-id");
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.succeededFuture(key));
+        List<UsagePerModel> rollUp = List.of(new UsagePerModel(0, "gpt-4", new TokenUsage()));
+        when(tokenStatsTracker.getUsageStats("trace-id", "span-id"))
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), rollUp, List.of())));
+        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(true));
+        List<AnalyticsLogContext> rows = new CopyOnWriteArrayList<>();
+        doAnswer(inv -> {
+            rows.add(inv.getArgument(0));
+            if (rows.size() == 2) {
+                ctx.completeNow();
+            }
+            return null;
+        }).when(logStore).save(any());
+
+        service.saveJob(JOB_ID, proxyContext)
+                .compose(ignored -> service.tryComplete(
+                        JOB_ID, buildMapping(), new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null)))
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        AnalyticsLogContext serving = rows.stream().filter(row -> !"r1".equals(row.getDeploymentName())).findFirst().orElseThrow();
+        AnalyticsLogContext routerRow = rows.stream().filter(row -> "r1".equals(row.getDeploymentName())).findFirst().orElseThrow();
+        assertTrue(serving.getUsagePerModel().isEmpty(), "the job reported no usage of its own");
+        assertEquals(rollUp, routerRow.getUsagePerModel());
     }
 
     @Test

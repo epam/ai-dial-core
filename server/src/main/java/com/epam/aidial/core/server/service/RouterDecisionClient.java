@@ -118,7 +118,8 @@ public class RouterDecisionClient {
                     proxy.getVertx().cancelTimer(timer);
                     if (result.succeeded()) {
                         verdict.tryComplete(result.result());
-                    } else {
+                    } else if (!verdict.future().isComplete()) {
+                        // past the deadline the failure is the reset the deadline made: the 504 is answered already
                         log.warn("Decide request failed. Router: {}. Error: {}", router.getName(), result.cause().getMessage());
                         verdict.tryFail(toHttpException(router, result.cause()));
                     }
@@ -191,6 +192,8 @@ public class RouterDecisionClient {
     private Future<HttpClientResponse> send(HttpClientRequest request, MultiMap headers, @Nullable Buffer body) {
         request.headers().addAll(headers);
         if (body == null) {
+            // the client's Content-Type describes a body this request does not carry
+            request.headers().remove(HttpHeaders.CONTENT_TYPE);
             return request.send();
         }
         request.headers().set(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);

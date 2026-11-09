@@ -15,17 +15,10 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.RouterDecision;
-import com.epam.aidial.core.server.function.CollectRequestAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.RouterModelFn;
-import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
-import com.epam.aidial.core.server.function.request.MessagesApiRequest;
-import com.epam.aidial.core.server.function.request.RequestObject;
-import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
-import com.epam.aidial.core.server.service.PermissionDeniedException;
-import com.epam.aidial.core.server.service.RouterDecisionClient;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
@@ -40,13 +33,11 @@ import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.util.UpstreamInterfaceUtil;
 import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
-import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
-import io.opentelemetry.sdk.trace.IdGenerator;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
@@ -56,34 +47,34 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
-import lombok.AllArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
-import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 
 @Slf4j
-@AllArgsConstructor
 public class BaseDeploymentPostController {
     private static final Set<Integer> DEFAULT_RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
             HttpStatus.SERVICE_UNAVAILABLE.getCode());
-    private static final IdGenerator SPAN_IDS = IdGenerator.random();
 
     protected final Proxy proxy;
     protected final ProxyContext context;
+    protected final RouterDecisionFlow decisions;
+
+    public BaseDeploymentPostController(Proxy proxy, ProxyContext context) {
+        this.proxy = proxy;
+        this.context = context;
+        this.decisions = new RouterDecisionFlow(proxy, context);
+    }
 
     protected BufferingReadStream createResponseStream(HttpClientResponse proxyResponse,
                                                        Supplier<BufferingReadStream.BaseEventListener> listenerSupplier) {
@@ -145,7 +136,7 @@ public class BaseDeploymentPostController {
         // every terminal path of all four LLM surfaces reaches here, including the respond(...) helpers above
         GenAiTraceAttributes.setLatencyAttributes(context);
         // the router row reads the span's stats, which a root's endSpan deletes
-        writeRouterRow()
+        decisions.writeRouterRow()
                 .onFailure(error -> log.warn("Router row is not written", error))
                 .onComplete(ignore -> proxy.getTokenStatsTracker().endSpan(context)
                         .onFailure(error -> log.error("Error occurred at completing span", error)));
@@ -161,37 +152,11 @@ public class BaseDeploymentPostController {
     }
 
     /**
-     * The router row of a decided request, written once by the pass that asked the router. Its cost is what this
-     * pass's span rolled up: the deployment that served and everything below it, calls made while deciding included.
-     */
-    private Future<Void> writeRouterRow() {
-        RouterDecision decision = context.getDecision();
-        if (decision == null || !decision.takeRow()) {
-            return Future.succeededFuture();
-        }
-        // the stats the serving report returned, read before the response ended; a pass whose root may end first
-        // must not read them after it
-        TokenStatsTracker.UsageStats reported = context.getSpanUsageStats();
-        Future<TokenStatsTracker.UsageStats> stats = reported != null
-                ? Future.succeededFuture(reported) : proxy.getTokenStatsTracker().getUsageStats(context);
-        return stats
-                .otherwise(error -> {
-                    log.warn("Router {} row is written without its cost", decision.getRouter(), error);
-                    return TokenStatsTracker.UsageStats.EMPTY;
-                })
-                .map(usage -> {
-                    AnalyticsLogContext serving = AnalyticsLogContext.from(context, null);
-                    proxy.getLogStore().save(AnalyticsLogContext.routerRow(serving, decision.toRow(), decision.getHop(), usage));
-                    return null;
-                });
-    }
-
-    /**
      * Called when proxy failed to connect to the origin.
      */
     protected void handleProxyConnectionError(Throwable error) {
         String reason = context.getProxyResponse() != null ? "body" : "connect";
-        if (retryWithNextCandidate(HttpStatus.BAD_GATEWAY.getCode(), reason, () -> handleProxyConnectionError(error))) {
+        if (decisions.retryWithNextCandidate(HttpStatus.BAD_GATEWAY.getCode(), reason, () -> handleProxyConnectionError(error))) {
             log.warn("Can't connect to origin, trying the next candidate. Deployment: {}. Address: {}. Error: {}",
                     context.getDeployment().getName(), context.getProxyRequestUri(), error.getMessage());
             return;
@@ -220,14 +185,14 @@ public class BaseDeploymentPostController {
         // the client is still there, so the upstream broke: fall back while the client saw nothing, else tell the router
         if (decision != null && !context.getResponse().closed()) {
             if (!context.getResponse().headWritten()) {
-                if (retryWithNextCandidate(HttpStatus.BAD_GATEWAY.getCode(), "stream",
+                if (decisions.retryWithNextCandidate(HttpStatus.BAD_GATEWAY.getCode(), "stream",
                         () -> respond(HttpStatus.BAD_GATEWAY, "The upstream answer broke"))) {
                     log.warn("Answer of {} broke before reaching the client, trying the next candidate: {}",
                             context.getDeployment().getName(), error.getMessage());
                     return;
                 }
             } else if (!decision.isClosed()) {
-                noticeRouter();
+                decisions.noticeRouter();
             }
         }
         context.getResponse().reset();     // drop connection, so that partial client response won't seem complete
@@ -249,21 +214,8 @@ public class BaseDeploymentPostController {
             // drop connection to stop application responding
             context.getProxyRequest().reset();
             // the pass keeps its key and span to their TTLs, but the router row is written
-            writeRouterRow().onFailure(e -> log.warn("Router row is not written", e));
+            decisions.writeRouterRow().onFailure(e -> log.warn("Router row is not written", e));
         }
-    }
-
-    /**
-     * The chosen deployment's answer broke after bytes of it reached the client: it cannot be replaced, so the router
-     * only learns of it.
-     */
-    private void noticeRouter() {
-        RouterDecision decision = context.getDecision();
-        HttpClientResponse answered = context.getProxyResponse();
-        List<RouterDecision.Attempt> attempts = new ArrayList<>(decision.getAttempts());
-        attempts.add(new RouterDecision.Attempt(decision.current(), answered == null ? HttpStatus.BAD_GATEWAY.getCode() : answered.statusCode(),
-                "stream", true, true));
-        RouterDecisionClient.notice(context, decision.getRouterConfig(), decision.getApi(), attempts);
     }
 
     protected Future<Void> collectTokenUsage(Buffer responseBody) {
@@ -454,7 +406,7 @@ public class BaseDeploymentPostController {
             return body;
         }
         if (context.getDecision() != null) {
-            RouterModelFn.rewrite(object, context.getDecision().getRouter());
+            RouterModelFn.rewrite(object, context.getDecision().getRouterName());
         }
         List<UsagePerModel> usagePerModel = context.getUsagePerModel();
         if (usagePerModel == null || usagePerModel.isEmpty()) {
@@ -564,9 +516,7 @@ public class BaseDeploymentPostController {
     }
 
     protected boolean isRetriableError(int statusCode) {
-        RouterDecision decision = context.getDecision();
-        if (context.getDeployment() instanceof AliasPass
-                && (decision == null || !decision.hasNext() && !canRedecide(decision))) {
+        if (context.getDeployment() instanceof AliasPass && !decisions.hasFallback()) {
             // the target pass has already retried its own upstreams; the alias relays its answer, unless a decision
             // has a candidate left to fall back to
             return false;
@@ -582,182 +532,12 @@ public class BaseDeploymentPostController {
             return true;
         } catch (HttpException e) {
             log.warn("No route. Deployment: {}", context.getDeployment().getName());
-            if (!retryWithNextCandidate(e.getStatus().getCode(), "upstream", () -> respond(e))) {
+            if (!decisions.retryWithNextCandidate(e.getStatus().getCode(), "upstream", () -> respond(e))) {
                 respond(e);
             }
         }
 
         return false;
-    }
-
-    /**
-     * Asks the router for a decision when the context's deployment is a router in decision mode serving
-     * {@code type}, and stores it on the context. True when it decided: the caller then serves
-     * {@code context.getDecision().current()} through its own resolve, as if the client had called it.
-     *
-     * @param body the client's body bytes, read only when the router asks for them
-     */
-    protected Future<Boolean> decideIfRouter(InterfaceType type, Future<Buffer> body) {
-        if (!(context.getDeployment() instanceof Router router)) {
-            return Future.succeededFuture(false);
-        }
-        // a typed router's schema may have to be downloaded and compiled, which blocks
-        Future<Void> properties = router.getApplicationTypeSchemaId() == null ? Future.succeededFuture()
-                : proxy.getTaskExecutor().submit(() -> {
-                    context.setRouterPropertiesHeader(proxy.getApplicationSchemaService().routerPropertiesHeader(router));
-                    return null;
-                });
-        return properties.compose(ignore -> DeploymentEndpointUtil.decides(router, type)
-                ? decideWith(router, type, body)
-                : Future.succeededFuture(false));
-    }
-
-    private Future<Boolean> decideWith(Router router, InterfaceType type, Future<Buffer> body) {
-        // only a pass below this router's own decision has it in its path: a deployment it chose calls it back
-        List<String> path = context.getApiKeyData().getExecutionPath();
-        if (path != null && path.contains(router.getName())) {
-            return Future.failedFuture(new HttpException(HttpStatus.BAD_GATEWAY, "Router %s re-entered".formatted(router.getName())));
-        }
-        // the span first: calls the router makes with the decide key roll up into it, and the candidate's pass re-enters it
-        return (RouterDecisionClient.withBody(router) ? body : Future.<Buffer>succeededFuture(null))
-                .compose(bytes -> proxy.getTokenStatsTracker().startSpan(context)
-                        .compose(ignore -> proxy.getTaskExecutor().submit(() -> mintDecideKey(router, type, bytes)))
-                        .compose(key -> decide(router, type, bytes, key)));
-    }
-
-    /**
-     * The key the router may call Core with while it decides: the caller's identity and rights, the router last in
-     * its path, and read access to the files the request attaches when the router gets the body. It lives only as
-     * long as the decide call, so it is not the context's proxy key.
-     */
-    private ApiKeyData mintDecideKey(Router router, InterfaceType type, @Nullable Buffer body) {
-        ApiKeyData key = new ApiKeyData();
-        ApiKeyData.initFromContext(key, context);
-        if (body != null) {
-            ObjectNode tree;
-            try {
-                tree = ProxyUtil.parseObject(body);
-            } catch (IOException e) {
-                throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
-            }
-            for (String attachment : requestObject(type, tree).collectAttachments()) {
-                CollectRequestAttachmentsFn.shareAttachment(proxy, context, attachment, key);
-            }
-        }
-        proxy.getApiKeyStore().assignPerRequestApiKey(key, RouterDecisionClient.keyTtl(router));
-        return key;
-    }
-
-    private static RequestObject requestObject(InterfaceType type, ObjectNode tree) {
-        return switch (type) {
-            case OPENAI_RESPONSES -> new ResponsesApiRequest(tree);
-            case ANTHROPIC_MESSAGES -> new MessagesApiRequest(tree);
-            case OPENAI_CHAT_COMPLETIONS, OPENAI_EMBEDDINGS -> new ChatCompletionRequest(tree);
-        };
-    }
-
-    private Future<Boolean> decide(Router router, InterfaceType type, Buffer bytes, ApiKeyData key) {
-        long start = System.currentTimeMillis();
-        return askRouter(router, type, bytes, key, List.of())
-                .map(candidates -> {
-                    RouterDecision decision = new RouterDecision(router.getName(), type, candidates, System.currentTimeMillis() - start);
-                    decision.setRouterConfig(router);
-                    decision.setKeyTemplate(key);
-                    decision.setHop(routerHop(router));
-                    // Core's own headers (CORS, trace ids), restored when a candidate's half-copied answer is dropped
-                    decision.setResponseHeaders(MultiMap.caseInsensitiveMultiMap().addAll(context.getResponse().headers()));
-                    context.setDecision(decision);
-                    return true;
-                });
-    }
-
-    /**
-     * The router row's place: a span of its own under the request's parent, and the parent and path a direct call to
-     * the router has. The incoming key's path, as the key minted for this pass does not exist yet.
-     */
-    private RouterDecision.Hop routerHop(Router router) {
-        List<String> incoming = context.getApiKeyData().getExecutionPath();
-        List<String> path = new ArrayList<>(incoming == null ? List.of() : incoming);
-        path.add(router.getName());
-        String parent = AnalyticsLogContext.getParentDeployment(context.getSourceDeployment(), context.getInterceptors(), path);
-        return new RouterDecision.Hop(SPAN_IDS.generateSpanId(), context.getParentSpanId(), parent, List.copyOf(path));
-    }
-
-    /**
-     * One decide request with its own key, invalidated when the call ends; a router named as a candidate fails it.
-     */
-    private Future<List<String>> askRouter(Router router, InterfaceType type, Buffer bytes, ApiKeyData key,
-                                           List<RouterDecision.Attempt> attempts) {
-        return RouterDecisionClient.decide(context, router, type, bytes, key.getPerRequestKey(), attempts)
-                .onComplete(ignore -> proxy.getApiKeyStore().invalidatePerRequestApiKey(key)
-                        .onFailure(error -> log.error("error occurred on invalidating the decide request key", error)))
-                .map(candidates -> {
-                    for (String candidate : candidates) {
-                        if (context.getConfig().getRouters().containsKey(candidate)) {
-                            throw new HttpException(HttpStatus.BAD_GATEWAY, "A router cannot be a routing candidate: " + candidate);
-                        }
-                    }
-                    return candidates;
-                });
-    }
-
-    /**
-     * Every candidate so far failed: asks the router again with the attempts, and re-enters with the new verdict's
-     * first candidate. When no new verdict can be had (the router fails, answers no usable verdict, or the client
-     * left), marks the decision exhausted and runs {@code whenExhausted}, which answers the last failure.
-     */
-    private void redecide(Runnable whenExhausted) {
-        RouterDecision decision = context.getDecision();
-        Router router = decision.getRouterConfig();
-        Buffer bytes = RouterDecisionClient.withBody(router) ? context.getOriginalRequestBody() : null;
-        long start = System.currentTimeMillis();
-        proxy.getTokenStatsTracker().unnameSpan(context)
-                .recover(error -> {
-                    log.warn("Router {} decides again in a span named after the failed candidate", decision.getRouter(), error);
-                    return Future.succeededFuture();
-                })
-                .compose(ignore -> proxy.getTaskExecutor().submit(() -> mintKeyLike(decision.getKeyTemplate(), router)))
-                .compose(key -> askRouter(router, decision.getApi(), bytes, key, decision.getAttempts()))
-                .onComplete(result -> {
-                    if (result.succeeded() && !context.getResponse().closed()) {
-                        decision.redecided(result.result(), System.currentTimeMillis() - start);
-                        reenterWithCandidate();
-                        return;
-                    }
-                    if (result.failed()) {
-                        log.warn("Router {} failed to decide again: {}", decision.getRouter(), result.cause().getMessage());
-                    }
-                    decision.exhaust();
-                    whenExhausted.run();
-                });
-    }
-
-    /**
-     * A new decide request key with the first one's identity, path and grants: the context now names the failed
-     * candidate, so building the key from it again would put the candidate after the router.
-     */
-    private ApiKeyData mintKeyLike(ApiKeyData template, Router router) {
-        ApiKeyData key = ProxyUtil.convertToObject(ProxyUtil.convertToString(template), ApiKeyData.class);
-        key.setPerRequestKey(null);
-        proxy.getApiKeyStore().assignPerRequestApiKey(key, RouterDecisionClient.keyTtl(router));
-        return key;
-    }
-
-    private boolean canRedecide(RouterDecision decision) {
-        return decision.canRedecide(RouterDecisionClient.maxDecisions(decision.getRouterConfig()));
-    }
-
-    @SneakyThrows
-    protected void writeRequestBody(RequestObject request) {
-        context.setRequestBody(Buffer.buffer(request.serialize()));
-    }
-
-    /**
-     * Serves the decision's current candidate from the start of this controller's flow, the resolve included.
-     * Only the controllers that run {@link #decideIfRouter} have a decision to re-enter with.
-     */
-    protected void reenterWithCandidate() {
-        throw new IllegalStateException("No decision to re-enter with in " + getClass().getSimpleName());
     }
 
     /**
@@ -770,101 +550,5 @@ public class BaseDeploymentPostController {
             interceptors.removeAll(context.getApiKeyData().getInterceptors());
         }
         return interceptors;
-    }
-
-    /**
-     * A refusal of the candidate being resolved, before anything was sent to it, skips to the next candidate, or
-     * after the last one asks the router again: answers null then, and {@code answer} gets the error if no new
-     * verdict can be had. Otherwise answers the error to respond with; an unknown last candidate is the router's
-     * fault, not the caller's, and is answered 502.
-     */
-    protected Throwable nextCandidateOrError(Throwable error, Consumer<Throwable> answer) {
-        RouterDecision decision = context.getDecision();
-        if (decision == null || !decision.isResolving()) {
-            return error;
-        }
-        int status;
-        String reason;
-        if (error instanceof PermissionDeniedException) {
-            status = HttpStatus.FORBIDDEN.getCode();
-            reason = "forbidden";
-        } else if (error instanceof ResourceNotFoundException) {
-            status = HttpStatus.NOT_FOUND.getCode();
-            reason = "not_found";
-        } else if (error instanceof HttpException httpException) {
-            status = httpException.getStatus().getCode();
-            reason = status == HttpStatus.TOO_MANY_REQUESTS.getCode() ? "limit" : "unavailable";
-        } else {
-            return error;
-        }
-        if (!context.getResponse().closed()) {
-            if (decision.hasNext()) {
-                log.warn("Candidate {} of router {} skipped: {}", decision.current(), decision.getRouter(), error.getMessage());
-                decision.skip(status, reason);
-                reenterWithCandidate();
-                return null;
-            }
-            if (canRedecide(decision)) {
-                log.warn("Candidate {} of router {} skipped, deciding again: {}", decision.current(), decision.getRouter(), error.getMessage());
-                decision.fail(status, reason, false);
-                redecide(() -> answer.accept(error));
-                return null;
-            }
-        }
-        return error instanceof ResourceNotFoundException
-                ? new HttpException(HttpStatus.BAD_GATEWAY, "Router %s chose an unknown deployment".formatted(decision.getRouter()))
-                : error;
-    }
-
-    /**
-     * After the current candidate's call failed (a connect failure, a retriable status once its own upstreams are
-     * exhausted, or a 200 answer that broke before the whole of it arrived), re-enters with the next candidate, or
-     * after the last one asks the router again, while no byte has reached the client and the client is still there.
-     * True when it did; {@code answerOriginal} then answers the failure if no new verdict can be had.
-     */
-    protected boolean retryWithNextCandidate(int status, String reason, Runnable answerOriginal) {
-        RouterDecision decision = context.getDecision();
-        HttpServerResponse response = context.getResponse();
-        if (decision == null || response.headWritten() || response.closed()) {
-            return false;
-        }
-        HttpClientResponse answered = context.getProxyResponse();
-        // an answer counts as broken only when its 200 body never fully arrived; a background job's accepted job,
-        // or a response mapping already saved, would keep running beside the next candidate's
-        if (answered != null && (answered.statusCode() != HttpStatus.OK.getCode()
-                || context.isUpstreamBodyReceived() || context.isBackgroundJob())) {
-            return false;
-        }
-        boolean next = decision.hasNext();
-        if (!next && !canRedecide(decision)) {
-            return false;
-        }
-        boolean received = answered != null;
-        if (received) {
-            // drop the half-read upstream and the headers its answer already copied to the client response
-            context.getProxyRequest().reset();
-            context.setProxyResponse(null);
-            response.headers().clear().addAll(decision.getResponseHeaders());
-            response.setChunked(false);
-        }
-        // the failed pass ends without answering, so its key would otherwise live until its TTL
-        ApiKeyData failedKey = context.getProxyApiKeyData();
-        if (failedKey != null && failedKey.getPerRequestKey() != null) {
-            proxy.getApiKeyStore().invalidatePerRequestApiKey(failedKey)
-                    .onFailure(error -> log.error("error occurred on invalidating per-request key", error));
-        }
-        context.setProxyApiKeyData(null);
-        context.setCacheBreakpointContext(null);
-        context.setUpstreamBodyReceived(false);
-        context.setSpanUsageStats(null);
-        context.setRequestBody(context.getOriginalRequestBody());
-        if (next) {
-            decision.skip(status, reason, received);
-            reenterWithCandidate();
-        } else {
-            decision.fail(status, reason, received);
-            redecide(answerOriginal);
-        }
-        return true;
     }
 }

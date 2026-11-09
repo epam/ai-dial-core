@@ -87,6 +87,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertNotNull(decide.getHeader("api-key"));
         assertNotEquals("proxyKey1", decide.getHeader("api-key"));
         assertEquals(0, decide.getBodySize());
+        assertNull(decide.getHeader("content-type"), "no body, so no content type");
 
         RecordedRequest model = single(request -> request.getPath().startsWith("/openai/deployments/gpt-4-real/"));
         assertNull(model.getHeader("X-DIAL-ROUTER-TIER"));
@@ -651,7 +652,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertTrue(router.isBodiesOmitted());
         assertNull(router.getRequestBody());
         assertNull(router.getUpstreamEndpoint());
-        RouterDecision.Row decision = router.getDecision();
+        RouterDecision.AnalyticsDecision decision = router.getDecision();
         assertEquals("r1", decision.router());
         assertEquals("openaiChatCompletions", decision.api());
         assertEquals(List.of("m1", "m2"), decision.candidates());
@@ -780,7 +781,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         AnalyticsLogContext row = row(rows, "m-int");
         assertEquals(List.of("r1", "i2", "m-int"), row.getExecutionPath());
         assertEquals("r1", row.getParentDeployment());
-        RouterDecision.Row decision = routerRow(rows).getDecision();
+        RouterDecision.AnalyticsDecision decision = routerRow(rows).getDecision();
         assertEquals("r1", decision.router());
         assertEquals(List.of("private-model", "m-int"), decision.candidates());
         assertEquals("m-int", decision.deployment());
@@ -912,6 +913,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
             RecordedRequest notice = awaitDecide(request -> "true".equals(request.getHeader("X-DIAL-ROUTER-NOTICE")));
             assertNull(notice.getHeader("api-key"));
             assertEquals(0, notice.getBodySize());
+            assertNull(notice.getHeader("content-type"));
             assertTrue(notice.getHeader("X-DIAL-ROUTER-ATTEMPTS").endsWith(
                     "{\"deployment\":\"m1\",\"status\":200,\"reason\":\"stream\",\"received\":true,\"partial\":true}]"),
                     notice.getHeader("X-DIAL-ROUTER-ATTEMPTS"));
@@ -975,7 +977,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
         awaitRows(rows, 2);
         row(rows, "m2");
-        RouterDecision.Row row = routerRow(rows).getDecision();
+        RouterDecision.AnalyticsDecision row = routerRow(rows).getDecision();
         assertEquals(2, row.decisions());
         assertEquals(List.of("m1", "m2"), row.candidates());
         assertEquals("m2", row.deployment());

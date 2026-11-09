@@ -59,7 +59,7 @@ public class AnalyticsLogContext {
     private final String parentDeployment;
     private final List<String> executionPath;
     // set on the router row of a decided request only
-    private final RouterDecision.Row decision;
+    private final RouterDecision.AnalyticsDecision decision;
 
     private final String requestProtocol;
     private final String requestMethod;
@@ -112,7 +112,7 @@ public class AnalyticsLogContext {
                 .requestHeaders(toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(context.getDecision() != null
-                        ? context.getDecision().getRouter()
+                        ? context.getDecision().getRouterName()
                         : getParentDeployment(context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
                 .executionPath(context.getExecutionPath())
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
@@ -194,7 +194,7 @@ public class AnalyticsLogContext {
      * {@code usage_per_model} those calls and the serving deployment's own report, which its span's breakdown leaves
      * out. Token counts stay zero: the router made no model call.
      */
-    public static AnalyticsLogContext routerRow(AnalyticsLogContext serving, RouterDecision.Row decision, RouterDecision.Hop hop,
+    public static AnalyticsLogContext routerRow(AnalyticsLogContext serving, RouterDecision.AnalyticsDecision decision, RouterDecision.Hop hop,
                                                 TokenStatsTracker.UsageStats stats) {
         TokenUsage usage = null;
         List<UsagePerModel> usagePerModel = null;

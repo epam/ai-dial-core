@@ -188,6 +188,15 @@ public class ApplicationSchemaService {
         return cached == null ? null : cached.raw;
     }
 
+    /**
+     * Whether the schema the config holds for {@code schemaId} is cached and compiled, so reading it neither downloads
+     * nor compiles anything.
+     */
+    public boolean isSchemaReady(URI schemaId) {
+        CachedSchema cached = schemaCache.get(schemaId);
+        return cached != null && cached.compiled != null && cached.source.equals(configStore.get().getCustomApplicationSchema(schemaId));
+    }
+
     @Nullable
     private CachedSchema resolveSchema(URI schemaId, boolean forceReload) {
         String source = configStore.get().getCustomApplicationSchema(schemaId);
@@ -237,9 +246,9 @@ public class ApplicationSchemaService {
     }
 
     /**
-     * Validates a router's properties against the schema {@code config} holds for {@code schemaId}, building the
-     * schema afresh: {@code config} may be a batch's scratch, whose schemas must not reach the cache that live
-     * requests read.
+     * Validates a router's properties against the schema {@code config} holds for {@code schemaId}. The cached schema
+     * is used only when it was built from the same text; otherwise the schema is built afresh and not cached:
+     * {@code config} may be a batch's scratch, whose schemas must not reach the cache that live requests read.
      */
     public void validateProperties(@Nullable Config config, URI schemaId, Map<String, Object> properties,
                                    List<ValidationWarning> warnings) {
@@ -252,7 +261,10 @@ public class ApplicationSchemaService {
         try {
             String json = ProxyUtil.MAPPER.writeValueAsString(properties);
             CollectorContext collectorContext = new CollectorContext();
-            messages = build(source).compiled().validate(json, InputFormat.JSON, e -> e.setCollectorContext(collectorContext));
+            // the live entry serves when it was built from the same text; a scratch schema is built but never cached
+            CachedSchema cached = schemaCache.get(schemaId);
+            CachedSchema schema = cached != null && cached.source.equals(source) ? cached : build(source);
+            messages = schema.compiled().validate(json, InputFormat.JSON, e -> e.setCollectorContext(collectorContext));
         } catch (Exception e) {
             warnings.add(new ValidationWarning("applicationTypeSchemaId", e.getMessage()));
             return;

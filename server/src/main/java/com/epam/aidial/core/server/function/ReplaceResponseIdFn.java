@@ -65,7 +65,7 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                 .upstreamKey(upstream.getId())
                 .deploymentName(context.getDeployment().getName())
                 .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
-                .router(context.getDecision() == null ? null : context.getDecision().getRouter())
+                .router(context.getDecision() == null ? null : context.getDecision().getRouterName())
                 .build();
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))

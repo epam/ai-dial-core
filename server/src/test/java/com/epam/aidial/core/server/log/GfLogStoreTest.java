@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
@@ -897,12 +898,12 @@ public class GfLogStoreTest {
 
     @Test
     public void testRowOfDecidedRequest() {
-        RouterDecision decision = new RouterDecision("r1", InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1", "m2"), 12);
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1", "m2"), 12);
         decision.skip(502, "upstream");
         AnalyticsLogContext context = row("m2", "{}")
                 .executionPath(List.of("r1", "m2"))
                 .parentDeployment("r1")
-                .decision(decision.toRow())
+                .decision(decision.toAnalyticsDecision())
                 .build();
 
         JsonNode log = logOf(context);
@@ -916,13 +917,13 @@ public class GfLogStoreTest {
 
     @Test
     public void testBackgroundJobRouterRowCarriesTheDecision() {
-        RouterDecision decision = new RouterDecision("r3", InterfaceType.OPENAI_RESPONSES, List.of("gpt-4"), 7);
+        RouterDecision decision = new RouterDecision(router("r3"), InterfaceType.OPENAI_RESPONSES, List.of("gpt-4"), 7);
         RouterDecision.Hop hop = new RouterDecision.Hop("routerspan", null, null, List.of("r3"));
         BackgroundJobRecord record = BackgroundJobRecord.builder()
                 .deploymentName("gpt-4")
                 .parentDeployment("r3")
                 .executionPath(List.of("r3", "gpt-4"))
-                .decision(decision.toRow())
+                .decision(decision.toAnalyticsDecision())
                 .routerHop(hop)
                 .requestMethod("POST")
                 .requestBody("{}")
@@ -1116,5 +1117,11 @@ public class GfLogStoreTest {
         String json = "{" + member.substring(1) + "}";
         JsonNode root = ProxyUtil.MAPPER.readTree(json);
         return root.elements().next();
+    }
+
+    private static Router router(String name) {
+        Router router = new Router();
+        router.setName(name);
+        return router;
     }
 }

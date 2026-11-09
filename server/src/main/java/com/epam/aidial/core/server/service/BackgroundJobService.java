@@ -277,7 +277,9 @@ public class BackgroundJobService {
                             .onComplete(ignored -> {
                                 TokenStatsTracker.UsageStats stats = finalStatsFuture.succeeded()
                                         ? finalStatsFuture.result() : TokenStatsTracker.UsageStats.EMPTY;
-                                AnalyticsLogContext serving = AnalyticsLogContext.from(jobRecord, result, stats.usagePerModel());
+                                // without usage of its own, the span was only read for the router row
+                                AnalyticsLogContext serving = AnalyticsLogContext.from(jobRecord, result,
+                                        hasUsage ? stats.usagePerModel() : List.of());
                                 logStore.save(serving);
                                 if (jobRecord.routerHop() != null) {
                                     logStore.save(AnalyticsLogContext.routerRow(serving, jobRecord.decision(), jobRecord.routerHop(), stats));

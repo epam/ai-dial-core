@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -979,6 +980,48 @@ public class ApplicationSchemaServiceTest {
 
         Assertions.assertTrue(warnings.isEmpty(), warnings.toString());
         Assertions.assertEquals(0, service.schemaCacheSize());
+    }
+
+    @Test
+    public void isSchemaReady_onlyWhileTheCompiledEntryMatchesTheConfig() {
+        Router router = new Router();
+        router.setName("r");
+        router.setApplicationTypeSchemaId(ROUTER_SCHEMA_ID);
+        router.setApplicationProperties(Map.of("tier", "medium"));
+        when(configStore.get()).thenReturn(routerSchemaConfig());
+        Assertions.assertFalse(service.isSchemaReady(ROUTER_SCHEMA_ID));
+
+        service.routerPropertiesHeader(router);
+        Assertions.assertTrue(service.isSchemaReady(ROUTER_SCHEMA_ID));
+
+        Config changed = new Config();
+        changed.setApplicationTypeSchemas(Map.of(ROUTER_SCHEMA_ID.toString(), ROUTER_SCHEMA.replace("Router type", "Other")));
+        when(configStore.get()).thenReturn(changed);
+        Assertions.assertFalse(service.isSchemaReady(ROUTER_SCHEMA_ID));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void validateProperties_sameTextAsTheCachedEntryIsNotDownloadedAgain() throws Exception {
+        String source = """
+                {"$schema": "https://dial.epam.com/application_type_schemas/schema#", "$id": "https://dial.test/router-type",
+                 "dial:applicationTypeSchemaEndpoint": "http://dial.test/schema"}
+                """;
+        Config live = new Config();
+        live.setApplicationTypeSchemas(Map.of(ROUTER_SCHEMA_ID.toString(), source));
+        when(configStore.get()).thenReturn(live);
+        HttpResponse<String> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.body()).thenReturn(ROUTER_SCHEMA);
+        when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenReturn(response);
+        service.getSchema(ROUTER_SCHEMA_ID, false);
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        service.validateProperties(live, ROUTER_SCHEMA_ID, Map.of("tier", "medium"), warnings);
+        service.validateProperties(live, ROUTER_SCHEMA_ID, Map.of("tier", 5), warnings);
+
+        Assertions.assertEquals(1, warnings.size(), warnings.toString());
+        verify(httpClient, times(1)).send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()));
     }
 
     @Test
