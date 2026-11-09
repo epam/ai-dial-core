@@ -51,6 +51,19 @@ a target that is not declarable. More than 100 entries SHALL be reported alone. 
 - **WHEN** an admin sends `PUT /v1/applications/platform/<name>` with an entry targeting `users/bob/files/f/`
 - **THEN** Core answers `400`
 
+### Requirement: No write on applications and toolsets
+An entry SHALL NOT declare `write` on an `applications` or `toolsets` target: a write SHALL be answered `400`, and such
+an entry from a config file SHALL add nothing to the key. `read` on these targets SHALL stay allowed.
+
+#### Scenario: Write on applications and toolsets
+- **WHEN** an admin writes an application declaring `applications/{current-user}/` or `toolsets/public/x/` with `write`
+- **THEN** the write is answered `400`; the same targets with `read` only are accepted
+
+#### Scenario: Write on applications from a config file
+- **WHEN** an approved config-file application declares `applications/public/apps/` with `read` and `write`, and
+  `toolsets/public/kit/` with `read`, and the user can write both
+- **THEN** the key carries `read` on `toolsets/public/kit/` and nothing for `applications/public/apps/`
+
 ### Requirement: Declarable targets
 A target SHALL NOT be declarable when it has an unknown type, starts with `users/` (the old personal spelling), has the
 `{current-user}` placeholder outside the bucket segment, has no folder or resource inside the bucket (a type root, or a

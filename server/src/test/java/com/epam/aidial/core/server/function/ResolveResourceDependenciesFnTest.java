@@ -30,6 +30,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -299,6 +300,29 @@ public class ResolveResourceDependenciesFnTest {
         verify(accessService, never()).lookupPermissions(any(), any());
         verify(accessService, never()).lookupInitiatorPermissions(any(), any());
         assertTrue(proxyApiKeyData.getPerRequestSharedResources().isEmpty());
+    }
+
+    @Test
+    void apply_neverGrantsWriteOnApplicationsOrToolsets() {
+        // config-file apps bypass write-time validation
+        when(context.getDeployment()).thenReturn(application);
+        ResourceDependency readOnly = dependency("toolsets/public/kit/", false).setLinkId("lnk_2").setAccess(Set.of(ResourceAccessType.READ));
+        application.setResourceDependencies(List.of(dependency("applications/public/apps/", false), readOnly));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+        ResourceDescriptor applications = com.epam.aidial.core.server.util.ResourceDescriptorFactory
+                .fromAnyUrl("applications/public/apps/", encryptionService);
+        ResourceDescriptor toolsets = com.epam.aidial.core.server.util.ResourceDescriptorFactory
+                .fromAnyUrl("toolsets/public/kit/", encryptionService);
+        // the initiator could write both
+        when(accessService.lookupInitiatorPermissions(any(), eq(context))).thenReturn(Map.of(
+                applications, Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
+                toolsets, Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
+
+        assertFalse(fn.apply(request));
+
+        assertEquals(Map.of("toolsets/public/kit/", Set.of(ResourceAccessType.READ)),
+                proxyApiKeyData.getPerRequestSharedResources().entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().permissions())));
     }
 
     @Test

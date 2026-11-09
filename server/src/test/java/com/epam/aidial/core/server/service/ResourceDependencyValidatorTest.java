@@ -109,6 +109,20 @@ public class ResourceDependencyValidatorTest {
     }
 
     @Test
+    void rejectsWriteOnApplicationsAndToolsets() {
+        ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
+        Set<ResourceAccessType> readWrite = Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE);
+
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("applications/{current-user}/").setAccess(readWrite)))
+                .contains("WRITE is not a dependency right on applications"));
+        assertTrue(validatorShapeMessage(validator, appWith(dependency("toolsets/public/x/").setAccess(Set.of(ResourceAccessType.WRITE))))
+                .contains("WRITE is not a dependency right on toolsets"));
+        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("applications/{current-user}/"), dependency("toolsets/public/x/")
+                .setLinkId("lnk_2"))));
+        assertDoesNotThrow(() -> validator.validateShape(appWith(dependency("files/{current-user}/").setAccess(readWrite))));
+    }
+
+    @Test
     void rejectsExplicitNullAccessAsValidationError() {
         // An explicit JSON null defeats the field default; it must surface as a 400, not a 500.
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);

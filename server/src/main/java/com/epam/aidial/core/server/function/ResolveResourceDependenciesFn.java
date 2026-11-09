@@ -73,7 +73,7 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         for (ResourceDependency dependency : declaration) {
             Set<ResourceAccessType> requestedAccess = consented ? requestedAccessOf(dependency) : null;
             ResourceDescriptor target = requestedAccess == null ? null : resolveTarget(dependency, userBucket);
-            if (target == null) {
+            if (target == null || !ResourceDependencyValidator.isAllowedAccess(target.getType(), requestedAccess)) {
                 trackUnresolved(dependency, unresolvedDeps, requiredFailures);
             } else {
                 resolvedTargets.add(new ResolvedTarget(dependency, target, requestedAccess));

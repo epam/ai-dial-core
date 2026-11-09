@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,9 @@ public class ResourceDependencyValidator {
 
     private static final String DECLARABLE_TYPES_LIST = DECLARABLE_RESOURCE_TYPES.stream()
             .map(ResourceTypes::group).sorted().collect(Collectors.joining(", "));
+
+    /** WRITE on these would let an application re-point the caller's deployments, and with them later calls and stored credentials. */
+    private static final Set<ResourceTypes> READ_ONLY_RESOURCE_TYPES = Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
 
     private final boolean allowUserResourceDependencies;
 
@@ -117,11 +121,19 @@ public class ResourceDependencyValidator {
             return List.of(at + ": target.url is required");
         }
         try {
-            checkTarget(url);
+            String[] segments = checkTarget(url);
+            if (!isAllowedAccess(ResourceTypes.of(UrlUtil.tryDecodePath(segments[0])), dependency.getAccess())) {
+                return List.of(at + ": WRITE is not a dependency right on " + segments[0] + ": " + url);
+            }
             return List.of();
         } catch (IllegalArgumentException e) {
             return List.of(at + ": " + e.getMessage() + ": " + url);
         }
+    }
+
+    /** Whether {@code access} may be declared on a target of {@code type}; the write side and the read side share the rule. */
+    public static boolean isAllowedAccess(ResourceType type, @Nullable Set<ResourceAccessType> access) {
+        return access == null || !access.contains(ResourceAccessType.WRITE) || !READ_ONLY_RESOURCE_TYPES.contains(type);
     }
 
     /**

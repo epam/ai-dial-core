@@ -282,10 +282,10 @@ Each entry is an object with the following fields:
 * `kind`: Always `dial.resourceLink`.
 * `link_id`: The entry identifier, unique within the application.
 * `target.url`: The resource or folder: `<type>/{current-user}/<path>` for one in the bucket of whoever calls the application, or `<type>/<bucket>/<path>` for a fixed location. `<type>` is one of `applications`, `conversations`, `files`, `projects`, `prompts`, `skills`, `toolsets`. A URL ending with `/` is a folder and covers everything inside it.
-* `access`: A non-empty list of `read` and `write`.
+* `access`: A non-empty list of `read` and `write`. `write` is not allowed on `applications` and `toolsets`: with it the application could change where the user's applications and toolsets send later calls and stored credentials.
 * `required`: If `true`, a call fails with `403` when the entry cannot be granted. Default is `false`: the call goes on without the entry.
 
-An application may declare up to 100 entries. A list that breaks these rules is rejected with `400` when the application is saved through the API; in a config file, an entry with a wrong `kind`, an empty or invalid `access` or an invalid `target.url` is never granted.
+An application may declare up to 100 entries. A list that breaks these rules is rejected with `400` when the application is saved through the API; in a config file, an entry with a wrong `kind`, an empty or invalid `access`, `write` on `applications` or `toolsets`, or an invalid `target.url` is never granted.
 
 **Example**
 
