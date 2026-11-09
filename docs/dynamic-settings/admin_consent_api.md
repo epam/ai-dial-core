@@ -36,7 +36,7 @@ Returns the approval state of the application's current `resource_dependencies`:
 * `grantedAt`: When the approval was given, in epoch milliseconds.
 * `grantedResources`: The approved resources, as declared at approval time: `url` is the declared `target.url`, `access` the approved rights.
 
-An application without `resource_dependencies` is answered with `{"consented": false}`.
+An application that was never approved, or whose approval was withdrawn, is answered with `{"consented": false}`, an application without `resource_dependencies` included. An approval left after the application stopped declaring anything reads as `stale`.
 
 #### **Response Body**
 
@@ -136,7 +136,7 @@ Withdraws the approval. Calls started after the withdrawal no longer receive the
 
 * Any change of the application's `resource_dependencies` — an added, removed or reordered entry, or changed rights — requires a new approval. Until then the status is `stale` and the application receives nothing.
 * Deleting an application deletes its approval. An application created again at the same path starts unapproved.
-* Moving an application, publishing it included, takes its approval to the new deployment id. A copy is another application and starts unapproved.
+* Moving an application, publishing it included, takes its approval to the new deployment id. A copy is another application and starts unapproved, also when it overwrites an approved application.
 * An application removed from a config file keeps its approval until it is withdrawn.
 
 ---
