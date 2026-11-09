@@ -106,7 +106,7 @@ Approving again replaces the previous approval.
 
 | **Status** | **When**                                                                                     |
 |------------|----------------------------------------------------------------------------------------------|
-| 400        | The body is missing or malformed, or the application declares no `resource_dependencies`.    |
+| 400        | The body is missing or malformed, the application declares no `resource_dependencies`, or its deployment id is too long for an approval record. |
 | 403        | The caller is not a DIAL administrator, or the administrator cannot read the application.    |
 | 404        | `{deployment_id}` does not name an application.                                              |
 | 409        | The application's list changed since it was reviewed; read it again and approve the new list. |
@@ -137,6 +137,7 @@ Withdraws the approval. Calls started after the withdrawal no longer receive the
 * Any change of the application's `resource_dependencies` — an added, removed or reordered entry, or changed rights — requires a new approval. Until then the status is `stale` and the application receives nothing.
 * Deleting an application deletes its approval. An application created again at the same path starts unapproved.
 * Moving an application, publishing it included, takes its approval to the new deployment id. A copy is another application and starts unapproved, also when it overwrites an approved application.
+* An application whose deployment id is too long for an approval record (the record path is the id plus about 20 characters, within the storage path limit) cannot be approved, so its dependencies never resolve; it can still be deleted.
 * An application removed from a config file keeps its approval. While the application is absent, the approval cannot be withdrawn (`404`); an application added back under the same name with the same list is approved again.
 
 ---

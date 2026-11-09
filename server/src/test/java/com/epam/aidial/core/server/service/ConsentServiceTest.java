@@ -54,6 +54,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -850,6 +851,25 @@ public class ConsentServiceTest {
         assertEquals(List.of(resourceEntry("skills/{current-user}/")), withdrawn.getConsent().getResources());
         assertEquals("admin-sub", withdrawn.getGrantedBy());
         verify(resourceService).deleteResource(any(ResourceDescriptor.class), eq(EtagHeader.ANY));
+    }
+
+    @Test
+    public void testAdminConsentDescriptor_KeepsConfigNamesAsTheyAre() {
+        // a config name is decoded already: decoding it again would turn a%2Fb into a/b and fold x%41 into xA
+        assertEquals("a%2Fb", ConsentService.adminConsentDescriptor("a%2Fb").getName());
+        assertEquals("x%41", ConsentService.adminConsentDescriptor("x%41").getName());
+        assertEquals("anthropic.claude-opus-4-8[1m]", ConsentService.adminConsentDescriptor("anthropic.claude-opus-4-8[1m]").getName());
+        // an application url is encoded
+        assertEquals("gpt-helpe%72", ConsentService.adminConsentDescriptor("applications/public/gpt-helpe%2572").getName());
+    }
+
+    @Test
+    public void testNoAdminConsentForNamesThatBuildNoRecordPath() {
+        String tooLong = "applications/public/" + "a".repeat(890);
+
+        assertNull(ConsentService.findAdminConsentDescriptor(tooLong));
+        assertFalse(service.isAdminConsented(tooLong, declaration("skills/{current-user}/")));
+        verifyNoInteractions(resourceService);
     }
 
     @Test

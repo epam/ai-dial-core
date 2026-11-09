@@ -167,6 +167,15 @@ milliseconds). No Resource API path SHALL reach the record.
 - **WHEN** an admin sends `GET /v1/admin_consent/public/<id>` after granting the approval
 - **THEN** Core answers `404`
 
+#### Scenario: Config name with a percent sign
+- **WHEN** an admin approves, then deletes, the platform application `a%2Fb`
+- **THEN** the record is keyed `a%2Fb`, not `a/b`, and the delete answers `204`
+
+#### Scenario: Id too long for a record
+- **WHEN** an application's admin-consent record would exceed the storage path limit
+- **THEN** `POST /v1/admin-consent/<id>` answers `400`, the application never resolves its dependencies, and deleting it
+  answers `200`
+
 ### Requirement: Admin consent status
 `GET /v1/admin-consent/{deployment_id}` SHALL answer `{"consented": false}` when there is no record. With a record it
 SHALL add `stale`, `grantedBy`, `grantedAt` and `grantedResources`, and answer `consented: true, stale: false` when the

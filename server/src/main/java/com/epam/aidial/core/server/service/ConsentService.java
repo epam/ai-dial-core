@@ -19,6 +19,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayDeque;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.LongSupplier;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.CONFLICT;
@@ -176,7 +178,8 @@ public class ConsentService {
     }
 
     public boolean isAdminConsented(String applicationId, List<ResourceDependency> declaration) {
-        return matches(readAdminConsent(adminConsentDescriptor(applicationId)), declaration);
+        ResourceDescriptor descriptor = findAdminConsentDescriptor(applicationId);
+        return descriptor != null && matches(readAdminConsent(descriptor), declaration);
     }
 
     /** Exact snapshot equality, shared by the gate and the status read; provenance never participates. */
@@ -219,10 +222,22 @@ public class ConsentService {
         return deployment instanceof Application application ? Consent.toResourceEntries(application.getResourceDependencies()) : List.of();
     }
 
-    /** One record per application in the public bucket. */
+    /** One record per application in the public bucket. A config name is decoded already; an application url is not. */
     public static ResourceDescriptor adminConsentDescriptor(String applicationName) {
+        String path = applicationName.contains(ResourceDescriptor.PATH_SEPARATOR)
+                ? applicationName : UrlUtil.encodePathSegment(applicationName);
         return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.ADMIN_CONSENT,
-                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, applicationName);
+                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
+    }
+
+    /** Null when the name builds no valid record path (too long, say): such an application can never be approved. */
+    @Nullable
+    public static ResourceDescriptor findAdminConsentDescriptor(String applicationName) {
+        try {
+            return adminConsentDescriptor(applicationName);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private ConsentGrant readAdminConsent(ResourceDescriptor descriptor) {

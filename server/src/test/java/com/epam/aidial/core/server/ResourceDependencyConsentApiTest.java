@@ -260,6 +260,47 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPlatformApplicationWithAnEscapeInItsNameIsApprovedAndDeleted() {
+        // the config name is a%2Fb literally: its record must not be decoded into a/b
+        String reviewed = """
+                {"resources": [{"url": "skills/{current-user}/", "access": ["WRITE"]}]}
+                """;
+        verify(send(HttpMethod.PUT, "/v1/applications/platform/a%252Fb", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/a%252Fb", null, reviewed, "authorization", "admin"), 200);
+        assertConsented("a%252Fb", true);
+
+        verify(send(HttpMethod.DELETE, "/v1/applications/platform/a%252Fb", null, "", "authorization", "admin"), 204);
+        verify(send(HttpMethod.GET, "/v1/applications/platform/a%252Fb", null, "", "authorization", "admin"), 404);
+
+        verify(send(HttpMethod.PUT, "/v1/applications/platform/a%252Fb", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        assertConsented("a%252Fb", false);
+    }
+
+    @Test
+    void testApplicationTooLongForItsApprovalRecordIsDeleted() {
+        // a valid application whose admin-consent record would exceed the path limit by one: it can never be approved
+        String adminBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin").body()).getString("bucket");
+        String prefix = "applications/" + adminBucket + "/";
+        String record = "public/admin_consent/" + prefix;
+        String url = prefix + longPath(901 - record.length());
+        verify(send(HttpMethod.PUT, "/v1/" + url, null, DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + url, null, reviewedResources(url), "authorization", "admin"), 400);
+
+        verify(send(HttpMethod.DELETE, "/v1/" + url, null, "", "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/" + url, null, "", "authorization", "admin"), 404);
+    }
+
+    private static String longPath(int length) {
+        StringBuilder path = new StringBuilder();
+        while (path.length() + 100 < length) {
+            path.append("f".repeat(99)).append('/');
+        }
+        return path.append("a".repeat(length - path.length())).toString();
+    }
+
+    @Test
     void testDeletingPlatformApplicationDeletesItsAdminConsent() {
         // a platform application is served from the config under its short name, not its url
         String reviewed = """

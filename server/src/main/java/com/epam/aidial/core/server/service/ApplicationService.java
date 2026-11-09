@@ -56,6 +56,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class ApplicationService {
@@ -398,9 +399,12 @@ public class ApplicationService {
         deleteAdminConsent(resource);
     }
 
-    /** A copy is another application: it starts unapproved, also when it overwrites an approved one. */
+    /** Deletes the application's admin-consent record, if any. */
     public void deleteAdminConsent(ResourceDescriptor application) {
-        resourceService.deleteResource(adminConsentOf(application), EtagHeader.ANY);
+        ResourceDescriptor record = adminConsentOf(application);
+        if (record != null) {
+            resourceService.deleteResource(record, EtagHeader.ANY);
+        }
     }
 
     /**
@@ -408,17 +412,26 @@ public class ApplicationService {
      * application the move overwrites loses its own approval.
      */
     public void moveAdminConsent(ResourceDescriptor source, ResourceDescriptor destination) {
-        String grant = resourceService.getResource(adminConsentOf(source));
+        ResourceDescriptor destinationRecord = adminConsentOf(destination);
+        if (destinationRecord == null) {
+            return;
+        }
+        ResourceDescriptor sourceRecord = adminConsentOf(source);
+        String grant = sourceRecord == null ? null : resourceService.getResource(sourceRecord);
         if (grant != null) {
-            resourceService.putResource(adminConsentOf(destination), grant, EtagHeader.ANY);
+            resourceService.putResource(destinationRecord, grant, EtagHeader.ANY);
         } else {
-            deleteAdminConsent(destination);
+            resourceService.deleteResource(destinationRecord, EtagHeader.ANY);
         }
     }
 
-    /** The record is keyed by the name requests resolve to: a platform application's config name, any other's url. */
+    /**
+     * The record is keyed by the name requests resolve to: a platform application's config name, any other's url. Null
+     * when no record can exist for the application.
+     */
+    @Nullable
     private static ResourceDescriptor adminConsentOf(ResourceDescriptor application) {
-        return ConsentService.adminConsentDescriptor(ResourceDescriptor.PLATFORM_BUCKET.equals(application.getBucketName())
+        return ConsentService.findAdminConsentDescriptor(ResourceDescriptor.PLATFORM_BUCKET.equals(application.getBucketName())
                 ? MergedConfigStore.resolveMapKeyFor(application) : application.getUrl());
     }
 

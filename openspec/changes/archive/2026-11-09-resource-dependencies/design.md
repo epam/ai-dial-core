@@ -100,7 +100,9 @@ Rejected: gating by destination bucket. It would block an administrator prototyp
 
 `POST /v1/admin-consent/{deployment_id}` stores a `ConsentGrant` (`consent.resources`, `grantedBy`, `grantedAt` in epoch
 milliseconds) in the public bucket under `ResourceTypes.ADMIN_CONSENT`, keyed by the application's resolved name (the
-config name of a platform application, the URL of any other). The type is not mapped in `ResourceTypes.of()`, so no
+config name of a platform application, used as it is, the URL of any other). A name whose record would exceed the
+storage path limit gets no record: it cannot be approved, the resolver treats it as unapproved, and deleting, moving or
+copying the application skips the record. The type is not mapped in `ResourceTypes.of()`, so no
 Resource API path can address the record. The approval binds each entry's `target.url` and `access`, in declaration
 order: an added, removed or reordered entry, or changed rights, need a new approval, and `GET` reports such a record as
 `stale`; a changed `required`, `link_id` or `kind` does not. A record that cannot be read, or has no list, counts as not
