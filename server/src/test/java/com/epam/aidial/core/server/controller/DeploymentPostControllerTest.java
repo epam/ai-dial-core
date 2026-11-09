@@ -96,7 +96,6 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -430,7 +429,7 @@ public class DeploymentPostControllerTest {
     @ParameterizedTest
     @NullSource
     @EnumSource(value = InterfaceMode.class, names = {"PASSTHROUGH", "TRANSLATOR"})
-    public void testHandleProxyRequest_NamesTheDeploymentForTranslators(InterfaceMode mode) {
+    public void testHandleProxyRequest_NamesTheDeploymentInEveryMode(InterfaceMode mode) {
         when(context.getRequest()).thenReturn(request);
 
         Model model = new Model();
@@ -453,10 +452,8 @@ public class DeploymentPostControllerTest {
 
         controller.handleProxyRequest(proxyRequest);
 
-        // the deployment id, not overrideName: it is what the translator calls Core back with
-        String expected = mode == InterfaceMode.TRANSLATOR ? "openai-gpt-5.4-mini" : null;
-        verify(proxyRequest, expected == null ? never() : times(1))
-                .putHeader(eq(Proxy.HEADER_DEPLOYMENT_ID), eq("openai-gpt-5.4-mini"));
+        // the deployment id, not overrideName: the path and the body's model carry overrideName
+        verify(proxyRequest).putHeader(eq(Proxy.HEADER_DEPLOYMENT_ID), eq("openai-gpt-5.4-mini"));
     }
 
     @Test
