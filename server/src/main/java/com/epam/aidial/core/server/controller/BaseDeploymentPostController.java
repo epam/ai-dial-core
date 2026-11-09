@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Pricing;
@@ -444,12 +443,10 @@ public class BaseDeploymentPostController {
             });
         }
 
-        // a translator has to know which deployment to call Core back for, and by the time it reads the body
-        // the model may already have been rewritten to overrideName. MessagesBaseController carries the id
-        // the client itself wrote and overrides this below; every other interface has only the deployment.
-        if (DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) == InterfaceMode.TRANSLATOR) {
-            proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, context.getDeployment().getName());
-        }
+        // the path and the body's model may carry overrideName, so the origin learns the deployment the client
+        // called from here; it replaces any value the client sent. MessagesBaseController overrides it below
+        // with the id the client itself wrote.
+        proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, context.getDeployment().getName());
 
         enrichProxyRequestHeaders(proxyRequest);
 
