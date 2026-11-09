@@ -1,9 +1,14 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.RoleBasedEntity;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
+import com.epam.aidial.core.server.alias.AliasService;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
@@ -20,6 +25,7 @@ import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.UrlUtil;
+import com.google.common.base.Suppliers;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -28,7 +34,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
+import static com.epam.aidial.core.storage.resource.ResourceTypes.ALIAS;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.APPLICATION;
 import static com.epam.aidial.core.storage.resource.ResourceTypes.TOOL_SET;
 
@@ -49,21 +57,24 @@ public class DeploymentService {
 
     private final ApplicationSchemaService applicationSchemaService;
 
+    private final AliasService aliasService;
+
     public DeploymentService(EncryptionService encryptionService, ApplicationService applicationService,
                              AccessService accessService, ToolSetService toolSetService, ResourceService resourceService,
-                             ApplicationSchemaService applicationSchemaService) {
+                             ApplicationSchemaService applicationSchemaService, AliasService aliasService) {
         this.encryptionService = encryptionService;
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
         this.accessService = accessService;
         this.resourceService = resourceService;
         this.applicationSchemaService = applicationSchemaService;
+        this.aliasService = aliasService;
     }
 
     public Deployment findDeployment(ProxyContext context, String id) {
         Deployment deployment = context.getConfig().selectDeployment(id);
         if (deployment != null) {
-            if (!deployment.hasAccess(context.getUserRoles())) {
+            if (!hasAccess(context, deployment) && !isLent(context, deployment)) {
                 throwForbiddenDeploymentError(id);
             }
             return deployment;
@@ -73,8 +84,194 @@ public class DeploymentService {
         return switch (resourceType) {
             case APPLICATION -> applicationService.getApplication(deploymentDescriptor).getValue();
             case TOOL_SET -> toolSetService.getToolSet(deploymentDescriptor).getValue();
+            case ALIAS -> findStoredAlias(context, deploymentDescriptor, id);
             default -> throw new IllegalArgumentException("Unknown resource type: " + resourceType);
         };
+    }
+
+    /**
+     * Whether the caller may use a config deployment by its {@code userRoles}. An alias without {@code userRoles} takes
+     * those of its config target; when its target is a resource, or missing, it is let through here, and checked when
+     * the target is resolved ({@link AliasService#toPass}, {@link AliasService#toView}).
+     */
+    private boolean hasAccess(ProxyContext context, Deployment deployment) {
+        if (deployment instanceof Alias alias) {
+            return !Boolean.FALSE.equals(aliasService.hasConfigAccess(context, alias));
+        }
+        return deployment.hasAccess(context.getUserRoles());
+    }
+
+    /**
+     * The alias stored at {@code resource}, called by its url {@code aliases/public/<name>}: read from storage on
+     * demand, as a public application is, and allowed by its {@code userRoles} like an alias of the config file.
+     */
+    private Alias findStoredAlias(ProxyContext context, ResourceDescriptor resource, String id) {
+        Alias alias = aliasService.findStoredAlias(resource);
+        if (alias == null) {
+            throw new ResourceNotFoundException("Unknown deployment: " + id);
+        }
+        if (Boolean.FALSE.equals(aliasService.hasConfigAccess(context, alias)) && !isLent(context, alias)) {
+            throwForbiddenDeploymentError(id);
+        }
+        return alias;
+    }
+
+    /**
+     * {@link #findDeployment} for a request that calls the deployment: an {@link Alias} becomes the pass that forwards
+     * the call to its target, see {@link AliasService#toPass}.
+     */
+    public Deployment findCallableDeployment(ProxyContext context, String id) {
+        Deployment deployment = findDeployment(context, id);
+        return deployment instanceof Alias alias ? aliasService.toPass(context, alias) : deployment;
+    }
+
+    /**
+     * Whether the request is the target pass of an alias call for {@code deployment}: its per-request key was made by
+     * the alias pass, which lends the right to call the target. The key is kept by Core and sent only to Core itself.
+     */
+    public static boolean isLent(ProxyContext context, RoleBasedEntity deployment) {
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        String lentDeployment = apiKeyData.getLentDeployment();
+        return apiKeyData.getPerRequestKey() != null && lentDeployment != null && lentDeployment.equals(deployment.getName());
+    }
+
+    /**
+     * The listing views of the aliases shown as {@code presentation} that the caller may use (by their
+     * {@code userRoles}, or the target's): those of the config file and those stored in {@code aliases/public/}. An alias whose target is
+     * missing or does not fit is left out. Lists and reads the stored aliases and reads a resource target, so it runs
+     * on the task executor.
+     */
+    public List<Deployment> listAliasViews(ProxyContext context, AliasPresentation presentation) {
+        return listAliasViews(context, presentation, this::listStoredAliasesOrNone);
+    }
+
+    /**
+     * {@link #listAliasViews} with the stored aliases from {@code stored}, so that a request listing several types reads
+     * {@code aliases/public/} once ({@link #storedAliasesOnce}).
+     */
+    public List<Deployment> listAliasViews(ProxyContext context, AliasPresentation presentation, Supplier<List<Alias>> stored) {
+        List<Deployment> views = new ArrayList<>();
+        for (Alias alias : listUsableAliases(context, presentation, stored)) {
+            Deployment view = aliasService.toView(context, alias);
+            if (view != null && view.hasAccess(context.getUserRoles())) {
+                views.add(view);
+            }
+        }
+        return views;
+    }
+
+    /**
+     * The names of the aliases {@link #listAliasViews} lists.
+     */
+    public List<RoleBasedEntity> listAliasNames(ProxyContext context, AliasPresentation presentation, Supplier<List<Alias>> stored) {
+        List<RoleBasedEntity> names = new ArrayList<>();
+        for (Alias alias : listUsableAliases(context, presentation, stored)) {
+            Deployment view = aliasService.toView(context, alias);
+            if (view != null && view.hasAccess(context.getUserRoles())) {
+                names.add(alias);
+            }
+        }
+        return names;
+    }
+
+    /**
+     * The stored aliases, listed and read at the first call only: one listing of {@code aliases/public/} for all the
+     * types one request lists. Safe to call from the concurrent tasks of that request.
+     */
+    public Supplier<List<Alias>> storedAliasesOnce() {
+        return Suppliers.memoize(this::listStoredAliasesOrNone);
+    }
+
+    /**
+     * The stored aliases, or none when storage cannot list or read them: a listing then shows the config deployments
+     * and config aliases rather than failing as a whole.
+     */
+    private List<Alias> listStoredAliasesOrNone() {
+        try {
+            return aliasService.listStoredAliases();
+        } catch (RuntimeException e) {
+            log.warn("Can't list the stored aliases; listing without them", e);
+            return List.of();
+        }
+    }
+
+    private List<Alias> listUsableAliases(ProxyContext context, AliasPresentation presentation, Supplier<List<Alias>> stored) {
+        List<Alias> usable = new ArrayList<>();
+        List<Alias> aliases = new ArrayList<>(context.getConfig().getAliases().values());
+        aliases.addAll(stored.get());
+        for (Alias alias : aliases) {
+            if (alias.getEffectivePresentation() == presentation && !Boolean.FALSE.equals(aliasService.hasConfigAccess(context, alias))) {
+                usable.add(alias);
+            }
+        }
+        return usable;
+    }
+
+    /**
+     * The listing view of the alias {@code id} (a config alias's name or a stored alias's url) when it is shown as
+     * {@code presentation}, or null when there is none or its target is missing. Throws
+     * {@link PermissionDeniedException} when the caller may not use the alias. May read storage.
+     */
+    @Nullable
+    public Deployment findAliasView(ProxyContext context, String id, AliasPresentation presentation) {
+        Alias alias = context.getConfig().getAliases().get(id);
+        if (alias == null) {
+            ResourceDescriptor resource = toStoredAliasResource(id);
+            alias = resource == null ? null : aliasService.findStoredAlias(resource);
+        }
+        if (alias == null || alias.getEffectivePresentation() != presentation) {
+            return null;
+        }
+        if (Boolean.FALSE.equals(aliasService.hasConfigAccess(context, alias))) {
+            throwForbiddenDeploymentError(id);
+        }
+        return aliasService.toView(context, alias);
+    }
+
+    /**
+     * The alias a listing entry named {@code name} stands for: a config alias by its name, or a stored alias by its
+     * url; null when there is none. May read storage.
+     */
+    @Nullable
+    public Alias findListedAlias(ProxyContext context, String name) {
+        Alias alias = context.getConfig().getAliases().get(name);
+        if (alias != null) {
+            return alias;
+        }
+        ResourceDescriptor resource = toStoredAliasResource(name);
+        return resource == null ? null : aliasService.findStoredAlias(resource);
+    }
+
+    /**
+     * Whether {@code id} names a stored alias by its url, {@code aliases/<bucket>/<path>}: the ids a deployment listing
+     * by id must look up in storage rather than in the config.
+     */
+    public static boolean isStoredAliasId(String id) {
+        return id.startsWith(ResourceTypes.ALIAS.group() + ResourceDescriptor.PATH_SEPARATOR);
+    }
+
+    @Nullable
+    private ResourceDescriptor toStoredAliasResource(String id) {
+        if (!isStoredAliasId(id)) {
+            return null;
+        }
+        try {
+            return ResourceDescriptorFactory.fromAnyUrl(UrlUtil.encodePath(id), encryptionService);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The listing view of an alias {@link #findDeployment} returned, or null when its target is missing.
+     */
+    @Nullable
+    public Deployment toAliasView(ProxyContext context, Alias alias) {
+        return aliasService.toView(context, alias);
+    }
+
+    public AliasService getAliasService() {
+        return aliasService;
     }
 
     public  <T extends Deployment> List<T> listDeployments(ProxyContext context, ResourceTypes resourceType, DeploymentExtractor extractor) {
@@ -129,6 +326,10 @@ public class DeploymentService {
 
         if (resource.isFolder()) {
             throw new ResourceNotFoundException("Invalid deployment url: " + url);
+        }
+        // aliases live directly in aliases/public/ only: another bucket or a folder holds no alias
+        if (resource.getType() == ALIAS && !AliasService.isStoredAliasLocation(resource)) {
+            throw new ResourceNotFoundException("Unknown deployment: " + resourceUrl);
         }
 
         if (!accessService.hasReadAccess(resource, context)) {
@@ -286,6 +487,10 @@ public class DeploymentService {
     }
 
     public List<String> getInterceptors(ProxyContext context, Deployment deployment) {
+        if (deployment instanceof AliasPass) {
+            // global and target interceptors run in the target pass, once
+            return List.of();
+        }
         List<String> result = new ArrayList<>(context.getConfig().getGlobalInterceptors());
         if (deployment instanceof Application application) {
             List<String> appTypeInterceptors = applicationSchemaService.getInterceptors(application);

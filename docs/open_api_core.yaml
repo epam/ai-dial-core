@@ -62,6 +62,7 @@ security:
 tags:
 - name: Admin
 - name: Admin Consent
+- name: Aliases
 - name: Anthropic
 - name: Applications
 - name: Catalog
@@ -2304,6 +2305,83 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin/config/file/aliases:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/aliases
+      operationId: listFileConfigAliases
+      responses:
+        "200":
+          description: List of file-sourced aliases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/aliases/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/aliases/{name}"
+      operationId: getFileConfigAlias
+      parameters:
+      - name: name
+        in: path
+        description: Alias name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Alias"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/applications:
     get:
       tags:
@@ -3304,6 +3382,193 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminValidateResponse"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/aliases/{bucket}/{path}:
+    get:
+      tags:
+      - Aliases
+      summary: "/v1/aliases/{bucket}/{path}"
+      operationId: getPublicAlias
+      parameters:
+      - name: bucket
+        in: path
+        description: Must be public
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Alias name, which is also its invocation name"
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "Success: presentAs, target, userRoles and the display fields, with status valid, or the stored body with status invalid and validationWarnings when calls ignore it"
+          headers:
+            ETag:
+              description: Entity tag for the alias
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Alias"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Aliases
+      summary: "/v1/aliases/{bucket}/{path}"
+      operationId: savePublicAlias
+      parameters:
+      - name: bucket
+        in: path
+        description: Must be public
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Alias name, which is also its invocation name"
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Alias"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved alias
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: "Invalid body, a field other than presentAs, target, userRoles and the display fields, a body name other than the path name, an invalid name or one the url encoding changes, or a target that does not fit presentAs"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Aliases
+      summary: "/v1/aliases/{bucket}/{path}"
+      operationId: deletePublicAlias
+      parameters:
+      - name: bucket
+        in: path
+        description: Must be public
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Alias name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition Failed - ETag mismatch
         "500":
           description: The server had an error while processing your request.
           content:
@@ -6647,6 +6912,74 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/metadata/aliases/{bucket}/{path}:
+    get:
+      tags:
+      - Aliases
+      summary: "/v1/metadata/aliases/{bucket}/{path}"
+      operationId: getPublicAliasMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: Must be public
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Empty to list the aliases, or an alias name"
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/applications/platform/{path}:
     get:
       tags:
@@ -16339,6 +16672,95 @@ components:
             $ref: "#/components/schemas/ValidationResult"
         valid:
           type: integer
+    Alias:
+      type: object
+      properties:
+        author:
+          type: string
+        baseUrl:
+          type: string
+        catalogProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalogSchemaId:
+          type: string
+          format: uri
+        createdAt:
+          type: integer
+        defaultHeaders:
+          $ref: "#/components/schemas/MapStringString"
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        dependencies:
+          type: array
+          items:
+            type: string
+        description:
+          $ref: "#/components/schemas/LocalizedValue"
+        descriptionKeywords:
+          type: array
+          items:
+            type: string
+        displayName:
+          $ref: "#/components/schemas/LocalizedValue"
+        displayVersion:
+          type: string
+        endpoint:
+          type: string
+        features:
+          $ref: "#/components/schemas/Features"
+        forwardAuthToken:
+          type: boolean
+        iconUrl:
+          type: string
+        inputAttachmentTypes:
+          type: array
+          items:
+            type: string
+        interceptors:
+          type: array
+          items:
+            type: string
+        interfaces:
+          $ref: "#/components/schemas/MapStringDeploymentInterface"
+        intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        maxInputAttachments:
+          type: integer
+        maxRetryAttempts:
+          type: integer
+        name:
+          type: string
+        overrideName:
+          type: string
+        presentAs:
+          $ref: "#/components/schemas/AliasPresentation"
+        reference:
+          type: string
+        responsesDefaults:
+          $ref: "#/components/schemas/MapStringObject"
+        responsesEndpoint:
+          type: string
+        target:
+          $ref: "#/components/schemas/AliasTarget"
+        updatedAt:
+          type: integer
+        userRoles:
+          type: array
+          items:
+            type: string
+    AliasPresentation:
+      type: string
+      enum:
+      - model
+      - application
+      - toolset
+    AliasTarget:
+      type: object
+      properties:
+        id: {}
+        path:
+          type: string
+        version: {}
     AllowedToolsResponse:
       required:
       - tools
@@ -17794,6 +18216,8 @@ components:
           $ref: "#/components/schemas/MapStringOrgUnitRole"
         spendingLimits:
           $ref: "#/components/schemas/SpendingLimits"
+        aliases:
+          $ref: "#/components/schemas/MapStringAlias"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -18913,6 +19337,10 @@ components:
       oneOf:
       - type: string
       - $ref: "#/components/schemas/MapStringString"
+    MapStringAlias:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Alias"
     MapStringApplication:
       type: object
       additionalProperties:
@@ -19984,6 +20412,7 @@ components:
       - SKILL
       - BACKGROUND_JOB
       - PROJECT
+      - ALIAS
     ResponseFormatJsonObject:
       required:
       - type

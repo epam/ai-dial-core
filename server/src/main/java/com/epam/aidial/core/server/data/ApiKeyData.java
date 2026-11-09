@@ -1,10 +1,13 @@
 package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.vertx.core.MultiMap;
@@ -61,6 +64,8 @@ public class ApiKeyData {
     private List<String> interceptors;
     // Index to track which interceptor is called next
     private int interceptorIndex = -1;
+    // the deployment an alias pass lends its target pass the right to call
+    private String lentDeployment;
     // deployment triggers interceptors
     private String initialDeployment;
     private String initialDeploymentApi;
@@ -102,6 +107,22 @@ public class ApiKeyData {
         String receiver = null;
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();
+            if (context.getDeployment() instanceof AliasPass pass) {
+                proxyApiKeyData.setLentDeployment(pass.getTargetName());
+                if (pass.isResourceTarget()) {
+                    // lets the target pass read the target resource, as access checks of resources expect
+                    proxyApiKeyData.getAttachedDeployments().put(pass.getTargetName(), new AutoSharedData(ResourceAccessType.READ_ONLY));
+                }
+            } else if (isLentTo(apiKeyData, receiver, context.getInitialDeployment())) {
+                // an interceptor in front of the target, and the target's own callback such as a translator's, call
+                // Core back for the same target; the lending goes with them and covers that target only
+                String lent = apiKeyData.getLentDeployment();
+                proxyApiKeyData.setLentDeployment(lent);
+                AutoSharedData attached = apiKeyData.getAttachedDeployments().get(lent);
+                if (attached != null) {
+                    proxyApiKeyData.getAttachedDeployments().put(lent, attached);
+                }
+            }
             currentPath.add(receiver);
             proxyApiKeyData.setSourceDeployment(receiver);
         } else if (context.getRoute() != null) {
@@ -121,6 +142,15 @@ public class ApiKeyData {
         }
         proxyApiKeyData.setExecutionPath(currentPath);
         proxyApiKeyData.setSpanId(context.getSpanId());
+    }
+
+    private static boolean isLentTo(ApiKeyData apiKeyData, String receiver, String initialDeployment) {
+        String lent = apiKeyData.getLentDeployment();
+        if (apiKeyData.getPerRequestKey() == null || lent == null) {
+            return false;
+        }
+        return lent.equals(receiver) || initialDeployment != null
+                && (lent.equals(initialDeployment) || lent.equals(UrlUtil.encodePath(initialDeployment)));
     }
 
     private static void sharePerRequestPermissions(ApiKeyData proxyApiKeyData, Map<String, Map<String, PerRequestSharedData>> receivers,

@@ -41,7 +41,8 @@ public enum ResourceTypes implements ResourceType {
     RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5)),
     SKILL("skills", false, TimeUnit.MINUTES.toMillis(5)),
     BACKGROUND_JOB("background_jobs", true, TimeUnit.MINUTES.toMillis(5)),
-    PROJECT("projects", false, TimeUnit.MINUTES.toMillis(5));
+    PROJECT("projects", false, TimeUnit.MINUTES.toMillis(5)),
+    ALIAS("aliases", true, TimeUnit.DAYS.toMillis(30));
 
     /**
      * Types published on the resource topic: those the resource subscribe API or the config replicas consume.
@@ -97,6 +98,7 @@ public enum ResourceTypes implements ResourceType {
             case "response_mappings" -> RESPONSE_MAPPING;
             case "skills" -> SKILL;
             case "projects" -> PROJECT;
+            case "aliases" -> ALIAS;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }

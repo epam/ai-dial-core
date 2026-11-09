@@ -358,11 +358,17 @@ application`. A request whose Content-Type is not JSON, or whose JSON is not an 
 - **THEN** the call succeeds, the upstream receives a key it can use, and the key carries no grant for the target
 
 ### Requirement: User consent document of a declaring application
-For a root application that declares resource dependencies, `GET /v1/consent/{id}` SHALL list the declaration in the
-document's `resources` (`url` as declared, `access`) and SHALL NOT auto-accept, whatever `features.consentRequired` says.
+For a root application that declares resource dependencies, or an alias whose target declares them,
+`GET /v1/consent/{id}` SHALL list the declaration in the document's `resources` (`url` as declared, `access`) and SHALL
+NOT auto-accept, whatever `features.consentRequired` says.
 The request-time user consent check SHALL stay as it is.
 
 #### Scenario: Declaration in the consent document
 - **WHEN** a user reads `GET /v1/consent/<id>` of an application that declares `skills/{current-user}/` and sets no
   `consentRequired`
 - **THEN** the answer is not accepted and its document lists `skills/{current-user}/`
+
+#### Scenario: Alias of a declaring application
+- **WHEN** a user reads `GET /v1/consent/<alias>` of an alias whose target declares `files/{current-user}/reports/`
+  and sets no `consentRequired`
+- **THEN** the answer is not accepted and its document lists `files/{current-user}/reports/`

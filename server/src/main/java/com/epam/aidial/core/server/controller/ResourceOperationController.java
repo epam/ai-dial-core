@@ -118,6 +118,7 @@ public class ResourceOperationController {
                     if (!source.getType().equals(destination.getType())) {
                         throw new IllegalArgumentException("source and destination resources must be the same type");
                     }
+                    rejectAlias(source);
 
                     if (source.getUrl().equals(destination.getUrl())) {
                         throw new IllegalArgumentException("source and destination resources cannot be the same");
@@ -190,6 +191,7 @@ public class ResourceOperationController {
                     if (!source.getType().equals(destination.getType())) {
                         throw new IllegalArgumentException("source and destination resources must have same type");
                     }
+                    rejectAlias(source);
 
                     if (source.getUrl().equals(destination.getUrl())) {
                         throw new IllegalArgumentException("source and destination resources must have different urls");
@@ -357,6 +359,16 @@ public class ResourceOperationController {
         } catch (Throwable e) {
             log.warn("Can't send a heartbeat", e);
             response.reset();
+        }
+    }
+
+    /**
+     * An alias is written only through its management API, which checks its name, its target and its bucket; a copy or
+     * a move would skip those checks. Called once the source and the destination are known to have the same type.
+     */
+    private static void rejectAlias(ResourceDescriptor source) {
+        if (source.getType() == ResourceTypes.ALIAS) {
+            throw new IllegalArgumentException("Aliases cannot be copied or moved");
         }
     }
 

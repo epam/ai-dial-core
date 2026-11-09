@@ -88,6 +88,15 @@ public class ControllerSelector {
         put(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
         delete(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE, ControllerSelector::configResourceController);
         delete(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        // Aliases in public storage: admin-only management, also registered before RESOURCE/RESOURCE_METADATA.
+        get(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        get(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        post(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        post(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        put(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        put(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        delete(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        delete(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
 
         // GET routes
         get(RouteTemplate.DEPLOYMENT, (proxy, context, pathMatcher) -> {

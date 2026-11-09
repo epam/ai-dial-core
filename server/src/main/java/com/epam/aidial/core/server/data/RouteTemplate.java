@@ -112,6 +112,17 @@ public enum RouteTemplate {
             "/v1/metadata/{resourceType}/platform/{path}"
     ),
 
+    // Admin-managed aliases stored in public storage, managed through ConfigResourceController. Any bucket matches so that
+    // a bucket other than public answers 404 from EntityBucketBinding; RESOURCE and RESOURCE_METADATA never accept aliases.
+    ALIAS_RESOURCE(
+            "^/v1/(aliases)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "/v1/aliases/{bucket}/{path}"
+    ),
+    ALIAS_RESOURCE_METADATA(
+            "^/v1/metadata/(aliases)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "/v1/metadata/aliases/{bucket}/{path}"
+    ),
+
     // V2 whole-resource (folder-as-resource) routes.
     // The {path} is the resource name and may span multiple segments (e.g. /v2/skills/{bucket}/group/name or /v2/projects/...).
     // The pattern forbids empty segments and a trailing slash (a resource is addressed by name, not as a
@@ -167,7 +178,7 @@ public enum RouteTemplate {
     ),
 
     ADMIN_FILE_CONFIG(
-            "^/v1/admin/config/file/(?<type>models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|applications|toolsets)(?:/(?<name>.+))?$",
+            "^/v1/admin/config/file/(?<type>models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|applications|toolsets|aliases)(?:/(?<name>.+))?$",
             "/v1/admin/config/file/{type}/{name}"
     ),
 
