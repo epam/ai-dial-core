@@ -301,6 +301,38 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testApplicationSwappedUnderAnApprovedReviewCopyStartsUnapproved() {
+        // the update drops the approved source and adds another one with the same target, so the same review url
+        String adminBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin").body()).getString("bucket");
+        String approvedSource = "applications/" + adminBucket + "/reviewed-app";
+        String swappedSource = "applications/" + adminBucket + "/swapped-app";
+        for (String source : List.of(approvedSource, swappedSource)) {
+            verify(send(HttpMethod.PUT, "/v1/" + source, null, DECLARING_APP_BODY, "authorization", "admin"), 200);
+        }
+        String request = """
+                {%s"name": "Swap", "targetFolder": "public/folder/",
+                 "resources": [{"action": "ADD", "sourceUrl": "%s", "targetUrl": "applications/public/folder/swap-app"}],
+                 "rules": [{"source": "roles", "function": "TRUE"}]}
+                """;
+        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, request.formatted("", approvedSource),
+                "authorization", "admin");
+        verify(created, 200);
+        JsonObject publication = new JsonObject(created.body());
+        String reviewUrl = publication.getJsonArray("resources").getJsonObject(0).getString("reviewUrl");
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + reviewUrl, null, reviewedResources(reviewUrl), "authorization", "admin"), 200);
+
+        String update = request.formatted("\"url\": \"" + publication.getString("url") + "\", ", swappedSource);
+        Response updated = send(HttpMethod.POST, "/v1/ops/publication/update", null, update, "authorization", "admin");
+        verify(updated, 200);
+        assertEquals(reviewUrl, new JsonObject(updated.body()).getJsonArray("resources").getJsonObject(0).getString("reviewUrl"));
+        assertConsented(reviewUrl, false);
+
+        verify(send(HttpMethod.POST, "/v1/ops/publication/approve", null,
+                new JsonObject().put("url", publication.getString("url")).encode(), "authorization", "admin"), 200);
+        assertConsented("applications/public/folder/swap-app", false);
+    }
+
+    @Test
     void testDeletingPlatformApplicationDeletesItsAdminConsent() {
         // a platform application is served from the config under its short name, not its url
         String reviewed = """

@@ -232,8 +232,9 @@ describe, so the deltas leave them out.
   background Responses job keeps them up to `backgroundJob.jobTtlMs`. → Documented.
 - **A user's unpublished application cannot be approved.** → Documented; user consent will cover it.
 - **Records that outlive their application.** A config-file application's record stays after it leaves the file; a review
-  copy dropped from a publication is deleted as a plain resource and keeps its record, and an application copied to the
-  same review url inherits it. → Documented for config files; the review copy case is open.
+  copy dropped from a publication is deleted as a plain resource and keeps its record. → Documented for config files. A
+  declaring application copied to a review url deletes any record left there, so a swap under an approved review copy
+  starts unapproved; a left-behind record has no effect on an application without a list.
 - **Per-request grants passed down a chain** (`ApiKeyData.sharePerRequestPermissions`, development code): the child key
   shares mutable permission sets with the caller's, and on an interceptor hop an entry from the initial deployment
   replaces the receiver's instead of adding to it. The resolver copies before it writes, but the issue stays. → Raised

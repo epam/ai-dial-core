@@ -31,6 +31,7 @@ import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -800,10 +801,16 @@ public class PublicationService {
             ResourceDescriptor to = ResourceDescriptorFactory.fromPrivateUrl(reviewUrl, encryption);
 
             if (from.getType() == ResourceTypes.APPLICATION) {
+                MutableBoolean declares = new MutableBoolean();
                 applicationService.copyApplication(from, to, null, false, app -> {
                     app.setReference(ProxyUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
+                    declares.setValue(app.getResourceDependencies() != null && !app.getResourceDependencies().isEmpty());
                 });
+                // a review copy is another application: it must not take over a record left at its url
+                if (declares.isTrue()) {
+                    applicationService.deleteAdminConsent(to);
+                }
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, null, false, credentialsToCopy,

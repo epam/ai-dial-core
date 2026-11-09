@@ -225,6 +225,11 @@ application created again at a deleted one's id SHALL start unapproved.
 - **WHEN** an admin approves the review copy's list and then the publication of a user's application
 - **THEN** the published application is approved and a call to it receives its entries
 
+#### Scenario: Application swapped under an approved review copy
+- **WHEN** an admin approves a review copy and then updates the publication to another source application with the same
+  list and the same target
+- **THEN** the new review copy and, after approval, the published application are not approved
+
 ### Requirement: Dependencies resolved into the per-request key
 On every route of the chat completions, Responses and Messages controllers (`/openai/deployments/{id}/chat/completions`,
 `/completions`, `/embeddings`, `/openai/v1/chat/completions`, `/openai/[v1/]responses`, `/anthropic/v1/messages`,
