@@ -13,9 +13,13 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ToolSetService;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,8 +49,9 @@ class AliasServiceTest {
     private final ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
     private final AccessService accessService = mock(AccessService.class);
     private final ProxyContext context = mock(ProxyContext.class);
+    private final ResourceService resourceService = mock(ResourceService.class);
     private final AliasService service = new AliasService(applicationService, toolSetService, applicationSchemaService, null,
-            accessService);
+            resourceService, accessService);
 
     @BeforeEach
     void setUp() {
@@ -129,14 +134,19 @@ class AliasServiceTest {
     }
 
     @Test
-    void inMemoryViewLeavesResourceTargetsOutWithoutReadingThem() {
-        assertNull(service.toView(context, alias(null, "applications/public/app"), true));
+    void findTargetResolvesConfigAndResourceTargets() {
+        Config config = context.getConfig();
+        assertEquals("gpt-4", service.findTarget(config, alias(null, "models/gpt-4")).getName());
+        assertNull(service.findTarget(config, alias(null, "models/gone")));
         verifyNoInteractions(applicationService);
+
+        when(applicationService.getApplication(any())).thenThrow(new ResourceNotFoundException("gone"));
+        assertNull(service.findTarget(config, alias(null, "applications/public/app")));
     }
 
     @Test
     void viewTakesTheTargetDisplayName() {
-        Model view = (Model) service.toView(context, alias(null, "models/gpt-4"), true);
+        Model view = (Model) service.toView(context, alias(null, "models/gpt-4"));
 
         assertEquals("assistant-v1", view.getName());
         assertEquals(LocalizedValue.of("GPT-4"), view.getDisplayName());
@@ -146,7 +156,7 @@ class AliasServiceTest {
     void aliasWithoutUserRolesTakesTheConfigTargetRoles() {
         Alias alias = alias(null, "models/gpt-4");
         assertEquals(Boolean.TRUE, service.hasConfigAccess(context, alias));
-        assertEquals(Set.of("power-user"), service.toView(context, alias, true).getUserRoles());
+        assertEquals(Set.of("power-user"), service.toView(context, alias).getUserRoles());
 
         when(context.getUserRoles()).thenReturn(List.of("default-user"));
         assertEquals(Boolean.FALSE, service.hasConfigAccess(context, alias));
@@ -155,7 +165,7 @@ class AliasServiceTest {
 
         alias.setUserRoles(Set.of("default-user"));
         assertEquals(Boolean.TRUE, service.hasConfigAccess(context, alias));
-        assertEquals(Set.of("default-user"), service.toView(context, alias, true).getUserRoles());
+        assertEquals(Set.of("default-user"), service.toView(context, alias).getUserRoles());
     }
 
     @Test
@@ -200,6 +210,40 @@ class AliasServiceTest {
         assertEquals(AliasService.TargetProblem.INCOMPATIBLE,
                 service.checkTarget(context, alias(AliasPresentation.MODEL, "toolsets/public/search")));
         assertNull(service.checkTarget(context, alias(null, "toolsets/public/search")));
+    }
+
+    @Test
+    void storedAliasIsReadOnDemandAndNamedByItsUrl() {
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl("aliases/public/pub-v1", null);
+        when(resourceService.getResource(resource))
+                .thenReturn("{\"userRoles\":[\"default-user\"],\"target\":{\"path\":\"models/gpt-4\"}}");
+
+        Alias stored = service.findStoredAlias(resource);
+        when(context.getUserRoles()).thenReturn(List.of("default-user"));
+
+        assertEquals("aliases/public/pub-v1", stored.getName());
+        assertEquals(Set.of("default-user"), stored.getUserRoles());
+        assertEquals("aliases/public/pub-v1", ((AliasPass) service.toPass(context, stored)).getAlias().getName());
+    }
+
+    @Test
+    void onlyItemsDirectlyInThePublicAliasFolderAreStoredAliases() {
+        assertNull(service.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl("aliases/public/folder/pub-v1", null)));
+        assertNull(service.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl("aliases/public/missing", null)));
+        ResourceDescriptor broken = ResourceDescriptorFactory.fromAnyUrl("aliases/public/broken", null);
+        when(resourceService.getResource(broken)).thenReturn("{\"displayName\":\"no target\"}");
+        assertNull(service.findStoredAlias(broken));
+    }
+
+    @Test
+    void storedAliasesAreListedFlat() {
+        ResourceDescriptor flat = ResourceDescriptorFactory.fromAnyUrl("aliases/public/pub-v1", null);
+        ResourceDescriptor nested = ResourceDescriptorFactory.fromAnyUrl("aliases/public/folder/pub-v2", null);
+        String body = "{\"target\":{\"path\":\"models/gpt-4\"}}";
+        when(resourceService.listResources(any(), any())).thenReturn(List.of(
+                Pair.of(new ResourceItemMetadata(flat), body), Pair.of(new ResourceItemMetadata(nested), body)));
+
+        assertEquals(List.of("aliases/public/pub-v1"), service.listStoredAliases().stream().map(Alias::getName).toList());
     }
 
     private static Alias alias(AliasPresentation presentation, String path) {

@@ -107,6 +107,8 @@ public class ConfigManifestSupport {
             scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
             scratch.setApplications(new HashMap<>(live.getApplications()));
             scratch.setToolsets(new HashMap<>(live.getToolsets()));
+            // aliases are not written through manifests, but their names are taken: a manifest must not reuse one
+            scratch.setAliases(new HashMap<>(live.getAliases()));
             scratch.setRoles(new HashMap<>(live.getRoles()));
             scratch.setKeys(new HashMap<>(live.getKeys()));
             scratch.getRoutes().putAll(live.getRoutes());

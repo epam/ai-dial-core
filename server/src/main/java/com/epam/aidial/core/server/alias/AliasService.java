@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.alias;
 import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
@@ -13,14 +14,19 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 
+import java.util.ArrayList;
+import java.util.List;
 import javax.annotation.Nullable;
 
 /**
@@ -37,6 +43,7 @@ public class AliasService {
     private final ToolSetService toolSetService;
     private final ApplicationSchemaService applicationSchemaService;
     private final EncryptionService encryptionService;
+    private final ResourceService resourceService;
     private final AccessService accessService;
 
     // Core's own address, which an alias pass forwards to; set once the server listens
@@ -44,12 +51,69 @@ public class AliasService {
 
     public AliasService(ApplicationService applicationService, ToolSetService toolSetService,
                         ApplicationSchemaService applicationSchemaService, EncryptionService encryptionService,
-                        AccessService accessService) {
+                        ResourceService resourceService, AccessService accessService) {
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
         this.applicationSchemaService = applicationSchemaService;
         this.encryptionService = encryptionService;
         this.accessService = accessService;
+        this.resourceService = resourceService;
+    }
+
+    /**
+     * Whether {@code resource} is where an alias is stored: an item directly in {@code aliases/public/}.
+     */
+    public static boolean isStoredAliasLocation(ResourceDescriptor resource) {
+        return resource.getType() == ResourceTypes.ALIAS
+                && ResourceDescriptor.PUBLIC_BUCKET.equals(resource.getBucketName())
+                && !resource.isFolder()
+                && resource.getParentPath() == null;
+    }
+
+    /**
+     * The alias stored at {@code resource}, named by its url ({@code aliases/public/<name>}), or null when the resource
+     * is not directly in {@code aliases/public/}, does not exist, or cannot be read as an alias. Reads storage (through
+     * the resource cache), so it runs on the task executor.
+     */
+    @Nullable
+    public Alias findStoredAlias(ResourceDescriptor resource) {
+        if (!isStoredAliasLocation(resource)) {
+            return null;
+        }
+        String body = resourceService.getResource(resource);
+        return body == null ? null : parseStored(resource, body);
+    }
+
+    /**
+     * The aliases stored directly in {@code aliases/public/}, each named by its url; a body that cannot be read as an
+     * alias is logged and left out. One folder listing and one read per alias, so it runs on the task executor.
+     */
+    public List<Alias> listStoredAliases() {
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
+                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, null);
+        List<Alias> aliases = new ArrayList<>();
+        for (Pair<ResourceItemMetadata, String> item : resourceService.listResources(folder, ignored -> { })) {
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(item.getKey().getUrl(), encryptionService);
+            if (item.getValue() == null || !isStoredAliasLocation(resource)) {
+                continue;
+            }
+            Alias alias = parseStored(resource, item.getValue());
+            if (alias != null) {
+                aliases.add(alias);
+            }
+        }
+        return aliases;
+    }
+
+    @Nullable
+    private static Alias parseStored(ResourceDescriptor resource, String body) {
+        StoredAliases.Stored stored = StoredAliases.parse(body);
+        if (stored.alias() == null) {
+            log.warn("Ignoring the stored alias {}: {}", resource.getUrl(), stored.warnings());
+            return null;
+        }
+        stored.alias().setName(resource.getUrl());
+        return stored.alias();
     }
 
     public void setLocalBaseUrl(String localBaseUrl) {
@@ -131,8 +195,18 @@ public class AliasService {
         return resolveUsableTarget(context, alias).deployment();
     }
 
+    /**
+     * The deployment the target path of {@code alias} names in {@code config} or in storage, or null when there is
+     * none. Answers 503 when the path cannot name a resource Core can read. May read storage.
+     */
+    @Nullable
+    public Deployment findTarget(Config config, Alias alias) {
+        Target target = resolveTarget(config, alias);
+        return target == null ? null : target.deployment();
+    }
+
     private Target resolveUsableTarget(ProxyContext context, Alias alias) {
-        Target target = resolveTarget(context, alias, false);
+        Target target = resolveTarget(context.getConfig(), alias);
         if (target == null || !AliasTargets.fits(alias.getEffectivePresentation(), target.deployment())) {
             throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "The target of alias %s is not available".formatted(alias.getName()));
         }
@@ -151,7 +225,7 @@ public class AliasService {
         if (alias.getEffectivePresentation() != AliasPresentation.TOOLSET) {
             throw new ResourceNotFoundException("Resource is not found: " + alias.getName());
         }
-        Target target = resolveTarget(context, alias, false);
+        Target target = resolveTarget(context.getConfig(), alias);
         if (target == null) {
             throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "The target of alias %s is not available".formatted(alias.getName()));
         }
@@ -187,7 +261,7 @@ public class AliasService {
     public TargetProblem checkTarget(ProxyContext context, Alias alias) {
         Target target;
         try {
-            target = resolveTarget(context, alias, false);
+            target = resolveTarget(context.getConfig(), alias);
         } catch (RuntimeException e) {
             log.warn("Can't resolve the target of alias {}: {}", alias.getName(), e.getMessage());
             return TargetProblem.MISSING;
@@ -205,20 +279,10 @@ public class AliasService {
      */
     @Nullable
     public Deployment toView(ProxyContext context, Alias alias) {
-        return toView(context, alias, false);
-    }
-
-    /**
-     * {@link #toView}, reading no storage when {@code inMemory}, for the listings that answer on the event loop: then
-     * an alias to a resource is left out, and an application target is taken as configured, without resolving its
-     * schema.
-     */
-    @Nullable
-    public Deployment toView(ProxyContext context, Alias alias, boolean inMemory) {
         AliasPresentation presentation = alias.getEffectivePresentation();
         Target target;
         try {
-            target = resolveTarget(context, alias, inMemory);
+            target = resolveTarget(context.getConfig(), alias);
         } catch (RuntimeException e) {
             log.warn("Can't resolve the target of alias {}: {}", alias.getName(), e.getMessage());
             return null;
@@ -244,12 +308,9 @@ public class AliasService {
     }
 
     @Nullable
-    private Target resolveTarget(ProxyContext context, Alias alias, boolean inMemory) {
+    private Target resolveTarget(Config config, Alias alias) {
         String path = alias.getTarget().getPath();
         if (AliasTargets.isResourcePath(path)) {
-            if (inMemory) {
-                return null;
-            }
             ResourceDescriptor resource = toTargetResource(path);
             Deployment deployment;
             try {
@@ -260,11 +321,11 @@ public class AliasService {
             return new Target(deployment, resource.getUrl(), resource);
         }
         AliasTargets.TargetRef ref = AliasTargets.parse(path);
-        Deployment deployment = ref == null ? null : AliasTargets.resolve(context.getConfig(), ref);
+        Deployment deployment = ref == null ? null : AliasTargets.resolve(config, ref);
         if (deployment == null) {
             return null;
         }
-        if (!inMemory && deployment instanceof Application application) {
+        if (deployment instanceof Application application) {
             deployment = resolveSchema(application);
         }
         return new Target(deployment, deployment.getName(), null);

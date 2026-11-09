@@ -50,6 +50,19 @@ class EntityBucketBindingTest {
     }
 
     @Test
+    void aliasesHaveTheirOwnRoutesAndLiveInThePublicBucketOnly() {
+        assertTrue(RouteTemplate.ALIAS_RESOURCE.matches("/v1/aliases/public/assistant-v1"));
+        assertTrue(RouteTemplate.ALIAS_RESOURCE_METADATA.matches("/v1/metadata/aliases/public/"));
+        assertFalse(RouteTemplate.RESOURCE.matches("/v1/aliases/public/assistant-v1"));
+        assertFalse(RouteTemplate.RESOURCE_METADATA.matches("/v1/metadata/aliases/public/"));
+        assertFalse(RouteTemplate.CONFIG_RESOURCE.matches("/v1/aliases/public/assistant-v1"));
+
+        assertTrue(EntityBucketBinding.isAllowed("aliases", "public"));
+        assertFalse(EntityBucketBinding.isAllowed("aliases", "platform"));
+        assertFalse(EntityBucketBinding.isAllowed("aliases", "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST"));
+    }
+
+    @Test
     void platformAppToolsetResourceRegexMatchesOnlyPlatformBucket() {
         assertTrue(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE.matches("/v1/applications/platform/my-app"));
         assertTrue(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE.matches("/v1/toolsets/platform/my-toolset"));
