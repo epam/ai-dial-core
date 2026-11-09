@@ -91,6 +91,7 @@ public class ConsentServiceTest {
     void emptyConfig() {
         // the admin-consent tests resolve dynamic applications: nothing in the config
         lenient().when(context.getConfig()).thenReturn(new Config());
+        lenient().when(deploymentService.isApprovableLocation(eq(context), anyString())).thenReturn(true);
     }
 
     @Test
@@ -697,6 +698,19 @@ public class ConsentServiceTest {
         ConsentGrant grant = service.grantAdminConsent(context, "app", List.of(resourceEntry("skills/{current-user}/")));
 
         assertEquals("automation-project", grant.getGrantedBy());
+    }
+
+    @Test
+    public void testGrantAdminConsent_RejectsApplicationOutsideTheApprovableBuckets() {
+        String id = "applications/someone-elses-bucket/app";
+        when(deploymentService.findDeployment(eq(context), eq(id))).thenReturn(declaringApplication());
+        when(deploymentService.isApprovableLocation(eq(context), eq(id))).thenReturn(false);
+
+        HttpException error = assertThrows(HttpException.class,
+                () -> service.grantAdminConsent(context, id, List.of(resourceEntry("skills/{current-user}/"))));
+
+        assertEquals(HttpStatus.FORBIDDEN, error.getStatus());
+        verify(resourceService, never()).putResource(any(ResourceDescriptor.class), anyString(), any(EtagHeader.class));
     }
 
     @Test

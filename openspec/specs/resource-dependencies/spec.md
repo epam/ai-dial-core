@@ -152,6 +152,19 @@ SHALL get `403`. The application's `userRoles` SHALL NOT matter.
 - **WHEN** an admin sends `GET` or `POST /v1/admin-consent/applications/<user bucket>/app`
 - **THEN** Core answers `403`
 
+### Requirement: Where an application can be approved
+`POST /v1/admin-consent/{deployment_id}` SHALL answer `403` for an application that is not from a config file, in the
+public or a review bucket, or in the administrator's own bucket, whatever the administrator can read.
+
+#### Scenario: Readable application in a user's bucket
+- **WHEN** an admin who reads a user's application as a global reader sends `POST
+  /v1/admin-consent/applications/<user bucket>/app`
+- **THEN** Core answers `403`
+
+#### Scenario: Application in the administrator's own bucket
+- **WHEN** an admin sends `POST /v1/admin-consent/applications/<admin bucket>/app` for an application that declares a list
+- **THEN** Core answers `200`
+
 #### Scenario: Config application outside the admin's roles
 - **WHEN** a config application is limited by `userRoles` to a role the admin does not have, and the admin reads its
   status

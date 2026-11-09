@@ -525,6 +525,46 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         }
     }
 
+    /** An administrator who reads a user's application (here, as a global reader) still may not approve it. */
+    public static class AdminReadsUserApplications extends ResourceBaseTest {
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject()
+                    .put("applications", new JsonObject().put("allowUserResourceDependencies", true))
+                    .put("access", new JsonObject()
+                            .put("admin", new JsonObject().put("rules", new JsonArray()
+                                    .add(new JsonObject().put("source", "roles").put("function", "EQUAL").put("targets", new JsonArray().add("admin")))))
+                            .put("globalReader", new JsonObject().put("rules", new JsonArray()
+                                    .add(new JsonObject().put("source", "roles").put("function", "EQUAL").put("targets", new JsonArray().add("admin"))))));
+        }
+
+        @Test
+        void testApplicationOutsideTheApprovableBucketsIsNotApproved() {
+            String declaration = """
+                    {
+                      "endpoint": "http://localhost:4848/chat/completions",
+                      "resource_dependencies": [
+                        {"kind": "dial.resourceLink", "link_id": "lnk_prompts",
+                         "target": {"url": "prompts/{current-user}/by-app/"}, "access": ["write"], "required": true}
+                      ]
+                    }
+                    """;
+            String reviewed = "{\"resources\": [{\"url\": \"prompts/{current-user}/by-app/\", \"access\": [\"WRITE\"]}]}";
+            String userUrl = "applications/" + bucket + "/user-dep-app";
+            verify(send(HttpMethod.PUT, "/v1/" + userUrl, null, declaration), 200);
+            // the administrator reads it, yet its owner keeps control of it
+            verify(send(HttpMethod.GET, "/v1/" + userUrl, null, "", "authorization", "admin"), 200);
+            verify(send(HttpMethod.POST, "/v1/admin-consent/" + userUrl, null, reviewed, "authorization", "admin"), 403);
+
+            // an application in the administrator's own bucket is approved
+            String adminBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin").body()).getString("bucket");
+            String adminUrl = "applications/" + adminBucket + "/prototype-app";
+            verify(send(HttpMethod.PUT, "/v1/" + adminUrl, null, declaration, "authorization", "admin"), 200);
+            verify(send(HttpMethod.POST, "/v1/admin-consent/" + adminUrl, null, reviewed, "authorization", "admin"), 200);
+        }
+    }
+
     private static Consent.ResourceEntry entry(String url, ResourceAccessType... access) {
         Consent.ResourceEntry entry = new Consent.ResourceEntry();
         entry.setUrl(url);

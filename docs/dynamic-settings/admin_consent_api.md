@@ -16,7 +16,7 @@ All three are available to DIAL administrators only, as defined by `access.admin
 
 `{deployment_id}` is the application's deployment id, the same as in `/v1/consent/{deployment_id}`: the name of an application from the config file, or `applications/{bucket}/{path}` for an application created through the API. An id that does not name an application is answered with `404`.
 
-An application the administrator cannot read, such as an unpublished application in another user's bucket, cannot be approved (`403`). A user's application is approved when it is published: the administrator reviews the publication, approves the review copy's list and then the publication, and the approval moves with the application; or approves the published application's list afterwards.
+Only an application from a config file, in the public or a review bucket, or in the administrator's own bucket can be approved (`403` otherwise). An unpublished application in another user's bucket cannot, even one the administrator can read because it was shared with them or through the global reader role: its owner keeps control of it. A user's application is approved when it is published: the administrator reviews the publication, approves the review copy's list and then the publication, and the approval moves with the application; or approves the published application's list afterwards.
 
 ---
 
@@ -107,7 +107,7 @@ Approving again replaces the previous approval.
 | **Status** | **When**                                                                                     |
 |------------|----------------------------------------------------------------------------------------------|
 | 400        | The body is missing or malformed, the application declares no `resource_dependencies`, or its deployment id is too long for an approval record. |
-| 403        | The caller is not a DIAL administrator, or the administrator cannot read the application.    |
+| 403        | The caller is not a DIAL administrator, the administrator cannot read the application, or it is not in a bucket that can be approved. |
 | 404        | `{deployment_id}` does not name an application.                                              |
 | 409        | The application's list changed since it was reviewed; read it again and approve the new list. |
 

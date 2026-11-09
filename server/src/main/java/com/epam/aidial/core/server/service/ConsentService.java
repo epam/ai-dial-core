@@ -34,6 +34,7 @@ import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.CONFLICT;
+import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
 
 @Slf4j
 public class ConsentService {
@@ -210,6 +211,9 @@ public class ConsentService {
 
     private Application requireDeclaringApplication(ProxyContext context, String deploymentId) {
         Application application = requireApplication(context, deploymentId);
+        if (!deploymentService.isApprovableLocation(context, deploymentId)) {
+            throw new HttpException(FORBIDDEN, "Only an application in the public, a review or your own bucket can be approved: " + deploymentId);
+        }
         if (application.getResourceDependencies() == null || application.getResourceDependencies().isEmpty()) {
             throw new HttpException(BAD_REQUEST, "Application declares no resource dependencies: " + deploymentId);
         }
