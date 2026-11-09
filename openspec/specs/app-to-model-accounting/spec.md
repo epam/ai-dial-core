@@ -95,6 +95,16 @@ entries for the called deployment and for `initialDeployment`.
 - **WHEN** the incoming key's `perRequestReceivers` maps `gpt-4` to resource `r`, and the request calls `gpt-4`
 - **THEN** the key sent to `gpt-4` has `r` in `perRequestSharedResources`
 
+### Requirement: Dependency grants in the key
+For a called application that declares `resource_dependencies`, Core SHALL add to `perRequestSharedResources` each
+granted dependency with its declared rights (see resource-dependencies), adding them to an entry already there for the
+same target.
+
+#### Scenario: Granted dependency in the key
+- **WHEN** a user calls an approved application declaring `prompts/{current-user}/dep-smoke/` with `write`
+- **THEN** the key the application receives can write under `prompts/<user bucket>/dep-smoke/` and nowhere else in the
+  user's bucket
+
 ### Requirement: Authentication by a per-request key
 Core SHALL accept a per-request key in `API-KEY` alone or with any `Authorization` header, taking the identity from
 the key rather than the JWT, and SHALL NOT apply the original key's `allowedIpAddressRanges`. A project key in
