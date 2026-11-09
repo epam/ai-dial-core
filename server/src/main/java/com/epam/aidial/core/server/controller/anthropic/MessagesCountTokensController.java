@@ -65,6 +65,7 @@ public class MessagesCountTokensController extends MessagesBaseController {
     @Override
     protected void processResponse(ProxyResponse proxyResponse) {
         proxyResponse.body()
+                .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                 .compose(body -> forwardResponse(proxyResponse, body))
                 .onFailure(this::handleProxyConnectionError);
     }

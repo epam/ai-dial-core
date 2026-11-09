@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestSkillsFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.StripUsagePerModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
@@ -96,12 +97,13 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
      * Runs the chat-completions enhancement chain over an already-parsed request body, assigns the
      * per-request API key, resolves the upstream route and sends the request. Shared tail of every
      * controller's request-body handling once the deployment is resolved and the body is parsed.
+     * {@code changed} says the caller already changed the parsed request, so the body is serialized even when the chain does not change it.
      */
     @SneakyThrows
-    protected void processChatCompletionsRequestBody(RequestObject request) {
+    protected void processChatCompletionsRequestBody(RequestObject request, boolean changed) {
         Deployment deployment = context.getDeployment();
         context.setStreamingRequest(request.isStreaming());
-        setProcessedRequestBody(request, ProxyUtil.processChain(request, buildEnhancementFunctions()), requestedInterface());
+        setProcessedRequestBody(request, ProxyUtil.processChain(request, buildEnhancementFunctions()) || changed, requestedInterface());
         proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
 
         String upstreamId = context.getRequest().headers().get(HEADER_UPSTREAM_ID);
@@ -179,16 +181,17 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
         // the client as they arrive.
         if (isChatCompletionsPath() && !isEventStreamContentType(proxyResponse)) {
             proxyResponse.body()
+                    .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                     .compose(body -> handleNonStreamingChatCompletionResponse(proxyResponse, body))
                     .onFailure(this::handleProxyConnectionError);
             return;
         }
 
         Supplier<BufferingReadStream.BaseEventListener> eventListenerSupplier = () ->
-                new ChatCompletionSseListener(isChatCompletionsPath()
+                new ChatCompletionSseListener(RouterModelFn.withRouterModel(proxy, context, isChatCompletionsPath()
                         ? List.of(new StripUsagePerModelFn(proxy, context), new CollectResponseChatCompletionAttachmentsFn(proxy, context),
                                 new CollectChatCompletionUsageFn(proxy, context))
-                        : List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
+                        : List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context))));
         BufferingReadStream responseStream = createResponseStream(proxyResponse, eventListenerSupplier);
 
         HttpServerResponse response = context.getResponse();

@@ -121,7 +121,7 @@ public class ChatCompletionsControllerTest {
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor);
         when(taskExecutor.submit(any(Callable.class)))
                 .thenAnswer(invocation -> Future.succeededFuture(((Callable<?>) invocation.getArgument(0)).call()));
-        when(proxy.getDeploymentService().findDeployment(context, "test-model")).thenReturn(model);
+        when(proxy.getDeploymentService().findCallableDeployment(context, "test-model")).thenReturn(model);
         when(proxy.getDeploymentService().getInterceptors(context, model)).thenReturn(List.of("interceptor1"));
         when(context.hasNextInterceptor()).thenReturn(true);
         when(context.getDeployment()).thenReturn(model);

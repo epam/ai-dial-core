@@ -94,6 +94,48 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    @DialConfigLocation("dial-config/routers.json")
+    void testMigrateFileRouters() {
+        String body = """
+                {"types": ["routers"]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        JsonNode r1 = findByResourceUrl(results, "routers/platform/r1");
+        assertEquals("Router", r1.get("kind").asText(), () -> "Body: " + response.body());
+        assertEquals("r1", r1.get("key").asText(), () -> "Body: " + response.body());
+        assertEquals("migrated", r1.get("status").asText(), () -> "Body: " + response.body());
+        Response migrated = send(HttpMethod.GET, "/v1/routers/platform/r1", null, "", "authorization", "admin");
+        verify(migrated, 200);
+        assertEquals("analysts", ProxyUtil.MAPPER.readTree(migrated.body()).get("userRoles").get(0).asText());
+
+        Response again = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(again, 200);
+        for (JsonNode result : ProxyUtil.MAPPER.readTree(again.body()).get("results")) {
+            assertEquals("skipped", result.get("status").asText(), () -> "Body: " + again.body());
+            assertEquals("already in blob", result.get("reason").asText(), () -> "Body: " + again.body());
+        }
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/routers-typed.json")
+    void testMigrateTypedFileRouter() {
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, "{\"types\": [\"routers\"]}",
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode r3 = findByResourceUrl(ProxyUtil.MAPPER.readTree(response.body()).get("results"), "routers/platform/r3");
+        assertEquals("migrated", r3.get("status").asText(), () -> "Body: " + response.body());
+        Response migrated = send(HttpMethod.GET, "/v1/routers/platform/r3", null, "", "authorization", "admin");
+        verify(migrated, 200);
+        assertEquals("medium", ProxyUtil.MAPPER.readTree(migrated.body()).get("applicationProperties").get("tier").asText());
+    }
+
+    @Test
+    @SneakyThrows
     @DialConfigLocation("dial-config/config-file-migrate.json")
     void testMigrateModelPreservesUpstreamSecrets() {
         String body = """

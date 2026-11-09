@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.storage.util.UrlUtil;
@@ -38,6 +39,7 @@ public class DeploymentEndpointUtil {
             Pattern.compile("/deployments/(?<deployment>.+?)/(?<action>completions|chat/completions|embeddings)(?=$|\\?)");
 
     private static final String OPENAI_RESPONSES_BASE_PATH = "/openai/v1/responses";
+    private static final String DECIDE_PATH = "/decide";
 
     /**
      * The base url an embedded interface resolves to: {@code plugin://<name>}. It names the plugin wherever Core
@@ -197,6 +199,21 @@ public class DeploymentEndpointUtil {
         return deploymentInterface != null && deploymentInterface.getMode() == InterfaceMode.EMBEDDED
                 ? deploymentInterface.getPlugin()
                 : null;
+    }
+
+    /**
+     * Whether Core asks the router which deployment serves the type: the router is in decision mode and declares it.
+     */
+    public boolean decides(Router router, InterfaceType type) {
+        return router.getMode() == Router.Mode.DECISION && findInterface(router, type) != null;
+    }
+
+    /**
+     * Where a decision router is asked about the type: the interface's {@code base_url}, or the router's
+     * {@code baseUrl} when it declares none, followed by {@code /decide}.
+     */
+    public String resolveDecideUri(Router router, InterfaceType type) {
+        return resolveInterfaceBaseUrl(router, type, Map.of()) + DECIDE_PATH;
     }
 
     /**

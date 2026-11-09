@@ -31,7 +31,8 @@ public class ResponsesApiClient {
      * Sends an item operation to the origin of the context's deployment: to its plugin when its Responses interface
      * is {@code embedded}, over HTTP otherwise.
      */
-    public Future<ProxyResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey, ProxyContext context) {
+    public Future<ProxyResponse> send(String url, HttpMethod method, String deploymentId, Upstream upstream, String apiKey,
+                                      ProxyContext context) {
         String plugin = DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), InterfaceType.OPENAI_RESPONSES);
         Future<ProxyRequest> proxyRequest = plugin != null
                 ? originClient.embedded(context, method, url, plugin)
@@ -42,13 +43,14 @@ public class ResponsesApiClient {
                         .setIdleTimeout(clientOptions.getIdleTimeout()));
         return proxyRequest
                 .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey)
-                            .putHeader(Proxy.HEADER_UPSTREAM_KEY,
-                                    UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
-                            .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
-                                    UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
-                            .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
-                                    UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
-                            .send());
+                        .putHeader(Proxy.HEADER_DEPLOYMENT_ID, deploymentId)
+                        .putHeader(Proxy.HEADER_UPSTREAM_KEY,
+                                UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
+                        .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
+                                UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
+                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
+                                UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
+                        .send());
     }
 
     private static boolean isTerminal(String status) {

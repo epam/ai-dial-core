@@ -75,14 +75,32 @@ the route holds a cached upstream entry.
 - **THEN** the origin request carries `X-UPSTREAM-ENDPOINT: http://adapter/v1`, `X-UPSTREAM-KEY: k1` and
   `X-UPSTREAM-EXTRA-DATA` with that JSON
 
-### Requirement: Identity headers for applications and translated interfaces
+### Requirement: Identity headers for applications and deployments
 For an application with `applicationTypeSchemaId`, Core SHALL add `X-DIAL-APPLICATION-ID` with the deployment name,
-and `X-DIAL-APPLICATION-PROPERTIES` when the schema asks for it. For an interface in translator mode, Core SHALL add
-`X-DIAL-DEPLOYMENT-ID` with the deployment name.
+and `X-DIAL-APPLICATION-PROPERTIES` when the schema asks for it. For a router with `applicationTypeSchemaId`, Core
+SHALL add `X-DIAL-APPLICATION-PROPERTIES` when the schema asks for it (see router-deployment).
 
 #### Scenario: Schema application id
 - **WHEN** an application with an `applicationTypeSchemaId` is called
 - **THEN** the origin request carries `X-DIAL-APPLICATION-ID` equal to the application's name
+
+#### Scenario: Typed router gets no application id
+- **WHEN** a router with `applicationTypeSchemaId` is called
+- **THEN** the origin request carries `X-DIAL-APPLICATION-PROPERTIES` and no `X-DIAL-APPLICATION-ID`
+
+### Requirement: Deployment id on every origin request
+On every request it forwards to a deployment's origin (any interface in any mode, the deployment feature endpoints and
+Responses item operations), Core SHALL set `X-DIAL-DEPLOYMENT-ID` to the deployment name, replacing any value the
+client sent.
+
+#### Scenario: Pass-through interface with overrideName
+- **WHEN** a client sends a chat completion with `X-DIAL-DEPLOYMENT-ID: spoofed` to model `m` that has
+  `overrideName: real-m` and `interfaces.openaiChatCompletions.mode: passthrough`
+- **THEN** the origin request carries `X-DIAL-DEPLOYMENT-ID: m` and `X-DIAL-OVERRIDE-NAME: real-m`
+
+#### Scenario: Feature endpoint
+- **WHEN** a client sends `POST /v1/deployments/m/tokenize` with `X-DIAL-DEPLOYMENT-ID: spoofed`
+- **THEN** the origin request carries `X-DIAL-DEPLOYMENT-ID: m`
 
 ### Requirement: Upstream choice and the attempt bound
 Core SHALL choose the upstream for each attempt from the model's `upstreams` through the tiered, weighted balancer,

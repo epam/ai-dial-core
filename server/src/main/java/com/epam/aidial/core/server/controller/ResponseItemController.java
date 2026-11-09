@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.ProxyResponse;
@@ -158,7 +159,8 @@ public class ResponseItemController implements Controller {
         if (operation == Operation.DELETE && proxy.getBackgroundJobService().isJobActive(dialResponseId)) {
             throw new HttpException(HttpStatus.CONFLICT, "Cannot delete response while background job is in progress");
         }
-        Deployment deployment = proxy.getDeploymentService().findDeployment(context, mapping.getDeploymentName());
+        // a response stored by an alias is read through its pass, which forwards to the response its target pass stored
+        Deployment deployment = proxy.getDeploymentService().findCallableDeployment(context, mapping.getDeploymentName());
         if (DeploymentEndpointUtil.resolveServingEndpoint(deployment, InterfaceType.OPENAI_RESPONSES,
                 context.getConfig().getTranslators()) == null) {
             throw new HttpException(HttpStatus.SERVICE_UNAVAILABLE, "Deployment for response_id does not support Responses API");
@@ -220,7 +222,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> sendRequest(ResponseMapping mapping, String targetUrl, Upstream upstream, String perRequestKey) {
-        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey, context)
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, context.getDeployment().getName(), upstream, perRequestKey, context)
                 .compose(response -> {
                     context.setProxyResponse(response);
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
@@ -290,6 +292,9 @@ public class ResponseItemController implements Controller {
         if (idNode.isTextual() && mapping.getUpstreamResponseId().equals(idNode.asText())) {
             object.put("id", dialResponseId);
         }
+        if (mapping.getRouter() != null) {
+            RouterModelFn.rewrite(object, mapping.getRouter());
+        }
         return Buffer.buffer(JsonUtil.serialize(object));
     }
 
@@ -309,7 +314,7 @@ public class ResponseItemController implements Controller {
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024),
-                new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn)));
+                new ResponsesSseListener(RouterModelFn.withRouterModel(proxy, context, mapping.getRouter(), List.of(wrapFn, attachmentsFn, replaceIdFn))));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);

@@ -213,6 +213,10 @@ public class ResourceBaseTest {
                             return Future.succeededFuture(createClaims(authorization));
                         }
 
+                        if (authorization.startsWith("user@")) {
+                            return Future.succeededFuture(createClaims("user", authorization.substring("user@".length())));
+                        }
+
                         if (authorization.startsWith("azp:")) {
                             return Future.succeededFuture(createWorkloadClaims(authorization.substring("azp:".length())));
                         }
@@ -263,29 +267,34 @@ public class ResourceBaseTest {
     }
 
     static ExtractedClaims createClaims(String role) {
+        return createClaims(role, null);
+    }
+
+    // The same claims as createClaims(role), with the project claim set, as a projectPath IdP would give.
+    static ExtractedClaims createClaims(String role, String project) {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("title", "Manager");
-        return new ExtractedClaims(role, List.of(role), role, claims, null, role + " user");
+        return new ExtractedClaims(role, List.of(role), role, claims, project, role + " user", null);
     }
 
     // A workload (service-principal) JWT carrying an azp claim and no user roles.
     static ExtractedClaims createWorkloadClaims(String azp) {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("azp", azp);
-        return new ExtractedClaims(azp, List.of(), azp, claims, null, null);
+        return new ExtractedClaims(azp, List.of(), azp, claims, null, null, null);
     }
 
     // A token with neither a user id (no "sub") nor a project claim: nothing identifies the caller, so
     // features that need a per-principal bucket have nothing to work with.
     static ExtractedClaims createSubjectLessClaims() {
-        return new ExtractedClaims(null, List.of(), "hash", ProxyUtil.MAPPER.createObjectNode(), null, null);
+        return new ExtractedClaims(null, List.of(), "hash", ProxyUtil.MAPPER.createObjectNode(), null, null, null);
     }
 
     // Token carrying only Azure v1 appid (no azp) — used to assert the appid fallback is not honored.
     static ExtractedClaims createAppidClaims(String appid) {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("appid", appid);
-        return new ExtractedClaims(appid, List.of(), appid, claims, null, null);
+        return new ExtractedClaims(appid, List.of(), appid, claims, null, null, null);
     }
 
     static ApiKeyData createAdminAppKey() {

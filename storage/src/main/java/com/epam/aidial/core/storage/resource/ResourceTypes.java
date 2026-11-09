@@ -29,6 +29,7 @@ public enum ResourceTypes implements ResourceType {
     APP_TYPE_SCHEMA("app_type_schemas", "schemas", true, TimeUnit.DAYS.toMillis(30)),
     CATALOG_SCHEMA("catalog_schemas", true, TimeUnit.DAYS.toMillis(30)),
     INTERCEPTOR("interceptors", true, TimeUnit.DAYS.toMillis(30)),
+    ROUTER("routers", true, TimeUnit.DAYS.toMillis(30)),
     TRANSLATOR("translators", true, TimeUnit.DAYS.toMillis(30)),
     PLUGIN("plugins", true, TimeUnit.DAYS.toMillis(30)),
     ROLE("roles", true, TimeUnit.DAYS.toMillis(30)),
@@ -40,7 +41,8 @@ public enum ResourceTypes implements ResourceType {
     RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5)),
     SKILL("skills", false, TimeUnit.MINUTES.toMillis(5)),
     BACKGROUND_JOB("background_jobs", true, TimeUnit.MINUTES.toMillis(5)),
-    PROJECT("projects", false, TimeUnit.MINUTES.toMillis(5));
+    PROJECT("projects", false, TimeUnit.MINUTES.toMillis(5)),
+    ALIAS("aliases", true, TimeUnit.DAYS.toMillis(30));
 
     /**
      * Types published on the resource topic: those the resource subscribe API or the config replicas consume.
@@ -51,7 +53,7 @@ public enum ResourceTypes implements ResourceType {
      */
     public static final Set<ResourceType> EVENT_TYPES = Set.of(
             FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
-            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, TRANSLATOR, PLUGIN, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
+            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, ROUTER, TRANSLATOR, PLUGIN, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
             POLICY, POLICY_ASSIGNMENT, SKILL, PROJECT);
 
     private final String group;
@@ -86,6 +88,7 @@ public enum ResourceTypes implements ResourceType {
             case "app_type_schemas", "schemas" -> APP_TYPE_SCHEMA;
             case "catalog_schemas" -> CATALOG_SCHEMA;
             case "interceptors" -> INTERCEPTOR;
+            case "routers" -> ROUTER;
             case "translators" -> TRANSLATOR;
             case "plugins" -> PLUGIN;
             case "roles" -> ROLE;
@@ -97,6 +100,7 @@ public enum ResourceTypes implements ResourceType {
             case "response_mappings" -> RESPONSE_MAPPING;
             case "skills" -> SKILL;
             case "projects" -> PROJECT;
+            case "aliases" -> ALIAS;
             default -> throw new IllegalArgumentException("Unsupported resource type: " + group);
         };
     }

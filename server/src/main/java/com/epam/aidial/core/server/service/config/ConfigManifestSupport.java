@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
@@ -25,6 +26,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentMan
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRouterManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
@@ -66,14 +68,15 @@ public class ConfigManifestSupport {
             Map.entry("Plugin", 2),
             Map.entry("Translator", 3),
             Map.entry("Interceptor", 4),
-            Map.entry("Role", 5),
-            Map.entry("Key", 6),
-            Map.entry("Route", 7),
-            Map.entry("Model", 8),
-            Map.entry("ToolSet", 9),
-            Map.entry("Application", 10),
-            Map.entry("Policy", 11),
-            Map.entry("PolicyAssignment", 12));
+            Map.entry("Router", 5),
+            Map.entry("Role", 6),
+            Map.entry("Key", 7),
+            Map.entry("Route", 8),
+            Map.entry("Model", 9),
+            Map.entry("ToolSet", 10),
+            Map.entry("Application", 11),
+            Map.entry("Policy", 12),
+            Map.entry("PolicyAssignment", 13));
 
     /**
      * Sorts a manifest list so a kind that other kinds can reference (e.g. {@code Interceptor})
@@ -89,6 +92,7 @@ public class ConfigManifestSupport {
             Map.entry("Schema", "schemas"),
             Map.entry("CatalogSchema", "catalog_schemas"),
             Map.entry("Interceptor", "interceptors"),
+            Map.entry("Router", "routers"),
             Map.entry("Translator", "translators"),
             Map.entry("Plugin", "plugins"),
             Map.entry("Role", "roles"),
@@ -106,12 +110,16 @@ public class ConfigManifestSupport {
         if (live != null) {
             scratch.setModels(new HashMap<>(live.getModels()));
             scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
+            // a copy: mutateScratch writes into the scratch, never into the live config
+            scratch.setRouters(new HashMap<>(live.getRouters()));
             scratch.setTranslators(new HashMap<>(live.getTranslators()));
             scratch.setPlugins(new HashMap<>(live.getPlugins()));
             scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
             scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
             scratch.setApplications(new HashMap<>(live.getApplications()));
             scratch.setToolsets(new HashMap<>(live.getToolsets()));
+            // aliases are not written through manifests, but their names are taken: a manifest must not reuse one
+            scratch.setAliases(new HashMap<>(live.getAliases()));
             scratch.setRoles(new HashMap<>(live.getRoles()));
             scratch.setKeys(new HashMap<>(live.getKeys()));
             scratch.getRoutes().putAll(live.getRoutes());
@@ -135,6 +143,8 @@ public class ConfigManifestSupport {
                 }
                 case AdminInterceptorManifest interceptor ->
                         scratch.getInterceptors().put(parsed.name().name(), interceptor.spec());
+                case AdminRouterManifest router ->
+                        scratch.getRouters().put(parsed.name().name(), router.spec());
                 case AdminTranslatorManifest translator ->
                         scratch.getTranslators().put(parsed.name().name(), translator.spec());
                 case AdminPluginManifest plugin ->
@@ -185,7 +195,7 @@ public class ConfigManifestSupport {
     /**
      * Shared by {@link ConfigValidationService#validateOnly} (precheck) and the real-apply
      * {@code applyX} methods on {@link ConfigApplyService}: non-null iff {@code parsed}'s short
-     * name is already claimed by a different model/application/interceptor/toolset in
+     * name is already claimed by a different model/application/interceptor/router/toolset in
      * {@code scratch}. See {@link ConfigPostProcessor#isDeploymentIdTakenByAnotherDeploymentType}.
      */
     static String validateDeploymentIdUniqueness(Config scratch, ResourceTypes type, ParsedName parsed) {
@@ -257,6 +267,8 @@ public class ConfigManifestSupport {
             case "CatalogSchema" -> new AdminCatalogSchemaManifest(entry.kind(), entry.name(), entry.spec());
             case "Interceptor" -> new AdminInterceptorManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Interceptor.class));
+            case "Router" -> new AdminRouterManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Router.class));
             case "Translator" -> new AdminTranslatorManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Translator.class));
             case "Plugin" -> new AdminPluginManifest(entry.kind(), entry.name(),

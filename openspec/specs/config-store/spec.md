@@ -84,9 +84,9 @@ SHALL answer `500` and keep the previous config.
 
 ### Requirement: Merged sources
 Core SHALL serve the union of the file config and the blobs of the `platform` bucket for `models`, `interceptors`,
-`translators`, `plugins`, `roles`, `keys`, `routes`, `schemas`, `catalog_schemas`, `applications`, `toolsets`,
-`policies` and `policy_assignments`, plus the `settings/platform/global` overlay. `public`-bucket applications and
-toolsets SHALL NOT enter the merged config.
+`translators`, `routers`, `plugins`, `roles`, `keys`, `routes`, `schemas`, `catalog_schemas`, `applications`,
+`toolsets`, `policies` and `policy_assignments`, plus the `settings/platform/global` overlay. `public`-bucket
+applications and toolsets SHALL NOT enter the merged config.
 
 #### Scenario: Blob model is a deployment
 - **WHEN** an admin sends `PUT /v1/models/platform/m1` with `{"type":"chat","endpoint":"http://host/chat"}`
@@ -97,11 +97,15 @@ toolsets SHALL NOT enter the merged config.
   declaration, then `POST /v1/ops/config/reload`
 - **THEN** the reload answers `200` with a `plugins` object holding both `file-plugin` and `p1`
 
+#### Scenario: Blob router survives a reload
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-blob` with a valid router and then `POST /v1/ops/config/reload`
+- **THEN** `r-blob` still resolves as a deployment, and `GET /v1/routers/platform/r-blob` answers `200`
+
 ### Requirement: Blob wins on a name clash
 A blob entity SHALL replace, as a whole, the file entity of the same type with the same short name (models,
-interceptors, translators, plugins, roles, applications, toolsets) or, for schemas, the same `$id`; no field of the
-file entity SHALL survive. Requests and references resolve those types by that name, so the rebuild puts the blob
-entity at the file entity's map key and replaces it there.
+interceptors, translators, routers, plugins, roles, applications, toolsets) or, for schemas, the same `$id`; no field
+of the file entity SHALL survive. Requests and references resolve those types by that name, so the rebuild puts the
+blob entity at the file entity's map key and replaces it there.
 
 #### Scenario: Blob model shadows the file model
 - **WHEN** the file defines model `test-model-v1` and a blob `models/platform/test-model-v1` declares
@@ -117,6 +121,13 @@ entity at the file entity's map key and replaces it there.
 - **WHEN** the file declares plugin `file-plugin` with `settings.greeting: "hi"` and a blob
   `plugins/platform/file-plugin` declares `settings.greeting: "hello"`, and the config reloads
 - **THEN** `POST /v1/ops/config/reload` answers a `plugins.file-plugin` whose `settings.greeting` is `hello`, once
+
+#### Scenario: Blob router shadows the file router
+- **WHEN** the file defines router `r1` with `userRoles: ["analysts"]` and an admin writes
+  `routers/platform/r1` with `userRoles: ["default"]`, `baseUrl` and `interfaces.openaiChatCompletions: {}` only,
+  and the config reloads
+- **THEN** `GET /v1/routers` lists `r1` once for a caller with role `default` and not for one with role `analysts`
+  only
 
 ### Requirement: Keys and routes never shadowed
 Keys and routes are not resolved by name (a key by its secret `key` value, a route by its `paths`), so a file entry of
@@ -177,6 +188,13 @@ the previous config; under `skip` it SHALL drop that entity alone and record it.
 - **WHEN** the blob `models/platform/broken-blob-model` holds `{ this is not json ` and the config reloads with
   `config.onInvalidEntity` unset
 - **THEN** the reload answers `200`, the other entities load, and the broken model is recorded as invalid
+
+#### Scenario: Invalid router recorded under skip
+- **WHEN** the blob `routers/platform/r-bad` declares `interceptors: ["i1"]` (written to storage directly, not
+  through the Configuration API) and the config reloads with `config.onInvalidEntity: skip`
+- **THEN** the other entities load, `r-bad` is not a deployment, `GET /v1/admin/health/config` lists
+  `routers/platform/r-bad` among the skipped entities, and `GET /v1/routers/platform/r-bad` answers `200` with
+  `status: "invalid"`
 
 ### Requirement: Dangling interceptor reference
 A model interceptor that does not resolve (a dangling reference) SHALL be checked on every write, and on a rebuild
@@ -344,12 +362,20 @@ deleted secret before answering `204`.
 - **THEN** `Api-key: secret-rotate-old` gets `401` and `Api-key: secret-rotate-new` gets `200`
 
 ### Requirement: Deployment id uniqueness on write
-A `PUT` of a model, interceptor, application or toolset SHALL answer `409`
+A `PUT` of a model, interceptor, router, application or toolset SHALL answer `409`
 `Deployment ID '<name>' is already used by a different entity` when a deployment of another of those types already
 has that name in the merged config.
 
 #### Scenario: Model name taken by an application
 - **WHEN** the merged config has application `x` and an admin sends `PUT /v1/models/platform/x`
+- **THEN** Core answers `409` and writes nothing
+
+#### Scenario: Router name taken by a model
+- **WHEN** the merged config has model `gpt-4` and an admin sends `PUT /v1/routers/platform/gpt-4`
+- **THEN** Core answers `409` and writes nothing
+
+#### Scenario: Model name taken by a router
+- **WHEN** the merged config has router `r1` and an admin sends `PUT /v1/models/platform/r1`
 - **THEN** Core answers `409` and writes nothing
 
 ### Requirement: Schema id on write
@@ -364,8 +390,9 @@ changes the `$id` of an existing blob or uses a `$id` another schema of that typ
 ### Requirement: Write rejected with 422
 A config `PUT` SHALL answer `422` `{"validationWarnings": [{"field": ..., "message": ...}]}` and write nothing when a
 model breaks a rebuild invariant (pricing, interfaces, translator refs, catalog properties) or, unless soft mode is
-on, references an interceptor absent from the merged config; when a translator or an `overridePaths` entry is
-invalid, whatever the mode; and when a plugin declaration fails as plugin-registry defines.
+on, references an interceptor absent from the merged config; when a router breaks a write rule of router-deployment;
+when a translator or an `overridePaths` entry is invalid, whatever the mode; and when a plugin declaration fails as
+plugin-registry defines.
 
 #### Scenario: Unknown interceptor
 - **WHEN** an admin sends `PUT /v1/models/platform/cr-unknown` with `interceptors: ["unknown-interceptor"]` and no
@@ -381,6 +408,23 @@ invalid, whatever the mode; and when a plugin declaration fails as plugin-regist
 - **WHEN** an admin sends `PUT /v1/plugins/platform/p1` with settings its loaded provider rejects
 - **THEN** Core answers `422` with a warning whose `field` starts with `settings`, and `GET` on the plugin answers
   `404`
+
+#### Scenario: Router with interceptors rejected on write
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-bad` with `{"baseUrl": "http://localhost:4848", "interfaces":
+  {"openaiChatCompletions": {}}, "interceptors": ["i1"]}`
+- **THEN** Core answers `422` with one warning on `interceptors` whose message contains `A router declares no
+  interceptors`, and `GET /v1/routers/platform/r-bad` answers `404`
+
+#### Scenario: Router with a translator mismatch rejected on write
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-bad` with `{"baseUrl": "http://localhost:4848", "interfaces":
+  {"openaiChatCompletions": {}, "anthropicMessages": {"translator": {"out": "openaiChatCompletions", "baseUrl":
+  "http://t"}}}}`
+- **THEN** Core answers `422` with a body containing `requires mode 'translator'`
+
+#### Scenario: Typed router properties rejected on write
+- **WHEN** an admin sends a typed router whose `applicationProperties` break its schema while
+  `config.write.softValidation` is `true`
+- **THEN** Core answers `422` and writes nothing
 
 ### Requirement: Soft validation
 With `config.write.softValidation: true` (default `false`), a model write whose only failure is a dangling reference
@@ -531,7 +575,7 @@ string`) or kind `Bundle` SHALL answer `400`; a non-admin `403`. An unknown kind
 
 ### Requirement: Manifest names
 A manifest `name` SHALL be `<segment>/<bucket>/<name>` with segment `settings`, `schemas`, `catalog_schemas`,
-`plugins`, `interceptors`, `translators`, `roles`, `keys`, `routes`, `models`, `toolsets`, `applications`,
+`plugins`, `interceptors`, `translators`, `routers`, `roles`, `keys`, `routes`, `models`, `toolsets`, `applications`,
 `policies` or `policy_assignments` matching `kind`; bucket `platform`, or `public` for `Application` and `ToolSet`;
 one segment matching the entity-name pattern (policies may add one folder). `Settings` SHALL be
 `settings/platform/global`.
@@ -544,11 +588,15 @@ one segment matching the entity-name pattern (policies may add one folder). `Set
 - **WHEN** a manifest has `kind: "Plugin"` and `name: "plugins/platform/p1"` with a valid `spec`
 - **THEN** that entry is accepted
 
+#### Scenario: Router manifest in the public bucket
+- **WHEN** a manifest has `kind: "Router"` and `name: "routers/public/r"`
+- **THEN** that entry fails with `'name' bucket segment must be 'platform', got 'public'`
+
 ### Requirement: Batch dependency order
 Core SHALL process a batch in kind order `Settings`, `Schema`/`CatalogSchema`, `Plugin`, `Translator`,
-`Interceptor`, `Role`, `Key`, `Route`, `Model`, `ToolSet`, `Application`, `Policy`, `PolicyAssignment` (input
-order within a kind), report results in that order, and resolve each entry's references against the merged config
-plus the batch's earlier accepted entries.
+`Interceptor`, `Router`, `Role`, `Key`, `Route`, `Model`, `ToolSet`, `Application`, `Policy`, `PolicyAssignment`
+(input order within a kind), report results in that order, and resolve each entry's references against the merged
+config plus the batch's earlier accepted entries.
 
 #### Scenario: Model before its interceptor in the input
 - **WHEN** a batch lists a `Model` referencing interceptor `i1` before the `Interceptor` `interceptors/platform/i1`
@@ -557,6 +605,14 @@ plus the batch's earlier accepted entries.
 #### Scenario: Plugin reported before the translator
 - **WHEN** a batch lists a `Translator` before a `Plugin`
 - **THEN** the results list the `Plugin` entry first
+
+#### Scenario: Router applied with its in-batch translator
+- **WHEN** an admin applies, in this input order, a `Model`, then a `Router` `routers/platform/r-batch` with
+  `{"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {"mode":
+  "translator", "translator": "t-batch"}}}`, then the `Translator` `translators/platform/t-batch` converting
+  `anthropicMessages` to `openaiChatCompletions`
+- **THEN** Core answers `200` with all `APPLIED`, results ordered translator, router, model, and
+  `GET /v1/routers/platform/r-batch` answers `200`
 
 ### Requirement: Validate endpoint
 `/v1/admin/validate` SHALL write nothing and answer `{"valid": <n>, "failed": <n>, "results": [{"entityId", "status",
@@ -571,6 +627,16 @@ plus the batch's earlier accepted entries.
 #### Scenario: Dangling reference without precheck
 - **WHEN** the same body carries `"precheck": false`
 - **THEN** Core answers `200` with `valid: 0`, `failed: 1`, status `FAILED`, and the model is not written
+
+#### Scenario: Router manifest with a legacy endpoint fails
+- **WHEN** an admin validates one `Router` manifest `routers/platform/r-bad` whose spec has `endpoint:
+  http://router/chat` and `interfaces.openaiChatCompletions: {}`
+- **THEN** that result is `FAILED` with an error containing `A router declares interfaces, not endpoint`, and
+  `POST /v1/admin/apply` with the same body and `"precheck": false` answers the same result and writes nothing
+
+#### Scenario: Model manifest named after a file router fails
+- **WHEN** an admin validates one `Model` manifest `models/platform/r1` while the file defines router `r1`
+- **THEN** that result is `FAILED` with error `Deployment ID 'r1' is already used by a different entity`
 
 ### Requirement: Apply with precheck
 `/v1/admin/apply` with `precheck` true SHALL validate the whole batch first; on any failure it SHALL write nothing and
@@ -615,9 +681,9 @@ and `Allow: GET` before any authorization check; `HEAD` and `PATCH` fall through
 
 ### Requirement: File migration
 `POST /v1/admin/config/file/migrate` with `{"types": [...] | ["all"] (default all), "dryRun": <bool, default false>}`
-SHALL copy each file entity of those types missing from the `platform` bucket into a blob through the apply path,
-answering `200` `{"results": [{"kind", "resourceUrl", "key", "status", "reason"}]}`. An unsupported type SHALL answer
-`400`; a non-admin `403`. The file is not changed.
+SHALL copy each file entity of those types (`routers` included) missing from the `platform` bucket into a blob
+through the apply path, answering `200` `{"results": [{"kind", "resourceUrl", "key", "status", "reason"}]}`. An
+unsupported type SHALL answer `400`; a non-admin `403`. The file is not changed.
 
 #### Scenario: Models migrated, then skipped
 - **WHEN** an admin sends `{"types": ["models"]}` twice
@@ -627,6 +693,11 @@ answering `200` `{"results": [{"kind", "resourceUrl", "key", "status", "reason"}
 #### Scenario: Unsupported type
 - **WHEN** an admin sends `{"types": ["not-a-real-type"]}`
 - **THEN** Core answers `400`
+
+#### Scenario: File router migrated
+- **WHEN** the file defines router `r1` and an admin sends `{"types": ["routers"]}`
+- **THEN** the answer has `resourceUrl: "routers/platform/r1"`, `kind: "Router"`, `status: "migrated"`, and
+  `GET /v1/routers/platform/r1` answers `200`
 
 ### Requirement: Migration dry run
 With `dryRun: true` the migration SHALL write nothing and report `would_migrate`, `would_skip` or `would_fail`
@@ -663,3 +734,23 @@ or another blob's name. Core SHALL NOT rename a schema to avoid a collision.
 #### Scenario: Unusable schema name
 - **WHEN** the file schema's `$id` ends in `bad~schema~name`
 - **THEN** the result is `failed` with the `$id` as `key` and no `resourceUrl`
+
+### Requirement: Router managed in place
+A router written or deleted through the Configuration API SHALL be visible on return as a deployment: after a
+`PUT` the router answers requests and is listed by `GET /v1/routers` for a caller its `userRoles` allow; after a
+`DELETE` it answers `404` on both.
+
+#### Scenario: Blob router serves at once
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-blob` with `{"baseUrl": "http://localhost:4848",
+  "userRoles": ["analysts"], "interfaces": {"openaiChatCompletions": {}}}` and Core answers `200`
+- **THEN** `GET /v1/routers` by a caller with role `analysts` lists `r-blob`, and
+  `POST /openai/deployments/r-blob/chat/completions` by that caller is forwarded to the router
+
+#### Scenario: Deleted router gone at once
+- **WHEN** an admin sends `DELETE /v1/routers/platform/r-blob` and Core answers `204`
+- **THEN** `GET /v1/routers/r-blob` answers `404`
+
+#### Scenario: Rejected write leaves nothing behind
+- **WHEN** an admin's `PUT /v1/routers/platform/r-bad` is answered `422` and the admin retries a valid body with
+  `If-None-Match: *`
+- **THEN** Core answers `200`

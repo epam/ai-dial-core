@@ -74,6 +74,15 @@ public enum RouteTemplate {
             "^/+openai/models$",
             "/openai/models"
     ),
+    // one segment: /v1/routers/platform/{path} is the Configuration API (CONFIG_RESOURCE)
+    ROUTER(
+            "^/+v1/routers/(?<id>[^/]+)$",
+            "/v1/routers/{id}"
+    ),
+    ROUTERS(
+            "^/+v1/routers$",
+            "/v1/routers"
+    ),
 
     APPLICATION(
             "^/+openai/applications/(?<id>.+?)$",
@@ -110,6 +119,17 @@ public enum RouteTemplate {
     PLATFORM_APP_TOOLSET_RESOURCE_METADATA(
             "^/v1/metadata/(applications|toolsets)/(?<bucket>platform)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/platform/{path}"
+    ),
+
+    // Admin-managed aliases stored in public storage, managed through ConfigResourceController. Any bucket matches so that
+    // a bucket other than public answers 404 from EntityBucketBinding; RESOURCE and RESOURCE_METADATA never accept aliases.
+    ALIAS_RESOURCE(
+            "^/v1/(aliases)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "/v1/aliases/{bucket}/{path}"
+    ),
+    ALIAS_RESOURCE_METADATA(
+            "^/v1/metadata/(aliases)/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
+            "/v1/metadata/aliases/{bucket}/{path}"
     ),
 
     // V2 whole-resource (folder-as-resource) routes.
@@ -150,13 +170,13 @@ public enum RouteTemplate {
     ),
 
     CONFIG_RESOURCE(
-            "^/v1/(models|interceptors|translators|plugins|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
+            "^/v1/(models|interceptors|translators|routers|plugins|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
                     + "/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
 
     CONFIG_RESOURCE_METADATA(
-            "^/v1/metadata/(models|interceptors|translators|plugins|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
+            "^/v1/metadata/(models|interceptors|translators|routers|plugins|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
                     + "/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
@@ -167,7 +187,8 @@ public enum RouteTemplate {
     ),
 
     ADMIN_FILE_CONFIG(
-            "^/v1/admin/config/file/(?<type>models|interceptors|translators|plugins|roles|keys|routes|schemas|catalog_schemas|settings|applications|toolsets)(?:/(?<name>.+))?$",
+            "^/v1/admin/config/file/(?<type>models|interceptors|translators|routers|plugins|roles|keys|routes|schemas|catalog_schemas|settings"
+                    + "|applications|toolsets|aliases)(?:/(?<name>.+))?$",
             "/v1/admin/config/file/{type}/{name}"
     ),
 
@@ -342,6 +363,10 @@ public enum RouteTemplate {
     USER_INFO(
             "^/v1/user/info$",
             "/v1/user/info"
+    ),
+    USER_ROLE_ASSIGNMENTS(
+            "^/v1/user/role-assignments$",
+            "/v1/user/role-assignments"
     ),
     USER_LIMITS(
             "^/v1/user/limits$",

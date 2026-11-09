@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.function.AutoShareDeploymentFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
@@ -67,6 +68,7 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
 
     @Override
     protected BufferingReadStream.BaseEventListener createListener(Proxy proxy, ProxyContext context) {
-        return new BaseChatCompletionController.ChatCompletionSseListener(List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
+        return new BaseChatCompletionController.ChatCompletionSseListener(
+                RouterModelFn.withRouterModel(proxy, context, List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context))));
     }
 }

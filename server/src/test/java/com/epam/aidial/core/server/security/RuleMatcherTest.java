@@ -87,9 +87,9 @@ class RuleMatcherTest {
                 List.of("user"), Map.of("title", List.of("Software Engineer")), false);
 
         verifyOnAccessToken(List.of(rule("email", Rule.Function.CONTAIN, "@example.com")),
-                List.of("admin"), Map.of("email", List.of("foo_bar@example.com")), true);
+                List.of("admin"), Map.of("email", "foo_bar@example.com"), true);
         verifyOnAccessToken(List.of(rule("email", Rule.Function.CONTAIN, "@example.com")),
-                List.of("user"), Map.of("email", List.of("foo_bar@mail.com")), false);
+                List.of("user"), Map.of("email", "foo_bar@mail.com"), false);
         verifyOnAccessToken(List.of(rule("email", Rule.Function.CONTAIN, "@example.com")),
                 List.of("user"), Map.of(), false);
 
@@ -150,11 +150,11 @@ class RuleMatcherTest {
                 List.of("user"), Map.of("title", List.of("Software Engineer")), false);
 
         verifyOnAccessToken(List.of(rule("email", Rule.Function.CONTAIN, "@example.com"), rule("roles", Rule.Function.EQUAL, "dial")),
-                List.of("admin"), Map.of("email", List.of("foo_bar@example.com")), true);
+                List.of("admin"), Map.of("email", "foo_bar@example.com"), true);
         verifyOnAccessToken(List.of(rule("email", Rule.Function.CONTAIN, "@example.com"), rule("roles", Rule.Function.EQUAL, "dial")),
-                List.of("dial"), Map.of("email", List.of("foo_bar@example2.com")), true);
+                List.of("dial"), Map.of("email", "foo_bar@example2.com"), true);
         verifyOnAccessToken(List.of(rule("email", Rule.Function.CONTAIN, "@example.com"), rule("roles", Rule.Function.EQUAL, "dial")),
-                List.of("user"), Map.of("email", List.of("foo_bar@mail.com")), false);
+                List.of("user"), Map.of("email", "foo_bar@mail.com"), false);
         verifyOnAccessToken(List.of(rule("email", Rule.Function.CONTAIN, "@example.com"), rule("roles", Rule.Function.EQUAL, "dial")),
                 List.of("user"), Map.of(), false);
 
@@ -189,18 +189,29 @@ class RuleMatcherTest {
     void testMatchOnRolesAndClaims() {
         ObjectNode claims = ProxyUtil.MAPPER.valueToTree(Map.of("email", "a@example.com"));
 
-        Assertions.assertTrue(RuleMatcher.match(List.of("dial"), claims, List.of()));
-        Assertions.assertTrue(RuleMatcher.match(List.of("dial"), claims, List.of(rule("roles", Rule.Function.EQUAL, "dial"))));
-        Assertions.assertTrue(RuleMatcher.match(List.of(), claims, List.of(rule("email", Rule.Function.CONTAIN, "@example.com"))));
-        Assertions.assertFalse(RuleMatcher.match(List.of("dial"), null, List.of(rule("email", Rule.Function.TRUE))));
-        Assertions.assertFalse(RuleMatcher.match(List.of("dial"), claims, List.of(rule("roles", Rule.Function.EQUAL, "admin"))));
+        Assertions.assertTrue(RuleMatcher.match(List.of("dial"), "a@example.com", claims, List.of()));
+        Assertions.assertTrue(RuleMatcher.match(List.of("dial"), "a@example.com", claims, List.of(rule("roles", Rule.Function.EQUAL, "dial"))));
+        Assertions.assertTrue(RuleMatcher.match(List.of(), "a@example.com", claims, List.of(rule("email", Rule.Function.CONTAIN, "@example.com"))));
+        Assertions.assertFalse(RuleMatcher.match(List.of("dial"), null, null, List.of(rule("email", Rule.Function.TRUE))));
+        Assertions.assertFalse(RuleMatcher.match(List.of("dial"), "a@example.com", claims, List.of(rule("roles", Rule.Function.EQUAL, "admin"))));
+    }
+
+    @Test
+    void testEmailMatchesTheResolvedAddressNotTheEmailClaim() {
+        ObjectNode claims = ProxyUtil.MAPPER.valueToTree(Map.of("email", "jane@mail.com", "upn", "jane@example.com"));
+
+        Assertions.assertTrue(RuleMatcher.match(List.of(), "jane@example.com", claims, List.of(rule("email", Rule.Function.EQUAL, "jane@example.com"))));
+        Assertions.assertFalse(RuleMatcher.match(List.of(), "jane@example.com", claims, List.of(rule("email", Rule.Function.EQUAL, "jane@mail.com"))));
+        Assertions.assertFalse(RuleMatcher.match(List.of(), null, claims, List.of(rule("email", Rule.Function.TRUE))));
+        Assertions.assertTrue(RuleMatcher.match(List.of(), null, claims, List.of(rule("upn", Rule.Function.EQUAL, "jane@example.com"))));
     }
 
     void verifyOnAccessToken(List<Rule> rules, List<String> userRoles, Map<String, Object> userClaims, boolean expected) {
         ProxyContext context = Mockito.mock(ProxyContext.class);
         Mockito.when(context.getUserRoles()).thenReturn(userRoles);
         ObjectNode root = ProxyUtil.MAPPER.valueToTree(userClaims);
-        ExtractedClaims claims = new ExtractedClaims("sub", userRoles, "hash", root, null, null);
+        String userEmail = userClaims.get("email") instanceof String email ? email : null;
+        ExtractedClaims claims = new ExtractedClaims("sub", userRoles, "hash", root, null, null, userEmail);
         Mockito.when(context.getExtractedClaims()).thenReturn(claims);
         boolean actual = RuleMatcher.match(context, rules);
         Assertions.assertEquals(expected, actual);

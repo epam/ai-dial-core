@@ -6,10 +6,12 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouteType;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
@@ -126,6 +128,16 @@ public class ProxyContext {
     private ObjectNode requestTree;
     // the hosts of the in-process calls this pass's plugin makes, one per attempt
     private List<ChildPass> childPasses;
+    // the router's verdict when a router in decision mode chose the deployment of this pass
+    private RouterDecision decision;
+    // X-DIAL-APPLICATION-PROPERTIES for a typed router, built once in the pass that reaches it, before any connection
+    private String routerPropertiesHeader;
+    // the upstream's whole buffered body arrived: a failure after this is not a broken answer to fall back from
+    private boolean upstreamBodyReceived;
+    // what the serving deployment's report returned for this pass's span, for the router row of a decided request
+    private TokenStatsTracker.UsageStats spanUsageStats;
+    // the client's body bytes as they arrived, kept while a decision may still fall back to another candidate
+    private Buffer originalRequestBody;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -376,8 +388,14 @@ public class ProxyContext {
         return callTree != null;
     }
 
+    /**
+     * Sets the body and, on the first call only, the time it was read: a re-parse of the saved bytes (a fallback to
+     * a router's next candidate, a pre-flight skip) is not a second read.
+     */
     public void setRequestBodyWithTimestamp(Buffer body) {
         requestBody = body;
-        requestBodyTimestamp = System.currentTimeMillis();
+        if (requestBodyTimestamp == 0) {
+            requestBodyTimestamp = System.currentTimeMillis();
+        }
     }
 }

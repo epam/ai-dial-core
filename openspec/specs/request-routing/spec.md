@@ -282,10 +282,10 @@ the resource routes.
 
 ### Requirement: Config entity routes
 Core SHALL route `GET`, `POST`, `PUT` and `DELETE` on `/v1/{type}/{bucket}/{path}` and `/v1/metadata/{type}/{bucket}/{path}`,
-`{type}` one of `models`, `interceptors`, `translators`, `plugins`, `roles`, `keys`, `routes`, `schemas`,
-`catalog_schemas`, `settings`, `policies`, `policy_assignments` and `{bucket}` `[a-zA-Z0-9_-]+`, to the config
-entity API, methods it does not serve included, so these four never fall through to the config routes; the `405`
-answers are config-store's.
+`{type}` one of `models`, `interceptors`, `translators`, `routers`, `plugins`, `roles`, `keys`, `routes`, `schemas`,
+`catalog_schemas`, `settings`, `policies`, `policy_assignments` and `{bucket}` `[a-zA-Z0-9_-]+`, to the config entity
+API, methods it does not serve included, so these four never fall through to the config routes; the `405` answers are
+config-store's.
 
 #### Scenario: Model entity
 - **WHEN** an authenticated client sends `PUT /v1/models/platform/new%20model`
@@ -298,6 +298,11 @@ answers are config-store's.
 #### Scenario: Plugin metadata
 - **WHEN** an admin sends `GET /v1/metadata/plugins/platform/`
 - **THEN** the config entity metadata API answers the stored plugin blobs
+
+#### Scenario: Router entity
+- **WHEN** an authenticated client sends `GET /v1/routers/platform/r1`
+- **THEN** the config entity API receives type `routers`, bucket `platform`, path `r1`, while `GET /v1/routers/r1`
+  (one segment) still reaches the single-router lookup
 
 ### Requirement: HEAD and PATCH on config entity URLs
 Core SHALL NOT route `HEAD` or `PATCH` on the config entity URLs to the config entity API: no built-in route serves
@@ -324,7 +329,8 @@ handler, and `GET /v2/metadata/{group}/{bucket}/{path}[/files[/{filePath}]]` to 
 Core SHALL route `GET /v1/admin/health/config`, `POST /v1/admin/validate`, `POST /v1/admin/apply`,
 `POST /v1/admin/config/file/migrate`, `POST /v1/ops/config/reload` and `GET`, `POST`, `PUT` and `DELETE` on
 `/v1/admin/config/file/{type}[/{name}]` (`{type}` a config entity type other than `policies` and
-`policy_assignments`, or `applications`, `toolsets`; `plugins` included) to the admin config API (config-store), and
+`policy_assignments`, or `applications`, `toolsets`; `routers`, `plugins` included) to the admin config API
+(config-store), and
 `POST /v1/admin/system-export` to the admin system export handler.
 
 #### Scenario: File config entry
@@ -334,6 +340,10 @@ Core SHALL route `GET /v1/admin/health/config`, `POST /v1/admin/validate`, `POST
 #### Scenario: File plugin entry
 - **WHEN** an admin sends `GET /v1/admin/config/file/plugins/file-plugin`
 - **THEN** the admin file config API receives type `plugins` and name `file-plugin`
+
+#### Scenario: File router entry
+- **WHEN** an admin sends `GET /v1/admin/config/file/routers/r1`
+- **THEN** the admin file config API receives type `routers` and name `r1`
 
 ### Requirement: Bucket, user and schema routes
 Core SHALL route `GET /v1/bucket`, `GET /v1/user/info`, `GET /v1/user/limits`, `GET /v1/user/usage`,
@@ -463,3 +473,15 @@ Core SHALL stop at the first config route matching method and path: when the cal
 - **WHEN** route `forbidden` has `"paths": ["/v1/forbidden"]`, `"methods": ["GET"]`, `"userRoles": []` and an
   authenticated client sends `GET /v1/forbidden`
 - **THEN** Core answers `403` with body `Forbidden route`
+
+### Requirement: Router listing routes
+Core SHALL route `GET /v1/routers` to the router listing and `GET /v1/routers/{id}`, where `{id}` is one segment, to
+the single router lookup (see router-deployment). Both are tried before the resource routes.
+
+#### Scenario: Router listing
+- **WHEN** an authenticated client sends `GET /v1/routers`
+- **THEN** the router listing answers
+
+#### Scenario: Single router
+- **WHEN** an authenticated client sends `GET /v1/routers/my%20router`
+- **THEN** the router lookup receives id `my router`

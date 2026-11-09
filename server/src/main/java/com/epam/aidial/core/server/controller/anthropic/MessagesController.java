@@ -19,6 +19,7 @@ import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
@@ -106,7 +107,8 @@ public class MessagesController extends MessagesBaseController {
                                                     description = "Number of upstream attempts performed before returning the response"),
                                             @ApiHeader(name = "anthropic-ratelimit-unified-status",
                                                     description = "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. "
-                                                            + "Sent only when the caller has a day/week/month cost limit; "
+                                                            + "Sent only when the caller has a day/week/month cost limit, or with enforced budgets "
+                                                            + "exactly one budget in their cost object; "
                                                             + "the upstream's own `anthropic-ratelimit-*` headers are removed"),
                                             @ApiHeader(name = "anthropic-ratelimit-unified-representative-claim", description = "Always `overage`"),
                                             @ApiHeader(name = "anthropic-ratelimit-unified-overage-status", description = "Same value as `anthropic-ratelimit-unified-status`"),
@@ -122,11 +124,13 @@ public class MessagesController extends MessagesBaseController {
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 415),
                             @ApiResponse(code = 429, description = "DIAL limit reached, with an Anthropic-format error body "
-                                    + "(`{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`). A reached spend cap gives `billing_error`, "
+                                    + "(`{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`). A reached spend cap, or with enforced budgets "
+                                    + "used-up budgets for the model, gives `billing_error`, "
                                     + "`x-should-retry: false` and `anthropic-ratelimit-unified-*` headers describing the cap; "
                                     + "an unreadable spend counter of a caller with a cost limit gives `billing_error` with only `x-should-retry: false` and "
                                     + "`anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`; "
-                                    + "a token, request or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only",
+                                    + "a token, request or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only; "
+                                    + "with enforced budgets, no budget for the model gives the DIAL error body naming the model and the cost object",
                                     body = @ApiSchema(implementation = AnthropicErrorData.class)),
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
@@ -186,13 +190,14 @@ public class MessagesController extends MessagesBaseController {
     protected void processResponse(ProxyResponse proxyResponse) {
         if (!context.isStreamingRequest()) {
             proxyResponse.body()
+                    .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                     .compose(body -> handleNonStreamingResponse(proxyResponse, body))
                     .onFailure(this::handleProxyConnectionError);
             return;
         }
 
         BufferingReadStream responseStream = createResponseStream(proxyResponse,
-                () -> new MessagesSseListener(List.of(new CollectMessagesTokenUsageFn(proxy, context))));
+                () -> new MessagesSseListener(RouterModelFn.withRouterModel(proxy, context, List.of(new CollectMessagesTokenUsageFn(proxy, context)))));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -207,7 +212,10 @@ public class MessagesController extends MessagesBaseController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(ProxyResponse proxyResponse, Buffer body) {
+    private Future<Void> handleNonStreamingResponse(ProxyResponse proxyResponse, Buffer upstreamBody) {
+        // the one buffered answer Core does not otherwise re-serialize: a decided request pays a parse for the router name
+        Buffer body = context.getDecision() != null && proxyResponse.statusCode() == 200
+                ? RouterModelFn.rewrite(upstreamBody, context.getDecision().getRouterName()) : upstreamBody;
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();

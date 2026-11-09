@@ -162,7 +162,7 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.respond(any(HttpStatus.class), anyString()))
                 .thenAnswer(invocation -> complete(textContext));
-        when(proxy.getDeploymentService().findDeployment(context, "unknown"))
+        when(proxy.getDeploymentService().findCallableDeployment(context, "unknown"))
                 .thenThrow(new ResourceNotFoundException("not found error"));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
@@ -183,7 +183,7 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.respond(any(HttpStatus.class), anyString()))
                 .thenAnswer(invocation -> complete(textContext));
-        when(proxy.getDeploymentService().findDeployment(context, "test"))
+        when(proxy.getDeploymentService().findCallableDeployment(context, "test"))
                 .thenReturn(deployment);
         doThrow(new PermissionDeniedException("permission error"))
                 .when(consentService)
@@ -208,7 +208,7 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.respond(any(HttpException.class)))
                 .thenAnswer(invocation -> complete(textContext));
-        when(proxy.getDeploymentService().findDeployment(context, "test"))
+        when(proxy.getDeploymentService().findCallableDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
 
@@ -231,7 +231,7 @@ public class ResponsesControllerTest {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
         when(context.respond(any(HttpException.class)))
                 .thenAnswer(invocation -> complete(textContext));
-        when(proxy.getDeploymentService().findDeployment(context, "test"))
+        when(proxy.getDeploymentService().findCallableDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment))).thenReturn(Future.succeededFuture(
                 new RateLimitResult(HttpStatus.TOO_MANY_REQUESTS, "rate limit error", null, 0)));
@@ -346,7 +346,7 @@ public class ResponsesControllerTest {
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(response.getStatusCode()).thenReturn(200);
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
-        when(proxy.getDeploymentService().findDeployment(context, "test"))
+        when(proxy.getDeploymentService().findCallableDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
@@ -464,7 +464,7 @@ public class ResponsesControllerTest {
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
-        when(proxy.getDeploymentService().findDeployment(context, "test"))
+        when(proxy.getDeploymentService().findCallableDeployment(context, "test"))
                 .thenReturn(deployment);
         when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
@@ -596,7 +596,7 @@ public class ResponsesControllerTest {
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
-        when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
+        when(proxy.getDeploymentService().findCallableDeployment(context, "test")).thenReturn(deployment);
         when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
@@ -709,7 +709,7 @@ public class ResponsesControllerTest {
             return null;
         }).when(response).write(any(Buffer.class), any());
         when(response.end(any(Buffer.class))).thenReturn(Future.succeededFuture());
-        when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
+        when(proxy.getDeploymentService().findCallableDeployment(context, "test")).thenReturn(deployment);
         when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
@@ -786,7 +786,7 @@ public class ResponsesControllerTest {
         when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
         when(context.respond(any(HttpStatus.class), anyString()))
                 .thenAnswer(invocation -> complete(textContext));
-        when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
+        when(proxy.getDeploymentService().findCallableDeployment(context, "test")).thenReturn(deployment);
         when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
@@ -842,7 +842,7 @@ public class ResponsesControllerTest {
         when(proxyResponse.statusCode()).thenReturn(200);
         when(proxyResponse.body()).thenReturn(Future.succeededFuture(responseBody));
         when(proxyResponse.headers()).thenReturn(new HeadersMultiMap());
-        when(proxy.getDeploymentService().findDeployment(context, "test")).thenReturn(deployment);
+        when(proxy.getDeploymentService().findCallableDeployment(context, "test")).thenReturn(deployment);
         when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment)))
                 .thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTaskExecutor()).thenReturn(taskExecutor(vertx));
@@ -931,7 +931,7 @@ public class ResponsesControllerTest {
 
         await(testContext);
 
-        verify(deploymentService, never()).findDeployment(any(), any());
+        verify(deploymentService, never()).findCallableDeployment(any(), any());
         verify(context).setProxyApiKeyData(argThat(data -> data.getInterceptorIndex() == 1));
         verify(httpClient).request(argThat(opts ->
                 "interceptor2".equals(opts.getHost())
@@ -962,7 +962,7 @@ public class ResponsesControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(context.getApiKeyData()).thenReturn(apiKeyData);
         DeploymentService deploymentService = proxy.getDeploymentService();
-        when(deploymentService.findDeployment(context, "actual-model")).thenReturn(deployment);
+        when(deploymentService.findCallableDeployment(context, "actual-model")).thenReturn(deployment);
         when(proxy.getRateLimiter().limitWithSpendCaps(eq(context), eq(deployment))).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
         when(proxy.getUpstreamRouteProvider().get(eq(deployment), isNull(), any(), isNull())).thenReturn(upstreamRoute);
@@ -986,8 +986,8 @@ public class ResponsesControllerTest {
 
         await(textContext);
 
-        verify(deploymentService).findDeployment(context, "actual-model");
-        verify(deploymentService, never()).findDeployment(any(), eq("ignored"));
+        verify(deploymentService).findCallableDeployment(context, "actual-model");
+        verify(deploymentService, never()).findCallableDeployment(any(), eq("ignored"));
         verify(httpClient).request(argThat(opts ->
                 "actual-model".equals(opts.getHost())
                 && "/responses".equals(opts.getURI().toString())));

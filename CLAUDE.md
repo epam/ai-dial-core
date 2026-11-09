@@ -70,7 +70,7 @@ AI DIAL Core is an **HTTP reverse proxy / API gateway** for LLMs built on **Java
 Two config files govern the system:
 
 - **Static settings** (`aidial.settings.json`): Vert.x server/client options, blob storage provider, Redis connection, identity providers, encryption keys, metrics endpoints. Not hot-reloaded.
-- **Dynamic config** (`aidial.config.json`): models, applications, API keys, roles, interceptors, routes, toolsets, rate-limit pricing. Hot-reloaded at runtime.
+- **Dynamic config** (`aidial.config.json`): models, applications, routers, API keys, roles, interceptors, routes, toolsets, rate-limit pricing. Hot-reloaded at runtime.
 
 See `sample/` for examples of both files; `server/src/main/resources/aidial.settings.json` contains the built-in defaults.
 

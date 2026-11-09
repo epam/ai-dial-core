@@ -2,6 +2,7 @@ package com.epam.aidial.core.config.validation;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Router;
 import jakarta.validation.ConstraintValidatorContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -165,5 +166,45 @@ class CustomApplicationsConformToTypeSchemasValidatorTest {
         config.setApplications(applications);
 
         assertTrue(validator.isValid(config, context));
+    }
+
+    private static final String ROUTER_SCHEMA_ID = "https://dial.test/router-type";
+    private static final String ROUTER_SCHEMA = "{"
+            + "\"$schema\": \"https://dial.epam.com/application_type_schemas/schema#\","
+            + "\"$id\": \"" + ROUTER_SCHEMA_ID + "\","
+            + "\"dial:applicationTypeDisplayName\": \"Router type\","
+            + "\"properties\": {\"tier\": {\"type\": \"string\","
+            + "  \"dial:meta\": {\"dial:propertyKind\": \"server\", \"dial:propertyOrder\": 1}}},"
+            + "\"required\": [\"tier\"]"
+            + "}";
+
+    @Test
+    void routerWhosePropertiesBreakTheSchemaFails() {
+        config.setApplicationTypeSchemas(Map.of(ROUTER_SCHEMA_ID, ROUTER_SCHEMA));
+        config.setRouters(Map.of("r1", router(Map.of("tier", 5))));
+
+        assertFalse(validator.isValid(config, context));
+    }
+
+    @Test
+    void routerWhosePropertiesMatchTheSchemaPasses() {
+        config.setApplicationTypeSchemas(Map.of(ROUTER_SCHEMA_ID, ROUTER_SCHEMA));
+        config.setRouters(Map.of("r1", router(Map.of("tier", "medium"))));
+
+        assertTrue(validator.isValid(config, context));
+    }
+
+    @Test
+    void untypedRouterIsSkipped() {
+        config.setRouters(Map.of("r1", new Router()));
+
+        assertTrue(validator.isValid(config, context));
+    }
+
+    private static Router router(Map<String, Object> properties) {
+        Router router = new Router();
+        router.setApplicationTypeSchemaId(URI.create(ROUTER_SCHEMA_ID));
+        router.setApplicationProperties(properties);
+        return router;
     }
 }

@@ -14,6 +14,9 @@ import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -206,7 +209,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
     @SneakyThrows
     void testApplyAcceptsModelWithInBatchTranslator() {
         // Manifest lists the Model first on purpose: DEPENDENCY_ORDER_COMPARATOR sorts Translator (3)
-        // ahead of Model (8), and mutateScratch stages each success, so the translator is in scratch
+        // ahead of Model (9), and mutateScratch stages each success, so the translator is in scratch
         // by the time the model is validated. Author order must not matter.
         String body = """
                 {
@@ -273,6 +276,91 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertEquals("plugins/platform/apply-order-plugin", results.get(0).get("entityId").asText(), response::body);
         assertEquals("translators/platform/apply-order-translator", results.get(1).get("entityId").asText(), response::body);
         verify(send(HttpMethod.GET, "/v1/plugins/platform/apply-order-plugin", null, "", "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyRouterWithItsInBatchTranslator() {
+        // input order model, router, translator; processing order translator (3), router (5), model (9)
+        String body = """
+                {"manifests": [
+                  {"kind": "Model", "name": "models/platform/apply-order-model",
+                   "spec": {"type": "chat", "endpoint": "http://localhost:4848/chat"}},
+                  {"kind": "Router", "name": "routers/platform/r-batch",
+                   "spec": {"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {},
+                     "anthropicMessages": {"mode": "translator", "translator": "t-batch"}}}},
+                  {"kind": "Translator", "name": "translators/platform/t-batch",
+                   "spec": {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "http://localhost:4848/translate"}}
+                ]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        List<String> order = new ArrayList<>();
+        for (JsonNode result : results) {
+            assertEquals("APPLIED", result.get("status").asText(), response::body);
+            order.add(result.get("entityId").asText());
+        }
+        assertEquals(List.of("translators/platform/t-batch", "routers/platform/r-batch", "models/platform/apply-order-model"), order);
+        verify(send(HttpMethod.GET, "/v1/routers/platform/r-batch", null, "", "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyTypedRouterWithItsInBatchSchema() {
+        String body = """
+                {"manifests": [
+                  {"kind": "Router", "name": "routers/platform/r-typed-batch",
+                   "spec": {"baseUrl": "http://localhost:4848", "applicationTypeSchemaId": "https://dial.test/batch-type",
+                     "applicationProperties": {"tier": "medium"}, "interfaces": {"openaiChatCompletions": {}}}},
+                  {"kind": "Schema", "name": "schemas/platform/batch-type",
+                   "spec": {"$schema": "https://dial.epam.com/application_type_schemas/schema#", "$id": "https://dial.test/batch-type",
+                     "dial:applicationTypeDisplayName": "Batch router type",
+                     "properties": {"tier": {"type": "string", "dial:meta": {"dial:propertyKind": "server", "dial:propertyOrder": 1}}},
+                     "required": ["tier"]}}
+                ]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        for (JsonNode result : ProxyUtil.MAPPER.readTree(response.body()).get("results")) {
+            assertEquals("APPLIED", result.get("status").asText(), response::body);
+        }
+        verify(send(HttpMethod.GET, "/v1/routers/platform/r-typed-batch", null, "", "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyRouterWithLegacyEndpointFailsWithoutPrecheck() {
+        String body = """
+                {"precheck": false, "manifests": [{"kind": "Router", "name": "routers/platform/r-bad",
+                  "spec": {"endpoint": "http://router/chat", "interfaces": {"openaiChatCompletions": {}}}}]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode result = ProxyUtil.MAPPER.readTree(response.body()).get("results").get(0);
+        assertEquals("FAILED", result.get("status").asText());
+        assertTrue(result.get("error").asText().contains("A router declares interfaces, not endpoint"), response::body);
+        verify(send(HttpMethod.GET, "/v1/routers/platform/r-bad", null, "", "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyPrecheckRejectsBatchWithFailingRouterAtomically() {
+        String body = """
+                {"manifests": [
+                  {"kind": "Translator", "name": "translators/platform/t-mixed",
+                   "spec": {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "http://localhost:4848/translate"}},
+                  {"kind": "Router", "name": "routers/platform/r-mixed",
+                   "spec": {"baseUrl": "http://localhost:4848", "interceptors": ["i1"], "interfaces": {"openaiChatCompletions": {}}}}
+                ]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        List<String> statuses = new ArrayList<>();
+        ProxyUtil.MAPPER.readTree(response.body()).get("results").forEach(r -> statuses.add(r.get("status").asText()));
+        assertEquals(List.of("SKIPPED", "FAILED"), statuses, response::body);
+        verify(send(HttpMethod.GET, "/v1/translators/platform/t-mixed", null, "", "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/routers/platform/r-mixed", null, "", "authorization", "admin"), 404);
     }
 
     @Test

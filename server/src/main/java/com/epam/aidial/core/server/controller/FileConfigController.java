@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
@@ -9,6 +10,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
@@ -224,6 +226,43 @@ public class FileConfigController implements Controller {
             ),
             @ApiOperation(
                     method = "GET",
+                    path = "/v1/admin/config/file/aliases",
+                    operationId = "listFileConfigAliases",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced aliases",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/aliases/{name}",
+                    operationId = "getFileConfigAlias",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Alias name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Alias.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
                     path = "/v1/admin/config/file/interceptors",
                     operationId = "listFileConfigInterceptors",
                     tags = {"Admin"},
@@ -250,6 +289,43 @@ public class FileConfigController implements Controller {
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Interceptor.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/routers",
+                    operationId = "listFileConfigRouters",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced routers",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/routers/{name}",
+                    operationId = "getFileConfigRouter",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Router name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Router.class, EntityMetadata.class})),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 405),
@@ -655,6 +731,7 @@ public class FileConfigController implements Controller {
         return switch (resourceType) {
             case MODEL -> config.getModels();
             case INTERCEPTOR -> config.getInterceptors();
+            case ROUTER -> config.getRouters();
             case TRANSLATOR -> config.getTranslators();
             case PLUGIN -> config.getPlugins();
             case ROLE -> config.getRoles();
@@ -664,6 +741,7 @@ public class FileConfigController implements Controller {
             case CATALOG_SCHEMA -> config.getCatalogSchemas();
             case APPLICATION -> config.getApplications();
             case TOOL_SET -> config.getToolsets();
+            case ALIAS -> config.getAliases();
             // GLOBAL_SETTINGS has no per-entity map — handled by handleSettings before this helper.
             // Other types (FILE, PROMPT, CONVERSATION) are not part of the file-config surface;
             // the route regex restricts {type} to the closed set above.
