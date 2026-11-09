@@ -233,6 +233,26 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         assertConsented("applications/public/move-dst-app", false);
     }
 
+    @Test
+    void testApplicationCopiedOverAnApprovedOneStartsUnapproved() {
+        verify(send(HttpMethod.PUT, "/v1/applications/public/approved-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/applications/public/approved-app", null,
+                reviewedResources("applications/public/approved-app"), "authorization", "admin"), 200);
+        // same declaration, different endpoint: the content an administrator never reviewed
+        verify(send(HttpMethod.PUT, "/v1/applications/public/unreviewed-app", null,
+                DECLARING_APP_BODY.replace("http://application1/v1/completions", "http://unreviewed/v1/completions"),
+                "authorization", "admin", "If-None-Match", "*"), 200);
+
+        verify(send(HttpMethod.POST, "/v1/ops/resource/copy", null, """
+                {"sourceUrl": "applications/public/unreviewed-app", "destinationUrl": "applications/public/approved-app", "overwrite": true}
+                """, "authorization", "admin"), 200);
+        Response copied = send(HttpMethod.GET, "/v1/applications/public/approved-app", null, "", "authorization", "admin");
+        assertTrue(copied.body().contains("http://unreviewed/v1/completions"), () -> "Body: " + copied.body());
+
+        assertConsented("applications/public/approved-app", false);
+    }
+
     private void assertConsented(String applicationId, boolean consented) {
         Response status = send(HttpMethod.GET, "/v1/admin-consent/" + applicationId, null, "", "authorization", "admin");
         verify(status, 200);

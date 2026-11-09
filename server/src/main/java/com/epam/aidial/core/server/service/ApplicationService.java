@@ -395,7 +395,12 @@ public class ApplicationService {
                 }
             }
         }
-        resourceService.deleteResource(adminConsentOf(resource), EtagHeader.ANY);
+        deleteAdminConsent(resource);
+    }
+
+    /** A copy is another application: it starts unapproved, also when it overwrites an approved one. */
+    public void deleteAdminConsent(ResourceDescriptor application) {
+        resourceService.deleteResource(adminConsentOf(application), EtagHeader.ANY);
     }
 
     /**
@@ -407,7 +412,7 @@ public class ApplicationService {
         if (grant != null) {
             resourceService.putResource(adminConsentOf(destination), grant, EtagHeader.ANY);
         } else {
-            resourceService.deleteResource(adminConsentOf(destination), EtagHeader.ANY);
+            deleteAdminConsent(destination);
         }
     }
 
