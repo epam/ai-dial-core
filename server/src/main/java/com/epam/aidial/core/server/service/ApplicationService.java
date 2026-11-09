@@ -397,7 +397,9 @@ public class ApplicationService {
                 }
             }
         }
-        deleteAdminConsent(resource);
+        if (declaresDependencies(application)) {
+            deleteAdminConsent(resource);
+        }
     }
 
     /** Deletes the application's admin-consent record, if any. */
@@ -412,7 +414,7 @@ public class ApplicationService {
      * The approval follows a moved application: it binds the declared resources, which a move does not change. An
      * application the move overwrites loses its own approval.
      */
-    public void moveAdminConsent(ResourceDescriptor source, ResourceDescriptor destination) {
+    private void moveAdminConsent(ResourceDescriptor source, ResourceDescriptor destination) {
         ResourceDescriptor destinationRecord = adminConsentOf(destination);
         if (destinationRecord == null) {
             return;
@@ -443,6 +445,15 @@ public class ApplicationService {
     }
 
     public void copyApplication(ResourceDescriptor source, ResourceDescriptor destination, String author, boolean overwrite, Consumer<Application> consumer) {
+        copyApplication(source, destination, author, overwrite, false, consumer);
+    }
+
+    /**
+     * The copy never keeps the destination's approval; with {@code carryApproval} (a move, publication approval) the
+     * source's approval comes along.
+     */
+    public void copyApplication(ResourceDescriptor source, ResourceDescriptor destination, String author, boolean overwrite,
+                                boolean carryApproval, Consumer<Application> consumer) {
         verifyApplication(source);
         verifyApplication(destination);
 
@@ -545,9 +556,13 @@ public class ApplicationService {
             return serializeEncrypted(destination, application);
         });
 
-        // a copy is another application: the destination's approval never covers it, also when copying the files fails
+        // settled before the files are copied, so a copy failing on them never leaves new content under an old approval
         if (declares.isTrue()) {
-            deleteAdminConsent(destination);
+            if (carryApproval) {
+                moveAdminConsent(source, destination);
+            } else {
+                deleteAdminConsent(destination);
+            }
         }
 
         if (isPublicOrReview) {

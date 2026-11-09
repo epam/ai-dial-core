@@ -85,7 +85,7 @@ public class ResourceOperationService {
         }
 
         if (destination.getType() == APPLICATION) {
-            applicationService.copyApplication(source, destination, null, overwriteIfExists, app -> {
+            applicationService.copyApplication(source, destination, null, overwriteIfExists, true, app -> {
                 if (ApplicationService.isActive(app)) {
                     throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + source.getUrl());
                 }
@@ -132,7 +132,6 @@ public class ResourceOperationService {
         }
 
         if (destination.getType() == APPLICATION) {
-            applicationService.moveAdminConsent(source, destination);
             applicationService.deleteApplication(source, EtagHeader.ANY);
         } else if (destination.getType() == TOOL_SET) {
             toolSetService.deleteToolset(context, source, EtagHeader.ANY);

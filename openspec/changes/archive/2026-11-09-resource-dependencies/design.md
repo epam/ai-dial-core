@@ -189,14 +189,14 @@ Rejected: keeping exact-then-first-folder. The result would depend on which entr
 
 ### 9. The approval follows the application
 
-Deleting an application deletes its record. A move, and publication approval (a copy of the review copy and its
-deletion), copy the source's record to the destination before the source is deleted; when the source has none, the
-destination's record is deleted, so an application moved over an approved one does not inherit that approval. Every
-copy of an application (`/v1/ops/resource/copy`, a move, a review copy, publication approval) deletes the destination's
-record as soon as it writes the application, before it copies the application's files, so a copy that fails on its files
-does not leave the new content under the old approval; a move and publication approval then put the source's record. It
-is skipped when neither the copied nor the overwritten application has a list: a record has no effect without one, and
-such copies add no storage call. A record of an application removed from a config file stays; while the application is absent it cannot be
+Deleting an application deletes its record. `ApplicationService.copyApplication` settles the destination's record
+right after it writes the application, before it copies the application's files: a copy (`/v1/ops/resource/copy`, a
+review copy) deletes it; a move and publication approval (`carryApproval`) put the source's record there, or delete the
+destination's when the source has none, so an application moved over an approved one does not inherit that approval and
+a copy failing on its files never leaves new content under an old approval. All of it, deletion included, applies only
+when the copied, overwritten or deleted application has a list: a record has no effect without one, and other
+applications add no storage call. A record kept after its list was removed by an update therefore stays when the
+application is deleted or moved, and covers the same list again at that path (the approval is bound to the list). A record of an application removed from a config file stays; while the application is absent it cannot be
 withdrawn (the id no longer resolves), and the application added back with the same list is approved again.
 
 Rejected: dropping the approval on move. Publication would always lose it and force a second review of the same list.
@@ -238,6 +238,8 @@ describe, so the deltas leave them out.
   copy dropped from a publication is deleted as a plain resource and keeps its record. → Documented for config files. A
   declaring application copied to that url deletes the record (section 9), so a swap under an approved review copy starts
   unapproved; a left-behind record has no effect on an application without a list.
+- **Moves and withdrawals.** A move into a user's bucket carries the approval; a withdrawal racing a move of the same
+  application can be undone by the move putting the source's record. Both need an administrator. → Accepted.
 - **Per-request grants passed down a chain** (`ApiKeyData.sharePerRequestPermissions`, development code): the child key
   shares mutable permission sets with the caller's, and on an interceptor hop an entry from the initial deployment
   replaces the receiver's instead of adding to it. The resolver copies before it writes, but the issue stays. → Raised

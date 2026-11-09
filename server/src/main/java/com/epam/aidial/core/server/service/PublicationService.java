@@ -849,11 +849,10 @@ public class PublicationService {
             ResourceDescriptor to = ResourceDescriptorFactory.fromPublicUrl(targetUrl);
 
             if (from.getType() == ResourceTypes.APPLICATION) {
-                applicationService.copyApplication(from, to, publication.getDisplayAuthor(), false, app -> {
+                applicationService.copyApplication(from, to, publication.getDisplayAuthor(), false, true, app -> {
                     app.setReference(ProxyUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });
-                applicationService.moveAdminConsent(from, to);
             } else if (from.getType() == ResourceTypes.TOOL_SET) {
                 Map<CredentialsLevel, Boolean> credentialsToCopy = getCredentialsLevelsToCopy(resource);
                 toolSetService.copyToolSet(context, from, to, publication.getDisplayAuthor(), false,

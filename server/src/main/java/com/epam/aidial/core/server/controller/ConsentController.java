@@ -208,6 +208,7 @@ public class ConsentController {
     }
 
     private void requireAdmin() {
+        // fail-closed: with no admin rules configured nobody is an administrator here
         if (!proxy.getAccessService().hasExplicitAdminAccess(context)) {
             throw new PermissionDeniedException("Only administrators may manage application admin consent");
         }
