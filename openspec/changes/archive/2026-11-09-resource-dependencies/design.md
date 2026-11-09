@@ -3,8 +3,7 @@
 ## Context
 
 See proposal.md for why. Terms: an approval is an application's admin consent (the `ConsentGrant` record); the
-initiator is the user who started the request (the originating user of the design documents). Today's behaviour, on
-`development`:
+initiator is the user who started the request. Today's behaviour, on `development` (line numbers at `3157af667`):
 
 - A per-request key is prepared before the enhancement chain runs and stored after it. The chat path calls
   `setupProxyApiKeyData` (`DeploymentPostController.java:248`, `ApiKeyData.initFromContext`, `ApiKeyData.java:84`),
@@ -40,7 +39,7 @@ initiator is the user who started the request (the originating user of the desig
 - Application lifecycle: `ApplicationService.deleteApplication` (`ApplicationService.java:354`);
   `ResourceOperationService.moveResourceLocked` (`ResourceOperationService.java:65`, deletes the source at `:135`) and
   `copyResource`; publication approval copies the review copy and deletes it
-  (`PublicationService.copyReviewToTargetResources`, `PublicationService.java:826`, `copyApplication` at `:803`).
+  (`PublicationService.copyReviewToTargetResources`, `PublicationService.java:826`, `copyApplication` at `:852`).
 - `ExternalServiceAuditLog` (`ExternalServiceAuditLog.java:19`) has the outcome and actor-evidence helpers an audit
   logger needs.
 
@@ -147,9 +146,9 @@ inherits it), and runs in the application MCP chain. It returns at once for a de
 has no section. On a chained call the called application's own section is resolved for the same initiator.
 
 Grants are written into the key's own `perRequestSharedResources`, merged copy-on-write: the entry may be shared with the
-calling key's receivers, and the calling key's record is never written. This departs from the main design (§7.1, D-02),
-where grants went into `perRequestReceivers` through `PerRequestPermissionService.addPermissions` and propagated down the
-chain: here each hop resolves its own list instead, and a grant reaches a child only when the application shares it.
+calling key's receivers, and the calling key's record is never written. The grants do not go into `perRequestReceivers` through
+`PerRequestPermissionService.addPermissions`, which would propagate them down the chain: each hop resolves its own list
+instead, and a grant reaches a child only when the application shares it.
 
 For the MCP proxy, an application with `mcp.forwardPerRequestKey` (the default) creates its key before the chain and
 stores it after, as the chat path does; `McpUpstreamAuthInjector` reuses an assigned key instead of minting another, so a
@@ -165,8 +164,7 @@ A `required` entry that does not pass fails the call with `403 Required resource
 default `400`.
 
 Application routes, feature endpoints, `/v1/deployments/{id}/mcp/resources`, response item endpoints and the toolset
-proxy do not resolve: their keys carry no grant and a `required` entry does not fail them (P-6 of the implementation
-specs).
+proxy do not resolve: their keys carry no grant and a `required` entry does not fail them.
 
 Rejected: resolving once at the root and passing grants down. A called application would inherit the caller's grants
 instead of getting its own approved list.
@@ -175,8 +173,8 @@ instead of getting its own approved list.
 
 A key's rights on a resource are the union of the exact entry and every folder entry above it. A key now has two writers
 (receivers shared by the caller and the resolver), so a narrow exact grant must not hide a wider folder grant, and the
-answer must not depend on map order. This departs from the main design, which kept enforcement unchanged
-(`getPerRequestPermissions`): the change applies to every per-request key.
+answer must not depend on map order. The change applies to every per-request key, not only to keys with dependency
+grants.
 
 Rejected: keeping exact-then-first-folder. The result would depend on which entry the `HashMap` yields first.
 
@@ -186,7 +184,8 @@ Deleting an application deletes its record. A move, and publication approval (a 
 deletion), copy the source's record to the destination before the source is deleted; when the source has none, the
 destination's record is deleted, so an application moved over an approved one does not inherit that approval. A copy
 through `/v1/ops/resource/copy` deletes the destination's record: it starts unapproved, also over an approved
-application. A record of an application removed from a config file stays until it is withdrawn.
+application. A record of an application removed from a config file stays; while the application is absent it cannot be
+withdrawn (the id no longer resolves), and the application added back with the same list is approved again.
 
 Rejected: dropping the approval on move. Publication would always lose it and force a second review of the same list.
 
@@ -222,8 +221,8 @@ describe, so the deltas leave them out.
   background Responses job keeps them up to `backgroundJob.jobTtlMs`. → Documented.
 - **A user's unpublished application cannot be approved.** → Documented; user consent will cover it.
 - **Records that outlive their application.** A config-file application's record stays after it leaves the file; a review
-  copy dropped from a publication is deleted as a plain resource and keeps its record. → Documented for config files;
-  the review copy case is a known limitation of the series (pr3).
+  copy dropped from a publication is deleted as a plain resource and keeps its record, and an application copied to the
+  same review url inherits it. → Documented for config files; the review copy case is open.
 - **Per-request grants passed down a chain** (`ApiKeyData.sharePerRequestPermissions`, development code): the child key
   shares mutable permission sets with the caller's, and on an interceptor hop an entry from the initial deployment
   replaces the receiver's instead of adding to it. The resolver copies before it writes, but the issue stays. → Raised

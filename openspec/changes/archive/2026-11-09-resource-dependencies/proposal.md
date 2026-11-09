@@ -19,7 +19,7 @@ application.
   platform config entity `PUT`, and is a `FAILED` entry in `POST /v1/admin/apply` and `POST /v1/admin/validate`. A
   caller without explicit admin access gets `403` for any non-empty list unless the new static setting
   `applications.allowUserResourceDependencies` (default `false`) is on. Applications from a config file are not
-  checked on load; an entry that breaks the rules never resolves.
+  checked on load; an entry with a wrong `kind`, empty or invalid `access` or an invalid `target.url` never resolves.
 - Admin consent: `GET`, `POST` and `DELETE /v1/admin-consent/{deployment_id}`, for administrators only. `POST` takes
   the list the administrator reviewed and stores the approval only when it equals the application's current list (else
   `409`). `GET` answers `consented`, `stale` and who approved what and when. The approval is one record per application
@@ -42,12 +42,19 @@ Changes to existing behaviour for requests that use no `resource_dependencies`:
 - A per-request key's rights on a resource are the union of every entry that covers it (the exact URL and each folder
   above it). Before, the exact entry alone counted, else the first covering folder in map order.
 - The MCP proxy (applications and toolsets, the toolset tools listing included) mints one per-request key per request
-  and reuses it on a redirect (before, a key per re-entry), and reads the body and runs its enhancement chain on the task
-  executor, not the event loop.
+  and reuses it on a redirect (before, a key per re-entry; MCP deployments have one upstream, so there are no retries).
+  For an application with key forwarding the key is stored before the upstream connect. The proxy reads the body and
+  runs its enhancement chain on the task executor, not the event loop, so an exception there now gets an error answer.
+- A platform application `PUT` decodes its body on the event loop, before the bucket locks (before, on the task
+  executor inside them).
 - Deleting an application, and copying one through `/v1/ops/resource/copy`, also deletes the admin-consent record of
   the deleted application or of the copy's destination: one more storage delete.
-- Moving an application or approving its publication reads the admin-consent record of the source: one more storage
-  read, a write only when a record exists.
+- Moving an application or approving its publication reads the admin-consent record of the source and writes it to the
+  destination, or deletes the destination's record when the source has none: one more read and one more write or delete.
+  An absent record is cached as such in Redis for the type's TTL.
+- `/v1/admin-consent/...` is a built-in route: a configured global route matching that prefix no longer receives it.
+- `POST /v1/consent/{id}` accepts a `resources` section in the consent document (before, an unknown property was `400`);
+  request-time user consent checks ignore it.
 - A platform application `PUT` decodes and checks the body before it takes the bucket locks, so a body that is both
   malformed and a duplicate gets `400` before `409`.
 
@@ -76,8 +83,8 @@ Out of scope:
 
 - `request-routing`: "Bucket, user and schema routes" gains `/v1/admin-consent/{id}`; "Path variable decoding" and
   "Multi-segment ids" cover the admin-consent id.
-- `app-to-model-accounting`: "Attached resources and per-request shares in the key" gains the resolved dependency grants
-  as a source of `perRequestSharedResources`.
+- `app-to-model-accounting`: adds "Dependency grants in the key", the resolved dependency grants as a source of
+  `perRequestSharedResources`.
 - `resource-access-control`: "Grants carried by a per-request key" states the union of covering entries.
 
 ## Impact

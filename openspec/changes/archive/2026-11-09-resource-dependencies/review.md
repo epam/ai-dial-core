@@ -48,7 +48,7 @@ All run locally on JDK 21:
     with `write`; the app's key writes the admin's own folder and gets `403` in the public one. Mutation:
     `lookupInitiatorPermissions` on the full rule list; this test fails (`200` instead of `403`), and so does
     `testInterceptorProtectedAppStillResolvesOnTheRootCall`.
-- `testApplicationCopiedOverAnApprovedOneStartsUnapproved` (`ResourceDependencyConsentApiTest`, 16 tests, passed):
+- `testApplicationCopiedOverAnApprovedOneStartsUnapproved` (`ResourceDependencyConsentApiTest`, 18 tests with the two nested classes, passed):
   copying an application with the same list and another endpoint over an approved one leaves it unapproved. Mutation:
   without the delete in `copyResource` only this test fails (`consented: true`).
 - `npx -y @fission-ai/openspec@1.14.3 validate resource-dependencies --strict`: valid.
