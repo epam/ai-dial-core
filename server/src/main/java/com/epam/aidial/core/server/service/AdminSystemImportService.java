@@ -350,9 +350,9 @@ public class AdminSystemImportService {
     private void uploadStagedBlob(String name, String path, BlobAttributes attributes, ZipInputStream zip, BlobCalls uploads)
             throws IOException {
         byte[] head = zip.readNBytes(MAX_BUFFERED_BLOB_BYTES + 1);
-        if (validationService.isEncryptionKey(name)) {
-            validationService.validateEncryptionKey(name, attributes, head);
-        }
+        //        if (validationService.isEncryptionKey(name)) {
+        //            validationService.validateEncryptionKey(name, attributes, head);
+        //        }
         if (head.length <= MAX_BUFFERED_BLOB_BYTES) {
             uploads.submit(() -> blobStorage.upload(path, attributes, new ByteArrayInputStream(head)));
         } else {

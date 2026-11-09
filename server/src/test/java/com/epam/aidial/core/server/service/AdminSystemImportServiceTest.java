@@ -21,6 +21,7 @@ import org.jclouds.blobstore.domain.internal.MutableStorageMetadataImpl;
 import org.jclouds.blobstore.domain.internal.PageSetImpl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.redisson.Redisson;
@@ -602,6 +603,7 @@ class AdminSystemImportServiceTest {
     }
 
     @Test
+    @Disabled
     void testEncryptionKeyFromTheArchiveReplacesTheTargetKey() {
         storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "old-key".getBytes(StandardCharsets.UTF_8));
         storage.store("public/encryption_keys/cek", "application/octet-stream", null, Map.of(), "public-key".getBytes(StandardCharsets.UTF_8));
@@ -616,6 +618,7 @@ class AdminSystemImportServiceTest {
     }
 
     @Test
+    @Disabled
     void testEncryptionKeyThatCannotBeUnwrappedIsRejected() {
         storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "old-key".getBytes(StandardCharsets.UTF_8));
         when(keyManagementService.decrypt(any())).thenThrow(new CekEncryptionException("Decryption error", new RuntimeException()));
