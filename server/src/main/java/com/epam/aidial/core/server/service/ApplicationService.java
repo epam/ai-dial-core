@@ -201,15 +201,16 @@ public class ApplicationService {
                                AdminManagedFieldsWriteMode adminManagedFieldsWriteMode) {
         // In-memory callers (publication copy, admin apply) provide an authoritative application object.
         putApplication(resource, etag, author, application, preserveForwardAuthToken, adminManagedFieldsWriteMode,
-                ExternalServicesWriteMode.OVERRIDE);
+                ExternalServicesWriteMode.OVERRIDE, false);
     }
 
     public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
                                                                    Application application, boolean preserveForwardAuthToken,
                                                                    AdminManagedFieldsWriteMode adminManagedFieldsWriteMode,
-                                                                   ExternalServicesWriteMode externalServicesWriteMode) {
+                                                                   ExternalServicesWriteMode externalServicesWriteMode,
+                                                                   boolean userAuthored) {
         return writeApplication(resource, etag, author, application, preserveForwardAuthToken, false,
-                adminManagedFieldsWriteMode, externalServicesWriteMode);
+                adminManagedFieldsWriteMode, externalServicesWriteMode, userAuthored);
     }
 
     /**
@@ -220,20 +221,25 @@ public class ApplicationService {
                                                                             String author, Application application,
                                                                             ExternalServicesWriteMode externalServicesWriteMode) {
         return writeApplication(resource, etag, author, application, true, true,
-                AdminManagedFieldsWriteMode.INHERIT_ONLY, externalServicesWriteMode);
+                AdminManagedFieldsWriteMode.INHERIT_ONLY, externalServicesWriteMode, true);
     }
 
     private Pair<ResourceItemMetadata, Application> writeApplication(ResourceDescriptor resource, EtagHeader etag, String author,
                                                                       Application application, boolean preserveForwardAuthToken,
                                                                       boolean inheritForwardAuthToken,
                                                                       AdminManagedFieldsWriteMode adminManagedFieldsWriteMode,
-                                                                      ExternalServicesWriteMode externalServicesWriteMode) {
+                                                                      ExternalServicesWriteMode externalServicesWriteMode,
+                                                                      boolean userAuthored) {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
         MutableObject<List<String>> purgeableExternalServices = new MutableObject<>(List.of());
         MutableObject<Application> toStore = new MutableObject<>(application);
+        MutableBoolean dropApproval = new MutableBoolean();
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
+            boolean declared = declaresDependencies(existing);
+            boolean declares = declaresDependencies(application);
+            dropApproval.setValue(userAuthored ? declared || declares : declared && !declares);
             verifySchemaRichApp(application, existing);
             prepareApplicationFunction(resource, application, existing);
             prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
@@ -246,6 +252,12 @@ public class ApplicationService {
             toStore.setValue(merged);
             return serializeEncrypted(resource, merged);
         });
+
+        // an approval lives only while the list does; the list does not cover the endpoint, so an edit by
+        // a non-administrator drops the approval too
+        if (dropApproval.isTrue()) {
+            deleteAdminConsent(resource);
+        }
 
         // Purge credentials of services this write dropped or changed the auth type of (after commit).
         externalServiceService.purgeApplicationCredentials(resource, purgeableExternalServices.get());

@@ -306,9 +306,8 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testDeletingAnApplicationWithoutListLeavesItsRecord() {
-        // the approval is bound to the list (accepted): an application without one is deleted without touching the
-        // approval store, so a record kept after its list was removed survives and covers the same list again
+    void testRemovingTheListDeletesTheApproval() {
+        // otherwise restoring the list, or a new application at the same path with it, would bring the approval back
         verify(send(HttpMethod.PUT, "/v1/applications/public/delisted-app", null,
                 DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
         verify(send(HttpMethod.POST, "/v1/admin-consent/applications/public/delisted-app", null,
@@ -317,11 +316,12 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
                 {"endpoint": "http://application1/v1/completions", "display_name": "Delisted"}
                 """, "authorization", "admin"), 200);
 
-        verify(send(HttpMethod.DELETE, "/v1/applications/public/delisted-app", null, "", "authorization", "admin"), 200);
-        verify(send(HttpMethod.PUT, "/v1/applications/public/delisted-app", null,
-                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        Response status = send(HttpMethod.GET, "/v1/admin-consent/applications/public/delisted-app", null, "", "authorization", "admin");
+        assertEquals("{\"consented\":false}", status.body(), () -> "Body: " + status.body());
 
-        assertConsented("applications/public/delisted-app", true);
+        verify(send(HttpMethod.PUT, "/v1/applications/public/delisted-app", null,
+                DECLARING_APP_BODY, "authorization", "admin"), 200);
+        assertConsented("applications/public/delisted-app", false);
     }
 
     private void assertConsented(String applicationId, boolean consented) {

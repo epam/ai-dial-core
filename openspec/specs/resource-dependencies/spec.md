@@ -217,6 +217,7 @@ application created again at a deleted one's id SHALL start unapproved.
 - **WHEN** an approved application is deleted and created again with the same list
 - **THEN** `GET /v1/admin-consent/<id>` answers `{"consented": false}`
 
+
 #### Scenario: Move and copy
 - **WHEN** an approved application is moved, and another is copied from it
 - **THEN** the moved one is approved at its new id and nothing remains at the old id; the copy is not approved
@@ -241,6 +242,20 @@ application created again at a deleted one's id SHALL start unapproved.
 - **WHEN** an admin approves a review copy and then updates the publication to another source application with the same
   list and the same target
 - **THEN** the new review copy and, after approval, the published application are not approved
+
+### Requirement: The approval lives only while the list does
+An update that removes the list SHALL delete the approval. A write by a caller without explicit admin access SHALL
+delete the approval of an application that declares a list or declared one before; an administrator's edit SHALL keep
+it.
+
+#### Scenario: List removed and restored
+- **WHEN** an update removes an approved application's list, and a later update restores it
+- **THEN** `GET /v1/admin-consent/<id>` answers `{"consented": false}` after each
+
+#### Scenario: Edited by a non-administrator
+- **WHEN** an administrator changes an approved application's endpoint, and then an org-unit editor does, keeping the
+  list
+- **THEN** the application is approved after the first edit and not after the second
 
 ### Requirement: Dependencies resolved into the per-request key
 On every route of the chat completions, Responses and Messages controllers (`/openai/deployments/{id}/chat/completions`,

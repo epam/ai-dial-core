@@ -23,7 +23,8 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
 
     @Override
     protected JsonObject additionalSettingsOverrides() {
-        return new JsonObject().put("orgUnits", new JsonObject().put("enabled", true));
+        return new JsonObject().put("orgUnits", new JsonObject().put("enabled", true))
+                .put("applications", new JsonObject().put("allowUserResourceDependencies", true));
     }
 
     @BeforeEach
@@ -83,6 +84,62 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
         // the hop reads with the initiator's unit roles, not the calling key's
         assign("public/Acme/Risk", "viewer", "ed");
         assertOnly("event=resource_dependency_grant", captureAuditEvents(APP, () -> readThroughTheApp("api-key", key)));
+    }
+
+    @Test
+    void testUnitEditorEditDropsTheApproval() {
+        String app = "applications/public/Acme/edited-app";
+        String body = """
+                {
+                  "endpoint": "%s",
+                  "display_name": "Edited App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, body.formatted("http://localhost:4850/chat/completions"),
+                "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
+
+        // an administrator's edit keeps the approval
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, body.formatted("http://localhost:4851/chat/completions"),
+                "authorization", "admin"), 200);
+        assertConsented(app, true);
+
+        // the same list behind another endpoint, written by an editor of the unit
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, body.formatted("http://editor.example/chat/completions"),
+                "authorization", "azp:ed"), 200);
+        assertConsented(app, false);
+    }
+
+    @Test
+    void testUnitEditorRemovingTheListDropsTheApproval() {
+        String app = "applications/public/Acme/delisted-app";
+        String declaring = """
+                {
+                  "endpoint": "http://localhost:4850/chat/completions",
+                  "display_name": "Delisted App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, declaring, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
+
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, """
+                {"endpoint": "http://editor.example/chat/completions", "display_name": "Delisted App"}
+                """, "authorization", "azp:ed"), 200);
+        // an administrator restoring the list does not bring the approval back
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, declaring, "authorization", "admin"), 200);
+        assertConsented(app, false);
+    }
+
+    private void assertConsented(String app, boolean consented) {
+        Response status = send(HttpMethod.GET, "/v1/admin-consent/" + app, null, "", "authorization", "admin");
+        verify(status, 200);
+        assertEquals(consented, new JsonObject(status.body()).getBoolean("consented"), () -> "Body: " + status.body());
     }
 
     /** Calls the app; returns what its upstream got reading the unit file with the key it received. */

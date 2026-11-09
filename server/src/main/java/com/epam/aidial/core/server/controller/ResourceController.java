@@ -782,7 +782,8 @@ public class ResourceController extends AccessControlBaseController {
                                 externalServicesWriteMode).getKey();
                     }
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
-                            adminManagedFieldsWriteMode, externalServicesWriteMode).getKey();
+                            adminManagedFieldsWriteMode, externalServicesWriteMode,
+                            !accessService.hasExplicitAdminAccess(context)).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {
