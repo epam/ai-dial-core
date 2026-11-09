@@ -244,6 +244,11 @@ public class GfLogStore implements LogStore {
             append(entry, ProxyUtil.MAPPER.writeValueAsString(usagePerModel), false);
         }
 
+        if (logContext.getDecision() != null) {
+            append(entry, ",\"decision\":", false);
+            append(entry, ProxyUtil.MAPPER.writeValueAsString(logContext.getDecision()), false);
+        }
+
         if (logContext.getDeploymentName() != null) {
             append(entry, ",\"deployment\":\"", false);
             append(entry, logContext.getDeploymentName(), true);

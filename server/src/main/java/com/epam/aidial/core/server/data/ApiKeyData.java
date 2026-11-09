@@ -98,6 +98,10 @@ public class ApiKeyData {
             currentPath = new ArrayList<>(context.getApiKeyData().getExecutionPath());
         }
         String receiver = null;
+        if (context.getDecision() != null) {
+            // the deployment the client called, so the router is the parent of the one it chose
+            currentPath.add(context.getDecision().getRouterName());
+        }
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();
             if (context.getDeployment() instanceof AliasPass pass) {

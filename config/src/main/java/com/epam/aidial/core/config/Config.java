@@ -32,13 +32,13 @@ public class Config {
     // maintain the order of routes defined in the config
     // key: route name (file-sourced) or canonical id "routes/<bucket>/<name>" (blob/API-sourced)
     private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
-    // key: deployment id (short name); shared namespace with applications/toolsets/interceptors
+    // key: deployment id (short name); shared namespace with applications/toolsets/interceptors/routers
     private Map<String, Model> models = Map.of();
-    // key: deployment id (short name); shared namespace with models/toolsets/interceptors
+    // key: deployment id (short name); shared namespace with models/toolsets/interceptors/routers
     private Map<String, Application> applications = Map.of();
-    // key: deployment id (short name); shared namespace with models/applications/interceptors
+    // key: deployment id (short name); shared namespace with models/applications/interceptors/routers
     private Map<String, ToolSet> toolsets = Map.of();
-    // key: deployment id (short name); shared namespace with models/applications/toolsets/interceptors
+    // key: deployment id (short name); shared namespace with models/applications/toolsets/interceptors/routers
     private Map<String, Alias> aliases = Map.of();
     // key: raw API key secret (file-sourced) or canonical id "keys/<bucket>/<name>" (blob/API-sourced)
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
@@ -46,8 +46,10 @@ public class Config {
     // key: role name (short name); not part of the deployment-id namespace above
     private Map<String, Role> roles = new HashMap<>();
     private Set<Integer> retriableErrorCodes = Set.of();
-    // key: deployment id (short name); shared namespace with models/applications/toolsets
+    // key: deployment id (short name); shared namespace with models/applications/toolsets/routers
     private Map<String, Interceptor> interceptors = Map.of();
+    // key: deployment id (short name); shared namespace with models/applications/toolsets/interceptors
+    private Map<String, Router> routers = Map.of();
     // key: translator name, as referenced by interfaces.<type>.translator
     private Map<String, Translator> translators = Map.of();
     // key: role name; replaces the built-in org unit role of that name, or adds a role
@@ -104,6 +106,11 @@ public class Config {
         ToolSet toolSet = toolsets.get(deploymentId);
         if (toolSet != null) {
             return toolSet;
+        }
+
+        Router router = routers.get(deploymentId);
+        if (router != null) {
+            return router;
         }
 
         Interceptor interceptor = interceptors.get(deploymentId);

@@ -11,6 +11,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
@@ -40,6 +41,7 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.server.security.Operation;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
@@ -83,7 +85,7 @@ import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_
 /**
  * Controller for the {@code /v1/{type}/{bucket}/{path}} CONFIG_RESOURCE route — gates on
  * the {@link EntityBucketBinding} allowlist and {@link ConfigAuthorizationService}, then
- * dispatches GET to per-type read handlers and PUT/DELETE for models, interceptors, roles,
+ * dispatches GET to per-type read handlers and PUT/DELETE for models, interceptors, routers, roles,
  * keys, routes, schemas, and the settings singleton. POST is universally 405 with
  * {@code Allow: GET, PUT, DELETE}. PUT is a pure upsert honoring RFC 7232
  * {@code If-None-Match: *} (create-only gate, 412 if exists) and {@code If-Match: <etag>}
@@ -108,6 +110,7 @@ public class ConfigResourceController implements Controller {
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
     private final CatalogSchemaService catalogSchemaService;
+    private final ApplicationSchemaService applicationSchemaService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final String entityType;
     private final String bucket;
@@ -130,6 +133,7 @@ public class ConfigResourceController implements Controller {
         this.applicationService = proxy.getApplicationService();
         this.toolSetService = proxy.getToolSetService();
         this.catalogSchemaService = proxy.getCatalogSchemaService();
+        this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
         this.entityType = entityType;
         this.bucket = bucket;
@@ -283,6 +287,86 @@ public class ConfigResourceController implements Controller {
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Interceptor name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
+            ),
+            // Routers
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/routers/{bucket}/{path}",
+                    operationId = "getPlatformRouter",
+                    tags = {"Routers"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Router name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Router.class, EntityMetadata.class}),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the router", required = true)
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/routers/{bucket}/{path}",
+                    operationId = "savePlatformRouter",
+                    requestBody = @ApiSchema(implementation = Router.class),
+                    tags = {"Routers"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Router name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved router", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = { 
+                            @ApiExtension(name = "x-preview", value = "true") 
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/routers/{bucket}/{path}",
+                    operationId = "deletePlatformRouter",
+                    tags = {"Routers"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Router name"),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -1188,6 +1272,8 @@ public class ConfigResourceController implements Controller {
                     (key, model) -> projectItem(model, key));
             case INTERCEPTOR -> handleSingleGetFromBlob(ResourceTypes.INTERCEPTOR,
                     (key, interceptor) -> projectItem(interceptor, key));
+            case ROUTER -> handleSingleGetFromBlob(ResourceTypes.ROUTER,
+                    (key, router) -> projectItem(router, key));
             case TRANSLATOR -> handleSingleGetFromBlob(ResourceTypes.TRANSLATOR,
                     (key, translator) -> projectItem(translator, key));
             case ROLE -> handleSingleGetFromBlob(ResourceTypes.ROLE,
@@ -1425,6 +1511,8 @@ public class ConfigResourceController implements Controller {
             case MODEL -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.MODEL,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case INTERCEPTOR -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.INTERCEPTOR,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case ROUTER -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTER,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case TRANSLATOR -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.TRANSLATOR,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
@@ -1843,13 +1931,15 @@ public class ConfigResourceController implements Controller {
                         checkModel(m);
                     } else if (entity instanceof Interceptor interceptor) {
                         checkOverridePaths(interceptor);
+                    } else if (entity instanceof Router router) {
+                        checkRouter(router);
                     } else if (entity instanceof Translator t) {
                         checkTranslator(t);
                     } else if (entity instanceof Route route) {
                         checkRoute(route);
                     }
                     ResourceTypes writeType = resourceType();
-                    if (writeType == ResourceTypes.MODEL || writeType == ResourceTypes.INTERCEPTOR) {
+                    if (writeType == ResourceTypes.MODEL || writeType == ResourceTypes.INTERCEPTOR || writeType == ResourceTypes.ROUTER) {
                         rejectDuplicateDeploymentId(writeType, path);
                     }
                     if (spec.isKey()) {
@@ -2021,8 +2111,8 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Rejects a MODEL/INTERCEPTOR/APPLICATION/TOOL_SET write whose short name is already claimed
-     * by a different deployment (of any of those four types) in the live merged Config — the
+     * Rejects a MODEL/INTERCEPTOR/ROUTER/APPLICATION/TOOL_SET write whose short name is already claimed
+     * by a different deployment (of any of those types) in the live merged Config — the
      * partial-update-path counterpart of {@code ConfigPostProcessor.skipOnDuplicate}, which only
      * runs during a full rebuild. See {@link ConfigPostProcessor#isDeploymentIdTakenByAnotherDeploymentType}.
      */
@@ -2093,6 +2183,8 @@ public class ConfigResourceController implements Controller {
         return switch (type) {
             case MODEL -> new WriteSpec(descriptor, Model.class, true, false);
             case INTERCEPTOR -> new WriteSpec(descriptor, Interceptor.class, false, false);
+            // a router carries no encrypted field: DeploymentInterface declares none and a router has no upstreams
+            case ROUTER -> new WriteSpec(descriptor, Router.class, false, false);
             case TRANSLATOR -> new WriteSpec(descriptor, Translator.class, false, false);
             case ROLE -> new WriteSpec(descriptor, Role.class, false, false);
             case PROJECT_KEY -> new WriteSpec(descriptor, Key.class, true, true);
@@ -2176,6 +2268,18 @@ public class ConfigResourceController implements Controller {
             return;
         }
         rejectWithValidationWarnings(warnings);
+    }
+
+    /**
+     * The rules the rebuild enforces on a router ({@link ConfigPostProcessor#validateRouterInvariants}), against the
+     * merged translators, so a router the rebuild would refuse is rejected before its blob is written.
+     */
+    private void checkRouter(Router entity) {
+        Config snapshot = mergedConfigStore.get();
+        List<ValidationWarning> warnings = applicationSchemaService.validateRouter(snapshot != null ? snapshot : new Config(), path, entity);
+        if (!warnings.isEmpty()) {
+            rejectWithValidationWarnings(warnings);
+        }
     }
 
     /**
@@ -2318,6 +2422,7 @@ public class ConfigResourceController implements Controller {
         return switch (ResourceTypes.of(entityType)) {
             case MODEL -> Model.class;
             case INTERCEPTOR -> Interceptor.class;
+            case ROUTER -> Router.class;
             case TRANSLATOR -> Translator.class;
             case ROLE -> Role.class;
             case PROJECT_KEY -> Key.class;

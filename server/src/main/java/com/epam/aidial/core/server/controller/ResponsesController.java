@@ -27,6 +27,7 @@ import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachments
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ExtractTerminalResponseFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
@@ -213,14 +214,42 @@ public class ResponsesController extends BaseDeploymentPostController {
                         context.setInitialDeployment(context.getDeployment().getName());
                         return handleInterceptor(0);
                     }
-                    return proceedToDeployment(request, deploymentName);
+                    return decisions.decideIfRouter(InterfaceType.OPENAI_RESPONSES, Future.succeededFuture(context.getOriginalRequestBody()),
+                                    this::reenterWithCandidate)
+                            .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));
+    }
+
+    /**
+     * Serves the decision's current candidate as if the client had called it: its resolve, its interceptors and
+     * its limits, with the body {@code model} set to its name so the chain applies its override name.
+     */
+    private Future<Void> serveCandidate(ResponsesApiRequest request) {
+        String candidate = context.getDecision().current();
+        return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(candidate)))
+                .compose(ignore -> {
+                    request.setModel(candidate);
+                    if (context.hasNextInterceptor()) {
+                        decisions.handOffToInterceptors(request, candidate);
+                        return handleInterceptor(0);
+                    }
+                    return proceedToDeployment(request, candidate);
+                })
+                .otherwise(error -> handleRequestError(candidate, error));
+    }
+
+    private void reenterWithCandidate() {
+        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
+        serveCandidate(parseBody(context.getOriginalRequestBody()));
     }
 
     private Future<Void> proceedToDeployment(ResponsesApiRequest request, String deploymentName) {
         return verifyLimit()
                 .compose(ignore -> {
+                    if (context.getDecision() != null) {
+                        context.getDecision().setResolving(false);
+                    }
                     // set before startSpan: a trace rooted in a background job gets the longer usage record TTL
                     context.setBackgroundJob(request.isBackground());
                     return proxy.getTokenStatsTracker().startSpan(context);
@@ -258,7 +287,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
         context.setDeployment(deployment);
-        List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, deployment);
+        List<String> interceptors = resolveInterceptors(deployment);
         context.setInterceptors(interceptors);
 
         return null;
@@ -286,6 +315,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         log.info("Received body from client. Length: {}", body.length());
         try {
             context.setRequestBodyWithTimestamp(body);
+            context.setOriginalRequestBody(body);
             ObjectNode tree = ProxyUtil.parseObject(body);
             if (tree.has("previous_response_id")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "previous_response_id is not supported");
@@ -301,6 +331,10 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Void handleRequestError(String deploymentId, Throwable error) {
+        error = decisions.nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
+        if (error == null) {
+            return null;
+        }
         if (error instanceof PermissionDeniedException) {
             respond(HttpStatus.FORBIDDEN, error.getMessage());
             log.warn("Forbidden deployment {}", deploymentId);
@@ -409,6 +443,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         if (!context.isStreamingRequest()) {
             // Read the entire response to replace the response ID with the DIAL ID
             proxyResponse.body()
+                    .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                     .compose(body -> handleNonStreamingResponse(proxyResponse, body))
                     .onFailure(this::handleProxyConnectionError);
             return;
@@ -419,7 +454,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context);
         BufferingReadStream responseStream = createResponseStream(proxyResponse, () -> {
             CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
-            return new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn, extractFn));
+            return new ResponsesSseListener(RouterModelFn.withRouterModel(proxy, context, List.of(wrapFn, attachmentsFn, replaceIdFn, extractFn)));
         });
 
         HttpServerResponse response = context.getResponse();
@@ -496,6 +531,9 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
 
         String upstreamId = idNode.asText();
+        if (context.getDecision() != null) {
+            RouterModelFn.rewrite(object, context.getDecision().getRouterName());
+        }
         Upstream upstream = context.getUpstreamRoute().get();
         if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
             EncryptedContentAffinityUtil.wrapOutputArray(object.path("output"), upstream.getId(), context.getDeployment().getName());
@@ -510,6 +548,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .upstreamKey(upstream.getId())
                 .deploymentName(context.getDeployment().getName())
                 .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
+                .router(context.getDecision() == null ? null : context.getDecision().getRouterName())
                 .build();
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
@@ -528,7 +567,16 @@ public class ResponsesController extends BaseDeploymentPostController {
         Future<Void> completionFuture;
         if (context.isBackgroundJob() && dialId != null) {
             completionFuture = proxy.getBackgroundJobService().deleteJob(dialId)
-                    .compose(deleted -> deleted ? collectTokenUsage(responseBody, dialId) : Future.succeededFuture());
+                    .compose(deleted -> {
+                        if (!deleted) {
+                            return Future.succeededFuture();
+                        }
+                        if (context.getDecision() != null) {
+                            // the stream ended the job, so no poller writes the router row: this pass does
+                            context.getDecision().releaseRow();
+                        }
+                        return collectTokenUsage(responseBody, dialId);
+                    });
         } else {
             // the buffered bytes are the raw upstream frames, so the id has to come from us
             completionFuture = collectTokenUsage(responseBody, dialId);

@@ -96,6 +96,7 @@ tags:
 - name: Publications
 - name: Responses API
 - name: Roles
+- name: Routers
 - name: Routes
 - name: Schemas
 - name: Sharing
@@ -2762,6 +2763,83 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin/config/file/routers:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/routers
+      operationId: listFileConfigRouters
+      responses:
+        "200":
+          description: List of file-sourced routers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/routers/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/routers/{name}"
+      operationId: getFileConfigRouter
+      parameters:
+      - name: name
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Router"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/routes:
     get:
       tags:
@@ -5203,7 +5281,7 @@ paths:
       parameters:
       - name: type
         in: query
-        description: "Filter deployment names by kind (model, application, toolset). Defaults to all kinds."
+        description: "Filter deployment names by kind (model, application, toolset, router). Defaults to all kinds."
         required: false
         schema:
           type: array
@@ -5213,6 +5291,7 @@ paths:
             - model
             - application
             - toolset
+            - router
       responses:
         "200":
           description: Success
@@ -7852,6 +7931,74 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/routers/{bucket}/{path}:
+    get:
+      tags:
+      - Routers
+      summary: "/v1/metadata/routers/{bucket}/{path}"
+      operationId: getRouterMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
           content:
             application/json:
               schema:
@@ -12690,6 +12837,262 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/routers:
+    get:
+      tags:
+      - Deployment listing
+      summary: /v1/routers
+      operationId: getRouters
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDataRouterData"
+  /v1/routers/{bucket}/{path}:
+    get:
+      tags:
+      - Routers
+      summary: "/v1/routers/{bucket}/{path}"
+      operationId: getPlatformRouter
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the router
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Router"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Routers
+      summary: "/v1/routers/{bucket}/{path}"
+      operationId: savePlatformRouter
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Router"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved router
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Routers
+      summary: "/v1/routers/{bucket}/{path}"
+      operationId: deletePlatformRouter
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/routers/{router_name}:
+    get:
+      tags:
+      - Deployment listing
+      summary: "/v1/routers/{router_name}"
+      operationId: getRouter
+      parameters:
+      - name: router_name
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouterData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/routes/{bucket}/{path}:
     get:
       tags:
@@ -16426,11 +16829,13 @@ components:
           Application: "#/components/schemas/AdminApplicationManifest"
           Policy: "#/components/schemas/AdminPolicyManifest"
           PolicyAssignment: "#/components/schemas/AdminPolicyAssignmentManifest"
+          Router: "#/components/schemas/AdminRouterManifest"
       oneOf:
       - $ref: "#/components/schemas/AdminSettingsManifest"
       - $ref: "#/components/schemas/AdminSchemaManifest"
       - $ref: "#/components/schemas/AdminCatalogSchemaManifest"
       - $ref: "#/components/schemas/AdminInterceptorManifest"
+      - $ref: "#/components/schemas/AdminRouterManifest"
       - $ref: "#/components/schemas/AdminTranslatorManifest"
       - $ref: "#/components/schemas/AdminRoleManifest"
       - $ref: "#/components/schemas/AdminKeyManifest"
@@ -16485,6 +16890,15 @@ components:
           type: string
         spec:
           $ref: "#/components/schemas/Route"
+    AdminRouterManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Router"
     AdminSchemaManifest:
       type: object
       properties:
@@ -18073,6 +18487,8 @@ components:
           $ref: "#/components/schemas/SpendingLimits"
         aliases:
           $ref: "#/components/schemas/MapStringAlias"
+        routers:
+          $ref: "#/components/schemas/MapStringRouter"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -18396,10 +18812,12 @@ components:
           model: "#/components/schemas/ModelData"
           application: "#/components/schemas/ApplicationData"
           toolset: "#/components/schemas/ToolSetData"
+          router: "#/components/schemas/RouterData"
       oneOf:
       - $ref: "#/components/schemas/ModelData"
       - $ref: "#/components/schemas/ApplicationData"
       - $ref: "#/components/schemas/ToolSetData"
+      - $ref: "#/components/schemas/RouterData"
     DeploymentInterface:
       type: object
       properties:
@@ -19103,6 +19521,15 @@ components:
             $ref: "#/components/schemas/ModelData"
         object:
           type: string
+    ListDataRouterData:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouterData"
+        object:
+          type: string
     ListDataToolSetData:
       type: object
       properties:
@@ -19233,6 +19660,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Route"
+    MapStringRouter:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Router"
     MapStringSet:
       type: object
       additionalProperties:
@@ -20202,6 +20633,7 @@ components:
       - APP_TYPE_SCHEMA
       - CATALOG_SCHEMA
       - INTERCEPTOR
+      - ROUTER
       - TRANSLATOR
       - ROLE
       - PROJECT_KEY
@@ -20364,6 +20796,165 @@ components:
           type: string
         status:
           type: integer
+    Router:
+      type: object
+      properties:
+        author:
+          type: string
+        baseUrl:
+          type: string
+        catalogProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalogSchemaId:
+          type: string
+          format: uri
+        createdAt:
+          type: integer
+        defaultHeaders:
+          $ref: "#/components/schemas/MapStringString"
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        dependencies:
+          type: array
+          items:
+            type: string
+        description:
+          $ref: "#/components/schemas/LocalizedValue"
+        descriptionKeywords:
+          type: array
+          items:
+            type: string
+        displayName:
+          $ref: "#/components/schemas/LocalizedValue"
+        displayVersion:
+          type: string
+        endpoint:
+          type: string
+        features:
+          $ref: "#/components/schemas/Features"
+        forwardAuthToken:
+          type: boolean
+        iconUrl:
+          type: string
+        inputAttachmentTypes:
+          type: array
+          items:
+            type: string
+        interceptors:
+          type: array
+          items:
+            type: string
+        interfaces:
+          $ref: "#/components/schemas/MapStringDeploymentInterface"
+        intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        maxInputAttachments:
+          type: integer
+        maxRetryAttempts:
+          type: integer
+        name:
+          type: string
+        overrideName:
+          type: string
+        reference:
+          type: string
+        responsesDefaults:
+          $ref: "#/components/schemas/MapStringObject"
+        responsesEndpoint:
+          type: string
+        updatedAt:
+          type: integer
+        userRoles:
+          type: array
+          items:
+            type: string
+        applicationProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        applicationTypeSchemaId:
+          type: string
+          format: uri
+        decision:
+          $ref: "#/components/schemas/RouterDecision"
+        mode:
+          $ref: "#/components/schemas/RouterMode"
+    RouterData:
+      type: object
+      properties:
+        application:
+          type: string
+        catalog_properties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalog_schema_id:
+          type: string
+          format: uri
+        created_at:
+          type: integer
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        description:
+          $ref: "#/components/schemas/LocalizedValue"
+        description_keywords:
+          type: array
+          items:
+            type: string
+        display_name:
+          $ref: "#/components/schemas/LocalizedValue"
+        display_version:
+          type: string
+        features:
+          $ref: "#/components/schemas/FeaturesData"
+        icon_url:
+          type: string
+        id:
+          type: string
+        input_attachment_types:
+          type: array
+          items:
+            type: string
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
+        interfaces:
+          type: array
+          items:
+            type: string
+        intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        max_input_attachments:
+          type: integer
+        max_retry_attempts:
+          type: integer
+        model:
+          type: string
+        object:
+          type: string
+        owner:
+          type: string
+        reference:
+          type: string
+        responses_defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        scale_settings:
+          $ref: "#/components/schemas/ScaleSettingsData"
+        status:
+          type: string
+        toolset:
+          type: string
+        updated_at:
+          type: integer
+    RouterDecision:
+      type: object
+      properties:
+        body:
+          type: boolean
+        maxDecisions:
+          type: integer
+        timeoutMs:
+          type: integer
+    RouterMode:
+      type: string
+      enum:
+      - proxy
+      - decision
     RpcRequest:
       type: object
       properties:

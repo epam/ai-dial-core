@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
@@ -72,7 +73,7 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
 
     @Override
     protected BufferingReadStream.BaseEventListener createListener(Proxy proxy, ProxyContext context) {
-        return new ResponsesSseListener(List.of(new CollectResponsesApiOutputAttachmentsFn(proxy, context)));
+        return new ResponsesSseListener(RouterModelFn.withRouterModel(proxy, context, List.of(new CollectResponsesApiOutputAttachmentsFn(proxy, context))));
     }
 
     @Override
