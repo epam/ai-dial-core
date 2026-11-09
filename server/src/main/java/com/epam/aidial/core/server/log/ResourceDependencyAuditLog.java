@@ -9,6 +9,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import static com.epam.aidial.core.server.log.AuditLogSanitizer.actorEvidence;
+import static com.epam.aidial.core.server.log.AuditLogSanitizer.outcomeOf;
+import static com.epam.aidial.core.server.log.AuditLogSanitizer.reasonOf;
+import static com.epam.aidial.core.server.log.AuditLogSanitizer.sanitizeToken;
+
 /**
  * Distinct audit stream for resource-dependency events (admin consent decisions, and the
  * request-start grant/denial/runtime-fail outcomes that land with the resolver). Kept separate
@@ -33,20 +38,14 @@ public final class ResourceDependencyAuditLog {
         String accessTypes = declaration == null ? "" : accessTypesOf(declaration);
         AUDIT.info("event=resource_dependency_consent action={} outcome={} actor={} admin_user_id={} "
                         + "application_id={} targets={} access_types={} trace_id={}{}",
-                AuditLogSanitizer.sanitizeToken(action), AuditLogSanitizer.outcomeOf(error), AuditLogSanitizer.actorEvidence(context),
-                AuditLogSanitizer.sanitizeToken(context.getInitiatorId()), AuditLogSanitizer.sanitizeToken(applicationId),
-                targets, accessTypes, context.getTraceId(), AuditLogSanitizer.reasonOf(error));
+                sanitizeToken(action), outcomeOf(error), actorEvidence(context),
+                sanitizeToken(context.getInitiatorId()), sanitizeToken(applicationId),
+                targets, accessTypes, context.getTraceId(), reasonOf(error));
     }
 
     /** One event per run whose declared dependencies resolved into grants, listing what was granted. */
     public static void grant(ProxyContext context, String applicationId, List<Consent.ResourceEntry> granted) {
-        if (granted.isEmpty()) {
-            return;
-        }
-        AUDIT.info("event=resource_dependency_grant outcome=SUCCESS actor={} user_id={} application_id={} "
-                        + "source_deployment={} targets={} access_types={} trace_id={}",
-                AuditLogSanitizer.actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
-                sourceDeployment(context), targetsOf(granted), accessTypesOf(granted), context.getTraceId());
+        logRun("resource_dependency_grant", "SUCCESS", context, applicationId, granted);
     }
 
     /**
@@ -54,20 +53,25 @@ public final class ResourceDependencyAuditLog {
      * rights, the declaration is not admin-consented, or there is no per-request key to deliver grants into.
      */
     public static void denial(ProxyContext context, String applicationId, List<Consent.ResourceEntry> unresolved) {
-        if (unresolved.isEmpty()) {
+        logRun("resource_dependency_denial", "DENIED", context, applicationId, unresolved);
+    }
+
+    private static void logRun(String event, String outcome, ProxyContext context, String applicationId,
+                               List<Consent.ResourceEntry> entries) {
+        if (entries.isEmpty()) {
             return;
         }
-        AUDIT.info("event=resource_dependency_denial outcome=DENIED actor={} user_id={} application_id={} "
-                        + "source_deployment={} targets={} access_types={} trace_id={}",
-                AuditLogSanitizer.actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
-                sourceDeployment(context), targetsOf(unresolved), accessTypesOf(unresolved), context.getTraceId());
+        AUDIT.info("event={} outcome={} actor={} user_id={} application_id={} source_deployment={} targets={} "
+                        + "access_types={} trace_id={}",
+                event, outcome, actorEvidence(context), sanitizeToken(context.getUserId()), sanitizeToken(applicationId),
+                sourceDeployment(context), targetsOf(entries), accessTypesOf(entries), context.getTraceId());
     }
 
     /** One event when a required dependency failed to resolve and the call is rejected. */
     public static void runtimeFail(ProxyContext context, String applicationId, List<String> requiredFailures, String reason) {
         AUDIT.info("event=resource_dependency_runtime_fail outcome=RUNTIME_FAIL actor={} user_id={} "
                         + "application_id={} source_deployment={} targets={} trace_id={} reason=\"{}\"",
-                AuditLogSanitizer.actorEvidence(context), AuditLogSanitizer.sanitizeToken(context.getUserId()), AuditLogSanitizer.sanitizeToken(applicationId),
+                actorEvidence(context), sanitizeToken(context.getUserId()), sanitizeToken(applicationId),
                 sourceDeployment(context),
                 requiredFailures.stream().map(AuditLogSanitizer::sanitizeToken)
                         .collect(Collectors.joining(",")),
@@ -95,6 +99,6 @@ public final class ResourceDependencyAuditLog {
      */
     private static String sourceDeployment(ProxyContext context) {
         String deployment = context.getSourceDeployment();
-        return deployment == null ? "root" : AuditLogSanitizer.sanitizeToken(deployment);
+        return deployment == null ? "root" : sanitizeToken(deployment);
     }
 }
