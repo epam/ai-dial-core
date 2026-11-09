@@ -77,22 +77,7 @@ public class BudgetEnforcer {
      * The result is a rejection only in {@code enforce} mode; in {@code shadow} it is logged and metered.
      */
     public Future<RateLimitResult> check(ProxyContext context, Model model, long timestamp, RateLimitSchedule schedule) {
-        SpendingLimits settings = context.getConfig().getSpendingLimits();
-        ExtractedClaims claims = context.getExtractedClaims();
-        String costObject = resolveCostObject(context, settings);
-        List<BudgetInstance> candidates = resolveCandidates(context, costObject, model, timestamp);
-        if (candidates.isEmpty()) {
-            return Future.succeededFuture(rejectNoBudget(settings, claims, costObject, model));
-        }
-        return pick(candidates, 0, costObject, claims.userId(), timestamp, schedule, Long.MAX_VALUE, null)
-                .map(outcome -> {
-                    if (outcome.payer != null) {
-                        context.setBudgetPayer(outcome.payer);
-                        return RateLimitResult.SUCCESS;
-                    }
-                    return reject(settings, BUDGET_EXHAUSTED, claims.userId(), costObject, model,
-                            buildExhaustedResult(costObject, "You've exceeded your budget", outcome, timestamp));
-                });
+        return checkBudgets(context, model, timestamp, schedule, false);
     }
 
     /**
@@ -102,6 +87,11 @@ public class BudgetEnforcer {
      * again first. A failed load fails with {@link SpendReadException} only when a candidate caps the caller.
      */
     public Future<RateLimitResult> checkWithSpendCaps(ProxyContext context, Model model, long timestamp, RateLimitSchedule schedule) {
+        return checkBudgets(context, model, timestamp, schedule, true);
+    }
+
+    private Future<RateLimitResult> checkBudgets(ProxyContext context, Model model, long timestamp, RateLimitSchedule schedule,
+                                                 boolean isWithSpendCaps) {
         SpendingLimits settings = context.getConfig().getSpendingLimits();
         ExtractedClaims claims = context.getExtractedClaims();
         String costObject = resolveCostObject(context, settings);
@@ -109,23 +99,32 @@ public class BudgetEnforcer {
         if (candidates.isEmpty()) {
             return Future.succeededFuture(rejectNoBudget(settings, claims, costObject, model));
         }
-        return pick(candidates, 0, costObject, claims.userId(), timestamp, schedule, Long.MAX_VALUE, null)
-                .recover(error -> Future.failedFuture(candidates.stream().anyMatch(BudgetEnforcer::hasLimitedWindow)
-                        ? new SpendReadException(error) : error))
-                .map(outcome -> {
-                    if (outcome.payer != null) {
-                        context.setBudgetPayer(outcome.payer);
-                        boolean isReported = EffectiveBudgets.resolveInCostObject(context.getConfig().getCostObjectIndex(),
-                                costObject, claims, Instant.ofEpochMilli(timestamp)).size() == 1;
-                        return RateLimitResult.SUCCESS.withSpendCaps(
-                                isReported ? toSpendCaps(outcome.payer.instance(), outcome.payerUsage) : SpendCaps.EMPTY);
-                    }
-                    // no display message: a client builds it from the cap's period, as for the translated path
-                    return reject(settings, BUDGET_EXHAUSTED, claims.userId(), costObject, model,
-                            buildExhaustedResult(costObject, null, outcome, timestamp)
-                                    .withSpendCaps(outcome.earliestCap == null
-                                            ? SpendCaps.EMPTY : new SpendCaps(List.of(outcome.earliestCap), outcome.earliestCap)));
-                });
+        // the candidates are a subset of the cost object's budgets, so with several the caller has several
+        boolean isReported = isWithSpendCaps && candidates.size() == 1 && EffectiveBudgets.resolveInCostObject(
+                context.getConfig().getCostObjectIndex(), costObject, claims, Instant.ofEpochMilli(timestamp)).size() == 1;
+        Future<Outcome> picked = pickPayer(candidates, costObject, claims.userId(), timestamp, schedule);
+        if (isWithSpendCaps) {
+            picked = picked.recover(error -> Future.failedFuture(candidates.stream().anyMatch(BudgetEnforcer::hasLimitedWindow)
+                    ? new SpendReadException(error) : error));
+        }
+        return picked.map(outcome -> {
+            if (outcome.payer != null) {
+                context.setBudgetPayer(outcome.payer);
+                if (!isWithSpendCaps) {
+                    return RateLimitResult.SUCCESS;
+                }
+                return RateLimitResult.SUCCESS.withSpendCaps(
+                        isReported ? toSpendCaps(outcome.payer.instance(), outcome.payerUsage) : SpendCaps.EMPTY);
+            }
+            // with spend caps there is no display message: a client builds it from the cap's period
+            RateLimitResult exhausted = buildExhaustedResult(costObject, isWithSpendCaps ? null : "You've exceeded your budget",
+                    outcome, timestamp);
+            if (isWithSpendCaps) {
+                exhausted = exhausted.withSpendCaps(outcome.earliestCap == null
+                        ? SpendCaps.EMPTY : new SpendCaps(List.of(outcome.earliestCap), outcome.earliestCap));
+            }
+            return reject(settings, BUDGET_EXHAUSTED, claims.userId(), costObject, model, exhausted);
+        });
     }
 
     /**
@@ -220,28 +219,37 @@ public class BudgetEnforcer {
     }
 
     /**
-     * @param earliestCap the reported cap of the dry candidate that pays again first so far; a later candidate takes
-     *                    its place only when it resets strictly earlier, so a tie keeps the earlier one
+     * Loads the candidates in order until one can pay, so a later one is not read once an earlier one pays.
      */
-    private Future<Outcome> pick(List<BudgetInstance> candidates, int index, String costObject, String userId,
-                                 long timestamp, RateLimitSchedule schedule, long earliestResetAt, @Nullable SpendCap earliestCap) {
-        if (index == candidates.size()) {
-            return Future.succeededFuture(new Outcome(null, null, earliestResetAt, earliestCap));
+    private Future<Outcome> pickPayer(List<BudgetInstance> candidates, String costObject, String userId,
+                                      long timestamp, RateLimitSchedule schedule) {
+        Future<Outcome> result = Future.succeededFuture(new Outcome(null, null, Long.MAX_VALUE, null));
+        for (BudgetInstance instance : candidates) {
+            result = result.compose(previous -> previous.payer != null
+                    ? Future.succeededFuture(previous)
+                    : store.load(costObject, instance, userId, timestamp, schedule)
+                            .map(usage -> next(previous, instance, usage, costObject, userId)));
         }
-        BudgetInstance instance = candidates.get(index);
-        return store.load(costObject, instance, userId, timestamp, schedule).compose(usage -> {
-            boolean dayDry = isDry(usage.day(), instance.policy().getCost().getDay());
-            boolean monthDry = isDry(usage.month(), instance.policy().getCost().getMonth());
-            if (!dayDry && !monthDry) {
-                return Future.succeededFuture(new Outcome(new BudgetPayer(costObject, instance, userId), usage, 0, null));
-            }
-            // the budget pays again once every window that is dry has reset, which is the cap SpendCaps reports for it
-            long resetAt = Math.max(dayDry ? usage.dayResetsAt() : 0, monthDry ? usage.monthResetsAt() : 0);
-            boolean isEarliest = resetAt < earliestResetAt;
-            return pick(candidates, index + 1, costObject, userId, timestamp, schedule,
-                    isEarliest ? resetAt : earliestResetAt,
-                    isEarliest ? toSpendCaps(instance, usage).reported() : earliestCap);
-        });
+        return result;
+    }
+
+    /**
+     * The outcome after one more candidate. {@code previous.earliestCap} is the reported cap of the dry candidate
+     * that pays again first so far; a later candidate takes its place only when it resets strictly earlier, so a
+     * tie keeps the earlier one.
+     */
+    private static Outcome next(Outcome previous, BudgetInstance instance, BudgetUsage usage, String costObject, String userId) {
+        boolean dayDry = isDry(usage.day(), instance.policy().getCost().getDay());
+        boolean monthDry = isDry(usage.month(), instance.policy().getCost().getMonth());
+        if (!dayDry && !monthDry) {
+            return new Outcome(new BudgetPayer(costObject, instance, userId), usage, 0, null);
+        }
+        // the budget pays again once every window that is dry has reset, which is the cap SpendCaps reports for it
+        long resetAt = Math.max(dayDry ? usage.dayResetsAt() : 0, monthDry ? usage.monthResetsAt() : 0);
+        if (resetAt >= previous.earliestResetAt) {
+            return previous;
+        }
+        return new Outcome(null, null, resetAt, toSpendCaps(instance, usage).reported());
     }
 
     /**
