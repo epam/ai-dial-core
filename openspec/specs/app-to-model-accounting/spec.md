@@ -45,13 +45,18 @@ granted with the key, attachments auto-shared from an answer), a background Resp
 For a request authenticated by a project API key or a JWT, Core SHALL write into the key it mints: the client's
 project key as `originalKey` (none for a JWT), the JWT claims as `extractedClaims`, Core's trace id as `traceId`,
 the server span of this pass as `spanId`, the deployment (or route) name as `sourceDeployment`, `executionPath`
-`[<deployment>]`, and `httpHeaders` holding `X-CONVERSATION-ID` and `X-JOB-TITLE` when the client sent them.
+`[<deployment>]` (`[<router>, <deployment>]` after a router's decision) and `httpHeaders` holding
+`X-CONVERSATION-ID` and `X-JOB-TITLE` when the client sent them.
 
 #### Scenario: Root key record
 - **WHEN** a user with a JWT whose `sub` is `u1` sends `X-CONVERSATION-ID: c1` to
   `POST /openai/deployments/app/chat/completions`, Core's span is `s1` in trace `t1`
 - **THEN** the key record has `traceId: "t1"`, `spanId: "s1"`, `sourceDeployment: "app"`, `executionPath: ["app"]`,
   the `u1` claims and `httpHeaders: {"X-CONVERSATION-ID": "c1"}`
+
+#### Scenario: Root key record after a decision
+- **WHEN** a user calls router `r1` and its decision chooses `gpt-4`
+- **THEN** the key Core sends to `gpt-4` has `sourceDeployment: "gpt-4"` and `executionPath: ["r1", "gpt-4"]`
 
 ### Requirement: Key contents for a child request
 For a request authenticated by a per-request key, Core SHALL copy `originalKey`, `extractedClaims` and `traceId`
@@ -164,12 +169,17 @@ token and cost usage.
 ### Requirement: Which requests are limit-checked
 On deployments-POST Core SHALL limit-check only a `Model`; `POST /openai/v1/chat/completions`,
 `/openai/v1/responses` and `/anthropic/v1/messages` SHALL check the limits of the deployment they call whatever its
-kind.
+kind, except a router, which is never checked or charged on any API (see router-deployment).
 
 #### Scenario: Application not checked on deployments-POST
 - **WHEN** user `u1`'s role declares `limits.app.requestHour: 1` and `u1` has already sent one request to `app` this hour, and `u1` sends
   `POST /openai/deployments/app/chat/completions`
 - **THEN** Core forwards the request to `app`
+
+#### Scenario: Router not checked on the Messages API
+- **WHEN** user `u1`'s role declares `limits.r1.requestHour: 1` and `u1` sends two `POST /anthropic/v1/messages`
+  requests with `{"model": "r1", ...}` within one hour
+- **THEN** Core forwards both to `r1`
 
 ### Requirement: Translated interface not limit-checked
 A request for an interface the deployment serves in `translator` mode SHALL be neither checked nor charged (bar a
@@ -254,15 +264,21 @@ is never deleted and expires with `deploymentStats.ttlMs`.
 
 ### Requirement: Usage roll-up to the ancestors
 When a pass reports usage, Core SHALL store it as that span's own `tokenUsage` (adding the report's `aggCost` to the
-span's accumulated `aggCost`),
-and for every ancestor span add the report's `aggCost` to the ancestor's `aggCost` and append
-`{model: <reporting deployment>, usage}` to its `usagePerModel`, without merging by name and without adding raw
-token counts to the ancestor.
+span's accumulated `aggCost`), and for every ancestor span add the report's `aggCost` to its `aggCost` and append
+`{model: <reporting deployment>, usage}` to its `usagePerModel`, without merging by name or adding raw token counts
+to the ancestor. A pass re-entered with a router's next candidate (router-deployment) keeps its roll-up; later
+reports credit the new candidate.
 
 #### Scenario: Two reports from the same model
 - **WHEN** `app` calls `gpt-4` twice and each answers `200` with `usage.total_tokens: 10` and cost `0.1`
 - **THEN** `app`'s span has `aggCost` `0.2`, zero own tokens, and two `usagePerModel` entries for `gpt-4` of 10
   tokens each
+
+#### Scenario: Fallback keeps the failed candidate's roll-up
+- **WHEN** router `r1` chooses `app-a` then `app-b`, `app-a` calls `gpt-4`, which reports cost `0.3`, and `app-a`
+  then answers `503`, so the pass is re-entered with `app-b`
+- **THEN** the pass's span still has `aggCost` `0.3` and a `usagePerModel` entry for `gpt-4`, and a model `app-b`
+  calls credits `app-b/aggregated-costs`, not `app-a`'s
 
 ### Requirement: Aggregated cost records
 For every ancestor span with a deployment name that receives a positive `aggCost` increment, Core SHALL add the
@@ -275,9 +291,9 @@ initiator's `costs` record or the ancestor's `<deployment>/costs` record.
 
 ### Requirement: One analytics row per Core pass
 Core SHALL write one analytics row per pass that relays an origin's answer, a `Model` pass whose client disconnected
-during the relay included, with `deployment`, `execution_path` from the key it minted, `parent_deployment` set to
-the nearest preceding `execution_path` entry that is not one of the deployment's interceptors (absent for a root),
-and `trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_id`.
+during the relay included, with `deployment`, `execution_path` from the key it minted, `parent_deployment` the
+nearest preceding `execution_path` entry that is not one of the deployment's interceptors (absent for a root), and
+`trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_id`; a decided request adds a router row.
 
 #### Scenario: Parent deployment of a model called by an app
 - **WHEN** root `app` calls `gpt-4`
@@ -287,6 +303,11 @@ and `trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_i
 #### Scenario: Conversation id carried to the child row
 - **WHEN** the client sent `X-CONVERSATION-ID: c1` to `app` and `app` calls `gpt-4` without that header
 - **THEN** the `gpt-4` row carries conversation id `c1`
+
+#### Scenario: One row for a decided request
+- **WHEN** a user calls router `r1` in decision mode and its decision chooses `gpt-4`, which answers
+- **THEN** one row is written for the pass, `gpt-4` with `execution_path: ["r1", "gpt-4"]` and
+  `parent_deployment: "r1"`, and the router row for `r1` is written beside it
 
 ### Requirement: Passes without an analytics row
 Core SHALL NOT write an analytics row for a pass that forwards to an interceptor, so usage an interceptor's body
