@@ -15,9 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * End-to-end resolution scenarios: the consented flow, the two failure modes distinguished
- * (required vs optional without consent), content binding on declaration change, an
- * interceptor-protected app, and the audit fields. Scenarios run on the chat-completions path; the
- * consented and required-without-consent flows also on Anthropic Messages and the Responses API.
+ * (required vs optional without consent), content binding on declaration change, the initiator's
+ * reach, an interceptor-protected app, and the audit fields. Scenarios run on the chat-completions
+ * path; the consented and required-without-consent flows also on Anthropic Messages (count_tokens
+ * included) and the Responses API.
  */
 public class ResourceDependencyApiTest extends ResourceBaseTest {
 
@@ -25,7 +26,11 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
             "{\"id\":\"prompt-by-app\",\"folderId\":\"dep-smoke/\",\"name\":\"prompt-by-app\",\"content\":\"app content\"}";
 
     private String userBucket() {
-        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "user");
+        return bucketOf("user");
+    }
+
+    private String bucketOf(String authorization) {
+        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", authorization);
         return new JsonObject(response.body()).getString("bucket");
     }
 
@@ -77,6 +82,8 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
     private static final String RESPONSES_BODY = """
             {"model": "applications/public/dep-e2e-app", "input": "hi"}""";
 
+    private static final String COUNT_TOKENS_PATH = "/anthropic/v1/messages/count_tokens";
+
     private static final List<List<String>> MESSAGES_AND_RESPONSES = List.of(
             List.of("/anthropic/v1/messages", MESSAGES_BODY),
             List.of("/openai/v1/responses", RESPONSES_BODY));
@@ -118,6 +125,56 @@ public class ResourceDependencyApiTest extends ResourceBaseTest {
             assertEquals(403, response.status(), () -> entry.get(0) + ": " + response.body());
             assertNull(targetStatus.get(), entry.get(0) + ": the upstream must never be reached when a required dependency fails");
         }
+    }
+
+    @Test
+    void testCountTokensResolvesLikeMessages() {
+        // count_tokens generates nothing, yet it runs the Messages chain: the app's key gets the grants, and a required entry gates the call
+        verify(putDeclaringApp(REQUIRED_WRITE_PROMPTS), 200);
+        String target = "/v1/prompts/%s/dep-smoke/prompt-by-app".formatted(userBucket());
+
+        AtomicReference<Integer> unconsentedStatus = new AtomicReference<>();
+        Response unconsented = call(COUNT_TOKENS_PATH, MESSAGES_BODY, unconsentedStatus, target);
+        assertEquals(403, unconsented.status(), () -> "Body: " + unconsented.body());
+        assertNull(unconsentedStatus.get(), "the upstream must never be reached when a required dependency fails");
+
+        verify(grantConsent(), 200);
+        AtomicReference<Integer> consentedStatus = new AtomicReference<>();
+        Response consented = call(COUNT_TOKENS_PATH, MESSAGES_BODY, consentedStatus, target);
+        assertEquals(200, consented.status(), () -> "Body: " + consented.body());
+        assertEquals(200, consentedStatus.get(), "the consented target must be writable by the app's key");
+    }
+
+    @Test
+    void testAdminStandingDoesNotWidenTheReach() {
+        // the initiator's reach is their own standing: an admin may write the public bucket, yet only reads it as a user does
+        String adminBucket = bucketOf("admin");
+        verify(putDeclaringApp("""
+                {"kind": "dial.resourceLink", "link_id": "lnk_own", "target": {"url": "prompts/{current-user}/dep-smoke/"}, "access": ["write"]},
+                {"kind": "dial.resourceLink", "link_id": "lnk_public", "target": {"url": "prompts/public/dep-smoke/"}, "access": ["write"]}
+                """), 200);
+        verify(grantConsent(), 200);
+        String publicTarget = "/v1/prompts/public/dep-smoke/prompt-by-app";
+        verify(send(HttpMethod.PUT, publicTarget, null, PROMPT_BODY, "authorization", "admin"), 200);
+
+        AtomicReference<Integer> ownViaApp = new AtomicReference<>();
+        AtomicReference<Integer> publicViaApp = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4849)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                String key = request.getHeader("Api-Key");
+                ownViaApp.set(send(HttpMethod.PUT, "/v1/prompts/%s/dep-smoke/prompt-by-app".formatted(adminBucket), null, PROMPT_BODY,
+                        "api-key", key).status());
+                publicViaApp.set(send(HttpMethod.PUT, publicTarget, null, PROMPT_BODY, "api-key", key).status());
+                return TestWebServer.createResponse(200, "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"choices\":[]}",
+                        "Content-Type", "application/json");
+            });
+            verify(send(HttpMethod.POST, "/openai/deployments/applications/public/dep-e2e-app/chat/completions", null, """
+                    {"messages":[{"role":"user","content":"how are you?"}]}
+                    """, "authorization", "admin", "Content-Type", "application/json"), 200);
+        }
+
+        assertEquals(200, ownViaApp.get(), "the admin's own folder must be writable by the app's key");
+        assertEquals(403, publicViaApp.get(), "the admin's write access to the public bucket must not reach the app's key");
     }
 
     @Test
