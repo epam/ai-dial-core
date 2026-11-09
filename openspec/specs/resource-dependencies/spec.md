@@ -229,6 +229,10 @@ application created again at a deleted one's id SHALL start unapproved.
 - **WHEN** an application with the same list and another endpoint is copied with `overwrite` onto an approved one
 - **THEN** the destination has the copied endpoint and is not approved
 
+#### Scenario: Copy failing after it wrote the application
+- **WHEN** a copy with `overwrite` onto an approved application writes the application and then fails on its files
+- **THEN** the destination is not approved
+
 #### Scenario: Publication approved
 - **WHEN** an admin approves the review copy's list and then the publication of a user's application
 - **THEN** the published application is approved and a call to it receives its entries

@@ -41,6 +41,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.mutable.MutableBoolean;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.commons.lang3.tuple.Pair;
 import org.redisson.api.RScoredSortedSet;
@@ -400,7 +401,7 @@ public class ApplicationService {
     }
 
     /** Deletes the application's admin-consent record, if any. */
-    public void deleteAdminConsent(ResourceDescriptor application) {
+    private void deleteAdminConsent(ResourceDescriptor application) {
         ResourceDescriptor record = adminConsentOf(application);
         if (record != null) {
             resourceService.deleteResource(record, EtagHeader.ANY);
@@ -487,8 +488,10 @@ public class ApplicationService {
             fileReplacementLinks = Map.of();
         }
 
+        MutableBoolean declares = new MutableBoolean();
         resourceService.computeResource(destination, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
+            declares.setValue(declaresDependencies(application) || declaresDependencies(existing));
 
             // Same governance rule as putApplication: the source's admin-managed fields never travel through a
             // copy/move (a user could self-grant them by copying a public app), while an overwrite keeps whatever
@@ -542,6 +545,11 @@ public class ApplicationService {
             return serializeEncrypted(destination, application);
         });
 
+        // a copy is another application: the destination's approval never covers it, also when copying the files fails
+        if (declares.isTrue()) {
+            deleteAdminConsent(destination);
+        }
+
         if (isPublicOrReview) {
             if (function != null) {
                 // for public/review application source folder is equal to target folder
@@ -555,6 +563,10 @@ public class ApplicationService {
         if (applicationSchemaService.getCopyAppBucketOptions(application) == CopyAppBucketOptions.ENABLED) {
             copyAppFileBucket(source, destination);
         }
+    }
+
+    private static boolean declaresDependencies(Application application) {
+        return application != null && application.getResourceDependencies() != null && !application.getResourceDependencies().isEmpty();
     }
 
     private void copyResourceFiles(List<ResourceDescriptor> sourceFiles, List<ResourceDescriptor> destFiles) {

@@ -253,6 +253,58 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         assertConsented("applications/public/approved-app", false);
     }
 
+    @Test
+    void testCopyFailingAfterItWroteTheApplicationLeavesItUnapproved() {
+        verify(send(HttpMethod.PUT, "/v1/applications/public/half-copied-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/applications/public/half-copied-app", null,
+                reviewedResources("applications/public/half-copied-app"), "authorization", "admin"), 200);
+        String adminBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin").body()).getString("bucket");
+        verify(upload(HttpMethod.PUT, "/v1/files/%s/shot.png".formatted(adminBucket), null, "source", "authorization", "admin"), 200);
+        verify(send(HttpMethod.PUT, "/v1/applications/%s/schema-app".formatted(adminBucket), null, """
+                {
+                  "displayName": "schema-app",
+                  "applicationTypeSchemaId": "https://mydial.somewhere.com/custom_application_schemas/specific_application_type",
+                  "applicationProperties": {"property1": "p1", "property2": "p2", "property3": ["files/%s/shot.png"]},
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"], "required": true}
+                  ]
+                }
+                """.formatted(adminBucket), "authorization", "admin"), 200);
+        // the application's file already exists at the destination, so the copy fails after writing the application
+        verify(upload(HttpMethod.PUT, "/v1/files/public/.half-copied-app/shot.png", null, "taken", "authorization", "admin"), 200);
+
+        Response copy = send(HttpMethod.POST, "/v1/ops/resource/copy", null, """
+                {"sourceUrl": "applications/%s/schema-app", "destinationUrl": "applications/public/half-copied-app", "overwrite": true}
+                """.formatted(adminBucket), "authorization", "admin");
+        assertTrue(copy.status() >= 400, () -> "Status: " + copy.status());
+        Response copied = send(HttpMethod.GET, "/v1/applications/public/half-copied-app", null, "", "authorization", "admin");
+        assertTrue(copied.body().contains("specific_application_type"), () -> "Body: " + copied.body());
+
+        assertConsented("applications/public/half-copied-app", false);
+    }
+
+    @Test
+    void testCopyWithoutListOverAnApprovedApplicationDropsTheApproval() {
+        // otherwise a later edit restoring the approved list would bring the old approval back
+        verify(send(HttpMethod.PUT, "/v1/applications/public/relisted-app", null,
+                DECLARING_APP_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/applications/public/relisted-app", null,
+                reviewedResources("applications/public/relisted-app"), "authorization", "admin"), 200);
+        verify(send(HttpMethod.PUT, "/v1/applications/public/unlisted-app", null, """
+                {"endpoint": "http://unreviewed/v1/completions", "display_name": "Unlisted"}
+                """, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        verify(send(HttpMethod.POST, "/v1/ops/resource/copy", null, """
+                {"sourceUrl": "applications/public/unlisted-app", "destinationUrl": "applications/public/relisted-app", "overwrite": true}
+                """, "authorization", "admin"), 200);
+        verify(send(HttpMethod.PUT, "/v1/applications/public/relisted-app", null,
+                DECLARING_APP_BODY.replace("http://application1/v1/completions", "http://unreviewed/v1/completions"),
+                "authorization", "admin"), 200);
+
+        assertConsented("applications/public/relisted-app", false);
+    }
+
     private void assertConsented(String applicationId, boolean consented) {
         Response status = send(HttpMethod.GET, "/v1/admin-consent/" + applicationId, null, "", "authorization", "admin");
         verify(status, 200);

@@ -174,7 +174,6 @@ public class ResourceOperationService {
 
         if (destination.getType() == APPLICATION) {
             applicationService.copyApplication(source, destination, null, overwriteIfExists, check::accept);
-            applicationService.deleteAdminConsent(destination);
         } else if (destination.getType() == TOOL_SET) {
             toolSetService.copyToolSet(context, source, destination, null, overwriteIfExists, Map.of(), check::accept);
         } else if (destination.getType().isComplex()) {
