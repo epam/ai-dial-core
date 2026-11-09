@@ -547,7 +547,8 @@ public class BaseDeploymentPostController {
     protected List<String> resolveInterceptors(Deployment deployment) {
         List<String> interceptors = proxy.getDeploymentService().getInterceptors(context, deployment);
         if (context.getDecision() != null && context.getApiKeyData().isInterceptor()) {
-            interceptors.removeAll(context.getApiKeyData().getInterceptors());
+            List<String> ran = context.getApiKeyData().getInterceptors();
+            return interceptors.stream().filter(interceptor -> !ran.contains(interceptor)).toList();
         }
         return interceptors;
     }
