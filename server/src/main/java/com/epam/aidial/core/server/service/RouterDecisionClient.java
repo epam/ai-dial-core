@@ -4,7 +4,10 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouterDecision;
+import com.epam.aidial.core.server.upstream.ProxyRequest;
+import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -13,13 +16,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.channel.ConnectTimeoutException;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
@@ -32,6 +34,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_ID;
@@ -86,31 +89,36 @@ public class RouterDecisionClient {
      * when it is unreachable or answers 5xx or an invalid verdict, and the router's own status, body and
      * content type for a 4xx.
      *
+     * <p>An interface the router serves in {@code embedded} mode is decided by its plugin in process, with the same
+     * request; the plugin's calls through its host carry {@code key}.
+     *
      * @param body the client's body bytes to send, or null to send an empty body
-     * @param apiKey the decide request's per-request key, sent as {@code API-KEY}
+     * @param bodyTree the plugin's own copy of the parsed body, for an embedded interface with the body; null otherwise
+     * @param key the decide request's per-request key, sent as {@code API-KEY}
      * @param attempts what was tried so far, sent as {@code X-DIAL-ROUTER-ATTEMPTS} when not empty
      */
-    public Future<List<String>> decide(ProxyContext context, Router router, InterfaceType type,
-                                       @Nullable Buffer body, String apiKey, List<RouterDecision.Attempt> attempts) {
+    public Future<List<String>> decide(ProxyContext context, Router router, InterfaceType type, @Nullable Buffer body,
+                                       @Nullable ObjectNode bodyTree, ApiKeyData key, List<RouterDecision.Attempt> attempts) {
         Proxy proxy = context.getProxy();
         long timeoutMs = timeoutMs(router);
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(DeploymentEndpointUtil.resolveDecideUri(router, type))
-                .setMethod(HttpMethod.POST)
-                .setTraceOperation("Ask %s router for a decision".formatted(router.getName()))
-                .setConnectTimeout(Math.min(proxy.getClientOptions().getConnectTimeout(), timeoutMs))
-                .setIdleTimeout(timeoutMs);
-
         Promise<List<String>> verdict = Promise.promise();
+        AtomicBoolean pastDeadline = new AtomicBoolean();
         // one deadline for the whole call: the connect and idle timeouts alone would allow twice the budget
-        long timer = proxy.getVertx().setTimer(timeoutMs, ignore -> verdict.tryFail(
-                new HttpException(HttpStatus.GATEWAY_TIMEOUT, "Router %s did not decide in time".formatted(router.getName()))));
-        proxy.getClient().request(options)
+        long timer = proxy.getVertx().setTimer(timeoutMs, ignore -> {
+            pastDeadline.set(true);
+            verdict.tryFail(new HttpException(HttpStatus.GATEWAY_TIMEOUT, "Router %s did not decide in time".formatted(router.getName())));
+        });
+        request(context, router, type, key, bodyTree, timeoutMs, "Ask %s router for a decision")
                 .compose(request -> {
-                    // past the deadline the client has its 504: the router's connection is not kept open
-                    verdict.future().onFailure(ignore -> request.reset());
+                    // past the deadline the client has its 504: the router's connection is not kept open, and a plugin
+                    // is told the request is cancelled. Any other failure comes after the answer: nothing to cut off
+                    verdict.future().onFailure(ignore -> {
+                        if (pastDeadline.get()) {
+                            request.reset();
+                        }
+                    });
                     MultiMap headers = routerHeaders(context, router, type, attempts);
-                    headers.set(Proxy.HEADER_API_KEY, apiKey);
+                    headers.set(Proxy.HEADER_API_KEY, key.getPerRequestKey());
                     return send(request, headers, body);
                 })
                 .compose(response -> response.body().map(answer -> parseVerdict(response, answer)))
@@ -135,20 +143,33 @@ public class RouterDecisionClient {
      * @param attempts every attempt, the broken one last
      */
     public void notice(ProxyContext context, Router router, InterfaceType type, List<RouterDecision.Attempt> attempts) {
-        Proxy proxy = context.getProxy();
         long timeoutMs = timeoutMs(router);
         MultiMap headers = routerHeaders(context, router, type, attempts);
         headers.set(Proxy.HEADER_ROUTER_NOTICE, "true");
-        RequestOptions options = new RequestOptions()
-                .setAbsoluteURI(DeploymentEndpointUtil.resolveDecideUri(router, type))
-                .setMethod(HttpMethod.POST)
-                .setTraceOperation("Tell %s router about a broken answer".formatted(router.getName()))
-                .setConnectTimeout(Math.min(proxy.getClientOptions().getConnectTimeout(), timeoutMs))
-                .setIdleTimeout(timeoutMs);
-        proxy.getClient().request(options)
+        // no key: a plugin answering the notice in process has every call it makes refused
+        request(context, router, type, null, null, timeoutMs, "Tell %s router about a broken answer")
                 .compose(request -> send(request, headers, null))
-                .compose(HttpClientResponse::body)
+                .compose(ProxyResponse::body)
                 .onFailure(error -> log.warn("Notice to router {} failed: {}", router.getName(), error.getMessage()));
+    }
+
+    /**
+     * The request to the router's decide URL, or to the plugin serving the interface in process.
+     */
+    private Future<ProxyRequest> request(ProxyContext context, Router router, InterfaceType type, @Nullable ApiKeyData callKey,
+                                         @Nullable ObjectNode bodyTree, long timeoutMs, String operation) {
+        Proxy proxy = context.getProxy();
+        String uri = DeploymentEndpointUtil.resolveDecideUri(router, type);
+        String plugin = DeploymentEndpointUtil.resolvePlugin(router, type);
+        if (plugin != null) {
+            return proxy.getOriginClient().embeddedForRouter(context, HttpMethod.POST, uri, plugin, callKey, bodyTree);
+        }
+        return proxy.getOriginClient().http(new RequestOptions()
+                .setAbsoluteURI(uri)
+                .setMethod(HttpMethod.POST)
+                .setTraceOperation(operation.formatted(router.getName()))
+                .setConnectTimeout(Math.min(proxy.getClientOptions().getConnectTimeout(), timeoutMs))
+                .setIdleTimeout(timeoutMs));
     }
 
     /**
@@ -189,7 +210,7 @@ public class RouterDecisionClient {
         return headers;
     }
 
-    private Future<HttpClientResponse> send(HttpClientRequest request, MultiMap headers, @Nullable Buffer body) {
+    private Future<ProxyResponse> send(ProxyRequest request, MultiMap headers, @Nullable Buffer body) {
         request.headers().addAll(headers);
         if (body == null) {
             // the client's Content-Type describes a body this request does not carry
@@ -201,7 +222,7 @@ public class RouterDecisionClient {
         return request.send(body);
     }
 
-    private List<String> parseVerdict(HttpClientResponse response, Buffer answer) {
+    private List<String> parseVerdict(ProxyResponse response, Buffer answer) {
         int status = response.statusCode();
         if (status >= 400 && status < 500) {
             String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);

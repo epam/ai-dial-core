@@ -1,0 +1,88 @@
+{
+  "plugins": {
+    "p1": {"type": "test-origin", "settings": {"greeting": "from-p1"}},
+    "p2": {"type": "test-origin", "settings": {"greeting": "from-p2"}}
+  },
+  "routers": {
+    "r1": {
+      "mode": "decision",
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "embedded", "plugin": "p1"},
+        "anthropicMessages": {"mode": "embedded", "plugin": "p1"},
+        "openaiResponses": {"mode": "embedded", "plugin": "p1"}
+      }
+    },
+    "rb": {
+      "mode": "decision",
+      "decision": {"body": true},
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "embedded", "plugin": "p1"},
+        "anthropicMessages": {"mode": "embedded", "plugin": "p1"},
+        "openaiResponses": {"mode": "embedded", "plugin": "p1"}
+      }
+    },
+    "rt": {
+      "mode": "decision",
+      "decision": {"timeoutMs": 200},
+      "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}
+    },
+    "r9": {
+      "mode": "decision",
+      "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p9"}}
+    },
+    "r4": {
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "interfaces": {
+        "openaiChatCompletions": {"mode": "embedded", "plugin": "p1"},
+        "openaiResponses": {}
+      }
+    },
+    "re": {
+      "mode": "decision",
+      "interfaces": {"openaiEmbeddings": {"mode": "embedded", "plugin": "p1"}}
+    },
+    "r2": {
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "decision": {"body": true},
+      "interfaces": {"openaiChatCompletions": {}}
+    },
+    "rf": {
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "interfaces": {"openaiChatCompletions": {}}
+    }
+  },
+  "models": {
+    "m1": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "defaults": {"temperature": 0.5},
+      "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}, "openaiResponses": {}},
+      "pricing": {"unit": "token", "prompt": "0.001", "completion": "0.002"}
+    },
+    "m2": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}, "openaiResponses": {}},
+      "pricing": {"unit": "token", "prompt": "0.001", "completion": "0.002"}
+    },
+    "e1": {
+      "type": "embedding",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"openaiEmbeddings": {}}
+    }
+  },
+  "applications": {
+    "app": {
+      "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p2"}}
+    }
+  },
+  "keys": {
+    "proxyKey1": {"project": "EPM-RTC-GPT", "role": "default"}
+  },
+  "roles": {
+    "default": {"limits": {}}
+  }
+}

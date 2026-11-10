@@ -118,7 +118,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                         return handleInterceptor(0);
                     }
                     return decisions.decideIfRouter(InterfaceType.OPENAI_CHAT_COMPLETIONS, Future.succeededFuture(context.getOriginalRequestBody()),
-                                    this::reenterWithCandidate)
+                                    request.getTree(), this::reenterWithCandidate)
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName, false));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));

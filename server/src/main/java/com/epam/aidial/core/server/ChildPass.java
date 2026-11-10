@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.plugin.OriginCall;
 import com.epam.aidial.core.plugin.OriginHost;
 import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.upstream.ChildServerRequest;
 import com.epam.aidial.core.server.upstream.ChildServerResponse;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
+import javax.annotation.Nullable;
 
 /**
  * Serves the in-process calls an origin plugin makes while it answers one attempt of an embedded pass. Each call is a
@@ -39,6 +41,8 @@ public final class ChildPass implements OriginHost {
     private final Proxy proxy;
     private final ProxyContext parent;
     private final ContextInternal pluginContext;
+    // the key record the calls carry; null for the parent pass's proxy key, read at each call
+    private final ApiKeyData callKey;
     private final Promise<Void> cancelled;
     // touched on the plugin's context only
     private final List<ChildServerResponse> responses = new ArrayList<>();
@@ -46,14 +50,28 @@ public final class ChildPass implements OriginHost {
     private Runnable onClose;
 
     /**
-     * @param parent        the pass whose plugin makes the calls
+     * @param parent        the pass whose plugin makes the calls, with its proxy key
      * @param pluginContext the context the plugin was called on
      */
     public ChildPass(Proxy proxy, ProxyContext parent, ContextInternal pluginContext) {
+        this(proxy, parent, pluginContext, null, false);
+    }
+
+    private ChildPass(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, ApiKeyData callKey, boolean closed) {
         this.proxy = proxy;
         this.parent = parent;
         this.pluginContext = pluginContext;
+        this.callKey = callKey;
+        this.closed = closed;
         this.cancelled = pluginContext.promise();
+    }
+
+    /**
+     * The host of a router's decide or notice request: its calls carry {@code callKey}, the decide request's key. A
+     * notice carries no key, so with none the host is closed from the start and every call is answered {@code 401}.
+     */
+    public static ChildPass forRouter(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, @Nullable ApiKeyData callKey) {
+        return new ChildPass(proxy, parent, pluginContext, callKey, callKey == null);
     }
 
     @Override
@@ -85,8 +103,8 @@ public final class ChildPass implements OriginHost {
         }
 
         ChildServerRequest request = new ChildServerRequest(call.uri(), call.headers(), response);
-        ProxyContext child = new ProxyContext(proxy, request, parent.getProxyApiKeyData(), null, null, mintSpanId(),
-                parent.getTraceFlags());
+        ProxyContext child = new ProxyContext(proxy, request, callKey != null ? callKey : parent.getProxyApiKeyData(), null, null,
+                mintSpanId(), parent.getTraceFlags());
         child.setCallTree(call.body());
         responses.add(response);
         response.answer().onSuccess(answer -> {

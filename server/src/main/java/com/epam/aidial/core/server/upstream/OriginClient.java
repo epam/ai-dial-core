@@ -4,8 +4,10 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.EmbeddedOrigins;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
@@ -13,6 +15,8 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.impl.ContextInternal;
 import lombok.RequiredArgsConstructor;
+
+import javax.annotation.Nullable;
 
 /**
  * Creates the {@link ProxyRequest} to the origin serving a deployment: an HTTP request, or a call to the plugin an
@@ -53,6 +57,28 @@ public class OriginClient {
             String baseUrl = DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin;
             return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context,
                     () -> embeddedOrigins.acquire(config, plugin), method, baseUrl, absoluteUri));
+        } catch (RuntimeException e) {
+            return vertxContext.failedFuture(e);
+        }
+    }
+
+    /**
+     * Creates the decide or notice request of a router in decision mode to {@code plugin}, which serves the router's
+     * interface. Unlike {@link #embedded}: the context's deployment is not checked (it is the router, or at a redecide or
+     * notice the candidate that failed); the attempt's calls carry {@code callKey}, the decide request's key, and are
+     * refused when it is null, as for a notice; the plugin gets {@code bodyTree} and not the context's request tree; the
+     * attempt does not watch the client; and it closes once the plugin's answer has been read or has failed.
+     */
+    public Future<ProxyRequest> embeddedForRouter(ProxyContext context, HttpMethod method, String absoluteUri, String plugin,
+                                                  @Nullable ApiKeyData callKey, @Nullable ObjectNode bodyTree) {
+        ContextInternal vertxContext = (ContextInternal) vertx.getOrCreateContext();
+        try {
+            Config config = context.getConfig();
+            embeddedOrigins.resolve(config, plugin);
+            String baseUrl = DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin;
+            return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context,
+                    () -> embeddedOrigins.acquire(config, plugin), method, baseUrl, absoluteUri,
+                    new EmbeddedProxyRequest.RouterRequest(callKey, bodyTree)));
         } catch (RuntimeException e) {
             return vertxContext.failedFuture(e);
         }

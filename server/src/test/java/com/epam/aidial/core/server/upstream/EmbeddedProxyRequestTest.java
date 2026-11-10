@@ -1,11 +1,16 @@
 package com.epam.aidial.core.server.upstream;
 
+import com.epam.aidial.core.plugin.OriginCall;
+import com.epam.aidial.core.plugin.OriginHost;
 import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.OriginRequest;
 import com.epam.aidial.core.plugin.OriginResponse;
 import com.epam.aidial.core.server.ChildPass;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.EmbeddedOrigins.Lease;
+import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -33,12 +38,15 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -231,6 +239,84 @@ class EmbeddedProxyRequestTest {
         verify(pass).closeChildPasses();
     }
 
+    // a router's decide or notice request
+
+    @Test
+    void testRouterRequestGetsTheGivenTreeAndLeavesTheContextsAlone() throws Exception {
+        ObjectNode tree = ProxyUtil.MAPPER.createObjectNode().put("model", "r1");
+        AtomicReference<OriginRequest> seen = new AtomicReference<>();
+
+        await(routerRequest((call, host) -> {
+            seen.set(call);
+            return Future.succeededFuture(new Answer(stream(false)));
+        }, new ApiKeyData(), tree).send(Buffer.buffer("{}")));
+
+        assertSame(tree, seen.get().bodyTree());
+        assertEquals("/decide", seen.get().uri());
+        verify(pass, never()).getRequestTree();
+        verify(pass, never()).setRequestTree(any());
+    }
+
+    @Test
+    void testRouterRequestDoesNotWatchTheClient() throws Exception {
+        HttpServerResponse client = mock(HttpServerResponse.class);
+        when(client.closed()).thenReturn(true);
+
+        ExecutionException error = assertThrows(ExecutionException.class, () -> await(routerRequest(
+                (call, host) -> Future.failedFuture(new IllegalStateException("router failed")), new ApiKeyData(), null, client)
+                .send(Buffer.buffer())));
+
+        assertInstanceOf(IllegalStateException.class, error.getCause());
+        verify(client, never()).closeHandler(any());
+        verify(pass, never()).closeChildPasses();
+    }
+
+    @Test
+    void testRouterAttemptEndsOnceItsAnswerIsRead() throws Exception {
+        AtomicReference<OriginHost> kept = new AtomicReference<>();
+        ProxyResponse response = await(routerRequest((call, host) -> {
+            kept.set(host);
+            return Future.succeededFuture(new Answer(stream(false)));
+        }, new ApiKeyData(), null).send(Buffer.buffer()));
+
+        assertEquals("answer", await(response.body()).toString());
+
+        awaitCondition(() -> released.get() == 1);
+        OriginResponse late = await(onContext(() -> kept.get().call(new OriginCall("/openai/v1/chat/completions",
+                MultiMap.caseInsensitiveMultiMap(), ProxyUtil.MAPPER.createObjectNode()))));
+        assertEquals(401, late.statusCode());
+        assertFalse(kept.get().cancelled().isComplete(), "an answered decision is not cancelled");
+        assertEquals(1, attempts.size(), "the attempt stays registered with the pass, whose end closes it too");
+    }
+
+    @Test
+    void testRouterAttemptEndsWhenThePluginFails() throws Exception {
+        AtomicReference<OriginHost> kept = new AtomicReference<>();
+
+        assertThrows(ExecutionException.class, () -> await(routerRequest((call, host) -> {
+            kept.set(host);
+            return Future.failedFuture(new IllegalStateException("router failed"));
+        }, new ApiKeyData(), null).send(Buffer.buffer())));
+
+        awaitCondition(() -> released.get() == 1);
+        assertFalse(kept.get().cancelled().isComplete());
+    }
+
+    @Test
+    void testResetOfRouterRequestCancelsIt() throws Exception {
+        AtomicReference<Future<Void>> cancelled = new AtomicReference<>();
+        EmbeddedProxyRequest request = routerRequest((call, host) -> {
+            cancelled.set(host.cancelled());
+            return Promise.<OriginResponse>promise().future();
+        }, new ApiKeyData(), null);
+        request.send(Buffer.buffer());
+        awaitCondition(() -> cancelled.get() != null);
+
+        request.reset();
+
+        await(cancelled.get());
+    }
+
     private void assertSendFails(OriginPlugin plugin, Class<? extends Throwable> cause) {
         ExecutionException error = assertThrows(ExecutionException.class, () -> await(request(plugin).send(Buffer.buffer("{}"))));
         assertInstanceOf(cause, error.getCause());
@@ -248,6 +334,17 @@ class EmbeddedProxyRequestTest {
         context = (ContextInternal) vertx.getOrCreateContext();
         when(pass.getResponse()).thenReturn(client);
         return new EmbeddedProxyRequest(context, pass, lease, HttpMethod.POST, "plugin://p1", "plugin://p1/openai/v1/responses?x=1");
+    }
+
+    private EmbeddedProxyRequest routerRequest(OriginPlugin plugin, ApiKeyData callKey, ObjectNode tree) {
+        return routerRequest(plugin, callKey, tree, mock(HttpServerResponse.class));
+    }
+
+    private EmbeddedProxyRequest routerRequest(OriginPlugin plugin, ApiKeyData callKey, ObjectNode tree, HttpServerResponse client) {
+        context = (ContextInternal) vertx.getOrCreateContext();
+        when(pass.getResponse()).thenReturn(client);
+        return new EmbeddedProxyRequest(context, pass, () -> new Lease(plugin, released::incrementAndGet), HttpMethod.POST,
+                "plugin://p1", "plugin://p1/decide", new EmbeddedProxyRequest.RouterRequest(callKey, tree));
     }
 
     private <T> T onContext(Supplier<T> action) throws Exception {

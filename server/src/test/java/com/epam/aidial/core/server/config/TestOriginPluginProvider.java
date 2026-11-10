@@ -20,9 +20,11 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.streams.ReadStream;
 
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -44,6 +46,20 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <li>{@code X-Test-Await-Cancel} answers nothing until the host says the request is cancelled, then counts it in
  *   {@link #TOLD_CANCELLED} and fails the call.</li>
  * </ul>
+ * On {@code POST /decide}, the request of a router in decision mode, it speaks the decide protocol and records the
+ * request in {@link #DECIDED}, steered by these client headers:
+ * <ul>
+ *   <li>{@code X-Test-Decide: <name>[,<name>]} answers {@code {"candidates": [...]}}, and {@code X-Test-Redecide} the
+ *   same once {@code X-DIAL-ROUTER-ATTEMPTS} is present;</li>
+ *   <li>{@code X-Test-Decide-Status: <code>} with {@code X-Test-Decide-Body: <json>} answers that status and body;</li>
+ *   <li>{@code X-Test-Decide-Stall-Body} answers {@code 200} and never ends the body;</li>
+ *   <li>{@code X-Test-Decide-Delay-Ms: <ms>} answers after that delay;</li>
+ *   <li>{@code X-Test-Decide-Strip} removes {@code messages} from its body tree first;</li>
+ *   <li>{@code X-Test-Decide-Call: <path>} calls that path through the host and answers once the call's answer ended;
+ *   {@code X-Test-Decide-Call-Stream: <path>} starts a streamed call and answers without waiting;</li>
+ *   <li>on a notice, {@code X-Test-Notice-Call: <path>} calls that path through the host first.</li>
+ * </ul>
+ * {@code X-Test-Fail: call} and {@code X-Test-Await-Cancel} apply to a decide request too.
  * The setting {@code failCreate: true} makes {@link #create} throw, and {@code closeFails: true} makes the plugin's
  * {@link OriginPlugin#close} throw once it is recorded in {@link #CLOSED}. Tests clear the recorded state with
  * {@link #reset}.
@@ -77,8 +93,14 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
      * Every plugin closed, oldest first.
      */
     public static final List<Closed> CLOSED = new CopyOnWriteArrayList<>();
+    /**
+     * Every decide or notice request a {@code test-origin} plugin was called with, oldest first. Their hosts are in
+     * {@link #HOSTS} too.
+     */
+    public static final List<Decided> DECIDED = new CopyOnWriteArrayList<>();
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String CALL_BODY = "{\"messages\":[{\"role\":\"user\",\"content\":\"ask\"}]}";
 
     public static void reset() {
         REQUESTS.clear();
@@ -87,6 +109,7 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         HOSTS.clear();
         TOLD_CANCELLED.set(0);
         CLOSED.clear();
+        DECIDED.clear();
     }
 
     @Override
@@ -126,6 +149,9 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
     }
 
     private static Future<OriginResponse> answer(OriginRequest request, OriginHost host, String greeting) {
+        if ("/decide".equals(request.uri())) {
+            return decide(request, host);
+        }
         CANCELLED_BEFORE.add(CANCELLED.get());
         REQUESTS.add(request);
         HOSTS.add(new Host(host, Vertx.currentContext()));
@@ -208,6 +234,107 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         });
     }
 
+    private static Future<OriginResponse> decide(OriginRequest request, OriginHost host) {
+        Decided decided = new Decided(request, new AtomicBoolean(), Promise.promise(), new CopyOnWriteArrayList<>());
+        DECIDED.add(decided);
+        HOSTS.add(new Host(host, Vertx.currentContext()));
+        host.cancelled().onComplete(ignored -> decided.cancelled().set(true));
+        Future<OriginResponse> answer;
+        try {
+            answer = verdict(request, host, decided);
+        } catch (RuntimeException e) {
+            answer = Future.failedFuture(e);
+        }
+        return answer.onComplete(ignored -> decided.settled().tryComplete());
+    }
+
+    private static Future<OriginResponse> verdict(OriginRequest request, OriginHost host, Decided decided) {
+        MultiMap headers = request.headers();
+        Context context = Vertx.currentContext();
+        if (headers.contains("X-DIAL-ROUTER-NOTICE")) {
+            String path = headers.get("X-Test-Notice-Call");
+            return (path == null ? Future.<Void>succeededFuture() : callThrough(host, path, false, decided)).map(ignored -> json(200, "{}"));
+        }
+        if ("call".equals(headers.get("X-Test-Fail"))) {
+            return Future.failedFuture(new IllegalStateException("test-origin failed the decision"));
+        }
+        if (headers.contains("X-Test-Await-Cancel")) {
+            return host.cancelled().compose(ignored -> {
+                TOLD_CANCELLED.incrementAndGet();
+                return Future.failedFuture(new IllegalStateException("test-origin stopped: the decision was cancelled"));
+            });
+        }
+        if (headers.contains("X-Test-Decide-Stall-Body")) {
+            return Future.succeededFuture(new Answer(200, MultiMap.caseInsensitiveMultiMap().add("Content-Type", "application/json"),
+                    new ChunkStream(new ArrayDeque<>(), false, true)));
+        }
+        if (headers.contains("X-Test-Decide-Strip") && request.bodyTree() != null) {
+            request.bodyTree().remove("messages");
+        }
+        String streamed = headers.get("X-Test-Decide-Call-Stream");
+        if (streamed != null) {
+            callThrough(host, streamed, true, decided);
+        }
+        String path = headers.get("X-Test-Decide-Call");
+        Future<Void> before = path == null ? Future.succeededFuture() : callThrough(host, path, false, decided);
+        String delay = headers.get("X-Test-Decide-Delay-Ms");
+        if (delay != null) {
+            before = before.compose(ignored -> {
+                Promise<Void> waited = Promise.promise();
+                context.owner().setTimer(Long.parseLong(delay), timer -> waited.complete());
+                return waited.future();
+            });
+        }
+        String status = headers.get("X-Test-Decide-Status");
+        return before.map(ignored -> status != null
+                ? json(Integer.parseInt(status), headers.get("X-Test-Decide-Body"))
+                : json(200, "{\"candidates\":" + candidates(headers) + "}"));
+    }
+
+    private static String candidates(MultiMap headers) {
+        String names = headers.contains("X-DIAL-ROUTER-ATTEMPTS") && headers.contains("X-Test-Redecide")
+                ? headers.get("X-Test-Redecide") : headers.get("X-Test-Decide");
+        List<String> quoted = names == null ? List.of() : Arrays.stream(names.split(",")).map(name -> "\"" + name.trim() + "\"").toList();
+        return "[" + String.join(",", quoted) + "]";
+    }
+
+    /**
+     * Calls {@code path} through the host with a small chat body of its own, and records how the call's answer ended.
+     * The future completes when that answer has ended or failed.
+     */
+    private static Future<Void> callThrough(OriginHost host, String path, boolean stream, Decided decided) {
+        Call call = new Call(path, new AtomicReference<>("sent"));
+        decided.calls().add(call);
+        ObjectNode body;
+        try {
+            body = (ObjectNode) MAPPER.readTree(CALL_BODY);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        if (stream) {
+            body.put("stream", true);
+        }
+        Promise<Void> done = Promise.promise();
+        host.call(new OriginCall(path, MultiMap.caseInsensitiveMultiMap(), body)).onComplete(result -> {
+            if (result.failed()) {
+                call.outcome().set("failed: " + result.cause().getMessage());
+                done.complete();
+                return;
+            }
+            OriginResponse answer = result.result();
+            call.outcome().set(Integer.toString(answer.statusCode()));
+            answer.body().exceptionHandler(error -> {
+                call.outcome().set(answer.statusCode() + " failed");
+                done.tryComplete();
+            }).endHandler(ignored -> {
+                call.outcome().set(answer.statusCode() + " ended");
+                done.tryComplete();
+            }).handler(chunk -> {
+            });
+        });
+        return done.future();
+    }
+
     private static int status(MultiMap headers) {
         String forEndpoint = headers.get("X-Test-Status-For-Endpoint");
         if (forEndpoint != null) {
@@ -267,6 +394,20 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
     }
 
     /**
+     * A decide or notice request: whether the host reported it cancelled, when the plugin's answer settled, and the
+     * calls the plugin made through its host while answering it.
+     */
+    public record Decided(OriginRequest request, AtomicBoolean cancelled, Promise<Void> settled, List<Call> calls) {
+    }
+
+    /**
+     * A call a deciding plugin made: {@code sent}, then the answer's status, then {@code <status> ended} or
+     * {@code <status> failed} as its body ended, or {@code failed: <message>} when the call itself failed.
+     */
+    public record Call(String path, AtomicReference<String> outcome) {
+    }
+
+    /**
      * A closed plugin: its {@code greeting}, and whether it was closed on an event loop.
      */
     public record Closed(String greeting, boolean onEventLoop) {
@@ -316,6 +457,8 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         private final Context context = Vertx.currentContext();
         private final Deque<Buffer> chunks;
         private final boolean hold;
+        // emits its chunks and then neither adds nor ends: a body that stalls
+        private final boolean stall;
         private Handler<Buffer> handler;
         private Handler<Void> endHandler;
         private long demand = Long.MAX_VALUE;
@@ -324,8 +467,13 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         volatile boolean cancelled;
 
         ChunkStream(Deque<Buffer> chunks, boolean hold) {
+            this(chunks, hold, false);
+        }
+
+        ChunkStream(Deque<Buffer> chunks, boolean hold, boolean stall) {
             this.chunks = chunks;
             this.hold = hold;
+            this.stall = stall;
         }
 
         @Override
@@ -388,7 +536,7 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
                     drain();
                 });
             }
-            if (chunks.isEmpty() && !hold && !ended && handler != null && endHandler != null) {
+            if (chunks.isEmpty() && !hold && !stall && !ended && handler != null && endHandler != null) {
                 ended = true;
                 endHandler.handle(null);
             }

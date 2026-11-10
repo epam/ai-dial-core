@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
@@ -1075,15 +1076,25 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
-    void testDecisionRouterWithEmbeddedInterfaceRejected() {
+    void testDecisionRouterWithEmbeddedInterfaceAccepted() {
         Config config = newMutableConfig();
         Router router = decisionRouter("http://router", null);
         router.setInterfaces(Map.of("anthropicMessages", embedded("p1")));
         config.getRouters().put("r1", router);
 
-        InvalidEntityException error = assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null));
-        assertTrue(error.getMessage().contains("A router in mode 'decision' serves no interface through a plugin"), error.getMessage());
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertTrue(config.getRouters().containsKey("r1"));
+    }
+
+    @Test
+    void testEmbeddedDecisionFixtureLoads() throws Exception {
+        Config config = ProxyUtil.MAPPER.readValue(getClass().getClassLoader().getResource("dial-config/router-decision-embedded.json"),
+                Config.class);
+
+        ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
+
+        assertEquals(Set.of("r1", "rb", "rt", "r9", "r4", "re", "r2", "rf"), config.getRouters().keySet());
     }
 
     @Test

@@ -120,6 +120,33 @@ class ChildPassTest {
     }
 
     @Test
+    void testRouterHostCallsCarryItsKey() throws Exception {
+        ApiKeyData decideKey = new ApiKeyData();
+        decideKey.setOriginalKey(new Key());
+        decideKey.setPerRequestKey("decide-key");
+        decideKey.setTraceId("trace-2");
+        decideKey.setSpanId("span-2");
+        host = ChildPass.forRouter(proxy, parent, pluginContext, decideKey);
+
+        call("/openai/v1/chat/completions", body());
+
+        awaitCondition(() -> dispatched.size() == 1);
+        ProxyContext child = dispatched.get(0);
+        assertEquals("trace-2", child.getTraceId());
+        assertEquals("span-2", child.getParentSpanId());
+    }
+
+    @Test
+    void testRouterHostWithoutKeyIsClosed() throws Exception {
+        host = ChildPass.forRouter(proxy, parent, pluginContext, null);
+
+        OriginResponse answer = await(call("/openai/v1/chat/completions", body()));
+
+        assertEquals(401, answer.statusCode());
+        verify(proxy, never()).dispatch(any());
+    }
+
+    @Test
     void testCancelCompletesCancelled() throws Exception {
         host.cancel();
 

@@ -5,6 +5,7 @@ import com.epam.aidial.core.plugin.OriginRequest;
 import com.epam.aidial.core.server.ChildPass;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.EmbeddedOrigins.Lease;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -18,6 +19,7 @@ import io.vertx.core.impl.ContextInternal;
 import java.io.IOException;
 import java.util.List;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 /**
  * A {@link ProxyRequest} answered by a plugin running in Core. Its futures complete on the request's Vert.x context,
@@ -37,6 +39,8 @@ final class EmbeddedProxyRequest implements ProxyRequest {
     private final String baseUrl;
     private final String absoluteUri;
     private final MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+    // set for a router's decide or notice request, null for a request to a deployment's interface
+    private final RouterRequest router;
     private EmbeddedProxyResponse response;
     private ChildPass host;
     private boolean reset;
@@ -53,12 +57,30 @@ final class EmbeddedProxyRequest implements ProxyRequest {
      */
     EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Lease> lease, HttpMethod method,
                          String baseUrl, String absoluteUri) {
+        this(context, proxyContext, lease, method, baseUrl, absoluteUri, null);
+    }
+
+    /**
+     * @param router for a router's decide or notice request: the key its calls carry and the body tree it gets
+     */
+    EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Lease> lease, HttpMethod method,
+                         String baseUrl, String absoluteUri, RouterRequest router) {
         this.context = context;
         this.proxyContext = proxyContext;
         this.lease = lease;
         this.method = method;
         this.baseUrl = baseUrl;
         this.absoluteUri = absoluteUri;
+        this.router = router;
+    }
+
+    /**
+     * What sets a router's decide or notice request apart from a request to a deployment's interface. The calls of its
+     * attempt carry {@code callKey}, none for a notice. Its plugin gets {@code bodyTree}, or no tree. The attempt does not
+     * watch the client, whose leaving the decision handles. It closes once the plugin's answer has been read or has
+     * failed.
+     */
+    record RouterRequest(@Nullable ApiKeyData callKey, @Nullable ObjectNode bodyTree) {
     }
 
     @Override
@@ -80,16 +102,22 @@ final class EmbeddedProxyRequest implements ProxyRequest {
     @Override
     public Future<ProxyResponse> send(Buffer body) {
         Promise<ProxyResponse> promise = context.promise();
-        OriginRequest request = new OriginRequest(method, absoluteUri.substring(baseUrl.length()), headers, body, bodyTree(body), caller());
-        ChildPass attempt = new ChildPass(proxyContext.getProxy(), proxyContext, context);
+        OriginRequest request = new OriginRequest(method, absoluteUri.substring(baseUrl.length()), headers, body,
+                router != null ? router.bodyTree() : bodyTree(body), caller());
+        ChildPass attempt = router != null
+                ? ChildPass.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey())
+                : new ChildPass(proxyContext.getProxy(), proxyContext, context);
         host = attempt;
+        // registered for a router request too: the pass's end closes an attempt nothing else closed
         proxyContext.addChildPass(attempt);
-        // the relay notices a client gone once it writes; while the plugin works, Core watches the connection itself
-        HttpServerResponse client = proxyContext.getResponse();
-        client.closeHandler(ignored -> onClientGone(attempt));
-        if (client.closed()) {
-            // a close handler set on a closed connection never fires: a client gone during the parse or a retry
-            onClientGone(attempt);
+        if (router == null) {
+            // the relay notices a client gone once it writes; while the plugin works, Core watches the connection itself
+            HttpServerResponse client = proxyContext.getResponse();
+            client.closeHandler(ignored -> onClientGone(attempt));
+            if (client.closed()) {
+                // a close handler set on a closed connection never fires: a client gone during the parse or a retry
+                onClientGone(attempt);
+            }
         }
         Lease taken;
         try {
@@ -98,6 +126,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
             // Core is shutting down, the plugin closed twice while the attempt started, or creating it again failed:
             // the attempt fails as a plugin that throws does
             settled = true;
+            closeRouterAttempt(attempt);
             promise.fail(e);
             return promise.future();
         }
@@ -115,10 +144,13 @@ final class EmbeddedProxyRequest implements ProxyRequest {
                         proxyContext.closeChildPasses();
                         return;
                     }
+                    closeRouterAttempt(attempt);
                     promise.fail(result.cause());
                     return;
                 }
-                EmbeddedProxyResponse answer = new EmbeddedProxyResponse(result.result(), attempt::cancel);
+                EmbeddedProxyResponse answer = router == null
+                        ? new EmbeddedProxyResponse(result.result(), attempt::cancel)
+                        : new EmbeddedProxyResponse(result.result(), attempt::cancel, attempt::close);
                 response = answer;
                 if (reset) {
                     answer.discard();
@@ -131,9 +163,20 @@ final class EmbeddedProxyRequest implements ProxyRequest {
             // plugin code: a jar missing a class throws NoClassDefFoundError on first use
             settled = true;
             attempt.whenClosed(taken.onDone());
+            closeRouterAttempt(attempt);
             promise.fail(e);
         }
         return promise.future();
+    }
+
+    /**
+     * A router request's attempt ends with its answer: its calls carry the decide key, which an in-process call does
+     * not look up again, so invalidating the key alone would not stop them.
+     */
+    private void closeRouterAttempt(ChildPass attempt) {
+        if (router != null) {
+            attempt.close();
+        }
     }
 
     /**

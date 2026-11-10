@@ -215,7 +215,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                         return handleInterceptor(0);
                     }
                     return decisions.decideIfRouter(InterfaceType.OPENAI_RESPONSES, Future.succeededFuture(context.getOriginalRequestBody()),
-                                    this::reenterWithCandidate)
+                                    request.getTree(), this::reenterWithCandidate)
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));

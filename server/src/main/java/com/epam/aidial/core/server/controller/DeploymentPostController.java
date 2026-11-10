@@ -205,7 +205,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
                         } else if (context.getDeployment() instanceof Router) {
                             // the request stays paused until this future completes: the body read is registered
                             // now and the decision runs outside it, or a decide waiting for the body never ends
-                            decisions.decideIfRouter(requestedInterface(), readRequestBody(),
+                            decisions.decideIfRouter(requestedInterface(), readRequestBody(), null,
                                             () -> handleDeployment(context.getDecision().current()))
                                     .compose(decided -> decided ? handleDeployment(context.getDecision().current()).mapEmpty()
                                             : handleRateLimitSuccess().mapEmpty())
@@ -281,13 +281,19 @@ public class DeploymentPostController extends BaseChatCompletionController {
      */
     private Future<Buffer> readRequestBody() {
         if (requestBodyFuture == null) {
-            requestBodyFuture = context.getRequest().body().onSuccess(body -> {
-                if (context.getDecision() != null || context.getDeployment() instanceof Router) {
-                    context.setOriginalRequestBody(body);
-                    // an interceptor of the chosen deployment reads the body from the context
-                    context.setRequestBodyWithTimestamp(body);
-                }
-            });
+            requestBodyFuture = context.getRequest().body()
+                    .compose(body -> body.length() == 0 && context.isChildPass() && context.getDeployment() instanceof Router
+                            // an in-process call has a tree and no bytes: its serialization, made before any candidate
+                            // changes the tree, stands in for the client's bytes
+                            ? proxy.getTaskExecutor().submit(() -> Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(context.getCallTree())))
+                            : Future.succeededFuture(body))
+                    .onSuccess(body -> {
+                        if (context.getDecision() != null || context.getDeployment() instanceof Router) {
+                            context.setOriginalRequestBody(body);
+                            // an interceptor of the chosen deployment reads the body from the context
+                            context.setRequestBodyWithTimestamp(body);
+                        }
+                    });
         }
         return requestBodyFuture;
     }

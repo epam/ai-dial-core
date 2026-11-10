@@ -16,15 +16,25 @@ final class EmbeddedProxyResponse implements ProxyResponse {
     private final OriginResponse answer;
     private final ReadStream<Buffer> body;
     private final Runnable onDiscard;
+    private final Runnable onBodyRead;
     private boolean cancelled;
 
     /**
      * @param onDiscard what else ends with the answer: the in-process calls of the attempt
      */
     EmbeddedProxyResponse(OriginResponse answer, Runnable onDiscard) {
+        this(answer, onDiscard, () -> {
+        });
+    }
+
+    /**
+     * @param onBodyRead runs once {@link #body()} has read the whole body or failed
+     */
+    EmbeddedProxyResponse(OriginResponse answer, Runnable onDiscard, Runnable onBodyRead) {
         this.answer = answer;
         this.body = answer.body();
         this.onDiscard = onDiscard;
+        this.onBodyRead = onBodyRead;
     }
 
     @Override
@@ -50,7 +60,7 @@ final class EmbeddedProxyResponse implements ProxyResponse {
         body.endHandler(ignored -> promise.tryComplete(content));
         body.handler(content::appendBuffer);
         body.resume();
-        return promise.future();
+        return promise.future().onComplete(ignored -> onBodyRead.run());
     }
 
     @Override

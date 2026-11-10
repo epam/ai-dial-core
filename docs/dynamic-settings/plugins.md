@@ -77,6 +77,14 @@ While it answers a request, an origin plugin can call another deployment through
 
 A plugin that calls its own deployment calls itself again and again: there is no depth limit.
 
+### Deciding for a router
+
+A [router in decision mode](routers.md#decision-mode) may serve an interface in `embedded` mode. Its plugin then receives the router's decide request in process, `POST /decide` with the headers and body DIAL Core would send to a router service, and answers it with the verdict, `{"candidates": [...]}`, as a router service does. DIAL Core serves the deployment the verdict names in the same pass; the plugin's answer is no deployment's answer.
+
+* **The key.** The decide request's `API-KEY` is the decide request's key, and the plugin's calls through its host carry it, as a router service's calls with that header do. In process the host serves the create operations only: `GET /v1/user/info` and file reads go to DIAL Core over HTTP with that `API-KEY`. The caller is in the request, so a plugin rarely needs them.
+* **When its calls end.** When the decide call ends, once DIAL Core has read the plugin's answer, DIAL Core cancels the plugin's calls still open and answers later ones `401`. A notice request (`X-DIAL-ROUTER-NOTICE: true`) carries no key: every call made while answering it is answered `401`.
+* **Cancellation.** DIAL Core does not watch the client of a decide request. `OriginHost.cancelled()` completes only when the plugin has not answered within the router's `decision.timeoutMs`; a plugin that answered is never told.
+
 ### The forward sample
 
 The module `plugin-samples` holds an origin plugin of type `forward`, with the settings `{"deployment": "<name>"}`. It sends each request on to that deployment through a call, and answers with the call's answer: a deployments action goes to the same action of that deployment, the other interfaces keep their path with `model` set to it. It is a worked example of a call and the vehicle for measuring one. The default Docker image does not carry it; build an image with `--build-arg SAMPLE_PLUGINS=true` to put its jar in `/app/plugins`.

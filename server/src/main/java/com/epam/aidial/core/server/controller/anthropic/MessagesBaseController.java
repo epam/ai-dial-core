@@ -79,7 +79,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                     String model = request.getModel();
                     return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
                             .compose(ignore -> decisions.decideIfRouter(InterfaceType.ANTHROPIC_MESSAGES,
-                                    Future.succeededFuture(context.getOriginalRequestBody()), this::reenterWithCandidate))
+                                    Future.succeededFuture(context.getOriginalRequestBody()), request.getTree(), this::reenterWithCandidate))
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request))
                             .otherwise(error -> handleRequestError(model, error));
                 })

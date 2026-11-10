@@ -20,6 +20,12 @@ public interface OriginHost {
      *
      * <p>A call ends with the request it belongs to: once the plugin's request has ended, Core cancels the answers
      * still open and answers a later call {@code 401}.
+     *
+     * <p>On a router's {@code POST /decide} request, the calls carry the decide request's key instead, and they end
+     * with the decide call: once the plugin's answer has been read, Core cancels the calls still open. A notice request
+     * ({@code X-DIAL-ROUTER-NOTICE}) carries no key, so every call made while answering it is answered {@code 401}.
+     * In process a plugin can call only the operations {@link OriginCall#uri()} names; {@code GET /v1/user/info} and
+     * file reads go to Core over HTTP with the {@code API-KEY} header of the request.
      */
     Future<OriginResponse> call(OriginCall call);
 
@@ -32,6 +38,10 @@ public interface OriginHost {
      * <p>Once the client has gone, an answer that fails ends the request quietly: Core tries no other upstream and
      * writes no analytics row. An answer the plugin still gives is handled as an HTTP origin's answer after its
      * client went away: a model's answer is read to the end and charged.
+     *
+     * <p>On a router's {@code POST /decide} request it completes only when the plugin has not answered within the
+     * router's {@code decision.timeoutMs}; Core does not watch the client of a decide request, and a plugin that
+     * answered, however its answer turned out, is never told.
      */
     Future<Void> cancelled();
 }
