@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiParameter;
@@ -186,6 +187,9 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiResponse(code = 403),
                 @ApiResponse(code = 404),
                 @ApiResponse(code = 500)
+            },
+            extensions = {
+                @ApiExtension(name = "x-preview", value = "true")
             }
     )
     @ApiOperation(

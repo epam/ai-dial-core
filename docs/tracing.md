@@ -218,7 +218,7 @@ only parent source either way.
 
 ## Calls from an origin plugin
 
-A deployment an origin plugin calls in process (see [plugins](dynamic-settings/plugins.md#calling-another-deployment))
+A deployment an origin plugin calls in process (see [plugins](dynamic-settings/plugins.md#calling-another-deployment), in preview)
 has no server span of its own, as no HTTP request comes into Core for it. Core writes no span attributes for it, so
 they do not land on the plugin's server span. Its HTTP origin requests keep their client spans, under the plugin's
 server span, and send a `traceparent` of the client's trace. Its analytics row and token-stats span carry the trace id
