@@ -136,7 +136,10 @@ final class EmbeddedProxyRequest implements ProxyRequest {
                 // given back once the attempt has closed too: the plugin is closed neither before its answer nor
                 // under its calls
                 attempt.whenClosed(taken.onDone());
-                if (result.failed()) {
+                // a null answer fails the attempt, as a plugin that throws does
+                Throwable failure = result.failed() ? result.cause()
+                        : result.result() == null ? new IllegalStateException("The plugin answered null") : null;
+                if (failure != null) {
                     if (clientGone) {
                         // ponytail: the pass ends here, as after a client gone from an application: no retry, no
                         // row, no finalize, the per-request key expiring by its TTL. Its attempts close, so that an
@@ -145,7 +148,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
                         return;
                     }
                     closeRouterAttempt(attempt);
-                    promise.fail(result.cause());
+                    promise.fail(failure);
                     return;
                 }
                 EmbeddedProxyResponse answer = router == null

@@ -281,6 +281,17 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         assertEquals(1, TestOriginPluginProvider.REQUESTS.size());
     }
 
+    @Test
+    void testPluginAnswersNull() {
+        servedApp("openaiChatCompletions");
+
+        Response response = send(HttpMethod.POST, "/openai/deployments/app/chat/completions", null, CHAT_BODY,
+                "content-type", "application/json", "X-Test-Fail", "null");
+
+        assertEquals(502, response.status(), response.body());
+        assertTrue(response.body().contains("No route"), response.body());
+    }
+
     // deployment-origin "Client gone from an embedded origin"
 
     @Test

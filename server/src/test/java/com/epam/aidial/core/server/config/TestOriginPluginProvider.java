@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * <ul>
  *   <li>{@code X-Test-Status: <code>} answers that status;</li>
  *   <li>{@code X-Test-Status-For-Endpoint: <endpoint>=<code>} answers that status to the call for that upstream;</li>
- *   <li>{@code X-Test-Fail: call} fails the call;</li>
+ *   <li>{@code X-Test-Fail: call} fails the call, and {@code X-Test-Fail: null} completes it with no answer;</li>
  *   <li>{@code X-Test-Hold} streams one event every 100 ms until {@link OriginResponse#cancel()}, as a long answer does;</li>
  *   <li>{@code X-Test-Call: <path>} calls that path through the host with the request's {@code bodyTree} and relays the
  *   call's answer, a cancel of it counted in {@link #CANCELLED} and passed on. The call carries every header but the
@@ -168,6 +168,9 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         }
         if ("call".equals(headers.get("X-Test-Fail"))) {
             return Future.failedFuture(new IllegalStateException("test-origin failed the call"));
+        }
+        if ("null".equals(headers.get("X-Test-Fail"))) {
+            return Future.succeededFuture(null);
         }
         int status = status(headers);
         if (status != 200) {

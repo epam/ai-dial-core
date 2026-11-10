@@ -368,6 +368,8 @@ public class RouterDecisionFlow {
                     .onFailure(error -> log.error("error occurred on invalidating per-request key", error));
         }
         context.setProxyApiKeyData(null);
+        // an origin plugin's in-process calls carry the failed candidate's key without a lookup: they end with it
+        context.closeChildPasses();
         context.setCacheBreakpointContext(null);
         context.setUpstreamBodyReceived(false);
         context.setSpanUsageStats(null);

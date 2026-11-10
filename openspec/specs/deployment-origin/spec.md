@@ -286,7 +286,8 @@ retriable statuses, the relay, usage and the analytics row. The row's `response.
 ### Requirement: Embedded origin failure
 Core SHALL answer the connect-failure `502`, without trying another upstream, when the plugin cannot serve: no
 `plugins` entry has its name, the entry's provider is not loaded or does not serve requests, or creating the plugin
-from its settings fails. A plugin call that fails SHALL count as a failure to receive the response headers.
+from its settings fails. A plugin call that fails, or completes with no answer, SHALL count as a failure to receive
+the response headers.
 
 #### Scenario: Missing plugin entry
 - **WHEN** application `app` declares `interfaces.openaiChatCompletions: {"mode": "embedded", "plugin": "missing"}`,
@@ -301,6 +302,10 @@ from its settings fails. A plugin call that fails SHALL count as a failure to re
 #### Scenario: Plugin call fails
 - **WHEN** the `test-origin` plugin serving application `app` fails the call instead of answering
 - **THEN** the client gets `502` with the message `No route`, and one attempt is made
+
+#### Scenario: Plugin call completes with no answer
+- **WHEN** the `test-origin` plugin serving application `app` completes the call with `null`
+- **THEN** the client gets `502` with the message `No route`
 
 ### Requirement: Client gone from an embedded origin
 When writing to the client fails during the relay of a plugin's answer for a deployment that is not a `Model`,
@@ -361,13 +366,19 @@ as it arrives.
   message `No route`
 
 ### Requirement: Calls end with the plugin's pass
-When the plugin's pass ends, or, for a router's decide request, when the decide call ends (router-deployment),
-Core SHALL cancel the answers of its calls that are still open, and SHALL answer a call
-made after that `401` with the message `Unknown api key`.
+When the plugin's pass ends, when a router in decision mode falls back from the plugin's deployment to another
+candidate (router-deployment), or, for a router's decide request, when the decide call ends, Core SHALL cancel the
+answers of its calls that are still open, and SHALL answer a call made after that `401` with the message
+`Unknown api key`.
 
 #### Scenario: Call after the plugin's pass ended
 - **WHEN** `p1`'s pass has ended and its analytics row is written, and `p1` then makes a call
 - **THEN** that call's answer is `401`
+
+#### Scenario: Call after a fallback from the plugin's deployment
+- **WHEN** a router in decision mode names candidates `app` and then a model, the `test-origin` plugin serving `app`
+  fails the call, and while Core serves the model the plugin makes a call
+- **THEN** that call's answer is `401`, and the call reaches no deployment
 
 ### Requirement: Caller in the plugin request
 With each request Core SHALL hand an origin plugin the caller's identity: the user id of a caller with a JWT, the

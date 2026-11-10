@@ -126,3 +126,17 @@ router's repository. The expected effects are in design.md's table and are not m
   `strategy.select(rc, identity(request.caller()))`.
 - `OriginRequest.body` for a pass whose client bytes no longer match its tree, once FILTER plugins exist (design.md
   Open Questions).
+
+## PR review, round 1 (after the archive)
+
+A review of the whole PR against `development` found two defects, both fixed:
+- **A fallback did not end the failed candidate's calls.** When the origin plugin serving a candidate failed,
+  `RouterDecisionFlow.retryWithNextCandidate` invalidated the candidate's key and cleared the pass's proxy key, but
+  left the plugin's attempt open (plugin-close D2 keeps it open until the pass ends). A late call through its host
+  then threw an NPE while the key was null, or ran with the next candidate's key once it was set. The fallback now
+  closes the pass's child passes next to the key invalidation, as the decide attempt already does at its end.
+  `EmbeddedDecisionApiTest.testFallbackEndsTheFailedCandidatesCalls`; deployment-origin "Calls end with the plugin's
+  pass".
+- **A plugin future that succeeds with `null` hung the request.** `EmbeddedProxyRequest.send` now fails the attempt,
+  as for a plugin that throws. `EmbeddedOriginApiTest.testPluginAnswersNull`; deployment-origin "Embedded origin
+  failure".

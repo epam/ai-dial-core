@@ -279,24 +279,35 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
             CompletableFuture<Response> pending = CompletableFuture.supplyAsync(() -> chat("r1", CHAT_BODY, "X-Test-Decide", "m1"));
             awaitCondition(() -> received.stream().anyMatch(request -> isFor(request, "m1")));
 
-            TestOriginPluginProvider.Host kept = TestOriginPluginProvider.HOSTS.get(0);
-            CompletableFuture<OriginResponse> answer = new CompletableFuture<>();
-            kept.context().runOnContext(ignored -> kept.host()
-                    .call(new OriginCall("/openai/deployments/m2/chat/completions", MultiMap.caseInsensitiveMultiMap(),
-                            ProxyUtil.MAPPER.createObjectNode().put("model", "m2")))
-                    .onComplete(result -> {
-                        if (result.succeeded()) {
-                            answer.complete(result.result());
-                        } else {
-                            answer.completeExceptionally(result.cause());
-                        }
-                    }));
+            CompletableFuture<OriginResponse> answer = callThrough(TestOriginPluginProvider.HOSTS.get(0), "m2");
 
             assertEquals(401, answer.get(5, TimeUnit.SECONDS).statusCode());
             assertFalse(pending.isDone(), "the pass was still serving the chosen model");
             verify(pending.get(10, TimeUnit.SECONDS), 200);
         }
         assertEquals(0, received.stream().filter(request -> isFor(request, "m2")).count());
+    }
+
+    // deployment-origin "Calls end with the plugin's pass"
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void testFallbackEndsTheFailedCandidatesCalls() {
+        // the next candidate answers slowly, so the pass is serving it when the failed candidate's plugin calls
+        try (TestWebServer server = server(request -> isDecide(request) ? json(200, "{\"candidates\": [\"app\", \"m2\"]}")
+                : isFor(request, "m2") ? json(200, COMPLETION).setHeadersDelay(2, TimeUnit.SECONDS)
+                : answer(request))) {
+            CompletableFuture<Response> pending = CompletableFuture.supplyAsync(() -> chat("rf", CHAT_BODY, "X-Test-Fail", "call"));
+            awaitCondition(() -> received.stream().anyMatch(request -> isFor(request, "m2")));
+
+            CompletableFuture<OriginResponse> answer = callThrough(TestOriginPluginProvider.HOSTS.get(0), "m1");
+
+            assertEquals(401, answer.get(5, TimeUnit.SECONDS).statusCode());
+            assertFalse(pending.isDone(), "the pass was still serving the next candidate");
+            verify(pending.get(10, TimeUnit.SECONDS), 200);
+        }
+        assertEquals(0, received.stream().filter(request -> isFor(request, "m1")).count());
     }
 
     @Test
@@ -435,6 +446,24 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
         assertEquals("rb", bytes.path("model").asText());
         assertEquals(bytes, decide.bodyTree(), "the plugin's tree is the call's, as its bytes are");
         single(request -> isFor(request, "m1"));
+    }
+
+    /**
+     * A chat completion to {@code model} through a host the test plugin recorded, made on the plugin's context.
+     */
+    private static CompletableFuture<OriginResponse> callThrough(TestOriginPluginProvider.Host kept, String model) {
+        CompletableFuture<OriginResponse> answer = new CompletableFuture<>();
+        kept.context().runOnContext(ignored -> kept.host()
+                .call(new OriginCall("/openai/deployments/" + model + "/chat/completions", MultiMap.caseInsensitiveMultiMap(),
+                        ProxyUtil.MAPPER.createObjectNode().put("model", model)))
+                .onComplete(result -> {
+                    if (result.succeeded()) {
+                        answer.complete(result.result());
+                    } else {
+                        answer.completeExceptionally(result.cause());
+                    }
+                }));
+        return answer;
     }
 
     private Response post(String path, String body, String... headers) {
