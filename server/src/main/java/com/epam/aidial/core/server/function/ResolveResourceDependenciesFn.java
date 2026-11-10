@@ -70,13 +70,17 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         List<ResourceDependency> unresolvedDeps = new ArrayList<>();
         List<String> requiredFailures = new ArrayList<>();
 
-        for (ResourceDependency dependency : declaration) {
-            Set<ResourceAccessType> requestedAccess = consented ? requestedAccessOf(dependency) : null;
-            ResourceDescriptor target = requestedAccess == null ? null : resolveTarget(dependency, userBucket);
-            if (target == null || !ResourceDependencyValidator.isAllowedAccess(target.getType(), requestedAccess)) {
-                trackUnresolved(dependency, unresolvedDeps, requiredFailures);
-            } else {
-                resolvedTargets.add(new ResolvedTarget(dependency, target, requestedAccess));
+        if (!consented) {
+            declaration.forEach(dep -> trackUnresolved(dep, unresolvedDeps, requiredFailures));
+        } else {
+            for (ResourceDependency dependency : declaration) {
+                Set<ResourceAccessType> requestedAccess = ResourceDependencyValidator.grantableAccessOf(dependency);
+                ResourceDescriptor target = requestedAccess == null ? null : resolveTarget(dependency, userBucket);
+                if (target == null || !ResourceDependencyValidator.isAllowedAccess(target.getType(), requestedAccess)) {
+                    trackUnresolved(dependency, unresolvedDeps, requiredFailures);
+                } else {
+                    resolvedTargets.add(new ResolvedTarget(dependency, target, requestedAccess));
+                }
             }
         }
 
@@ -143,23 +147,6 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         unresolvedDeps.add(dependency);
     }
 
-    /** The dependency's requested rights, or null when the record cannot be granted at all. */
-    @Nullable
-    private static Set<ResourceAccessType> requestedAccessOf(@Nullable ResourceDependency dependency) {
-        if (dependency == null || !ResourceDependency.KIND.equals(dependency.getKind())) {
-            return null;
-        }
-        if (dependency.getAccess() == null || dependency.getAccess().isEmpty()) {
-            return null;
-        }
-        for (ResourceAccessType access : dependency.getAccess()) {
-            if (access != ResourceAccessType.READ && access != ResourceAccessType.WRITE) {
-                return null;
-            }
-        }
-        return Set.copyOf(dependency.getAccess());
-    }
-
     /**
      * Resolves a declared target url to a descriptor: a {@code {type}/{current-user}/<path…>}
      * url against the initiator's own bucket, a concrete {@code {type}/{bucket}/<path…>}
@@ -171,7 +158,7 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
             return null;
         }
         try {
-            return ResourceDependencyValidator.resolveTarget(dependency.getTarget().getUrl().trim(), userBucket, proxy.getEncryptionService());
+            return ResourceDependencyValidator.resolveTarget(dependency.getTarget().getUrl(), userBucket, proxy.getEncryptionService());
         } catch (IllegalArgumentException e) {
             return null;
         }
