@@ -167,7 +167,7 @@ as `JAVA_HOME`; check that port 16370 is free before an integration run).
 
 ## 5. Integration and measurement
 
-- [ ] 5.1 Run `npx -y @fission-ai/openspec@1.14.3 validate --all --strict`, then the classes of groups 1 to 4
+- [x] 5.1 Run `npx -y @fission-ai/openspec@1.14.3 validate --all --strict`, then the classes of groups 1 to 4
   together. Verify: no new validation issue, all green.
 - [ ] 5.2 Measure on the perf environment, on one install: the direct path; decision over HTTP and in process, each
   with and without `decision.body`.

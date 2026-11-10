@@ -321,7 +321,7 @@ retriable status.
 An origin plugin SHALL be able to call a deployment while it answers a request. Core SHALL serve a `POST` the plugin
 names to a deployments-POST action, `/openai/v1/chat/completions`, `/openai/v1/responses` or `/openai/responses` (not
 in background), or `/anthropic/v1/messages`, with the body tree the plugin passes, as a request authenticated by the
-per-request key of the plugin's pass, and SHALL hand the plugin the answer: status and headers first, then the body
+key of the request the plugin answers, and SHALL hand the plugin the answer: status and headers first, then the body
 as it arrives.
 
 #### Scenario: Call reaches a model
@@ -361,7 +361,8 @@ as it arrives.
   message `No route`
 
 ### Requirement: Calls end with the plugin's pass
-When the plugin's pass ends, Core SHALL cancel the answers of its calls that are still open, and SHALL answer a call
+When the plugin's pass ends, or, for a router's decide request, when the decide call ends (router-deployment),
+Core SHALL cancel the answers of its calls that are still open, and SHALL answer a call
 made after that `401` with the message `Unknown api key`.
 
 #### Scenario: Call after the plugin's pass ended
@@ -385,7 +386,7 @@ project of a caller with an API key, and the caller's roles.
 When the client of a pass that an origin plugin serves goes away before the plugin answers, Core SHALL tell the plugin
 that the request is cancelled. When the plugin then fails its answer, Core SHALL end the pass without trying another
 upstream and without an analytics row; an answer it still gives SHALL be handled as an HTTP origin's answer after its
-client went away.
+client went away. This SHALL NOT apply to a router's decide and notice requests, which router-deployment governs.
 
 #### Scenario: Plugin told
 - **WHEN** a client sends a chat completion to `app`, served by plugin `p1`, and closes its connection before `p1`

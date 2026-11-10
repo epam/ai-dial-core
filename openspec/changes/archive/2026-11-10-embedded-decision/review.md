@@ -107,8 +107,9 @@ Each broke the code on purpose, ran the named tests, and restored the code.
   - group 4: `RouterDecisionApiTest` 69, `RouterApiTest` 23, `MessagesApiTest` 20, `ResponsesApiTest` 8,
     `EmbeddedDecisionApiTest` 23, `EmbeddedCallApiTest` 21.
 - The run of all of them together (task 5.1) was stopped by the host for low memory. Before that it had passed
-  `EmbeddedDecisionApiTest` 23/23 and was partway through `MessagesApiTest`, with no failure. Task 5.1 stays
-  open until that run completes, locally or in CI.
+  `EmbeddedDecisionApiTest` 23/23 and was partway through `MessagesApiTest`, with no failure. CI ran the full
+  suite on `05f556ba8` and it passed (PR Workflow run 42790150447: build, tests, code and style checks), which
+  closes task 5.1.
 - One combined run earlier hit `RejectedExecutionException: event executor terminated` in a `RouterDecisionApiTest`
   test. Its source was `testClientGoneWhilePluginDecides`: Core went on to serve the chosen model after the test ended
   and shut Core down. The test now waits for that pass to finish. The class has run clean since, with no shutdown
