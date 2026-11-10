@@ -18,7 +18,6 @@ import com.epam.aidial.core.server.data.AnthropicErrorData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
-import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
 import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
@@ -41,9 +40,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 
 /**
@@ -64,20 +61,9 @@ public class MessagesController extends MessagesBaseController {
         super(proxy, context);
     }
 
-    /**
-     * Inserts {@link BuildUpstreamCacheFn} before the base chain's {@code CollectDeploymentsFn},
-     * so upstream cache pinning applies to {@code POST /anthropic/v1/messages} but not to
-     * {@link MessagesCountTokensController}, which inherits the base chain unchanged.
-     */
     @Override
-    protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
-        List<BaseRequestFunction<RequestObject>> functions = new ArrayList<>(super.buildEnhancementFunctions());
-        int collectDeployments = IntStream.range(0, functions.size())
-                .filter(i -> functions.get(i) instanceof CollectDeploymentsFn)
-                .findFirst()
-                .orElseThrow();
-        functions.add(collectDeployments, new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES));
-        return functions;
+    protected void addFunctionsBeforeCollectDeployments(List<BaseRequestFunction<RequestObject>> functions) {
+        functions.add(new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES));
     }
 
     /**

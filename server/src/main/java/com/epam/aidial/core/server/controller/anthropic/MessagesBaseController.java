@@ -37,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -57,18 +58,25 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     }
 
     /**
-     * The shared chain. {@link MessagesController} overrides this to append {@link
-     * com.epam.aidial.core.server.function.BuildUpstreamCacheFn} — {@code count_tokens} does not
-     * generate, so it must not build a cache breakpoint context.
+     * The shared chain. Subclasses may override {@link #addFunctionsBeforeResolver} to inject functions that must run
+     * after {@link CollectDeploymentsFn} and before the resolver — {@link MessagesController} does so to add
+     * {@link com.epam.aidial.core.server.function.BuildUpstreamCacheFn}, while {@code count_tokens} inherits the base
+     * chain unchanged.
      */
     protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
-        return List.of(
+        List<BaseRequestFunction<RequestObject>> functions = new ArrayList<>(List.of(
                 new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES),
                 new EnhanceDeploymentRequestFn(proxy, context),
-                new CollectRequestApplicationFilesFn(proxy, context),
-                new CollectDeploymentsFn(proxy, context),
-                new ResolveResourceDependenciesFn<>(proxy, context));
+                new CollectRequestApplicationFilesFn(proxy, context)));
+        addFunctionsBeforeCollectDeployments(functions);
+        functions.add(new CollectDeploymentsFn(proxy, context));
+        functions.add(new ResolveResourceDependenciesFn<>(proxy, context));
+        return functions;
+    }
+
+    /** Override to insert functions that run before {@link CollectDeploymentsFn} and the resolver. */
+    protected void addFunctionsBeforeCollectDeployments(List<BaseRequestFunction<RequestObject>> functions) {
     }
 
     public Future<?> handle() {
