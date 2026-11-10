@@ -118,7 +118,7 @@ also gained a `requestBodyRequired` attribute (default true); no endpoint sets i
 returns the body with its creation and update times, parsed once, redacted (Decision 5), and the node keeps its identity, the
 redacted bytes, their `sha256` and the times. The stored (unredacted) body of a Deployment is held only until its references have been
 examined (`ExportClosureWalker.keepIfExamined`). A `file`-origin entity has no stored text: its tree comes from
-`BLOB_MAPPER.valueToTree`, it is redacted, and its node keeps bytes and `sha256` the same way, with no times.
+`ProxyUtil.MAPPER.valueToTree`, it is redacted, and its node keeps bytes and `sha256` the same way, with no times.
 
 **Streaming** (the head is sent): write the technical manifest and the registry, then each node in closure order, one at a time. A JSON
 node writes the bytes that planning kept, with its sidecar built from the kept times; nothing is read again. A File or a Skill is
@@ -687,10 +687,10 @@ buffer and the 1 MiB pipe, whatever the file size.
 An entity that exists only in the file configuration (Model, Interceptor, ToolSet, Application and both schemas) has no blob. Leaving it out would make an Application that depends on a
 configured model unusable as a unit, and the source of an entity is not a reason to leave content out.
 
-- **Representation.** `ConfigEntityCodec.BLOB_MAPPER.valueToTree(entity)`, the mapper that writes a stored blob (also used by `ConfigFileMigrateController`): the tree of the entity as the blob would hold
-  it, with the spelling of its own annotations (camel case for a Model and Interceptor, snake case for a ToolSet and Application). A schema is held by `Config` as the text of its document; that
-  text is the configured form and its one parse is the tree. `ProxyUtil.MAPPER` is rejected (it drops `WRITE_ONLY` values and spells fields differently from the blob), and so is a hand-written
-  projection (a second description of every entity). The tree holds plaintext secrets until the redactor removes them, so it is never logged, retained or written.
+- **Representation.** `ProxyUtil.MAPPER.valueToTree(entity)`, the mapper of the config API (as `FileConfigController` uses for an entity of the file configuration): the tree of the entity with the spelling of its own annotations
+  (camel case for a Model and Interceptor, snake case for a ToolSet and Application). It drops the `@EncryptedField` values (`WRITE_ONLY`), so an annotated secret never enters the tree; the redactor stays the
+  rule and the check. A schema is held by `Config` as the text of its document; that text is the configured form and its one parse is the tree. A hand-written projection is rejected (a second description of every
+  entity). The tree still holds the plaintext `auth_settings` secrets, which are not annotated, until the redactor removes them, so it is never logged, retained or written.
 - **Fidelity.** For each of Model, Interceptor, ToolSet and Application the redacted bytes of two productions are equal, the tree parses back into an entity with the same tree,
   and a plaintext upstream key and `client_secret` are in the tree and in no redacted byte. The written form holds every field of the entity with defaults materialized (`maxRetryAttempts`,
   empty `defaults`) and explicit nulls; `author`, `createdAt`, `updatedAt` and `reference` are null, because a file entity has none.

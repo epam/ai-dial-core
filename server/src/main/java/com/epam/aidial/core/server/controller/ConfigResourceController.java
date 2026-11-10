@@ -2251,16 +2251,12 @@ public class ConfigResourceController implements Controller {
      * <p>{@code revealHint} replaces the removed secret with its {@code client_secret_hint}; admins only.</p>
      */
     private static void redactSecretFields(JsonNode authSettings, boolean revealHint) {
-        if (authSettings instanceof ObjectNode settings) {
-            JsonNode clientSecret = settings.remove(ResourceAuthSettings.CLIENT_SECRET_FIELD);
-            settings.remove(ResourceAuthSettings.CODE_VERIFIER_FIELD);
-            // Drop unconditionally first: the hint is this method's to emit, never the projected node's.
-            settings.remove(ResourceAuthSettings.CLIENT_SECRET_HINT_FIELD);
-            if (revealHint && clientSecret != null && clientSecret.isTextual()) {
-                String hint = ResourceAuthSettings.hintFor(clientSecret.textValue());
-                if (hint != null) {
-                    settings.put(ResourceAuthSettings.CLIENT_SECRET_HINT_FIELD, hint);
-                }
+        JsonNode clientSecret = ResourceAuthSettings.removeSecretFields(authSettings);
+        // The hint is this method's to emit, never the projected node's (removeSecretFields already dropped it).
+        if (revealHint && clientSecret != null && clientSecret.isTextual()) {
+            String hint = ResourceAuthSettings.hintFor(clientSecret.textValue());
+            if (hint != null) {
+                ((ObjectNode) authSettings).put(ResourceAuthSettings.CLIENT_SECRET_HINT_FIELD, hint);
             }
         }
     }

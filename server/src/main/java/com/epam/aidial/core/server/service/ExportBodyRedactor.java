@@ -26,28 +26,27 @@ import java.util.function.Consumer;
  * stored JSON and never on a decrypted or in-memory object, and it fails by throwing: a body that cannot be redacted is not written,
  * and nothing falls back to the stored body.
  *
- * <p>The policy is a list of named fields (design Decisions 29 and 30). It does not read the values inside them, and it does not read
- * any other value. {@code application_properties}, {@code function.env} and {@code default_headers} are out of scope of v1 (Decision 30):
- * the policy has no rule for them, and they are exported as stored.
+ * <p>The policy is a list of named fields. It does not read the values inside them, and it does not read any other value.
+ * {@code application_properties}, {@code function.env} and {@code default_headers} have no rule, so they are exported as stored.
  *
  * <p><b>Removed, with everything inside them:</b>
  * <ul>
  *   <li>every {@link com.epam.aidial.core.config.annotation.EncryptedField} value, found by the existing
  *   {@link SecretFieldProcessor#stripEncryptedFields};</li>
  *   <li>the {@code client_secret}, {@code code_verifier} and {@code client_secret_hint} of the {@code auth_settings} of a ToolSet and of
- *   every external service (the three fields that {@code ConfigResourceController.redactSecretFields} removes with the same names);</li>
+ *   every external service (the three fields that {@link ResourceAuthSettings#removeSecretFields} removes, as does the config API);</li>
  *   <li>{@code dial:key}, {@code key}, {@code dial:secretExtraData} and {@code secretExtraData} at
  *   {@code dial:applicationTypeRoutes[*].dial:upstreams[*]} of an application type schema and in the interfaces of such an upstream: the
  *   spellings of the two {@code @EncryptedField} properties of {@code Upstream} ({@code key}, {@code secretExtraData}), which a schema
  *   document holds without an entity class.</li>
  * </ul>
- * A removed value is not replaced by a marker, and neither metadata file says that anything was removed (design Decision 22).
+ * A removed value is not replaced by a marker, and neither the technical manifest nor the registry says that anything was removed.
  *
- * <p><b>Exported exactly as stored:</b> a Prompt. Its bytes are the stored bytes, and no rule below applies to it (design OQ-20, answered
- * by the requester on 2026-11-06).
+ * <p><b>Exported exactly as stored:</b> a Prompt. Its bytes are the stored bytes, and no rule below applies to it.
  *
  * <p><b>Refused:</b> a body that is not valid JSON or not a JSON object, and a type that has no policy. A refusal fails the export of the
- * whole package before the first byte, and the exception holds no value: only the resource and the rule. It is logged once, by {@link ExportArchive}, not here.
+ * whole package before the first byte, and the exception holds no value: only the resource and the rule. {@link ExportClosureWalker}
+ * logs it once, where it reads the resource, not here.
  *
  * <p><b>Not inspected for secrets, and not claimed to be safe:</b> every other value. A URL is not inspected for credentials and is not changed by
  * redaction (URL-form resource references are parsed elsewhere, only to resolve resources), so a credential in its user
@@ -77,7 +76,7 @@ public final class ExportBodyRedactor implements BodyRedactor {
             "model", Model.class,
             "interceptor", Interceptor.class);
     private static final Set<String> SCHEMA_TYPES = Set.of(APPLICATION_TYPE_SCHEMA, "catalog-schema");
-    /** The types that are exported exactly as stored: a Prompt (OQ-20). */
+    /** The types that are exported exactly as stored: a Prompt. */
     private static final Set<String> AS_STORED_TYPES = Set.of("prompts");
 
     @Override
@@ -138,8 +137,8 @@ public final class ExportBodyRedactor implements BodyRedactor {
     }
 
     /**
-     * A refusal carries its own diagnostic: the resource and the rule, never a value. The redactor does not log it; the export keeps the
-     * refusal and {@link ExportArchive} logs it once, where the export stops, so one refused resource is one log record.
+     * A refusal carries its own diagnostic: the resource and the rule, never a value. The redactor does not log it;
+     * {@link ExportClosureWalker} logs it once, where it reads the resource, so one refused resource is one log record.
      */
     private static IllegalStateException refusal(ExportResourceIdentity identity, String rule) {
         return new IllegalStateException(rule + " (resource=" + identity.key() + ")");
@@ -160,20 +159,13 @@ public final class ExportBodyRedactor implements BodyRedactor {
     private static void removeAuthSecrets(ExportResourceIdentity identity, ObjectNode body) {
         boolean isToolSet = "toolset".equals(identity.type());
         if (isToolSet) {
-            removeAuthSettingsSecrets(body.get(AUTH_SETTINGS));
+            ResourceAuthSettings.removeSecretFields(body.get(AUTH_SETTINGS));
         }
         if (isToolSet || "application".equals(identity.type())) {
             JsonNode services = body.get(EXTERNAL_SERVICES);
             if (services instanceof ObjectNode serviceObject) {
-                serviceObject.fieldNames().forEachRemaining(name -> removeAuthSettingsSecrets(serviceObject.get(name).get(AUTH_SETTINGS)));
+                serviceObject.fieldNames().forEachRemaining(name -> ResourceAuthSettings.removeSecretFields(serviceObject.get(name).get(AUTH_SETTINGS)));
             }
-        }
-    }
-
-    private static void removeAuthSettingsSecrets(JsonNode authSettings) {
-        if (authSettings instanceof ObjectNode settings) {
-            settings.remove(List.of(ResourceAuthSettings.CLIENT_SECRET_FIELD, ResourceAuthSettings.CODE_VERIFIER_FIELD,
-                    ResourceAuthSettings.CLIENT_SECRET_HINT_FIELD));
         }
     }
 

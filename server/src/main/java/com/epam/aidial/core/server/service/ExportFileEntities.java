@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.data.ExportResourceIdentity;
 import com.epam.aidial.core.server.service.ExportTypePolicy.Content;
-import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -42,9 +41,10 @@ public final class ExportFileEntities {
     }
 
     /**
-     * The representation of an entity of the file configuration (design Decision 24): the tree that the blob mapper makes of the
-     * entity of a Model, Interceptor, ToolSet or Application, or the parse of the configured text of a schema. The tree holds the
-     * plaintext secrets of the entity until the redactor removes them, so it is never logged or kept.
+     * The representation of an entity of the file configuration (design Decision 24): the tree that the default mapper makes of the
+     * entity of a Model, Interceptor, ToolSet or Application, or the parse of the configured text of a schema. The default mapper
+     * drops the {@code @EncryptedField} values, as the config API does; the {@code auth_settings} secrets are not annotated, so the tree
+     * still holds them in plaintext until the redactor removes them, and it is never logged or kept.
      *
      * @return the tree, or {@code null} when the file configuration no longer holds the entity or the type has no file form
      */
@@ -64,7 +64,7 @@ public final class ExportFileEntities {
             return null;
         }
         Object entity = entityOf(fileConfig, type, descriptor.getName());
-        return entity == null ? null : ConfigEntityCodec.BLOB_MAPPER.valueToTree(entity);
+        return entity == null ? null : ProxyUtil.MAPPER.valueToTree(entity);
     }
 
     private static JsonNode parse(String text) {
