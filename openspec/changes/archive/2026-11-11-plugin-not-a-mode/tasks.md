@@ -38,31 +38,31 @@ a time across checkouts.
 
 ## 2. A translator served by a plugin
 
-- [ ] 2.1 Add to `TranslatorTest` (config module): a translator with `plugin` and no `baseUrl` reads and writes
+- [x] 2.1 Add to `TranslatorTest` (config module): a translator with `plugin` and no `baseUrl` reads and writes
   back, neither is rejected, both are rejected (spec "Translator definition"); add to `DeploymentEndpointUtilTest`
   `resolvePlugin` for an inline translator plugin, a named one, an unresolved name (null) and a translator with a
   `baseUrl` (null); verify they fail before 2.4
-- [ ] 2.2 Add to `EmbeddedCallApiTest`, verify each fails before 2.4: "Messages request handed to the translator
+- [x] 2.2 Add to `EmbeddedCallApiTest`, verify each fails before 2.4: "Messages request handed to the translator
   plugin", "Translator plugin calls the output interface", "Named translator with a plugin", "Translator's plugin
   missing" (`502`), "Translator plugin's call charged once", "Translator plugin's call refused over the limit",
   "Item operation reaches a translator's plugin", "Interceptor naming a translator with a plugin". The
   test plugin converts by calling `/openai/deployments/<X-DIAL-DEPLOYMENT-ID>/chat/completions` through its host
-- [ ] 2.3 Add "Translator with a plugin read and written back" (`PUT` and `GET /v1/translators/platform/a2c`) to
+- [x] 2.3 Add "Translator with a plugin read and written back" (`PUT` and `GET /v1/translators/platform/a2c`) to
   the named-translator test of `EmbeddedCallApiTest`, "Custom application with an inline translator plugin refused on
   write" and "Custom application naming a translator with a plugin" to `EmbeddedOriginApiTest` (next to the other
   platform-rule tests), and "Interceptor with an inline translator plugin" to `ConfigPostProcessorTest`; verify they
   fail before 2.4
-- [ ] 2.4 Add `plugin` to `Translator` with the exactly-one rule, resolve a translator's plugin in
+- [x] 2.4 Add `plugin` to `Translator` with the exactly-one rule, resolve a translator's plugin in
   `DeploymentEndpointUtil.resolvePlugin` and `resolveBaseUrl` and pass the translators from its four callers, and
   extend `ApplicationService.hasEmbeddedInterface` and the interceptor rule of `validatePluginReference` to an inline
   translator's plugin, and fail an interceptor hop whose resolved url starts with `PLUGIN_URL_PREFIX` as a connect
   failure in `BaseInterceptorController` (design D1, D3, D4, D5); verify the tests of 2.1 to 2.3 pass
-- [ ] 2.5 Update `docs/dynamic-settings/translators.md` (the `plugin` field, an example, the rules, a note in
+- [x] 2.5 Update `docs/dynamic-settings/translators.md` (the `plugin` field, an example, the rules, a note in
   "Limits and a translated request" that the plugin's call is the charged request and that a plugin answering by
   itself is charged nothing) and `plugins.md` (a "Translating for a deployment" section: the plugin must call `out`,
   never its own interface, and one translating `openaiResponses` answers item operations and background jobs
   itself); verify both examples parse as JSON
-- [ ] 2.6 Run `./gradlew checkstyleMain checkstyleTest`,
+- [x] 2.6 Run `./gradlew checkstyleMain checkstyleTest`,
   `./gradlew :config:test --tests "*TranslatorTest"` and
   `./gradlew :server:test --tests "*EmbeddedCallApiTest" --tests "*ConfigTranslatorTest"
   --tests "*ConfigPostProcessorTest" --tests "*DeploymentEndpointUtilTest" --tests "*MergedConfigStore*"

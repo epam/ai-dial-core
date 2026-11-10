@@ -126,8 +126,9 @@ and SHALL migrate to the `platform` bucket through `POST /v1/admin/config/file/m
 - **THEN** Core answers `200` with `name: "file-plugin"`, `status: "valid"` and `type: "test-echo"`
 
 ### Requirement: Origin plugins
-A `plugins` entry whose provider serves requests (an origin provider) SHALL be able to serve an interface in
-`embedded` mode (deployment-interfaces-config, deployment-origin). Core SHALL create the plugin from the entry's
+A `plugins` entry whose provider serves requests (an origin provider) SHALL be able to serve an interface
+that names it, directly or through its translator (deployment-interfaces-config, deployment-origin). Core SHALL
+create the plugin from the entry's
 `settings` when a request first needs it and again on the first request after the entry changes, so a request is
 never served with settings older than the config it was routed by.
 

@@ -225,11 +225,10 @@ the plugin rules to models, applications and interceptors.
 - **THEN** Core answers `422` and `GET /v1/applications/platform/a` answers `404`
 
 ### Requirement: Plugin or base url
-Core SHALL reject a model or application whose `interfaces.<type>` declares a `plugin` that is blank (`A plugin name
-cannot be blank`), declares it next to a `base_url` (`An interface is served either by a plugin or by a base_url,
-not by both`) or declares it in `translator` mode (`A translated interface is served by its translator, not by a
-plugin`). A model with a pass-through entry that names a `plugin` SHALL need no `base_url` and no `baseUrl`. A
-`plugin` naming no `plugins` entry SHALL NOT make the deployment invalid.
+Core SHALL reject a model or application whose `interfaces.<type>` declares a `plugin` that is blank, declares it
+next to a `base_url`, or declares it in `translator` mode. A model with a pass-through entry that names a `plugin`
+SHALL need no `base_url` and no `baseUrl`. A `plugin` naming no `plugins` entry SHALL NOT make the deployment
+invalid.
 
 #### Scenario: Plugin on a translated interface
 - **WHEN** a config file declares a model with `interfaces.anthropicMessages: {"mode": "translator",

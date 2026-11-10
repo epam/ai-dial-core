@@ -138,7 +138,7 @@ as app-to-model-accounting states.
 ### Requirement: Decision mode
 Core SHALL read a router's `mode`, `proxy` (the default when absent) or `decision`. In decision mode every interface the
 router declares is decided at its decide URL: the interface's `base_url`, or the router's `baseUrl` when it declares
-none, followed by `/decide`; an interface in `embedded` mode is decided by the plugin it names instead (Decision by an
+none, followed by `/decide`; an interface that names a `plugin` is decided by that plugin instead (Decision by an
 embedded plugin). No interface entry of any deployment SHALL accept `mode: decision`.
 
 #### Scenario: Decision mode on an interface entry rejected
@@ -153,7 +153,7 @@ embedded plugin). No interface entry of any deployment SHALL accept `mode: decis
 
 #### Scenario: Embedded interface next to an HTTP one
 - **WHEN** `routers.r4` declares `baseUrl: http://router`, `mode: decision`,
-  `interfaces.openaiChatCompletions: {"mode": "embedded", "plugin": "p1"}` and `interfaces.openaiResponses: {}`
+  `interfaces.openaiChatCompletions: {"plugin": "p1"}` and `interfaces.openaiResponses: {}`
 - **THEN** a chat completion for `r4` is decided by plugin `p1` and `http://router` receives no request for it, and a
   Responses request for `r4` is decided by `POST http://router/decide`
 
@@ -676,7 +676,7 @@ a buffered legacy completion and a buffered answer relayed through interceptors 
 Core SHALL read a router's optional `decision` object with `body` (default `false`), `timeoutMs` (default 5000, must be
 positive) and `maxDecisions` (see Decision limit), and SHALL reject it on a router not in decision mode (`decision
 requires mode 'decision'`). On a router in decision mode Core SHALL reject a translated interface (`A router in mode
-'decision' serves no interface through a translator`) and SHALL accept an embedded one.
+'decision' serves no interface through a translator`) and SHALL accept one that names a `plugin`.
 
 #### Scenario: Decision settings without decision mode rejected
 - **WHEN** the config declares `routers.r1` with `baseUrl: http://router`, `decision: {"maxDecisions": 2}` and no `mode`
@@ -690,17 +690,17 @@ requires mode 'decision'`). On a router in decision mode Core SHALL reject a tra
 
 #### Scenario: Embedded interface on a decision router accepted
 - **WHEN** the config declares `routers.r1` with `baseUrl: http://router`, `mode: decision` and
-  `interfaces.anthropicMessages: {"mode": "embedded", "plugin": "p1"}`
+  `interfaces.anthropicMessages: {"plugin": "p1"}`
 - **THEN** the config loads, and `GET /v1/routers/r1` answers `200`
 
 ### Requirement: Decision by an embedded plugin
-For an interface a router in decision mode serves in `embedded` mode, Core SHALL send the decide request and the
+For an interface of a router in decision mode that names a `plugin`, Core SHALL send the decide request and the
 mid-stream notice request to the plugin the interface names, in process, instead of to a URL: the method, headers and
 body Core would send to an HTTP decide URL, with the path `/decide`. Core SHALL read the plugin's answer as an HTTP
 router's answer: the same verdict rules, `decision.timeoutMs`, candidate walk, re-decide and records.
 
 #### Scenario: Plugin decides
-- **WHEN** `routers.r1` declares `mode: decision` and `interfaces.openaiChatCompletions: {"mode": "embedded", "plugin":
+- **WHEN** `routers.r1` declares `mode: decision` and `interfaces.openaiChatCompletions: {"plugin":
   "p1"}`, plugin `p1` answers `{"candidates": ["m1"]}`, and a client sends a non-streamed chat completion for `r1`
 - **THEN** `p1` receives `POST /decide` with `X-DIAL-ROUTER: r1`, `X-DIAL-API: openaiChatCompletions`, an `API-KEY`
   that is not the client's key and an empty body; `m1` serves the request; the client's answer has `model: r1`; and

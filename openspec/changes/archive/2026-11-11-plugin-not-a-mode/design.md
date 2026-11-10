@@ -198,3 +198,16 @@ previous image with the previous config.
 ## Open Questions
 
 None.
+
+## Drift recorded during apply
+
+- The group 2 tests were written together with the code and first ran in CI, so "verify it fails before 2.4" was
+  not observed for them. The group 1 unit tests were observed failing before the code change.
+- A translator definition with neither `baseUrl` nor `plugin` now fails to parse with `Translator needs exactly one of
+  baseUrl or plugin` instead of Jackson's `Missing required creator property 'baseUrl'`
+  (`ConfigEntityCodecTest.missingRequiredFieldNamesTheField`).
+- "Translator plugin's call refused over the limit": the plugin's call is answered `429`; a plugin that answers with
+  that status makes Core answer the caller `503 Service is not available`, the existing rule for an only origin
+  answering `429`.
+- `validate --all --strict` passes for this change and fails on the placeholder Purpose of two specs this change does
+  not touch, `resource-subscription` and `user-limits`; task 3.1 stays open for that reason.
