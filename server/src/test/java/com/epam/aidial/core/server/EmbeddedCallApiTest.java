@@ -114,7 +114,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         plugin("p2", GREETING_P2);
         verify(adminPut("/v1/models/platform/m-roles", """
                 {"type": "chat", "userRoles": ["nobody-has-this-role"],
-                 "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p2"}}}
+                 "interfaces": {"openaiChatCompletions": {"plugin": "p2"}}}
                 """), 200);
 
         Response response = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
@@ -130,7 +130,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         plugin("p2", GREETING_P2);
         verify(adminPut("/v1/models/platform/m-int", """
                 {"type": "chat", "interceptors": ["interceptor1"],
-                 "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p2"}}}
+                 "interfaces": {"openaiChatCompletions": {"plugin": "p2"}}}
                 """), 200);
         AtomicReference<String> seen = new AtomicReference<>();
 
@@ -373,7 +373,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         verify(adminPut("/v1/models/platform/" + LIMITED_MODEL, """
                 {"type": "chat", "maxRetryAttempts": 2,
                  "upstreams": [{"endpoint": "http://cloud-a", "key": "a"}, {"endpoint": "http://cloud-b", "key": "b"}],
-                 "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                 "interfaces": {"openaiChatCompletions": {"plugin": "p1"}}}
                 """), 200);
 
         try (Socket socket = openRequest("/openai/deployments/" + LIMITED_MODEL + "/chat/completions", CHAT_BODY,
@@ -418,6 +418,143 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         awaitCondition(() -> callThrough(kept, "/openai/deployments/missing/chat/completions") == 401);
     }
 
+    // deployment-origin "Translator plugin request"
+
+    @Test
+    void testTranslatorPluginCallsTheOutputInterface() {
+        translatedModel("m-tr", INLINE_TRANSLATOR);
+        AtomicReference<RecordedRequest> seen = new AtomicReference<>();
+        Response response;
+
+        try (TestWebServer server = new TestWebServer(4870)) {
+            server.map(HttpMethod.POST, "/openai/deployments/m-tr/chat/completions", request -> {
+                seen.set(request);
+                return TestWebServer.createResponse(200, CHAT_ANSWER, "content-type", "application/json");
+            });
+            response = chat("/anthropic/v1/messages", messages("m-tr"), "X-Test-Call", "/openai/deployments/m-tr/chat/completions");
+        }
+
+        verify(response, 200);
+        assertTrue(response.body().contains("from-http"), response.body());
+        OriginRequest translated = TestOriginPluginProvider.REQUESTS.get(0);
+        assertEquals("/anthropic/v1/messages", translated.uri());
+        assertNotEquals("proxyKey1", translated.headers().get("API-KEY"));
+        assertNotNull(seen.get());
+        List<AnalyticsLogContext> rows = awaitAnalyticsRows(2);
+        assertEquals(1, rows.stream().filter(row -> "m-tr".equals(row.getParentDeployment())).count());
+    }
+
+    @Test
+    @SneakyThrows
+    void testNamedTranslatorWithPlugin() {
+        verify(adminPut("/v1/translators/platform/a2c", """
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "plugin": "p1"}
+                """), 200);
+        Response read = send(HttpMethod.GET, "/v1/translators/platform/a2c", null, "", "authorization", "admin");
+        verify(read, 200);
+        JsonNode stored = ProxyUtil.MAPPER.readTree(read.body());
+        assertEquals("p1", stored.path("plugin").asText(), read.body());
+        assertTrue(!stored.has("baseUrl"), read.body());
+        translatedModel("m-tr", "\"a2c\"");
+
+        verify(chat("/anthropic/v1/messages", messages("m-tr")), 200);
+
+        assertEquals("/anthropic/v1/messages", TestOriginPluginProvider.REQUESTS.get(0).uri());
+    }
+
+    @Test
+    void testTranslatorsPluginMissing() {
+        translatedModel("m-tr", "{\"out\": \"openaiChatCompletions\", \"plugin\": \"missing\"}");
+
+        Response response = chat("/anthropic/v1/messages", messages("m-tr"));
+
+        assertEquals(502, response.status(), response.body());
+        assertTrue(response.body().contains("Failed to connect to upstream server"), response.body());
+    }
+
+    // app-to-model-accounting "Translated interface not limit-checked"
+
+    @Test
+    @SneakyThrows
+    void testTranslatorPluginsCallChargedOnce() {
+        translatedModel(LIMITED_MODEL, INLINE_TRANSLATOR);
+
+        try (TestWebServer server = new TestWebServer(4870)) {
+            server.map(HttpMethod.POST, "/openai/deployments/" + LIMITED_MODEL + "/chat/completions", 200, CHAT_ANSWER,
+                    "content-type", "application/json");
+            verify(chat("/anthropic/v1/messages", messages(LIMITED_MODEL),
+                    "X-Test-Call", "/openai/deployments/" + LIMITED_MODEL + "/chat/completions"), 200);
+        }
+
+        Response limits = send(HttpMethod.GET, "/v1/deployments/" + LIMITED_MODEL + "/limits", null, null);
+        verify(limits, 200);
+        assertEquals(15, ProxyUtil.MAPPER.readTree(limits.body()).path("minuteTokenStats").path("used").asInt(), limits.body());
+    }
+
+    @Test
+    void testTranslatorPluginsCallRefusedOverTheLimit() {
+        // the default role allows gpt-3-turbo 100 tokens a minute
+        translatedModel("gpt-3-turbo", INLINE_TRANSLATOR);
+        String spent = CHAT_ANSWER.replace("\"prompt_tokens\":10", "\"prompt_tokens\":145").replace("\"total_tokens\":15", "\"total_tokens\":150");
+
+        try (TestWebServer server = new TestWebServer(4870)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-3-turbo/chat/completions", 200, spent, "content-type", "application/json");
+            verify(chat("/anthropic/v1/messages", messages("gpt-3-turbo"),
+                    "X-Test-Call", "/openai/deployments/gpt-3-turbo/chat/completions"), 200);
+
+            Response refused = chat("/anthropic/v1/messages", messages("gpt-3-turbo"),
+                    "X-Test-Call", "/openai/deployments/gpt-3-turbo/chat/completions");
+
+            assertEquals(429, refused.status(), refused.body());
+            assertEquals(2, TestOriginPluginProvider.REQUESTS.size());
+        }
+    }
+
+    // responses-api "Item request to an embedded origin"
+
+    @Test
+    @SneakyThrows
+    void testItemOperationReachesTranslatorsPlugin() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/models/platform/m-tr", """
+                {"type": "chat", "endpoint": "http://localhost:4870/openai/deployments/m-tr/chat/completions",
+                 "interfaces": {"openaiResponses": {"mode": "translator", "translator": %s}}}
+                """.formatted(INLINE_TRANSLATOR)), 200);
+        Response created = chat("/openai/v1/responses", "{\"model\":\"m-tr\",\"input\":\"hi\"}");
+        verify(created, 200);
+        String id = ProxyUtil.MAPPER.readTree(created.body()).path("id").asText();
+
+        verify(send(HttpMethod.GET, "/openai/v1/responses/" + id, null, null), 200);
+
+        List<OriginRequest> requests = TestOriginPluginProvider.REQUESTS;
+        OriginRequest item = requests.get(requests.size() - 1);
+        assertEquals(HttpMethod.GET, item.method());
+        assertTrue(item.uri().startsWith("/openai/v1/responses/"), item.uri());
+    }
+
+    // deployment-interfaces-config "No embedded interceptors"
+
+    @Test
+    void testInterceptorNamingTranslatorWithPlugin() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/translators/platform/c2r", """
+                {"in": "openaiChatCompletions", "out": "openaiResponses", "plugin": "p1"}
+                """), 200);
+        verify(adminPut("/v1/interceptors/platform/i-tr", """
+                {"interfaces": {"openaiChatCompletions": {"mode": "translator", "translator": "c2r"}}}
+                """), 200);
+        plugin("p2", GREETING_P2);
+        verify(adminPut("/v1/models/platform/m-int2", """
+                {"type": "chat", "interceptors": ["i-tr"],
+                 "interfaces": {"openaiChatCompletions": {"plugin": "p2"}}}
+                """), 200);
+
+        Response response = chat("/openai/deployments/m-int2/chat/completions", CHAT_BODY);
+
+        assertEquals(502, response.status(), response.body());
+        assertTrue(TestOriginPluginProvider.REQUESTS.isEmpty());
+    }
+
     // deployment-origin "Caller in the plugin request"
 
     @Test
@@ -456,6 +593,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     private static final String CHAT_BODY = "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String STREAM_BODY = "{\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String GREETING_P2 = "{\"greeting\": \"from-p2\"}";
+    private static final String INLINE_TRANSLATOR = "{\"out\": \"openaiChatCompletions\", \"plugin\": \"p1\"}";
     private static final String CHAT_ANSWER = """
             {"id":"chatcmpl-1","object":"chat.completion","created":0,"model":"m3",
              "choices":[{"index":0,"message":{"role":"assistant","content":"from-http"},"finish_reason":"stop"}],
@@ -486,10 +624,26 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         verify(adminPut("/v1/models/platform/" + name, "{\"type\": \"chat\", " + body.substring(body.indexOf('{') + 1)), 200);
     }
 
+    /**
+     * Plugin {@code p1}, and platform model {@code name} behind the HTTP origin at port 4870 for chat completions, whose
+     * Messages interface is translated by {@code translator}: a name in quotes, or an inline definition.
+     */
+    private void translatedModel(String name, String translator) {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/models/platform/" + name, """
+                {"type": "chat", "endpoint": "http://localhost:4870/openai/deployments/%s/chat/completions",
+                 "interfaces": {"anthropicMessages": {"mode": "translator", "translator": %s}}}
+                """.formatted(name, translator)), 200);
+    }
+
+    private static String messages(String model) {
+        return "{\"model\":\"" + model + "\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+    }
+
     private static String interfaces(String plugin, String... more) {
-        StringBuilder entries = new StringBuilder("\"openaiChatCompletions\": {\"mode\": \"embedded\", \"plugin\": \"" + plugin + "\"}");
+        StringBuilder entries = new StringBuilder("\"openaiChatCompletions\": {\"plugin\": \"" + plugin + "\"}");
         for (String type : more) {
-            entries.append(", \"").append(type).append("\": {\"mode\": \"embedded\", \"plugin\": \"").append(plugin).append("\"}");
+            entries.append(", \"").append(type).append("\": {\"plugin\": \"").append(plugin).append("\"}");
         }
         return "{\"interfaces\": {" + entries + "}}";
     }

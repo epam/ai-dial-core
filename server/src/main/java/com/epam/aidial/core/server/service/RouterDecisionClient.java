@@ -89,11 +89,11 @@ public class RouterDecisionClient {
      * when it is unreachable or answers 5xx or an invalid verdict, and the router's own status, body and
      * content type for a 4xx.
      *
-     * <p>An interface the router serves in {@code embedded} mode is decided by its plugin in process, with the same
+     * <p>An interface of the router that names a plugin is decided by that plugin in process, with the same
      * request; the plugin's calls through its host carry {@code key}.
      *
      * @param body the client's body bytes to send, or null to send an empty body
-     * @param bodyTree the plugin's own copy of the parsed body, for an embedded interface with the body; null otherwise
+     * @param bodyTree the plugin's own copy of the parsed body, for an interface decided by a plugin with the body; null otherwise
      * @param key the decide request's per-request key, sent as {@code API-KEY}
      * @param attempts what was tried so far, sent as {@code X-DIAL-ROUTER-ATTEMPTS} when not empty
      */
@@ -160,7 +160,7 @@ public class RouterDecisionClient {
                                          @Nullable ObjectNode bodyTree, long timeoutMs, String operation) {
         Proxy proxy = context.getProxy();
         String uri = DeploymentEndpointUtil.resolveDecideUri(router, type);
-        String plugin = DeploymentEndpointUtil.resolvePlugin(router, type);
+        String plugin = DeploymentEndpointUtil.resolvePlugin(router, type, context.getConfig().getTranslators());
         if (plugin != null) {
             return proxy.getOriginClient().embeddedForRouter(context, HttpMethod.POST, uri, plugin, callKey, bodyTree);
         }

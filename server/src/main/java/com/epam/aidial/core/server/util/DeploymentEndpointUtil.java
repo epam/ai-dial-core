@@ -42,7 +42,7 @@ public class DeploymentEndpointUtil {
     private static final String DECIDE_PATH = "/decide";
 
     /**
-     * The base url an embedded interface resolves to: {@code plugin://<name>}. It names the plugin wherever Core
+     * The base url an interface served by a plugin resolves to: {@code plugin://<name>}. It names the plugin wherever Core
      * keeps a url (the synthetic upstream, the analytics row, the logs); no HTTP request is ever sent to it.
      */
     public static final String PLUGIN_URL_PREFIX = "plugin://";
@@ -74,8 +74,8 @@ public class DeploymentEndpointUtil {
         if (deploymentInterface != null && deploymentInterface.getMode() == InterfaceMode.TRANSLATOR) {
             return deploymentInterface.getTranslator() != null;
         }
-        if (deploymentInterface != null && deploymentInterface.getMode() == InterfaceMode.EMBEDDED) {
-            return deploymentInterface.getPlugin() != null;
+        if (deploymentInterface != null && deploymentInterface.getPlugin() != null) {
+            return true;
         }
         if (deploymentInterface != null && passthroughBaseUrl(deployment, deploymentInterface) != null) {
             return true;
@@ -190,15 +190,22 @@ public class DeploymentEndpointUtil {
     }
 
     /**
-     * The {@code plugins} entry serving the type, or null when the type is not in {@code embedded} mode. A name is
-     * returned whether or not an entry by that name exists: the request finds that out when it calls the plugin.
+     * The {@code plugins} entry serving the type, or null when a url serves it: the plugin a pass-through entry names,
+     * or the one the translator of a translated entry names. A name is returned whether or not an entry by that name
+     * exists: the request finds that out when it calls the plugin.
      */
     @Nullable
-    public String resolvePlugin(Deployment deployment, InterfaceType type) {
+    public String resolvePlugin(Deployment deployment, InterfaceType type, Map<String, Translator> translators) {
         DeploymentInterface deploymentInterface = findInterface(deployment, type);
-        return deploymentInterface != null && deploymentInterface.getMode() == InterfaceMode.EMBEDDED
-                ? deploymentInterface.getPlugin()
-                : null;
+        if (deploymentInterface == null) {
+            return null;
+        }
+        if (deploymentInterface.getMode() != InterfaceMode.TRANSLATOR) {
+            return deploymentInterface.getPlugin();
+        }
+        TranslatorRef translator = deploymentInterface.getTranslator();
+        Translator definition = translator == null ? null : translator.resolve(translators);
+        return definition == null ? null : definition.getPlugin();
     }
 
     /**
@@ -237,8 +244,8 @@ public class DeploymentEndpointUtil {
     /**
      * The url the entry is served by. A translated interface is served by its translator and by nothing
      * else — {@code mode} decides this, so that what a request is routed to and what it is charged for can
-     * never disagree — and an embedded one by its plugin, as {@link #PLUGIN_URL_PREFIX} and the plugin's name,
-     * while a pass-through one takes its own {@code base_url}, or the deployment-level {@code baseUrl} when it
+     * never disagree — while a pass-through one is served by the plugin it names, as {@link #PLUGIN_URL_PREFIX}
+     * and the plugin's name, or else takes its own {@code base_url}, or the deployment-level {@code baseUrl} when it
      * declares none. The translator reference is resolved against the registry on each call, never from a copy
      * held by the deployment.
      */
@@ -247,11 +254,13 @@ public class DeploymentEndpointUtil {
         if (deploymentInterface.getMode() == InterfaceMode.TRANSLATOR) {
             TranslatorRef translator = deploymentInterface.getTranslator();
             Translator definition = translator == null ? null : translator.resolve(translators);
-            return definition == null ? null : definition.getBaseUrl();
+            if (definition == null) {
+                return null;
+            }
+            return definition.getPlugin() != null ? PLUGIN_URL_PREFIX + definition.getPlugin() : definition.getBaseUrl();
         }
-        if (deploymentInterface.getMode() == InterfaceMode.EMBEDDED) {
-            String plugin = deploymentInterface.getPlugin();
-            return plugin == null ? null : PLUGIN_URL_PREFIX + plugin;
+        if (deploymentInterface.getPlugin() != null) {
+            return PLUGIN_URL_PREFIX + deploymentInterface.getPlugin();
         }
         return passthroughBaseUrl(deployment, deploymentInterface);
     }
@@ -295,7 +304,7 @@ public class DeploymentEndpointUtil {
 
     /**
      * The {@code overridePaths} template the interface entry declares for the operation, or null when it
-     * declares none. A translated interface routes to its translator's DIAL-contract url, and an embedded one to
+     * declares none. A translated interface routes to its translator's DIAL-contract url, and one with a plugin to
      * its plugin, so overrides never apply to either.
      */
     @Nullable
@@ -305,7 +314,7 @@ public class DeploymentEndpointUtil {
         }
         DeploymentInterface deploymentInterface = findInterface(deployment, type);
         if (deploymentInterface == null || deploymentInterface.getMode() == InterfaceMode.TRANSLATOR
-                || deploymentInterface.getMode() == InterfaceMode.EMBEDDED) {
+                || deploymentInterface.getPlugin() != null) {
             return null;
         }
         Map<String, String> overridePaths = deploymentInterface.getOverridePaths();
@@ -333,8 +342,8 @@ public class DeploymentEndpointUtil {
      * <p>A translated interface never falls back here: routing it to the deployment itself would send the
      * request pass-through while {@code mode} still exempted it from limits. That is the whole of the rule
      * that a translated interface is served by its translator or by nothing — one with no translator linked
-     * resolves to no url here either, so it is neither served nor advertised. An embedded interface never
-     * falls back either: it is served by its plugin or by nothing.
+     * resolves to no url here either, so it is neither served nor advertised. An interface that names a
+     * plugin never reaches this method: it resolves to its plugin first.
      */
     @Nullable
     private String resolveLegacyEndpoint(Deployment deployment, InterfaceType type) {

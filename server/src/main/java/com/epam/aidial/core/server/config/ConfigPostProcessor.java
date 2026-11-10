@@ -720,7 +720,7 @@ public final class ConfigPostProcessor {
                 validateTranslatedInterface(deployment, entry.getKey(), declared, translators, field, warnings);
             } else if (declared.getTranslator() != null) {
                 warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "A translator requires mode 'translator'")));
-            } else if (declared.getMode() != InterfaceMode.EMBEDDED && declared.getBaseUrl() == null && deployment.getBaseUrl() == null) {
+            } else if (declared.getPlugin() == null && declared.getBaseUrl() == null && deployment.getBaseUrl() == null) {
                 warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "Interface '" + entry.getKey()
                         + "' declares no base_url and the " + entityLabel.toLowerCase(Locale.ROOT) + " declares no baseUrl")));
             }
@@ -756,7 +756,7 @@ public final class ConfigPostProcessor {
      * Validates an interface entry's {@code overridePaths}. A key this Core does not know is tolerated —
      * exactly as an unknown interface type is — but a known key under an interface that does not own it,
      * a template that does not parse, and a variable the operation cannot render are config contradicting
-     * itself. A translated interface routes to its translator, and an embedded one to its plugin, so overrides
+     * itself. A translated interface routes to its translator, and one that names a plugin to its plugin, so overrides
      * on either are dead config.
      */
     private static void validateOverridePaths(Deployment deployment, String type, DeploymentInterface declared, String field,
@@ -771,9 +771,9 @@ public final class ConfigPostProcessor {
                     messageWithEntityPrefix(entityLabel, deployment.getName(), "A translated interface is served by its translator: overridePaths has no effect")));
             return;
         }
-        if (declared.getMode() == InterfaceMode.EMBEDDED) {
+        if (declared.getPlugin() != null) {
             warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix(entityLabel, deployment.getName(), "An embedded interface is served by its plugin: overridePaths has no effect")));
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "An interface with a plugin is served by its plugin: overridePaths has no effect")));
             return;
         }
         for (Map.Entry<String, String> entry : overridePaths.entrySet()) {
@@ -804,31 +804,41 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * An entry in {@code embedded} mode is served by the plugin it names and by nothing else, and only that mode
-     * names a plugin. Interceptor hops are always sent over HTTP, so an interceptor cannot be embedded. A name no
-     * {@code plugins} entry has leaves the interface unserved, not the deployment invalid, as for a translator.
+     * An entry that names a plugin is served by it and by nothing else. Interceptor hops are always sent over HTTP, so
+     * an interceptor cannot name one, and a translated entry is served by its translator. A name no {@code plugins}
+     * entry has leaves the interface unserved, not the deployment invalid, as for a translator.
      */
     private static void validatePluginReference(Deployment deployment, DeploymentInterface declared, String field,
                                                 List<ValidationWarning> warnings) {
         String entityLabel = deployment.getClass().getSimpleName();
-        if (declared.getMode() != InterfaceMode.EMBEDDED) {
-            if (declared.getPlugin() != null) {
-                warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "A plugin requires mode 'embedded'")));
-            }
-            return;
-        }
-        if (deployment instanceof Interceptor) {
+        if (deployment instanceof Interceptor && (declared.getPlugin() != null || hasInlineTranslatorPlugin(declared))) {
             warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix(entityLabel, deployment.getName(), "Mode 'embedded' is not supported for an interceptor")));
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "A plugin is not supported for an interceptor")));
             return;
         }
-        if (declared.getPlugin() == null || declared.getPlugin().isBlank()) {
-            warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "Mode 'embedded' requires a plugin")));
+        if (declared.getPlugin() == null) {
+            return;
+        }
+        if (declared.getPlugin().isBlank()) {
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "A plugin name cannot be blank")));
+        }
+        if (declared.getMode() == InterfaceMode.TRANSLATOR) {
+            warnings.add(new ValidationWarning(field,
+                    messageWithEntityPrefix(entityLabel, deployment.getName(), "A translated interface is served by its translator, not by a plugin")));
         }
         if (declared.getBaseUrl() != null) {
             warnings.add(new ValidationWarning(field,
                     messageWithEntityPrefix(entityLabel, deployment.getName(), "An interface is served either by a plugin or by a base_url, not by both")));
         }
+    }
+
+    /**
+     * Whether the entry's translator is written inline and names a plugin. A named translator is not resolved here: its
+     * entry can change after the deployment is written, so the request path checks it.
+     */
+    public static boolean hasInlineTranslatorPlugin(DeploymentInterface declared) {
+        TranslatorRef translator = declared.getTranslator();
+        return translator != null && translator.getInline() != null && translator.getInline().getPlugin() != null;
     }
 
     private static void validateTranslatedInterface(Deployment deployment, String type, DeploymentInterface declared,
@@ -1035,7 +1045,7 @@ public final class ConfigPostProcessor {
 
     /**
      * A router in decision mode never forwards the client's request, so no interface of it is served by a translator.
-     * An embedded interface is served: its plugin answers the decide request in process. The decide request settings
+     * An interface that names a plugin is served: the plugin answers the decide request in process. The decide request settings
      * are read in decision mode only: on a router in proxy mode they would do nothing.
      */
     private static void validateDecision(String name, Router router, List<ValidationWarning> warnings) {

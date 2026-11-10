@@ -48,12 +48,30 @@ public class TranslatorTest {
                 }
                 """;
 
-        // absent, so Jackson refuses the creator property
-        assertThrows(MismatchedInputException.class, () -> MAPPER.readValue(json, Config.class));
+        // absent, and no plugin either, so the constructor refuses it
+        assertThrows(ValueInstantiationException.class, () -> MAPPER.readValue(json, Config.class));
 
         // present but null, so the constructor refuses it
         String explicitNull = json.replace("\"out\": \"openaiResponses\"", "\"out\": \"openaiResponses\", \"baseUrl\": null");
         assertThrows(ValueInstantiationException.class, () -> MAPPER.readValue(explicitNull, Config.class));
+    }
+
+    // deployment-interfaces-config "Translator definition"
+    @Test
+    void translatorNamesExactlyOneOfBaseUrlAndPlugin() throws Exception {
+        Translator translator = MAPPER.readValue("""
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "plugin": "p1"}
+                """, Translator.class);
+
+        assertEquals("p1", translator.getPlugin());
+        assertNull(translator.getBaseUrl());
+        String written = MAPPER.writeValueAsString(translator);
+        assertEquals("p1", MAPPER.readTree(written).path("plugin").asText());
+        assertFalse(MAPPER.readTree(written).has("baseUrl"), written);
+        assertThrows(ValueInstantiationException.class, () -> MAPPER.readValue("""
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "http://t", "plugin": "p1"}
+                """, Translator.class));
+        assertThrows(IllegalArgumentException.class, () -> new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, null, " "));
     }
 
     @Test

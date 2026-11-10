@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
-import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.plugin.OriginHost;
@@ -229,7 +228,7 @@ class RouterDecisionClientTest {
         assertTrue(server.takeRequest(5, TimeUnit.SECONDS).getHeader("X-DIAL-ROUTER-ATTEMPTS").contains("mod\\u00E8le"));
     }
 
-    // an interface served in embedded mode: the plugin answers the decide request in process
+    // an interface that names a plugin: the plugin answers the decide request in process
 
     @Test
     void embeddedDecideReadFromThePlugin() throws Exception {
@@ -343,12 +342,11 @@ class RouterDecisionClientTest {
     }
 
     /**
-     * The router of {@link #router} with its chat completions served in embedded mode by plugin {@code p1}.
+     * The router of {@link #router} with its chat completions decided by plugin {@code p1}.
      */
     private Router embeddedRouter(Long timeoutMs) {
         Router router = router(timeoutMs);
         DeploymentInterface embedded = new DeploymentInterface();
-        embedded.setMode(InterfaceMode.EMBEDDED);
         embedded.setPlugin("p1");
         router.setInterfaces(Map.of("openaiChatCompletions", embedded));
         return router;

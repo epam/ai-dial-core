@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.upstream.ProxyRequest;
 import com.epam.aidial.core.server.upstream.ProxyResponse;
+import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -120,8 +121,12 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     }
 
     private void sendRequest() {
-        createProxyRequest(buildUri(context))
-                .onSuccess(this::handleProxyRequest)
+        String uri = buildUri(context);
+        // an interceptor hop is always an HTTP request: a translator that names a plugin cannot serve it
+        Future<ProxyRequest> proxyRequest = uri != null && uri.startsWith(DeploymentEndpointUtil.PLUGIN_URL_PREFIX)
+                ? Future.failedFuture("A plugin is not supported for an interceptor: " + context.getDeployment().getName())
+                : createProxyRequest(uri);
+        proxyRequest.onSuccess(this::handleProxyRequest)
                 .onFailure(this::handleProxyConnectionError);
     }
 

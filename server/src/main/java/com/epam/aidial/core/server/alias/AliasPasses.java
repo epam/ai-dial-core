@@ -208,6 +208,7 @@ public class AliasPasses {
                     copy.setBaseUrl(declared.getBaseUrl());
                     copy.setMode(declared.getMode());
                     copy.setTranslator(declared.getTranslator());
+                    copy.setPlugin(declared.getPlugin());
                     copy.setFeatures(declared.getFeatures());
                     copy.setDefaults(declared.getDefaults());
                     interfaces.put(type, copy);

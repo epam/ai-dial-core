@@ -7,40 +7,40 @@
     "r1": {
       "mode": "decision",
       "interfaces": {
-        "openaiChatCompletions": {"mode": "embedded", "plugin": "p1"},
-        "anthropicMessages": {"mode": "embedded", "plugin": "p1"},
-        "openaiResponses": {"mode": "embedded", "plugin": "p1"}
+        "openaiChatCompletions": {"plugin": "p1"},
+        "anthropicMessages": {"plugin": "p1"},
+        "openaiResponses": {"plugin": "p1"}
       }
     },
     "rb": {
       "mode": "decision",
       "decision": {"body": true},
       "interfaces": {
-        "openaiChatCompletions": {"mode": "embedded", "plugin": "p1"},
-        "anthropicMessages": {"mode": "embedded", "plugin": "p1"},
-        "openaiResponses": {"mode": "embedded", "plugin": "p1"}
+        "openaiChatCompletions": {"plugin": "p1"},
+        "anthropicMessages": {"plugin": "p1"},
+        "openaiResponses": {"plugin": "p1"}
       }
     },
     "rt": {
       "mode": "decision",
       "decision": {"timeoutMs": 200},
-      "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}
+      "interfaces": {"openaiChatCompletions": {"plugin": "p1"}}
     },
     "r9": {
       "mode": "decision",
-      "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p9"}}
+      "interfaces": {"openaiChatCompletions": {"plugin": "p9"}}
     },
     "r4": {
       "baseUrl": "http://localhost:4848",
       "mode": "decision",
       "interfaces": {
-        "openaiChatCompletions": {"mode": "embedded", "plugin": "p1"},
+        "openaiChatCompletions": {"plugin": "p1"},
         "openaiResponses": {}
       }
     },
     "re": {
       "mode": "decision",
-      "interfaces": {"openaiEmbeddings": {"mode": "embedded", "plugin": "p1"}}
+      "interfaces": {"openaiEmbeddings": {"plugin": "p1"}}
     },
     "r2": {
       "baseUrl": "http://localhost:4848",
@@ -76,7 +76,7 @@
   },
   "applications": {
     "app": {
-      "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p2"}}
+      "interfaces": {"openaiChatCompletions": {"plugin": "p2"}}
     }
   },
   "keys": {

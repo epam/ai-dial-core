@@ -137,14 +137,14 @@ public class BaseDeploymentPostController {
 
     /**
      * Sets the request's body once the chain has run: {@code request} serialised, when the chain changed it or the
-     * pass has no body yet, as the pass of an in-process call has not. For an embedded interface the tree stays on the
+     * pass has no body yet, as the pass of an in-process call has not. For an interface served by a plugin the tree stays on the
      * context too, and its plugin gets it as {@code bodyTree} instead of parsing the body again.
      */
     protected void setProcessedRequestBody(RequestObject request, boolean changed, InterfaceType type) throws JsonProcessingException {
         if (changed || context.getRequestBody() == null) {
             context.setRequestBody(Buffer.buffer(request.serialize()));
         }
-        if (DeploymentEndpointUtil.resolveMode(context.getDeployment(), type) == InterfaceMode.EMBEDDED) {
+        if (DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), type, context.getConfig().getTranslators()) != null) {
             context.setRequestTree(request.getTree());
         }
     }
@@ -445,7 +445,7 @@ public class BaseDeploymentPostController {
 
     /**
      * Low-level: build and issue the proxy request to an already-resolved absolute URI: a call to {@code plugin} when an
-     * {@code embedded} interface names one, an HTTP request otherwise.
+     * interface names one, an HTTP request otherwise.
      */
     protected Future<ProxyRequest> createProxyRequest(String absoluteUri, @Nullable String plugin) {
         HttpServerRequest request = context.getRequest();
@@ -472,7 +472,7 @@ public class BaseDeploymentPostController {
                         request.path(),
                         request.query()
                 ),
-                DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), type)
+                DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), type, context.getConfig().getTranslators())
         );
     }
 

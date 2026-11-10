@@ -123,7 +123,7 @@ public class RouterDecisionFlow {
         // the caller's tree is still the client's here; deployments-POST has none yet and parses the bytes once
         ObjectNode parsed = tree != null ? tree : parse(bytes);
         ApiKeyData key = mintDecideKey(router, type, parsed);
-        boolean embedded = DeploymentEndpointUtil.resolvePlugin(router, type) != null;
+        boolean embedded = DeploymentEndpointUtil.resolvePlugin(router, type, context.getConfig().getTranslators()) != null;
         // the plugin's own copy, which it may change: the caller's tree is the one the candidate is served from
         ObjectNode pluginTree = !embedded ? null : tree != null ? tree.deepCopy() : parsed;
         return new Prepared(bytes, pluginTree, key);
@@ -225,7 +225,8 @@ public class RouterDecisionFlow {
         Router router = decision.getRouter();
         Buffer bytes = RouterDecisionClient.withBody(router) ? context.getOriginalRequestBody() : null;
         // the candidates changed the caller's tree: an embedded router's copy comes from the bytes, which nothing changes
-        boolean embedded = bytes != null && DeploymentEndpointUtil.resolvePlugin(router, decision.getApi()) != null;
+        boolean embedded = bytes != null
+                && DeploymentEndpointUtil.resolvePlugin(router, decision.getApi(), context.getConfig().getTranslators()) != null;
         long start = System.currentTimeMillis();
         proxy.getTokenStatsTracker().unnameSpan(context)
                 .recover(error -> {

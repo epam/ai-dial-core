@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Interfaces in {@code embedded} mode: the config rules on write, and the requests a plugin serves. Each test
+ * Interfaces served by a plugin: the config rules on write, and the requests a plugin serves. Each test
  * creates its own {@code plugins} entry and deployments through the Configuration API, so the shared test config
  * and the listings other tests count stay as they are.
  */
@@ -43,9 +43,67 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
                 {"type": "chat", "interfaces": {"openaiChatCompletions": {"mode": "embedded"}}}
                 """);
 
-        assertEquals(422, put.status(), put.body());
-        assertTrue(put.body().contains("Mode 'embedded' requires a plugin"), put.body());
+        assertEquals(400, put.status(), put.body());
         assertEquals(404, adminGet("/v1/models/platform/m").status());
+    }
+
+    // deployment-interfaces-config "Embedded is not a mode"
+    @Test
+    void testEmbeddedIsNotMode() {
+        Response put = adminPut("/v1/applications/platform/a", """
+                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                """);
+
+        assertEquals(400, put.status(), put.body());
+        assertEquals(404, adminGet("/v1/applications/platform/a").status());
+    }
+
+    @Test
+    void testBlankPluginName() {
+        Response put = adminPut("/v1/models/platform/m", """
+                {"type": "chat", "interfaces": {"openaiChatCompletions": {"plugin": " "}}}
+                """);
+
+        assertEquals(422, put.status(), put.body());
+        assertTrue(put.body().contains("A plugin name cannot be blank"), put.body());
+        assertEquals(404, adminGet("/v1/models/platform/m").status());
+    }
+
+    @Test
+    void testExplicitPassthroughModeWithPlugin() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/applications/platform/app", """
+                {"interfaces": {"openaiChatCompletions": {"mode": "passthrough", "plugin": "p1"}}}
+                """), 200);
+
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
+
+        assertEquals("/openai/deployments/app/chat/completions", onlyRequest().uri());
+    }
+
+    // an alias of a model served by a plugin is listed with the interface and served by the plugin
+    @Test
+    @SneakyThrows
+    void testAliasOfModelServedByPlugin() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/models/platform/" + MODEL, """
+                {"type": "chat", "interfaces": {"openaiChatCompletions": {"plugin": "p1"}}}
+                """), 200);
+        verify(adminPut("/v1/aliases/public/plugin-alias", "{\"target\": {\"path\": \"models/" + MODEL + "\"}}"), 200);
+
+        Response list = adminGet("/v1/deployments");
+        verify(list, 200);
+        JsonNode listed = null;
+        for (JsonNode item : ProxyUtil.MAPPER.readTree(list.body())) {
+            if (item.path("id").asText().endsWith("plugin-alias")) {
+                listed = item;
+            }
+        }
+        assertNotNull(listed, list.body());
+        assertTrue(listed.path("interface_configs").has("openaiChatCompletions"), listed.toString());
+
+        verify(chat("/openai/deployments/aliases/public/plugin-alias/chat/completions", CHAT_BODY), 200);
+        assertEquals(1, TestOriginPluginProvider.REQUESTS.size());
     }
 
     @Test
@@ -59,18 +117,18 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         Response put = adminPut("/v1/interceptors/platform/i", embeddedChat("p1"));
 
         assertEquals(422, put.status(), put.body());
-        assertTrue(put.body().contains("Mode 'embedded' is not supported for an interceptor"), put.body());
+        assertTrue(put.body().contains("A plugin is not supported for an interceptor"), put.body());
     }
 
     @Test
     void testOverridePathsUnderAnEmbeddedEntry() {
         Response put = adminPut("/v1/applications/platform/a", """
-                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1",
+                {"interfaces": {"openaiChatCompletions": {"plugin": "p1",
                   "overridePaths": {"postAzureOpenaiChatCompletions": "/x"}}}}
                 """);
 
         assertEquals(422, put.status(), put.body());
-        assertTrue(put.body().contains("An embedded interface is served by its plugin: overridePaths has no effect"), put.body());
+        assertTrue(put.body().contains("An interface with a plugin is served by its plugin: overridePaths has no effect"), put.body());
     }
 
     @Test
@@ -80,7 +138,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
                 """);
 
         assertEquals(422, put.status(), put.body());
-        assertTrue(put.body().contains("A plugin requires mode 'embedded'"), put.body());
+        assertTrue(put.body().contains("An interface is served either by a plugin or by a base_url, not by both"), put.body());
         assertEquals(404, adminGet("/v1/applications/platform/a").status());
     }
 
@@ -134,7 +192,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         plugin("p1", "{}");
         verify(adminPut("/v1/models/platform/" + MODEL, """
                 {"type": "chat", "upstreams": [{"endpoint": "http://cloud/v1", "key": "k1"}],
-                 "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                 "interfaces": {"openaiChatCompletions": {"plugin": "p1"}}}
                 """), 200);
 
         verify(chat("/openai/deployments/" + MODEL + "/chat/completions", CHAT_BODY), 200);
@@ -178,10 +236,10 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testBodyTreeIsTheBody() {
         plugin("p1", "{}");
         verify(adminPut("/v1/applications/platform/app", """
-                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"},
-                  "openaiEmbeddings": {"mode": "embedded", "plugin": "p1"},
-                  "openaiResponses": {"mode": "embedded", "plugin": "p1"},
-                  "anthropicMessages": {"mode": "embedded", "plugin": "p1"}}}
+                {"interfaces": {"openaiChatCompletions": {"plugin": "p1"},
+                  "openaiEmbeddings": {"plugin": "p1"},
+                  "openaiResponses": {"plugin": "p1"},
+                  "anthropicMessages": {"plugin": "p1"}}}
                 """), 200);
 
         verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
@@ -222,12 +280,13 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         assertEquals("plugin://p1", row.getUpstreamEndpoint());
     }
 
+    // also deployment-interfaces-config "Model served by a plugin needs no url"
     @Test
     @SneakyThrows
     void testModelUsageCharged() {
         plugin("p1", "{}");
         verify(adminPut("/v1/models/platform/" + MODEL, """
-                {"type": "chat", "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                {"type": "chat", "interfaces": {"openaiChatCompletions": {"plugin": "p1"}}}
                 """), 200);
 
         verify(chat("/openai/deployments/" + MODEL + "/chat/completions", CHAT_BODY), 200);
@@ -331,7 +390,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testEmbeddedInterfaceGoesToThePlugin() {
         plugin("p1", "{}");
         verify(adminPut("/v1/applications/platform/app", """
-                {"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                {"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {"plugin": "p1"}}}
                 """), 200);
 
         try (TestWebServer server = new TestWebServer(4848)) {
@@ -347,7 +406,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testEmbeddedInterfaceNeverFallsBack() {
         verify(adminPut("/v1/models/platform/" + MODEL, """
                 {"type": "chat", "endpoint": "http://localhost:4848/chat",
-                 "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "missing"}}}
+                 "interfaces": {"openaiChatCompletions": {"plugin": "missing"}}}
                 """), 200);
 
         try (TestWebServer server = new TestWebServer(4848)) {
@@ -363,8 +422,38 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         Response put = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/my-app", null, embeddedChat("p1"));
 
         assertEquals(422, put.status(), put.body());
-        assertTrue(put.body().contains("Mode 'embedded' is reserved for platform deployments"), put.body());
+        assertTrue(put.body().contains("A plugin is reserved for platform deployments"), put.body());
         assertEquals(404, send(HttpMethod.GET, "/v1/applications/" + bucket + "/my-app", null, "").status());
+    }
+
+    @Test
+    void testCustomApplicationWithInlineTranslatorPluginRefusedOnWrite() {
+        Response put = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/my-app", null, """
+                {"interfaces": {"anthropicMessages": {"mode": "translator",
+                  "translator": {"out": "openaiChatCompletions", "plugin": "p1"}}}}
+                """);
+
+        assertEquals(422, put.status(), put.body());
+        assertTrue(put.body().contains("A plugin is reserved for platform deployments"), put.body());
+        assertEquals(404, send(HttpMethod.GET, "/v1/applications/" + bucket + "/my-app", null, "").status());
+    }
+
+    @Test
+    void testStoredCustomApplicationNamingTranslatorWithPlugin() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/translators/platform/c2r", """
+                {"in": "openaiChatCompletions", "out": "openaiResponses", "plugin": "p1"}
+                """), 200);
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl("applications/" + bucket + "/my-app",
+                dial.getProxy().getEncryptionService());
+        dial.getProxy().getResourceService().putResource(descriptor, """
+                {"interfaces": {"openaiChatCompletions": {"mode": "translator", "translator": "c2r"}}}
+                """, EtagHeader.ANY, null, false);
+
+        Response response = chat("/openai/deployments/applications/" + bucket + "/my-app/chat/completions", CHAT_BODY);
+
+        assertEquals(502, response.status(), response.body());
+        assertTrue(TestOriginPluginProvider.REQUESTS.isEmpty());
     }
 
     @Test
@@ -541,7 +630,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     private void servedApp(String type) {
         plugin("p1", "{}");
         verify(adminPut("/v1/applications/platform/app", """
-                {"interfaces": {"%s": {"mode": "embedded", "plugin": "p1"}}}
+                {"interfaces": {"%s": {"plugin": "p1"}}}
                 """.formatted(type)), 200);
     }
 
@@ -586,7 +675,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         verify(adminPut("/v1/models/platform/" + MODEL, """
                 {"type": "chat", "maxRetryAttempts": 2,
                  "upstreams": [{"endpoint": "http://cloud-a", "key": "a", "tier": 0}, {"endpoint": "http://cloud-b", "key": "b", "tier": 1}],
-                 "interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                 "interfaces": {"openaiChatCompletions": {"plugin": "p1"}}}
                 """), 200);
         return send(HttpMethod.POST, "/openai/deployments/" + MODEL + "/chat/completions", null, CHAT_BODY,
                 "content-type", "application/json", "X-Test-Status-For-Endpoint", "http://cloud-a=429");
@@ -626,7 +715,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
 
     static String embeddedChat(String plugin) {
         return """
-                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "%s"}}}
+                {"interfaces": {"openaiChatCompletions": {"plugin": "%s"}}}
                 """.formatted(plugin);
     }
 

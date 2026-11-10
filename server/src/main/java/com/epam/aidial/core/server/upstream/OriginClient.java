@@ -20,7 +20,7 @@ import javax.annotation.Nullable;
 
 /**
  * Creates the {@link ProxyRequest} to the origin serving a deployment: an HTTP request, or a call to the plugin an
- * {@code embedded} interface names.
+ * interface names.
  */
 @RequiredArgsConstructor
 public class OriginClient {
@@ -36,7 +36,7 @@ public class OriginClient {
     }
 
     /**
-     * Creates the request to {@code plugin}, which serves an {@code embedded} interface of the context's deployment.
+     * Creates the request to {@code plugin}, which serves an interface of the context's deployment.
      * {@code absoluteUri} is the {@code plugin://<name>} url the interface resolves to, with the path and query.
      *
      * <p>Every failure comes back as a failed future, for the caller's connect-failure path: no {@code plugins} entry
@@ -50,7 +50,7 @@ public class OriginClient {
         try {
             Config config = context.getConfig();
             if (context.getDeployment() instanceof Application application && !isPlatform(config, application)) {
-                throw new IllegalStateException("Mode 'embedded' is reserved for platform deployments: " + application.getName());
+                throw new IllegalStateException("A plugin is reserved for platform deployments: " + application.getName());
             }
             // fails here, for an entry that cannot serve; each attempt takes the plugin when it is sent
             embeddedOrigins.resolve(config, plugin);

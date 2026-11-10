@@ -4,8 +4,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import lombok.Getter;
 
 /**
- * How a deployment serves one {@link InterfaceType}: the request is forwarded in the shape it arrived in,
- * handed to a translator that converts it to an API the deployment does speak, or answered by a plugin in Core.
+ * How a deployment serves one {@link InterfaceType}: the request is forwarded in the shape it arrived in, or
+ * handed to a translator that converts it to an API the deployment does speak. Whether the request goes over HTTP or
+ * to a plugin in Core is not a mode: see {@link DeploymentInterface#getPlugin()}.
  */
 @Getter
 public enum InterfaceMode {
@@ -15,12 +16,7 @@ public enum InterfaceMode {
      * The translator calls Core back with the converted request, so the completion is served — and the
      * caller's limits both checked and charged — by that inner request rather than this one.
      */
-    TRANSLATOR("translator", false),
-    /**
-     * A plugin running in Core answers the request in place of the HTTP origin, so the caller is accountable for
-     * it as for a pass-through request.
-     */
-    EMBEDDED("embedded", true);
+    TRANSLATOR("translator", false);
 
     @JsonValue
     private final String value;

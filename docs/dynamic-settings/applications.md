@@ -158,8 +158,7 @@ Applications serve the following interface types:
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the application-level `baseUrl` serves an entry that omits it.
-* `mode`: `passthrough` (default) or `embedded`. An `embedded` interface is answered by the plugin its `plugin` field names, inside DIAL Core, in place of the HTTP call, and is charged like `passthrough`. Only applications of the platform config (the config files and the `platform` bucket) can use it: a custom application in any other bucket declaring it is rejected with `422`. Refer to [plugins](plugins.md).
-* `plugin`: The name of the [plugins](plugins.md) entry serving an `embedded` interface. Required by that mode, and rejected with any other mode or next to a `base_url`. A name with no `plugins` entry yet is accepted; requests for the interface answer `502` until the entry exists.
+* `plugin`: Preview, may change incompatibly. The name of the [plugins](plugins.md) entry that answers this interface inside DIAL Core, in place of the HTTP call. The interface is charged as one served over HTTP. Rejected next to a `base_url`. Only applications of the platform config (the config files and the `platform` bucket) can name a plugin: a custom application in any other bucket declaring one is rejected with `422`. A name with no `plugins` entry yet is accepted; requests for the interface answer `502` until the entry exists.
 * `features`: Non-null fields override application-level `features` for this interface only; all other fields inherit, then Core defaults apply. Explicit `false` and empty arrays override inherited values. See [Features per interface](models.md#features-per-interface).
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the application-level `defaultHeaders`. Refer to [applications.<application_name>.defaultHeaders](#applicationsapplication_namedefaultheaders).
 * `defaults`: Body parameters applied to requests for this interface only. Unlike `defaultHeaders`, the two levels are **not** merged: an entry declaring `defaults` states the whole set and **replaces** the application-level `defaults`, so a key it does not name is not defaulted at all. The application-level `defaults` applies only where the entry declares none. Whatever the source, a default is only a fallback — a parameter the request body already carries is never replaced.
@@ -177,7 +176,7 @@ Each value is an object with the following fields:
     },
     "app-in-core": {
         "interfaces": {
-            "openaiChatCompletions": { "mode": "embedded", "plugin": "my-plugin" }
+            "openaiChatCompletions": { "plugin": "my-plugin" }
         }
     }
 }

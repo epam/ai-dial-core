@@ -26,6 +26,7 @@ import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
@@ -1300,12 +1301,19 @@ public class ConfigPostProcessorTest {
     @Test
     void testEmbeddedInterfaceIsRead() throws Exception {
         Model model = ProxyUtil.MAPPER.readValue("""
-                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                {"interfaces": {"openaiChatCompletions": {"plugin": "p1"}}}
                 """, Model.class);
 
         DeploymentInterface declared = model.getInterfaces().get("openaiChatCompletions");
-        assertEquals(InterfaceMode.EMBEDDED, declared.getMode());
+        assertNull(declared.getMode());
         assertEquals("p1", declared.getPlugin());
+    }
+
+    @Test
+    void testEmbeddedIsNotMode() {
+        assertThrows(JsonProcessingException.class, () -> ProxyUtil.MAPPER.readValue("""
+                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                """, Model.class));
     }
 
     @Test
@@ -1314,9 +1322,15 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
-    void testEmbeddedModeRequiresPlugin() {
-        assertWarning(modelWarnings(embedded(null)), "Mode 'embedded' requires a plugin");
-        assertWarning(applicationWarnings(embedded(null)), "Mode 'embedded' requires a plugin");
+    void testBlankPluginRejected() {
+        assertWarning(modelWarnings(embedded(" ")), "A plugin name cannot be blank");
+        assertWarning(applicationWarnings(embedded("")), "A plugin name cannot be blank");
+    }
+
+    // deployment-interfaces-config "Pass-through entry needs a url"
+    @Test
+    void testEntryWithoutPluginStillNeedsUrl() {
+        assertWarning(modelWarnings(new DeploymentInterface()), "declares no base_url and the model declares no baseUrl");
     }
 
     @Test
@@ -1328,19 +1342,15 @@ public class ConfigPostProcessorTest {
         assertWarning(applicationWarnings(declared), "An interface is served either by a plugin or by a base_url, not by both");
     }
 
+    // deployment-interfaces-config "Plugin on a translated interface"
     @Test
-    void testPluginRequiresEmbeddedMode() {
-        DeploymentInterface declared = new DeploymentInterface("http://app");
-        declared.setPlugin("p1");
+    void testPluginOnTranslatedInterfaceRejected() {
+        DeploymentInterface declared = embedded("p1");
+        declared.setMode(InterfaceMode.TRANSLATOR);
+        declared.setTranslator(TranslatorRef.named("a2c"));
 
-        assertWarning(modelWarnings(declared), "A plugin requires mode 'embedded'");
-        assertWarning(applicationWarnings(declared), "A plugin requires mode 'embedded'");
-        Interceptor interceptor = new Interceptor();
-        interceptor.setName("interceptor");
-        interceptor.setInterfaces(Map.of("openaiChatCompletions", declared));
-        List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateInterfaces(interceptor, warnings);
-        assertWarning(warnings, "A plugin requires mode 'embedded'");
+        assertWarning(modelWarnings(declared), "A translated interface is served by its translator, not by a plugin");
+        assertWarning(applicationWarnings(declared), "A translated interface is served by its translator, not by a plugin");
     }
 
     @Test
@@ -1352,7 +1362,23 @@ public class ConfigPostProcessorTest {
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateInterfaces(interceptor, warnings);
 
-        assertWarning(warnings, "Mode 'embedded' is not supported for an interceptor");
+        assertWarning(warnings, "A plugin is not supported for an interceptor");
+    }
+
+    // deployment-interfaces-config "Interceptor with an inline translator plugin"
+    @Test
+    void testInterceptorWithInlineTranslatorPluginRejected() {
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setMode(InterfaceMode.TRANSLATOR);
+        declared.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_RESPONSES, null, "p1")));
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor");
+        interceptor.setInterfaces(Map.of("openaiChatCompletions", declared));
+
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateInterfaces(interceptor, warnings);
+
+        assertWarning(warnings, "A plugin is not supported for an interceptor");
     }
 
     @Test
@@ -1360,7 +1386,7 @@ public class ConfigPostProcessorTest {
         DeploymentInterface declared = embedded("p1");
         declared.setOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/x"));
 
-        assertWarning(applicationWarnings(declared), "An embedded interface is served by its plugin: overridePaths has no effect");
+        assertWarning(applicationWarnings(declared), "An interface with a plugin is served by its plugin: overridePaths has no effect");
     }
 
     @Test
@@ -1408,7 +1434,6 @@ public class ConfigPostProcessorTest {
 
     private static DeploymentInterface embedded(String plugin) {
         DeploymentInterface declared = new DeploymentInterface();
-        declared.setMode(InterfaceMode.EMBEDDED);
         declared.setPlugin(plugin);
         return declared;
     }

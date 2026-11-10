@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Features;
-import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
@@ -675,7 +674,7 @@ public class ApplicationService {
     /**
      * Interfaces the next config rebuild would drop (an {@code overridePaths} entry Core cannot render, a plugin
      * reference its mode contradicts) are refused before the application is written to {@code resource}, so the blob
-     * never holds them. So is an {@code embedded} interface outside the platform bucket: a plugin runs platform code,
+     * never holds them. So is an interface that names a plugin, itself or in an inline translator, outside the platform bucket: a plugin runs platform code,
      * possibly with the pod's credentials, so only the platform config may name one.
      */
     private static void requireValidInterfaces(ResourceDescriptor resource, Application application) {
@@ -686,14 +685,15 @@ public class ApplicationService {
             throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, warning.getField() + ": " + warning.getMessage());
         }
         if (!ResourceDescriptor.PLATFORM_BUCKET.equals(resource.getBucketName()) && hasEmbeddedInterface(application)) {
-            throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, "Mode 'embedded' is reserved for platform deployments");
+            throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, "A plugin is reserved for platform deployments");
         }
     }
 
     private static boolean hasEmbeddedInterface(Application application) {
         Map<String, DeploymentInterface> interfaces = application.getInterfaces();
         return interfaces != null && interfaces.values().stream()
-                .anyMatch(declared -> declared != null && declared.getMode() == InterfaceMode.EMBEDDED);
+                .anyMatch(declared -> declared != null
+                        && (declared.getPlugin() != null || ConfigPostProcessor.hasInlineTranslatorPlugin(declared)));
     }
 
     private void prepareApplication(ResourceDescriptor resource, Application application, boolean preserveForwardAuthToken) {

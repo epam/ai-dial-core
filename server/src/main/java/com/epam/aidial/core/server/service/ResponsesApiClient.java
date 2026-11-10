@@ -29,11 +29,12 @@ public class ResponsesApiClient {
 
     /**
      * Sends an item operation to the origin of the context's deployment: to its plugin when its Responses interface
-     * is {@code embedded}, over HTTP otherwise.
+     * names one, over HTTP otherwise.
      */
     public Future<ProxyResponse> send(String url, HttpMethod method, String deploymentId, Upstream upstream, String apiKey,
                                       ProxyContext context) {
-        String plugin = DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), InterfaceType.OPENAI_RESPONSES);
+        String plugin = DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), InterfaceType.OPENAI_RESPONSES,
+                context.getConfig().getTranslators());
         Future<ProxyRequest> proxyRequest = plugin != null
                 ? originClient.embedded(context, method, url, plugin)
                 : originClient.http(new RequestOptions()

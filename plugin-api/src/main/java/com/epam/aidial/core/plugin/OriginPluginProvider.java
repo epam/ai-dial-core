@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Vertx;
 
 /**
- * A provider whose {@code plugins} entries serve requests. A deployment interface in {@code embedded} mode names
- * such an entry, and Core calls its {@link OriginPlugin} in place of the HTTP request it would send to the
+ * A provider whose {@code plugins} entries serve requests. A deployment interface names
+ * such an entry as its {@code plugin}, and Core calls its {@link OriginPlugin} in place of the HTTP request it would send to the
  * deployment's endpoint.
  */
 public interface OriginPluginProvider extends PluginProvider {
