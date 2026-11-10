@@ -85,6 +85,8 @@ public class ApplicationService {
 
     private final ApplicationSchemaService applicationSchemaService;
     private final CatalogSchemaService catalogSchemaService;
+    // set after construction to break the ApplicationService → DeploymentService → ApplicationService cycle
+    private AdminConsentService adminConsentService;
 
     public ApplicationService(Vertx vertx,
                               AsyncTaskExecutor taskExecutor,
@@ -124,6 +126,10 @@ public class ApplicationService {
             long checkPeriod = settings.getLong("checkPeriod", 300000L);
             vertx.setPeriodic(checkPeriod, checkPeriod, ignore -> taskExecutor.submit(this::checkApplications));
         }
+    }
+
+    public void setAdminConsentService(AdminConsentService adminConsentService) {
+        this.adminConsentService = adminConsentService;
     }
 
     private static String getTargetFolderForCustomAppFiles(ResourceDescriptor target) {
@@ -414,40 +420,12 @@ public class ApplicationService {
         }
     }
 
-    /** Deletes the application's admin-consent record, if any. */
     private void deleteAdminConsent(ResourceDescriptor application) {
-        ResourceDescriptor record = adminConsentOf(application);
-        if (record != null) {
-            resourceService.deleteResource(record, EtagHeader.ANY);
-        }
+        adminConsentService.deleteAdminConsent(application);
     }
 
-    /**
-     * The approval follows a moved application: it binds the declared resources, which a move does not change. An
-     * application the move overwrites loses its own approval.
-     */
     private void moveAdminConsent(ResourceDescriptor source, ResourceDescriptor destination) {
-        ResourceDescriptor destinationRecord = adminConsentOf(destination);
-        if (destinationRecord == null) {
-            return;
-        }
-        ResourceDescriptor sourceRecord = adminConsentOf(source);
-        String grant = sourceRecord == null ? null : resourceService.getResource(sourceRecord);
-        if (grant != null) {
-            resourceService.putResource(destinationRecord, grant, EtagHeader.ANY);
-        } else {
-            resourceService.deleteResource(destinationRecord, EtagHeader.ANY);
-        }
-    }
-
-    /**
-     * The record is keyed by the name requests resolve to: a platform application's config name, any other's url. Null
-     * when no record can exist for the application.
-     */
-    @Nullable
-    private static ResourceDescriptor adminConsentOf(ResourceDescriptor application) {
-        return ConsentService.findAdminConsentDescriptor(ResourceDescriptor.PLATFORM_BUCKET.equals(application.getBucketName())
-                ? MergedConfigStore.resolveMapKeyFor(application) : application.getUrl());
+        adminConsentService.moveAdminConsent(source, destination);
     }
 
     private ResourceDescriptor getAppFileBucket(ResourceDescriptor app) {
@@ -456,16 +434,24 @@ public class ApplicationService {
         return ResourceDescriptorFactory.fromDecoded(ResourceTypes.FILE, appBucket, appBucketLocation, ResourceDescriptor.PATH_SEPARATOR);
     }
 
+    /** Whether a copy operation carries the source application's admin-consent approval to the destination. */
+    public enum ApprovalPolicy {
+        /** Drop any existing approval at the destination (plain copy or review copy). */
+        DROP,
+        /** Move the source's approval to the destination (move, publication). */
+        CARRY
+    }
+
     public void copyApplication(ResourceDescriptor source, ResourceDescriptor destination, String author, boolean overwrite, Consumer<Application> consumer) {
-        copyApplication(source, destination, author, overwrite, false, consumer);
+        copyApplication(source, destination, author, overwrite, ApprovalPolicy.DROP, consumer);
     }
 
     /**
-     * The copy never keeps the destination's approval; with {@code carryApproval} (a move, publication approval) the
-     * source's approval comes along.
+     * The copy never keeps the destination's approval; with {@link ApprovalPolicy#CARRY} (a move, publication approval)
+     * the source's approval comes along.
      */
     public void copyApplication(ResourceDescriptor source, ResourceDescriptor destination, String author, boolean overwrite,
-                                boolean carryApproval, Consumer<Application> consumer) {
+                                ApprovalPolicy approvalPolicy, Consumer<Application> consumer) {
         verifyApplication(source);
         verifyApplication(destination);
 
@@ -570,7 +556,7 @@ public class ApplicationService {
 
         // settled before the files are copied, so a copy failing on them never leaves new content under an old approval
         if (declares.isTrue()) {
-            if (carryApproval) {
+            if (approvalPolicy == ApprovalPolicy.CARRY) {
                 moveAdminConsent(source, destination);
             } else {
                 deleteAdminConsent(destination);

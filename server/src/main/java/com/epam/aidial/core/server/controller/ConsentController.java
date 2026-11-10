@@ -121,7 +121,7 @@ public class ConsentController {
             }
     )
     public Future<?> getAdminConsentStatus(String deploymentId) {
-        asAdmin(() -> proxy.getConsentService().describeAdminConsent(context, deploymentId))
+        asAdmin(() -> proxy.getAdminConsentService().describeAdminConsent(context, deploymentId))
                 .onSuccess(status -> context.respond(HttpStatus.OK, status))
                 .onFailure(error -> handleAdminConsentError(deploymentId, error));
         return Future.succeededFuture();
@@ -149,7 +149,7 @@ public class ConsentController {
     public Future<?> grantAdminConsent(String deploymentId) {
         context.getRequest().body()
                 .onSuccess(body -> adminConsentOperation(deploymentId, AdminConsentAction.GRANT,
-                        () -> proxy.getConsentService().grantAdminConsent(context, deploymentId, reviewedResources(body))))
+                        () -> proxy.getAdminConsentService().grantAdminConsent(context, deploymentId, reviewedResources(body))))
                 .onFailure(error -> handleAdminConsentError(deploymentId, error));
         return Future.succeededFuture();
     }
@@ -185,7 +185,7 @@ public class ConsentController {
     )
     public Future<?> withdrawAdminConsent(String deploymentId) {
         return adminConsentOperation(deploymentId, AdminConsentAction.WITHDRAW,
-                () -> proxy.getConsentService().withdrawAdminConsent(context, deploymentId));
+                () -> proxy.getAdminConsentService().withdrawAdminConsent(context, deploymentId));
     }
 
     /** What an administrator did to an application's approval; the audit line carries the name. */

@@ -52,6 +52,7 @@ import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.AdminConsentService;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -391,6 +392,8 @@ public class AiDial {
                     toolSetService, resourceService, applicationSchemaService, aliasService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService, clock);
+            AdminConsentService adminConsentService = new AdminConsentService(deploymentService, resourceService, clock);
+            applicationService.setAdminConsentService(adminConsentService);
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
@@ -438,7 +441,7 @@ public class AiDial {
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, externalServiceService, userExternalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
+                    consentService, adminConsentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, securedResourceService, mcpHttpClientBuilder, toolSetRepairService, applicationSchemaService,
                     catalogSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,

@@ -12,7 +12,7 @@ import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.ConsentService;
+import com.epam.aidial.core.server.service.AdminConsentService;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -65,7 +65,7 @@ public class ResolveResourceDependenciesFnTest {
     private AccessService accessService;
 
     @Mock
-    private ConsentService consentService;
+    private AdminConsentService consentService;
 
     @Mock
     private EncryptionService encryptionService;
@@ -89,7 +89,7 @@ public class ResolveResourceDependenciesFnTest {
         lenient().when(context.getUserId()).thenReturn("user-sub");
         lenient().when(context.getProxy()).thenReturn(proxy);
         lenient().when(proxy.getAccessService()).thenReturn(accessService);
-        lenient().when(proxy.getConsentService()).thenReturn(consentService);
+        lenient().when(proxy.getAdminConsentService()).thenReturn(consentService);
         lenient().when(proxy.getEncryptionService()).thenReturn(encryptionService);
         lenient().when(encryptionService.encrypt(anyString())).thenReturn(USER_BUCKET);
     }
@@ -110,7 +110,7 @@ public class ResolveResourceDependenciesFnTest {
         when(context.getDeployment()).thenReturn(mock(Deployment.class));
 
         assertFalse(fn.apply(request));
-        verify(proxy, never()).getConsentService();
+        verify(proxy, never()).getAdminConsentService();
         verify(context, never()).getProxyApiKeyData();
     }
 

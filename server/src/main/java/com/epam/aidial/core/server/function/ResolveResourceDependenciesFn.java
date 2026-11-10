@@ -63,7 +63,7 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         String applicationId = application.getName();
         // null only for an MCP application with forwardPerRequestKey=false
         boolean hasKeyToBakeInto = context.getProxyApiKeyData() != null;
-        boolean consented = hasKeyToBakeInto && proxy.getConsentService().isAdminConsented(applicationId, declaration);
+        boolean consented = hasKeyToBakeInto && proxy.getAdminConsentService().isAdminConsented(applicationId, declaration);
         AuthBucket userBucket = BucketBuilder.buildBucket(context);
 
         List<ResolvedTarget> resolvedTargets = new ArrayList<>();

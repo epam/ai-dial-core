@@ -5,38 +5,24 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
-import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.consent.AdminConsentStatus;
 import com.epam.aidial.core.server.data.consent.Consent;
-import com.epam.aidial.core.server.data.consent.ConsentGrant;
 import com.epam.aidial.core.server.data.consent.ReviewConsentResponse;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
-import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
-import com.epam.aidial.core.storage.util.UrlUtil;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.LongSupplier;
-import javax.annotation.Nullable;
 
-import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
-import static com.epam.aidial.core.storage.http.HttpStatus.CONFLICT;
-import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
-
-@Slf4j
 public class ConsentService {
 
     private static final ReviewConsentResponse ACCEPTED_CONSENT_RESPONSE = new ReviewConsentResponse(null, true);
@@ -154,124 +140,8 @@ public class ConsentService {
         }
     }
 
-    /**
-     * Approves the reviewed declaration for every user; 409 when it no longer equals the current one. The record is keyed
-     * by the resolved application's name, as the resolver reads it, never by the raw request id.
-     */
-    public ConsentGrant grantAdminConsent(ProxyContext context, String deploymentId, List<Consent.ResourceEntry> reviewed) {
-        Application application = requireDeclaringApplication(context, deploymentId);
-        List<Consent.ResourceEntry> declared = Consent.toResourceEntries(application.getResourceDependencies());
-        if (!declared.equals(reviewed)) {
-            throw new HttpException(CONFLICT, "The declaration changed since it was reviewed: " + deploymentId);
-        }
-        ConsentGrant grant = new ConsentGrant()
-                .setConsent(adminConsentOf(declared))
-                .setGrantedBy(context.getInitiatorId())
-                .setGrantedAt(clock.getAsLong());
-        resourceService.putResource(adminConsentDescriptor(application.getName()),
-                ProxyUtil.convertToString(grant), EtagHeader.ANY);
-        return grant;
-    }
-
-    /** Deletes the record; returns the withdrawn grant (null when absent) for the audit event. */
-    public ConsentGrant withdrawAdminConsent(ProxyContext context, String deploymentId) {
-        Application application = requireApplication(context, deploymentId);
-        ResourceDescriptor descriptor = adminConsentDescriptor(application.getName());
-        ConsentGrant withdrawn = readAdminConsent(descriptor);
-        resourceService.deleteResource(descriptor, EtagHeader.ANY);
-        return withdrawn;
-    }
-
-    /** {@code consented} is exactly what the request-time gate enforces. */
-    public AdminConsentStatus describeAdminConsent(ProxyContext context, String deploymentId) {
-        Application application = requireApplication(context, deploymentId);
-        ConsentGrant stored = readAdminConsent(adminConsentDescriptor(application.getName()));
-        if (stored == null) {
-            return new AdminConsentStatus().setConsented(false);
-        }
-        boolean matches = matches(stored, application.getResourceDependencies());
-        return new AdminConsentStatus()
-                .setConsented(matches)
-                .setStale(!matches)
-                .setGrantedBy(stored.getGrantedBy())
-                .setGrantedAt(stored.getGrantedAt())
-                .setGrantedResources(stored.getConsent() == null ? List.of() : stored.getConsent().getResources());
-    }
-
-    public boolean isAdminConsented(String applicationId, List<ResourceDependency> declaration) {
-        ResourceDescriptor descriptor = findAdminConsentDescriptor(applicationId);
-        return descriptor != null && matches(readAdminConsent(descriptor), declaration);
-    }
-
-    /** Exact snapshot equality, shared by the gate and the status read; provenance never participates. */
-    private static boolean matches(ConsentGrant stored, List<ResourceDependency> declaration) {
-        return stored != null && stored.getConsent() != null
-                && Objects.equals(stored.getConsent().getResources(), Consent.toResourceEntries(declaration));
-    }
-
-    private Application requireDeclaringApplication(ProxyContext context, String deploymentId) {
-        Application application = requireApplication(context, deploymentId);
-        if (!deploymentService.isApprovableLocation(context, deploymentId)) {
-            throw new HttpException(FORBIDDEN, "Only an application in the public, a review or your own bucket can be approved: " + deploymentId);
-        }
-        if (application.getResourceDependencies() == null || application.getResourceDependencies().isEmpty()) {
-            throw new HttpException(BAD_REQUEST, "Application declares no resource dependencies: " + deploymentId);
-        }
-        return application;
-    }
-
-    private Application requireApplication(ProxyContext context, String deploymentId) {
-        // userRoles say who may run an application, not who manages its consent
-        Deployment deployment = context.getConfig().selectDeployment(deploymentId);
-        if (deployment == null) {
-            try {
-                deployment = deploymentService.findDeployment(context, deploymentId);
-            } catch (IllegalArgumentException e) {
-                throw new ResourceNotFoundException("Deployment is not an application: " + deploymentId);
-            }
-        }
-        if (deployment instanceof Application application) {
-            return application;
-        }
-        throw new ResourceNotFoundException("Deployment is not an application: " + deploymentId);
-    }
-
-    private static Consent adminConsentOf(List<Consent.ResourceEntry> declared) {
-        Consent consent = new Consent();
-        consent.setResources(declared);
-        return consent;
-    }
-
     private static List<Consent.ResourceEntry> resourceEntriesOf(Deployment deployment) {
         return deployment instanceof Application application ? Consent.toResourceEntries(application.getResourceDependencies()) : List.of();
-    }
-
-    /** One record per application in the public bucket. A config name is decoded already; an application url is not. */
-    public static ResourceDescriptor adminConsentDescriptor(String applicationName) {
-        String path = applicationName.contains(ResourceDescriptor.PATH_SEPARATOR)
-                ? applicationName : UrlUtil.encodePathSegment(applicationName);
-        return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.ADMIN_CONSENT,
-                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
-    }
-
-    /** Null when the name builds no valid record path (too long, say): such an application can never be approved. */
-    @Nullable
-    public static ResourceDescriptor findAdminConsentDescriptor(String applicationName) {
-        try {
-            return adminConsentDescriptor(applicationName);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
-    }
-
-    private ConsentGrant readAdminConsent(ResourceDescriptor descriptor) {
-        String grant = resourceService.getResource(descriptor);
-        try {
-            return ProxyUtil.convertToObject(grant, ConsentGrant.class);
-        } catch (IllegalArgumentException e) {
-            log.error("Unreadable admin consent record {}, treated as absent", descriptor.getUrl(), e);
-            return null;
-        }
     }
 
     private String getRootDeploymentId(ProxyContext context, Deployment current) {
