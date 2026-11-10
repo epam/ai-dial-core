@@ -55,6 +55,41 @@ for such a model are enforced only by the inner call. When the inner call reject
 per-minute cost limit, or a cap crossed after the outer read), the client gets whatever error the translator
 returns, without `anthropic-ratelimit-unified-*` headers.
 
+## Budgets (`enforce` mode)
+
+When `spendingLimits.mode` is `enforce`, a user signed in with a JWT is limited by budgets on calls to models,
+instead of by the role `costLimit` (see the `spendingLimits` row in the README). The headers, the 429s and the
+usage endpoint on `/anthropic/*` then describe a budget.
+
+- **Which budget.** DIAL looks at the budgets of the user's cost object: the project in the token's project claim
+  (`identityProviders.<idp>.projectPath`), or `spendingLimits.defaultCostObject` when the token has none. Set
+  `projectPath` to the claim that holds the project, for example `project` for the identity provider the `dial`
+  launcher uses. The `aud` or `azp` of the sample settings would make the OAuth client id the cost object.
+- **Reported only with one budget.** DIAL reports a budget only when the user has exactly one unexpired budget in
+  that cost object, whatever models it covers. With several, or none, a 200 answer carries no
+  `anthropic-ratelimit-unified-*` header and the usage endpoint returns `{"limits":[]}`, because no single budget
+  says what the user can still spend. `GET /v1/user/usage` still lists every budget in `budgets[]`.
+- **Windows.** The budget's `day` and `month` amounts are its caps; a budget has no week window. The cap to report
+  and the header values follow the rules above, and an amount of 2^53 or more is not reported.
+- **Used up.** When no budget that covers the model has room in every window it sets, the request is rejected before
+  it goes upstream with the `billing_error` 429 below. It names the used-up window and the reset of the budget that
+  can pay again first, the first by priority on a tie. This holds with one budget or several, and wins over a token
+  or request limit.
+- **No budget for the model.** 429 with the DIAL error body, whose `message` names the model and the cost object,
+  with no `retry-after` and no `anthropic-ratelimit-unified-*` header.
+- **Counter unreadable.** A token or request limit that rejects decides the answer. Otherwise the request gets the
+  `fetch_error` 429 below when a budget below 2^53 covers the model, and the 500 with `x-should-retry: true` when
+  none does. The usage endpoint answers its 500.
+- **Translated models** only read the budget. With one budget they get its headers, even when it covers other models
+  only, and the `billing_error` 429 once it is used up. In every other case the request is forwarded without spend
+  headers, and the translator's call back to DIAL is checked and charged.
+- **Applications** keep the role `costLimit`, so a Messages call to an application reports role caps while the usage
+  endpoint reports the budget.
+- **Charging.** In `shadow` and `enforce`, a call to a model is charged to the budget that pays for it, as on every
+  other model route.
+- **`shadow` mode** keeps reporting and enforcing the role `costLimit`. Budgets are checked and charged but never
+  reject, and an unreadable budget counter fails the call with 500.
+
 ## Headers on `POST /anthropic/v1/messages`
 
 The upstream's own `anthropic-ratelimit-*` response headers are always removed. For a capped user a 200 response
