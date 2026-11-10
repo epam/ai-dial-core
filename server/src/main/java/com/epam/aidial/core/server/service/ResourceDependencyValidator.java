@@ -71,18 +71,6 @@ public class ResourceDependencyValidator {
         return issues.isEmpty() ? null : "Invalid resource dependencies: " + String.join("; ", issues);
     }
 
-    /** User-authored apps may declare dependencies only while allowUserResourceDependencies is on; admin-authored writes are not gated here. */
-    public void validateUserAuthored(Application application) {
-        List<ResourceDependency> section = application.getResourceDependencies();
-        if (section == null || section.isEmpty()) {
-            return;
-        }
-        if (!allowUserResourceDependencies) {
-            throw new HttpException(FORBIDDEN,
-                    "User-authored applications may not declare resource dependencies (applications.allowUserResourceDependencies is disabled)");
-        }
-    }
-
     private static List<String> collectShapeIssues(Application application) {
         List<String> issues = new ArrayList<>();
         List<ResourceDependency> section = application.getResourceDependencies();

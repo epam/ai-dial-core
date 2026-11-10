@@ -310,10 +310,8 @@ public class ResourceDependencyValidatorTest {
     void rejectsSlashOnlyTargetUrl() {
         // A url of slashes only splits to zero segments — a shape error, not a crash.
         ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
-        ResourceDependencyValidator flagOnValidator = new ResourceDependencyValidator(true);
 
         assertTrue(validatorShapeMessage(validator, appWith(dependency("//"))).contains("target.url is required"));
-        assertDoesNotThrow(() -> flagOnValidator.validateUserAuthored(appWith(dependency("//"))));
     }
 
     @Test
@@ -322,25 +320,6 @@ public class ResourceDependencyValidatorTest {
 
         assertDoesNotThrow(() -> validator.validateShape(new Application()));
         assertDoesNotThrow(() -> validator.validateShape(new Application().setResourceDependencies(List.of())));
-    }
-
-    // ---- the governance ceiling (user-authored) ----
-
-    @Test
-    void rejectsUserAuthoredSectionWhileFlagOff() {
-        ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
-
-        HttpException error = assertThrows(HttpException.class,
-                () -> validator.validateUserAuthored(appWith(dependency("files/public/folder/"))));
-        assertEquals(HttpStatus.FORBIDDEN, error.getStatus());
-        assertTrue(error.getMessage().contains("may not declare"));
-    }
-
-    @Test
-    void acceptsUserAuthoredSectionWhileFlagOn() {
-        ResourceDependencyValidator validator = new ResourceDependencyValidator(true);
-
-        assertDoesNotThrow(() -> validator.validateUserAuthored(appWith(dependency("skills/{current-user}/"))));
     }
 
     @Test
@@ -352,14 +331,6 @@ public class ResourceDependencyValidatorTest {
                 .contains("declarable resource type"));
         assertTrue(validatorShapeMessage(validator, appWith(dependency("current-user/rootstuff/")))
                 .contains("declarable resource type"));
-    }
-
-    @Test
-    void ceilingIgnoresAppsWithoutSection() {
-        ResourceDependencyValidator validator = new ResourceDependencyValidator(false);
-
-        assertDoesNotThrow(() -> validator.validateUserAuthored(new Application()));
-        assertDoesNotThrow(() -> validator.validateUserAuthored(new Application().setResourceDependencies(List.of())));
     }
 
     // ---- findShapeError ----

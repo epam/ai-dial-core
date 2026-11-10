@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
@@ -82,6 +83,7 @@ public class ApplicationService {
     private final int checkSize;
     @Getter
     private final boolean includeCustomApps;
+    private final boolean allowUserResourceDependencies;
 
     private final ApplicationSchemaService applicationSchemaService;
     private final CatalogSchemaService catalogSchemaService;
@@ -121,6 +123,7 @@ public class ApplicationService {
         this.checkDelay = settings.getLong("checkDelay", 300000L);
         this.checkSize = settings.getInteger("checkSize", 64);
         this.includeCustomApps = settings.getBoolean("includeCustomApps", false);
+        this.allowUserResourceDependencies = settings.getBoolean("allowUserResourceDependencies", false);
 
         if (controller.isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 300000L);
@@ -216,7 +219,16 @@ public class ApplicationService {
                                                                    ExternalServicesWriteMode externalServicesWriteMode,
                                                                    boolean userAuthored) {
         return writeApplication(resource, etag, author, application, preserveForwardAuthToken, false,
-                adminManagedFieldsWriteMode, externalServicesWriteMode, userAuthored);
+                adminManagedFieldsWriteMode, externalServicesWriteMode, userAuthored, true);
+    }
+
+    public Pair<ResourceItemMetadata, Application> putApplication(ResourceDescriptor resource, EtagHeader etag, String author,
+                                                                   Application application, boolean preserveForwardAuthToken,
+                                                                   AdminManagedFieldsWriteMode adminManagedFieldsWriteMode,
+                                                                   ExternalServicesWriteMode externalServicesWriteMode,
+                                                                   boolean userAuthored, boolean dependenciesSubmitted) {
+        return writeApplication(resource, etag, author, application, preserveForwardAuthToken, false,
+                adminManagedFieldsWriteMode, externalServicesWriteMode, userAuthored, dependenciesSubmitted);
     }
 
     /**
@@ -227,7 +239,15 @@ public class ApplicationService {
                                                                             String author, Application application,
                                                                             ExternalServicesWriteMode externalServicesWriteMode) {
         return writeApplication(resource, etag, author, application, true, true,
-                AdminManagedFieldsWriteMode.INHERIT_ONLY, externalServicesWriteMode, true);
+                AdminManagedFieldsWriteMode.INHERIT_ONLY, externalServicesWriteMode, true, true);
+    }
+
+    public Pair<ResourceItemMetadata, Application> putApplicationByUnitRole(ResourceDescriptor resource, EtagHeader etag,
+                                                                            String author, Application application,
+                                                                            ExternalServicesWriteMode externalServicesWriteMode,
+                                                                            boolean dependenciesSubmitted) {
+        return writeApplication(resource, etag, author, application, true, true,
+                AdminManagedFieldsWriteMode.INHERIT_ONLY, externalServicesWriteMode, true, dependenciesSubmitted);
     }
 
     private Pair<ResourceItemMetadata, Application> writeApplication(ResourceDescriptor resource, EtagHeader etag, String author,
@@ -235,7 +255,7 @@ public class ApplicationService {
                                                                       boolean inheritForwardAuthToken,
                                                                       AdminManagedFieldsWriteMode adminManagedFieldsWriteMode,
                                                                       ExternalServicesWriteMode externalServicesWriteMode,
-                                                                      boolean userAuthored) {
+                                                                      boolean userAuthored, boolean dependenciesSubmitted) {
         prepareApplication(resource, application, preserveForwardAuthToken);
 
         MutableObject<List<String>> purgeableExternalServices = new MutableObject<>(List.of());
@@ -244,11 +264,14 @@ public class ApplicationService {
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
             boolean declared = declaresDependencies(existing);
+            prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
+            inheritOrGuardDependencies(application, existing, userAuthored, dependenciesSubmitted);
             boolean declares = declaresDependencies(application);
-            dropApproval.setValue(userAuthored ? declared || declares : declared && !declares);
+            boolean listChanged = !Objects.equals(application.getResourceDependencies(),
+                    existing != null ? existing.getResourceDependencies() : null);
+            dropApproval.setValue(userAuthored ? listChanged : declared && !declares);
             verifySchemaRichApp(application, existing);
             prepareApplicationFunction(resource, application, existing);
-            prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
             if (inheritForwardAuthToken) {
                 application.setForwardAuthToken(existing != null && existing.isForwardAuthToken());
             }
@@ -259,8 +282,7 @@ public class ApplicationService {
             return serializeEncrypted(resource, merged);
         });
 
-        // an approval lives only while the list does; the list does not cover the endpoint, so an edit by
-        // a non-administrator drops the approval too
+        // the approval binds the list; an admin dropping the list withdraws it, a non-admin changing it withdraws it
         if (dropApproval.isTrue()) {
             deleteAdminConsent(resource);
         }
@@ -279,6 +301,22 @@ public class ApplicationService {
         }
         if (!mode.honorAllowUserExternalServices()) {
             application.setAllowUserExternalServices(existing != null && existing.isAllowUserExternalServices());
+        }
+    }
+
+    // resource_dependencies is admin-managed when the flag is off: a non-admin omitting the section inherits the stored
+    // list (so a read-modify-write can't silently wipe an approved declaration), and a non-admin changing it is rejected.
+    private void inheritOrGuardDependencies(Application application, Application existing,
+                                             boolean userAuthored, boolean dependenciesSubmitted) {
+        if (!userAuthored) {
+            return;
+        }
+        List<ResourceDependency> stored = existing != null ? existing.getResourceDependencies() : null;
+        if (!dependenciesSubmitted) {
+            application.setResourceDependencies(stored);
+        } else if (!allowUserResourceDependencies && !Objects.equals(application.getResourceDependencies(), stored)) {
+            throw new HttpException(HttpStatus.FORBIDDEN,
+                    "User-authored applications may not change resource dependencies (applications.allowUserResourceDependencies is disabled)");
         }
     }
 

@@ -87,7 +87,7 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testUnitEditorEditDropsTheApproval() {
+    void testUnitEditorEditKeepsApprovalWhenListIsUnchanged() {
         String app = "applications/public/Acme/edited-app";
         String body = """
                 {
@@ -107,14 +107,14 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 200);
         assertConsented(app, true);
 
-        // the same list behind another endpoint, written by an editor of the unit
+        // an editor's read-modify-write that only changes the endpoint keeps the approval (list unchanged)
         verify(send(HttpMethod.PUT, "/v1/" + app, null, body.formatted("http://editor.example/chat/completions"),
                 "authorization", "azp:ed"), 200);
-        assertConsented(app, false);
+        assertConsented(app, true);
     }
 
     @Test
-    void testUnitEditorRemovingTheListDropsTheApproval() {
+    void testUnitEditorOmittingTheListInheritsItAndKeepsApproval() {
         String app = "applications/public/Acme/delisted-app";
         String declaring = """
                 {
@@ -128,12 +128,11 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.PUT, "/v1/" + app, null, declaring, "authorization", "admin", "If-None-Match", "*"), 200);
         verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
 
+        // editor omits resource_dependencies: the stored list is inherited, so the approval survives
         verify(send(HttpMethod.PUT, "/v1/" + app, null, """
                 {"endpoint": "http://editor.example/chat/completions", "display_name": "Delisted App"}
                 """, "authorization", "azp:ed"), 200);
-        // an administrator restoring the list does not bring the approval back
-        verify(send(HttpMethod.PUT, "/v1/" + app, null, declaring, "authorization", "admin"), 200);
-        assertConsented(app, false);
+        assertConsented(app, true);
     }
 
     private void assertConsented(String app, boolean consented) {
@@ -168,5 +167,61 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
                 "{\"roleName\": \"%s\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"%s\"]}}"
                         .formatted(roleName, azp), "authorization", "admin");
         assertEquals(200, response.status(), response.body());
+    }
+
+    /** allowUserResourceDependencies is off: a unit editor may not introduce or change the list, but may omit it. */
+    public static class FlagOff extends ResourceBaseTest {
+
+        private static final String APP = "applications/public/Acme/flag-off-app";
+        private static final String DECLARING_BODY = """
+                {
+                  "endpoint": "http://localhost:4850/chat/completions",
+                  "display_name": "Flag Off App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
+                  ]
+                }
+                """;
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject()
+                    .put("orgUnits", new JsonObject().put("enabled", true));
+        }
+
+        @BeforeEach
+        void setup() {
+            Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                    {"targetFolder": "public/Acme/", "resources": [], "rules": [{"source": "title", "function": "EQUAL", "targets": ["Manager"]}]}
+                    """, "authorization", "admin");
+            assertEquals(200, created.status(), created.body());
+            assertEquals(200, send(HttpMethod.POST, "/v1/ops/publication/approve", null,
+                    new JsonObject().put("url", new JsonObject(created.body()).getString("url")).encode(), "authorization", "admin").status());
+            assertEquals(200, send(HttpMethod.POST, "/v1/org-units/public", null, "{\"name\": \"Acme\"}", "authorization", "admin").status());
+            Response assignment = send(HttpMethod.POST, "/v1/org-units/public/Acme/role-assignments", null,
+                    "{\"roleName\": \"editor\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"ed\"]}}",
+                    "authorization", "admin");
+            assertEquals(200, assignment.status(), assignment.body());
+
+            verify(send(HttpMethod.PUT, "/v1/" + APP, null, DECLARING_BODY, "authorization", "admin", "If-None-Match", "*"), 200);
+            String reviewed = "{\"resources\": [{\"url\": \"files/public/\", \"access\": [\"READ\"]}]}";
+            verify(send(HttpMethod.POST, "/v1/admin-consent/" + APP, null, reviewed, "authorization", "admin"), 200);
+        }
+
+        @Test
+        void testEditorWithDifferentListIsRejected() {
+            String differentList = DECLARING_BODY.replace("files/public/", "prompts/public/");
+            verify(send(HttpMethod.PUT, "/v1/" + APP, null, differentList, "authorization", "azp:ed"), 403);
+        }
+
+        @Test
+        void testEditorOmittingTheListInheritsItAndKeepsApproval() {
+            verify(send(HttpMethod.PUT, "/v1/" + APP, null, """
+                    {"endpoint": "http://editor.example/chat/completions", "display_name": "Flag Off App"}
+                    """, "authorization", "azp:ed"), 200);
+            Response status = send(HttpMethod.GET, "/v1/admin-consent/" + APP, null, "", "authorization", "admin");
+            verify(status, 200);
+            assertEquals(true, new JsonObject(status.body()).getBoolean("consented"), status.body());
+        }
     }
 }
