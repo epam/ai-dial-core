@@ -1663,7 +1663,7 @@ public class ConfigResourceController implements Controller {
             Application application = type == ResourceTypes.APPLICATION
                     ? ConfigEntityCodec.treeToEntity(requestNode, Application.class) : null;
             if (application != null) {
-                resourceDependencyValidator.validateShape(application);
+                ResourceDependencyValidator.validateShape(application);
             }
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
                 rejectDuplicateDeploymentId(type, path);

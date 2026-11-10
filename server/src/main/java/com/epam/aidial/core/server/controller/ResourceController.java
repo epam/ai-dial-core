@@ -665,7 +665,7 @@ public class ResourceController extends AccessControlBaseController {
             if (!accessService.hasExplicitAdminAccess(context)) {
                 resourceDependencyValidator.validateUserAuthored(application);
             }
-            resourceDependencyValidator.validateShape(application);
+            ResourceDependencyValidator.validateShape(application);
             checkCreateCodeApp(application);
             validateSchemaBasedApplication(application);
             if (!application.getInterceptors().isEmpty()) {

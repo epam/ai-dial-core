@@ -15,6 +15,8 @@ import lombok.RequiredArgsConstructor;
 
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -45,15 +47,18 @@ public class ResourceDependencyValidator {
     private static final Set<ResourceTypes> DECLARABLE_RESOURCE_TYPES = Set.of(ResourceTypes.FILE, ResourceTypes.PROMPT,
             ResourceTypes.CONVERSATION, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.SKILL, ResourceTypes.PROJECT);
 
-    private static final String DECLARABLE_TYPES_LIST = DECLARABLE_RESOURCE_TYPES.stream()
-            .map(ResourceTypes::group).sorted().collect(Collectors.joining(", "));
+    private static final Set<String> DECLARABLE_GROUPS = DECLARABLE_RESOURCE_TYPES.stream()
+            .map(ResourceTypes::group).collect(Collectors.toUnmodifiableSet());
+
+    private static final String DECLARABLE_TYPES_LIST = DECLARABLE_GROUPS.stream()
+            .sorted().collect(Collectors.joining(", "));
 
     /** WRITE on these would let an application re-point the caller's deployments, and with them later calls and stored credentials. */
     private static final Set<ResourceTypes> READ_ONLY_RESOURCE_TYPES = Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
 
     private final boolean allowUserResourceDependencies;
 
-    public void validateShape(Application application) {
+    public static void validateShape(Application application) {
         String error = findShapeError(application);
         if (error != null) {
             throw new HttpException(BAD_REQUEST, error);
@@ -137,6 +142,27 @@ public class ResourceDependencyValidator {
     }
 
     /**
+     * The access set a dependency entry may grant at runtime (READ and/or WRITE, excluding SHARE and unknown types),
+     * or null when the entry can never be granted.
+     */
+    @Nullable
+    public static Set<ResourceAccessType> grantableAccessOf(@Nullable ResourceDependency dependency) {
+        if (dependency == null || !ResourceDependency.KIND.equals(dependency.getKind())) {
+            return null;
+        }
+        Set<ResourceAccessType> access = dependency.getAccess();
+        if (access == null || access.isEmpty()) {
+            return null;
+        }
+        if (access.contains(ResourceAccessType.SHARE)) {
+            return null;
+        }
+        EnumSet<ResourceAccessType> grantable = EnumSet.copyOf(access);
+        grantable.retainAll(EnumSet.of(ResourceAccessType.READ, ResourceAccessType.WRITE));
+        return grantable.isEmpty() ? null : Collections.unmodifiableSet(grantable);
+    }
+
+    /**
      * Read side: the descriptor {@code url} names, {@code {current-user}} standing for the initiator's bucket.
      *
      * @throws IllegalArgumentException when {@code url} is not a declarable target
@@ -178,9 +204,15 @@ public class ResourceDependencyValidator {
             throw new IllegalArgumentException("target must not contain empty segments");
         }
         String bucketElement = isPlaceholder(segments[1]) ? "" : segments[1] + ResourceDescriptor.PATH_SEPARATOR;
-        parseTarget(() -> ResourceDescriptorFactory.fromAnyUrl(segments[0] + ResourceDescriptor.PATH_SEPARATOR
-                + ResourceDescriptor.PUBLIC_LOCATION + bucketElement + stripTypeAndBucket(url, segments), null));
+        // factory validates segment structure (names, encoding) but not ownership; a placeholder bucket is opaque
+        // at write time, so the url is re-parsed under the public bucket for the structural checks only
+        parseTarget(() -> ResourceDescriptorFactory.fromAnyUrl(fakePublicUrl(segments[0], bucketElement,
+                stripTypeAndBucket(url, segments)), null));
         return segments;
+    }
+
+    private static String fakePublicUrl(String type, String bucketElement, String rest) {
+        return type + ResourceDescriptor.PATH_SEPARATOR + ResourceDescriptor.PUBLIC_LOCATION + bucketElement + rest;
     }
 
     /** Runs the factory call; its failure is reported as not a valid url. */
@@ -214,7 +246,7 @@ public class ResourceDependencyValidator {
     }
 
     private static boolean isDeclarable(String type) {
-        return DECLARABLE_RESOURCE_TYPES.stream().anyMatch(declarable -> declarable.group().equals(type));
+        return DECLARABLE_GROUPS.contains(type);
     }
 
     private static boolean isPlaceholder(String segment) {
