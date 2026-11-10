@@ -1318,6 +1318,47 @@ public class ResourceService implements AutoCloseable {
         removeCachedEntries(bucketLocations);
     }
 
+    /**
+     * Like {@link #invalidate} for the given blobs only, e.g. {@code platform/roles/r1}: drops their queued and cached
+     * entries and leaves every other resource of their buckets alone. It scans nothing, so its cost grows with the
+     * number of blobs, in batches of {@link #BATCH_SIZE}. A blob that is not a resource has no entry and is skipped.
+     */
+    public void invalidateBlobs(Collection<String> blobPaths) {
+        RScoredSortedSet<String> queue = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
+        RKeys keys = redis.getKeys();
+        List<String> batch = new ArrayList<>(BATCH_SIZE);
+        for (String blobPath : blobPaths) {
+            String redisKey = redisKeyOfBlob(blobPath);
+            if (redisKey != null) {
+                batch.add(redisKey);
+            }
+            if (batch.size() == BATCH_SIZE) {
+                removeEntries(queue, keys, batch);
+                batch.clear();
+            }
+        }
+        if (!batch.isEmpty()) {
+            removeEntries(queue, keys, batch);
+        }
+    }
+
+    private static void removeEntries(RScoredSortedSet<String> queue, RKeys keys, List<String> redisKeys) {
+        queue.removeAll(redisKeys);
+        keys.delete(redisKeys.toArray(new String[0]));
+    }
+
+    private String redisKeyOfBlob(String blobPath) {
+        String[] segments = blobPath.split(ResourceDescriptor.PATH_SEPARATOR, 3);
+        if (segments.length < 3) {
+            return null;
+        }
+        try {
+            return ResourceTypes.of(segments[1]).name().toLowerCase() + ":" + BlobStorageUtil.toStoragePath(prefix, blobPath);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     private void removeQueuedEntries(Collection<String> bucketLocations) {
         RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         List<String> toRemove = new ArrayList<>();

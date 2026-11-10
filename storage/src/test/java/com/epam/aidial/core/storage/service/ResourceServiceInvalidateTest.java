@@ -22,6 +22,7 @@ import redis.embedded.RedisServer;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -270,5 +271,97 @@ class ResourceServiceInvalidateTest {
             bytes = in.readAllBytes();
         }
         assertArrayEquals("{\"v\":\"imported\"}".getBytes(StandardCharsets.UTF_8), bytes);
+    }
+
+    @Test
+    void testInvalidateBlobsDropsCachedAndQueuedEntryOfThatBlob() throws IOException {
+        ResourceService service = init(null);
+        ResourceDescriptor role = resource(ResourceTypes.ROLE, "platform/", "r1");
+        service.putResource(role, "{}", EtagHeader.NEW_ONLY);
+        assertTrue(isCached(role));
+        assertTrue(isQueued(role));
+
+        service.invalidateBlobs(List.of(role.getAbsoluteFilePath()));
+
+        assertFalse(isCached(role));
+        assertFalse(isQueued(role));
+    }
+
+    @Test
+    void testInvalidateBlobsKeepsOtherResourcesOfTheBucket() throws IOException {
+        ResourceService service = init("my-prefix");
+        ResourceDescriptor invalidated = resource(ResourceTypes.ROLE, "platform/", "r1");
+        ResourceDescriptor kept = resource(ResourceTypes.ROLE, "platform/", "r2");
+        service.putResource(invalidated, "{}", EtagHeader.NEW_ONLY);
+        service.putResource(kept, "{}", EtagHeader.NEW_ONLY);
+
+        service.invalidateBlobs(List.of(invalidated.getAbsoluteFilePath()));
+
+        assertFalse(isCached(invalidated));
+        assertFalse(isQueued(invalidated));
+        assertTrue(isCached(kept));
+        assertTrue(isQueued(kept));
+    }
+
+    @Test
+    void testInvalidateBlobsKeyEqualsRedisKeyForEveryResourceType() throws IOException {
+        ResourceService service = init("my-prefix");
+        List<ResourceDescriptor> descriptors = new ArrayList<>();
+        for (ResourceTypes type : ResourceTypes.values()) {
+            if (isResolvableFromGroup(type)) {
+                ResourceDescriptor descriptor = resource(type, "platform/", "x");
+                redis.getMap(RedisUtil.redisKey(descriptor, prefix)).fastPut("k", "v");
+                descriptors.add(descriptor);
+            }
+        }
+        assertFalse(descriptors.isEmpty());
+
+        service.invalidateBlobs(descriptors.stream().map(ResourceDescriptor::getAbsoluteFilePath).toList());
+
+        for (ResourceDescriptor descriptor : descriptors) {
+            assertFalse(isCached(descriptor), "not invalidated: " + descriptor.getType());
+        }
+    }
+
+    @Test
+    void testInvalidateBlobsHandlesMoreBlobsThanOneBatch() throws IOException {
+        ResourceService service = init(null);
+        List<ResourceDescriptor> roles = new ArrayList<>();
+        for (int i = 0; i < 120; i++) {
+            ResourceDescriptor role = resource(ResourceTypes.ROLE, "platform/", "r" + i);
+            service.putResource(role, "{}", EtagHeader.NEW_ONLY);
+            roles.add(role);
+        }
+        ResourceDescriptor kept = resource(ResourceTypes.ROLE, "platform/", "kept");
+        service.putResource(kept, "{}", EtagHeader.NEW_ONLY);
+
+        service.invalidateBlobs(roles.stream().map(ResourceDescriptor::getAbsoluteFilePath).toList());
+
+        for (ResourceDescriptor role : roles) {
+            assertFalse(isCached(role));
+            assertFalse(isQueued(role));
+        }
+        assertTrue(isCached(kept));
+        assertTrue(isQueued(kept));
+    }
+
+    @Test
+    void testInvalidateBlobsSkipsPathOfUnknownGroup() throws IOException {
+        ResourceService service = init(null);
+        ResourceDescriptor role = resource(ResourceTypes.ROLE, "platform/", "r1");
+        service.putResource(role, "{}", EtagHeader.NEW_ONLY);
+
+        service.invalidateBlobs(List.of("platform/unknown/x", "platform", "platform/roles"));
+
+        assertTrue(isCached(role));
+        assertTrue(isQueued(role));
+    }
+
+    private static boolean isResolvableFromGroup(ResourceTypes type) {
+        try {
+            return ResourceTypes.of(type.group()) == type;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 }

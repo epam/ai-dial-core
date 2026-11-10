@@ -2,14 +2,17 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.service.AdminSystemImportBusyException;
 import com.epam.aidial.core.server.service.AdminSystemImportRejectedException;
 import com.epam.aidial.core.server.service.AdminSystemImportService;
+import com.epam.aidial.core.server.service.AdminSystemImportService.ImportMode;
 import com.epam.aidial.core.server.service.AdminSystemImportService.ImportResult;
 import com.epam.aidial.core.server.service.AdminSystemImportService.Progress;
 import com.epam.aidial.core.server.service.AdminSystemImportService.StagedImport;
@@ -67,12 +70,18 @@ public class AdminSystemImportController implements Controller {
             operationId = "systemImport",
             tags = {"Admin"},
             contentType = "application/zip",
+            parameters = {
+                    @ApiParameter(name = "mode", in = ParameterIn.QUERY,
+                            description = "merge (the default) writes the archive's blobs over the buckets and deletes nothing; "
+                                    + "replace first deletes the blobs of each bucket that the archive has blobs for. "
+                                    + "Case-insensitive.")
+            },
             requestBody = @ApiSchema(implementation = byte[].class),
             responses = {
                     @ApiResponse(code = 200, description = "Newline-delimited JSON: progress lines while the replace runs, "
                             + "then a final status line", body = @ApiSchema(implementation = byte[].class),
                             contentTypes = {"application/x-ndjson"}),
-                    @ApiResponse(code = 400, description = "The archive is missing, malformed or not accepted by this version"),
+                    @ApiResponse(code = 400, description = "The mode is unknown, or the archive is missing, malformed or not accepted by this version"),
                     @ApiResponse(code = 403),
                     @ApiResponse(code = 408, description = "No bytes were received from the client for adminSystemImport.stallTimeout"),
                     @ApiResponse(code = 409, description = "Another system import already holds the guard, retry later"),
@@ -89,6 +98,15 @@ public class AdminSystemImportController implements Controller {
             return Future.succeededFuture();
         }
 
+        ImportMode mode;
+        try {
+            mode = ImportMode.parse(context.getRequest().getParam("mode"));
+        } catch (AdminSystemImportRejectedException e) {
+            closeConnectionAfterResponse();
+            context.respond(e.getStatus(), e.getMessage());
+            return Future.succeededFuture();
+        }
+
         InputStreamAdapter adapter = new InputStreamAdapter(context.getRequest(), stallTimeout);
 
         taskExecutor.submit(() -> {
@@ -97,7 +115,7 @@ public class AdminSystemImportController implements Controller {
                 throw new AdminSystemImportBusyException("Another system import is already running");
             }
             try {
-                StagedImport staged = importService.stage(adapter);
+                StagedImport staged = importService.stage(adapter, mode);
                 return Pair.of(guard, staged);
             } catch (Throwable e) {
                 guard.close();
@@ -131,7 +149,7 @@ public class AdminSystemImportController implements Controller {
         response.putHeader(HttpHeaders.CONTENT_TYPE, "application/x-ndjson");
         response.setStatusCode(HttpStatus.OK.getCode());
 
-        Progress progress = new Progress();
+        Progress progress = new Progress(staged.mode());
         response.write(progressLine(progress).encode() + "\n");
         long timerId = vertx.setPeriodic(progressIntervalMs, ignored -> response.write(progressLine(progress).encode() + "\n"));
 

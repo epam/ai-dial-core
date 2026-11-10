@@ -371,8 +371,8 @@ Refer to [Admin system export](docs/admin-system-export.md) to learn more.
 <details> 
 <summary><b>Admin System Import Configurations</b></summary>
 
-Settings of `POST /v1/admin/system-import`, which replaces the `public` and `platform` buckets with the archive
-`POST /v1/admin/system-export` produces. Refer to [Admin system import](docs/admin-system-import.md) to learn more.
+Settings of `POST /v1/admin/system-import`, which merges the archive
+`POST /v1/admin/system-export` produces into the `public` and `platform` buckets, or replaces them with it (`mode=replace`). Refer to [Admin system import](docs/admin-system-import.md) to learn more.
 
 | Setting                            | Default | Required | Description                                                                                                                                              |
 |-------------------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|

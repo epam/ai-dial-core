@@ -1,39 +1,61 @@
 # Admin system import
 
 `POST /v1/admin/system-import` takes the ZIP archive that `POST /v1/admin/system-export` produces (see
-[Admin system export](admin-system-export.md) for its layout) and replaces the content of the `public` and
-`platform` buckets with it. It is an admin-only preview endpoint (`x-preview`), and the counterpart of system
-export: together they back up and restore (or clone) the content of those two buckets, except credentials, and
-except encryption keys unless a KMS provider wraps them.
+[Admin system export](admin-system-export.md) for its layout) and writes its content into the `public` and
+`platform` buckets, either over what they hold (`mode=merge`, the default) or in place of it (`mode=replace`). It is an
+admin-only preview endpoint (`x-preview`), and the counterpart of system export: together they back up and restore
+(or clone) the content of those two buckets, except credentials, and except encryption keys unless a KMS provider wraps
+them.
 
 ```bash
 curl -fsS -X POST -H "Authorization: Bearer <admin token>" -H "Content-Type: application/zip" \
-  --data-binary @dial-system-export.zip https://<core>/v1/admin/system-import | jq .
+  --data-binary @dial-system-export.zip "https://<core>/v1/admin/system-import?mode=replace" | jq .
 ```
 
 `jq .` pretty-prints each line as it arrives; `jq -s 'last'` on the saved output gives just the final result.
+
+## Mode
+
+The query parameter `mode` is `merge` or `replace`, in any case. An unknown or empty value is answered `400` before the
+body is read.
+
+| | `merge` (the default) | `replace` |
+|---|---|---|
+| Blobs of the buckets that the archive does not hold | stay | are deleted, except `encryption_keys/` |
+| `credentials/` | stays | is deleted |
+| Blobs of the archive | are written over the blob at their path | are written |
+| Redis entries dropped | those of the imported blobs only | all of the replaced buckets |
+| `encryption_keys/cek` of the archive | taken only if the bucket has no key, see below | replaces the key of its bucket |
+| `deletedBlobs` and the `wipe` progress line | `0`, none | the number deleted, shown |
+
+**The default is `merge`, so a request without `mode` never deletes a blob.** Before `mode` existed the import always
+did what `replace` does now: a restore or a clone, which should leave the buckets as the archive had them, must send
+`mode=replace`.
+
+`merge` leaves a queued, not yet synced write to a resource that the archive does not hold alone; `replace` drops it,
+with every other entry of the bucket.
 
 ## What it does
 
 1. **Stage.** The upload is read and validated while it streams, and written to a staging prefix
    (`.dial-system-import-tmp/<timestamp>/<id>/`) outside both buckets. Nothing under `public/` or `platform/` is
    touched until the whole archive has been received and accepted.
-2. **Replace**, holding the locks of both buckets: delete every blob under the buckets that the archive has blobs
-   for, except `encryption_keys/`; write every staged blob at its real path with the content type, encoding,
-   disposition, language, cache control and user metadata from its archive metadata; drop the cached and queued
-   entries of those buckets in Redis (including a cached `encryption_keys/cek`), tell every pod to drop its in-memory
-   copy of their keys; then rebuild the merged config on the pod that ran the import and tell every other pod to
-   rebuild theirs.
+2. **Replace**, holding the locks of both buckets: with `mode=replace`, delete every blob under the buckets that the
+   archive has blobs for, except `encryption_keys/`; write every staged blob at its real path with the content type,
+   encoding, disposition, language, cache control and user metadata from its archive metadata; drop the cached and
+   queued entries in Redis (with `replace`, those of the buckets, including a cached `encryption_keys/cek`; with
+   `merge`, those of the imported blobs), tell every pod to drop its in-memory copy of the keys that were written; then
+   rebuild the merged config on the pod that ran the import and tell every other pod to rebuild theirs.
 3. The staging is deleted in the background after the response, whether the system import succeeded or was
    rejected.
 
 An archive from `POST /v1/admin/system-export?scope=platform` has no `public/` entries, so `public/` is left as it
-is: only the buckets that have entries in the archive are replaced. A bucket that was exported empty has no entries
-either, so it is not cleared.
+is: only the buckets that have entries in the archive are touched. With `replace`, a bucket that was exported empty has
+no entries either, so it is not cleared.
 
-`credentials/` is wiped along with everything else in a replaced bucket, because export never carries it: global and
-application-level OAuth sign-ins for toolsets and external services have to be redone after a system import.
-`Users/*` and `Keys/*` are never touched.
+With `replace`, `credentials/` is wiped along with everything else in a replaced bucket, because export never carries
+it: global and application-level OAuth sign-ins for toolsets and external services have to be redone after such a
+system import. With `merge` they stay. `Users/*` and `Keys/*` are never touched.
 
 ## Response
 
@@ -41,7 +63,7 @@ Statuses before the archive is accepted:
 
 | Status | Meaning                                                                                              |
 |--------|--------------------------------------------------------------------------------------------------------|
-| `400`  | The archive is missing, not a ZIP, corrupt, or fails a check below. Nothing was changed.                |
+| `400`  | The mode is unknown, or the archive is missing, not a ZIP, corrupt, or fails a check below. Nothing was changed. |
 | `403`  | The caller is not an admin. The connection is closed without reading the body.                          |
 | `408`  | No bytes arrived from the client for `adminSystemImport.stallTimeout` (60 s by default). Nothing was changed. |
 | `409`  | Another system import already holds the guard. Retry once it has answered.                              |
@@ -58,7 +80,8 @@ line, at least one every `adminSystemImport.progressInterval` (15 s by default):
 {"status":"success","importedBlobs":512,"deletedBlobs":540,"warnings":[]}
 ```
 
-The phases run in that order and never go backwards. The last line is the final status; if the replace phase fails
+The phases run in that order and never go backwards; with `mode=merge` there is no `wipe` line and `deletedBlobs` is
+`0`. The last line is the final status; if the replace phase fails
 after the `200` head was sent, Core resets the connection instead and never writes that line, so a failure never
 looks like a success. The client sees a transport error in that case. **A failure in the replace phase can leave the
 buckets partly imported — this is expected, not corruption: the system import is repeatable, so run the same
@@ -74,7 +97,8 @@ a leading `/`, an empty/`.`/`..` segment, is longer than 1024 bytes in UTF-8, or
 `public/` or `platform/`; an entry falls under `credentials/`, or under `encryption_keys/` when no KMS provider is
 configured, at the resource-type position (case-insensitive — the same word deeper in a path, such as a published
 file named `encryption_keys/notes.txt`, is fine); with a KMS provider, an `encryption_keys/` entry is empty, longer
-than 64 KiB, or a key that the KMS of this environment cannot decrypt; a blob has no metadata entry immediately
+than 64 KiB, or a key that the KMS of this environment cannot decrypt (with `merge`, an entry for a bucket that already
+has a key is not checked for that); a blob has no metadata entry immediately
 before it, a metadata entry has no blob immediately after it, an
 entry name is duplicated, or a metadata entry is not valid JSON, is larger than 64 KiB, or has a control character
 in a string value; the body is not a ZIP, is corrupt, or ends before a blob entry; or the archive holds no blob at
@@ -96,21 +120,29 @@ all. There is no limit on the number of entries or on the archive size.
   host by default, and closes the rest, so later calls pay a new TLS handshake.
 - **Encryption keys.**
   - **With a KMS provider** (`toolsets.security.kms.provider` is `aws`, `azure` or `gcp`) the archive carries each
-    exported bucket's `encryption_keys/cek`, wrapped by the KMS key. Core unwraps every key with the KMS of the target
-    before it changes anything and answers `400` if it cannot, so the target's KMS key must be able to unwrap them:
-    the same KMS key as the source. Each environment generates its own content encryption key, so the two had
-    different ones; after the import the target uses the archive's key, together with the secrets it encrypted, and
-    both environments share it. A key in the archive replaces the key of its bucket; a bucket with no key in the
-    archive (export skips an empty or plaintext-sized key, or the bucket had none) keeps its own. A KMS outage ends the
-    import with `500`, nothing changed.
+    exported bucket's `encryption_keys/cek`, wrapped by the KMS key. Core unwraps every key that it will import with the
+    KMS of the target before it changes anything and answers `400` if it cannot, so the target's KMS key must be able to
+    unwrap them: the same KMS key as the source. Each environment generates its own content encryption key, so the two
+    had different ones; after a `replace` import the target uses the archive's key, together with the secrets it
+    encrypted, and both environments share it. With `replace`, a key in the archive replaces the key of its bucket; a
+    bucket with no key in the archive (export skips an empty or plaintext-sized key, or the bucket had none) keeps its
+    own. A KMS outage ends the import with `500`, nothing changed.
+  - **With `merge` the key of the target wins.** The archive's `encryption_keys/cek` is imported only into a bucket that
+    has no key. A bucket that has one keeps it, and Core does not unwrap the archive's key, so the import does not fail
+    when the two environments use different KMS keys; the response carries a warning for each key that was not
+    imported. The entities that stay in the bucket are encrypted with the key of the target, which is why the key is
+    not replaced. Secrets of the archive that were encrypted with the source's key cannot be decrypted by the target:
+    the config rebuild skips such an entity, and its secrets have to be entered again. To take the archive's key as
+    well, use `mode=replace`.
   - **No restart is needed after an import.** Every pod drops its cached copy of an imported bucket's key when the
     import ends: Core tells them over Redis. A pod that was disconnected from Redis at that moment misses the message and
     keeps the old key until it restarts; until then it cannot decrypt the imported secrets, its config rebuild skips
     every entity that has one, and a secret saved on it is encrypted with the old key and is lost.
   - **A key that you place in blob storage by hand is not announced**, so the pods keep the key they have cached.
-    Place it before the import: the import then makes every pod drop the cached key of each bucket it replaces, and no
-    restart is needed. For a bucket that the archive has no entries for, or a key placed without an import,
-    roll-restart the pods.
+    Place it before a `mode=replace` import: that import makes every pod drop the cached key of each bucket it replaces,
+    and no restart is needed. A `merge` import drops a cached key only for a bucket whose key it imported, so after
+    placing a key by hand with `merge`, for a bucket that the archive has no entries for, or for a key placed without an
+    import, roll-restart the pods.
   - **Without a KMS provider** keys are never exported or imported. Before importing into another environment, copy the
     source's `public/encryption_keys/cek` and `platform/encryption_keys/cek` (the ones that exist — an environment
     that never stored a secret has none) to the target, then run the import; the wipe leaves the keys in place. If

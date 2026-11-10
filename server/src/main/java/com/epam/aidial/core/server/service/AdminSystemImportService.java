@@ -31,6 +31,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
@@ -49,9 +50,10 @@ import java.util.zip.ZipInputStream;
  * {@code .dial-system-import-tmp/<timestamp>/<importId>/<real path>}, outside both buckets. Nothing under
  * {@code public/} or {@code platform/} is touched until the stage phase has accepted the whole archive.
  *
- * <p>The <b>replace phase</b> ({@link #replace}) runs under {@link MergedConfigStore#ADMIN_BUCKET_LOCATIONS}: wipe,
- * promote the staged blobs with server-side copies, drop the queued and cached Redis entries of both buckets, then
- * rebuild the merged config. It is repeatable: importing the same archive again leaves the buckets in the same
+ * <p>The <b>replace phase</b> ({@link #replace}) runs under {@link MergedConfigStore#ADMIN_BUCKET_LOCATIONS}: in
+ * {@link ImportMode#REPLACE} it wipes the buckets first; it then promotes the staged blobs with server-side copies, drops
+ * the queued and cached Redis entries (of the buckets in {@code REPLACE}, of the imported blobs in {@code MERGE}), then
+ * rebuilds the merged config. It is repeatable: importing the same archive again leaves the buckets in the same
  * state.
  */
 @Slf4j
@@ -105,13 +107,13 @@ public class AdminSystemImportService {
      * the staging already removed; any other exception (e.g. blob storage failing to write) also leaves the staging
      * removed, for the caller to answer 500.
      */
-    public StagedImport stage(InputStream archive) {
+    public StagedImport stage(InputStream archive, ImportMode mode) {
         String timestamp = LocalDateTime.now().format(TempFolderCleaner.FOLDER_FORMATTER);
         String stagingPrefix = STAGING_FOLDER + ResourceDescriptor.PATH_SEPARATOR + timestamp
                 + ResourceDescriptor.PATH_SEPARATOR + idGenerator.get() + ResourceDescriptor.PATH_SEPARATOR;
         BlobCalls uploads = newCalls();
         try {
-            return stageArchive(archive, stagingPrefix, uploads);
+            return stageArchive(archive, mode, stagingPrefix, uploads);
         } catch (Throwable e) {
             uploads.awaitQuietly();
             try {
@@ -147,20 +149,30 @@ public class AdminSystemImportService {
 
     private ImportResult replaceUnderLocks(StagedImport staged, Progress progress, long requestedAt) {
         long startedAt = clock.getAsLong();
-        List<String> warnings = new ArrayList<>();
+        List<String> warnings = new ArrayList<>(staged.warnings());
+        boolean replacing = staged.mode() == ImportMode.REPLACE;
 
-        progress.setPhase(Progress.Phase.WIPE);
-        long deleted = wipeBuckets(staged.bucketLocations(), progress);
+        long deleted = 0;
+        if (replacing) {
+            progress.setPhase(Progress.Phase.WIPE);
+            deleted = wipeBuckets(staged.bucketLocations(), progress);
+        }
         long wipeEndedAt = clock.getAsLong();
 
         progress.setPhase(Progress.Phase.COPY);
         progress.setTotal(staged.blobCount());
-        long copied = promoteStagedBlobs(staged.stagingPrefix(), progress);
+        List<String> copiedPaths = promoteStagedBlobs(staged, warnings, progress);
+        long copied = copiedPaths.size();
         long copyEndedAt = clock.getAsLong();
 
         progress.setPhase(Progress.Phase.INVALIDATE);
-        resourceService.invalidate(staged.bucketLocations());
-        invalidateEncryptionKeys(staged.bucketLocations());
+        if (replacing) {
+            resourceService.invalidate(staged.bucketLocations());
+            invalidateEncryptionKeys(staged.bucketLocations());
+        } else {
+            resourceService.invalidateBlobs(copiedPaths);
+            invalidateEncryptionKeys(bucketLocationsOfKeys(copiedPaths));
+        }
         long invalidateEndedAt = clock.getAsLong();
 
         progress.setPhase(Progress.Phase.REBUILD);
@@ -168,9 +180,10 @@ public class AdminSystemImportService {
         long endedAt = clock.getAsLong();
 
         long totalMillis = endedAt - startedAt;
-        log.info("System import replace finished: buckets={}, lockWait={}ms, wipe={}ms ({} blobs), copy={}ms ({} blobs), invalidate={}ms, "
-                        + "rebuild={}ms, total={}ms", staged.bucketLocations(), startedAt - requestedAt, wipeEndedAt - startedAt, deleted,
-                copyEndedAt - wipeEndedAt, copied, invalidateEndedAt - copyEndedAt, endedAt - invalidateEndedAt, totalMillis);
+        log.info("System import replace finished: mode={}, buckets={}, lockWait={}ms, wipe={}ms ({} blobs), copy={}ms ({} blobs), "
+                        + "invalidate={}ms, rebuild={}ms, total={}ms", staged.mode(), staged.bucketLocations(), startedAt - requestedAt,
+                wipeEndedAt - startedAt, deleted, copyEndedAt - wipeEndedAt, copied, invalidateEndedAt - copyEndedAt,
+                endedAt - invalidateEndedAt, totalMillis);
 
         long overMillis = totalMillis - LockService.LOCK_PERIOD.toMillis();
         if (overMillis > 0) {
@@ -233,9 +246,18 @@ public class AdminSystemImportService {
         }
     }
 
-    private long promoteStagedBlobs(String stagingPrefix, Progress progress) {
+    private List<String> bucketLocationsOfKeys(List<String> blobPaths) {
+        return blobPaths.stream()
+                .filter(validationService::isEncryptionKey)
+                .map(path -> path.substring(0, path.indexOf(ResourceDescriptor.PATH_SEPARATOR) + 1))
+                .distinct()
+                .toList();
+    }
+
+    private List<String> promoteStagedBlobs(StagedImport staged, List<String> warnings, Progress progress) {
+        String stagingPrefix = staged.stagingPrefix();
         BlobCalls copies = newCalls();
-        long copied = 0;
+        List<String> copiedPaths = new ArrayList<>();
         String marker = null;
         do {
             PageSet<? extends StorageMetadata> page = blobStorage.list(stagingPrefix, marker, PAGE_SIZE, true);
@@ -243,17 +265,29 @@ public class AdminSystemImportService {
                 if (meta.getType() == StorageType.BLOB) {
                     String stagedPath = meta.getName();
                     String realPath = stagedPath.substring(stagingPrefix.length());
+                    if (isKeyKeptInMerge(staged.mode(), realPath)) {
+                        warnings.add(keptKeyWarning(realPath));
+                        continue;
+                    }
                     copies.submit(() -> {
                         blobStorage.copy(stagedPath, realPath, null);
                         progress.addCopied();
                     });
-                    copied++;
+                    copiedPaths.add(realPath);
                 }
             }
             marker = page.getNextMarker();
         } while (marker != null);
         copies.awaitAll();
-        return copied;
+        return copiedPaths;
+    }
+
+    private boolean isKeyKeptInMerge(ImportMode mode, String path) {
+        return mode == ImportMode.MERGE && validationService.isEncryptionKey(path) && blobStorage.exists(path);
+    }
+
+    private static String keptKeyWarning(String path) {
+        return "The encryption key of the archive was not imported, the bucket already has one: " + path;
     }
 
     private void deletePrefix(String prefix) {
@@ -282,7 +316,7 @@ public class AdminSystemImportService {
         return new BlobCalls(executor, settings.getParallelism());
     }
 
-    private StagedImport stageArchive(InputStream archive, String stagingPrefix, BlobCalls uploads) throws IOException {
+    private StagedImport stageArchive(InputStream archive, ImportMode mode, String stagingPrefix, BlobCalls uploads) throws IOException {
         long startedAt = clock.getAsLong();
         TimedInputStream timed = new TimedInputStream(archive);
         ZipInputStream zip = new ZipInputStream(timed, StandardCharsets.UTF_8);
@@ -297,7 +331,9 @@ public class AdminSystemImportService {
         String pendingBlobPath = null;
         BlobAttributes pendingMetadata = null;
         Set<String> buckets = new HashSet<>();
+        List<String> warnings = new ArrayList<>();
         long blobCount = 0;
+        long keptKeys = 0;
 
         for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
             String name = entry.getName();
@@ -326,9 +362,15 @@ public class AdminSystemImportService {
             }
             validationService.validateBlobName(name);
 
-            uploadStagedBlob(name, stagingPrefix + name, pendingMetadata, zip, uploads);
             buckets.add(name.substring(0, name.indexOf(ResourceDescriptor.PATH_SEPARATOR) + 1));
-            blobCount++;
+            if (isKeyKeptInMerge(mode, name)) {
+                zip.closeEntry();
+                warnings.add(keptKeyWarning(name));
+                keptKeys++;
+            } else {
+                uploadStagedBlob(name, stagingPrefix + name, pendingMetadata, zip, uploads);
+                blobCount++;
+            }
             pendingMetadata = null;
             pendingMetadataName = null;
             pendingBlobPath = null;
@@ -337,14 +379,14 @@ public class AdminSystemImportService {
         if (pendingMetadata != null) {
             throw rejected("Metadata entry without its blob: " + pendingMetadataName);
         }
-        if (blobCount == 0) {
+        if (blobCount == 0 && keptKeys == 0) {
             throw rejected("Archive has no blob entries");
         }
         uploads.awaitAll();
-        log.info("System import stage finished: blobs={}, bytes={}, duration={}ms, waitingForClient={}ms",
-                blobCount, timed.bytes, clock.getAsLong() - startedAt, timed.waitNanos / NANOS_PER_MILLI);
+        log.info("System import stage finished: mode={}, blobs={}, keptKeys={}, bytes={}, duration={}ms, waitingForClient={}ms",
+                mode, blobCount, keptKeys, timed.bytes, clock.getAsLong() - startedAt, timed.waitNanos / NANOS_PER_MILLI);
         List<String> bucketLocations = MergedConfigStore.ADMIN_BUCKET_LOCATIONS.stream().filter(buckets::contains).toList();
-        return new StagedImport(stagingPrefix, blobCount, bucketLocations);
+        return new StagedImport(stagingPrefix, blobCount, bucketLocations, mode, warnings);
     }
 
     private void uploadStagedBlob(String name, String path, BlobAttributes attributes, ZipInputStream zip, BlobCalls uploads)
@@ -392,7 +434,29 @@ public class AdminSystemImportService {
         return new RuntimeException(e);
     }
 
-    public record StagedImport(String stagingPrefix, long blobCount, List<String> bucketLocations) {
+    public enum ImportMode {
+        /**
+         * Writes the archive's blobs over the buckets and deletes nothing; the default.
+         */
+        MERGE,
+        /**
+         * Deletes the blobs of each bucket that the archive has blobs for, then writes the archive's blobs.
+         */
+        REPLACE;
+
+        public static ImportMode parse(String value) {
+            if (value == null) {
+                return MERGE;
+            }
+            try {
+                return valueOf(value.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                throw rejected("Unknown mode: '" + value + "', expected merge or replace");
+            }
+        }
+    }
+
+    public record StagedImport(String stagingPrefix, long blobCount, List<String> bucketLocations, ImportMode mode, List<String> warnings) {
     }
 
     public record ImportResult(long importedBlobs, long deletedBlobs, List<String> warnings) {
@@ -408,10 +472,14 @@ public class AdminSystemImportService {
             WIPE, COPY, INVALIDATE, REBUILD
         }
 
-        private volatile Phase phase = Phase.WIPE;
+        private volatile Phase phase;
         private final AtomicLong deleted = new AtomicLong();
         private final AtomicLong copied = new AtomicLong();
         private volatile long total;
+
+        public Progress(ImportMode mode) {
+            this.phase = mode == ImportMode.REPLACE ? Phase.WIPE : Phase.COPY;
+        }
 
         public Phase getPhase() {
             return phase;

@@ -74,7 +74,7 @@ public class AdminSystemImportApiTest extends ResourceBaseTest {
         // a write made after the archive was taken must not survive the import
         storage.store("platform/models/stale", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
 
-        ImportResponse response = postImport(archive, "admin");
+        ImportResponse response = postImport(archive, "admin", "?mode=replace");
 
         assertEquals(200, response.status());
         assertTrue(response.lines().size() >= 2, "expected at least a progress line and the final status line");
@@ -85,6 +85,57 @@ public class AdminSystemImportApiTest extends ResourceBaseTest {
         assertFalse(storage.exists("platform/models/stale"), "a blob written after the archive was taken, and absent from it, must be removed");
         assertArrayEquals("alpha".getBytes(StandardCharsets.UTF_8), readBlob(storage, "public/files/user1/a.txt"));
         assertTrue(storage.exists("platform/models/m1"));
+    }
+
+    /**
+     * Like {@link #testSuccessRoundTripViaExportThenImport}, this stages through the real filesystem provider and so
+     * fails on a native Windows checkout only.
+     */
+    @Test
+    void testNoModeMeansMerge() throws Exception {
+        BlobStorage storage = dial.getStorage();
+        storage.store("platform/models/m1", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
+        byte[] archive = exportArchive();
+        storage.store("platform/models/later", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
+
+        ImportResponse response = postImport(archive, "admin", "");
+
+        assertEquals(200, response.status());
+        JsonObject last = response.lines().get(response.lines().size() - 1);
+        assertEquals(0, last.getInteger("deletedBlobs"));
+        assertTrue(response.lines().stream().noneMatch(line -> "wipe".equals(line.getString("phase"))));
+        assertTrue(storage.exists("platform/models/later"), "merge must keep a blob that the archive does not hold");
+    }
+
+    @Test
+    void testModeIsCaseInsensitive() throws Exception {
+        BlobStorage storage = dial.getStorage();
+        storage.store("platform/models/m1", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
+        byte[] archive = exportArchive();
+        storage.store("platform/models/later", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
+
+        ImportResponse response = postImport(archive, "admin", "?mode=REPLACE");
+
+        assertEquals(200, response.status());
+        assertFalse(storage.exists("platform/models/later"), "replace must remove a blob that the archive does not hold");
+    }
+
+    @Test
+    void testUnknownModeIsRejectedBeforeTheBodyIsRead() throws Exception {
+        RequestOptions options = new RequestOptions()
+                .setAbsoluteURI("http://127.0.0.1:" + serverPort + "/v1/admin/system-import?mode=wipe")
+                .setMethod(HttpMethod.POST)
+                .putHeader("authorization", "admin");
+
+        HttpClientRequest request = await(dial.getClient().request(options));
+        request.setChunked(true);
+        await(request.write(Buffer.buffer(new byte[] {'P', 'K', 3, 4})));
+        Future<HttpClientResponse> responseFuture = request.response();
+
+        HttpClientResponse response = await(responseFuture);
+        assertEquals(400, response.statusCode(), "a stalled body would have given 408, so the body must not have been read");
+
+        request.reset();
     }
 
     @Test
@@ -125,7 +176,11 @@ public class AdminSystemImportApiTest extends ResourceBaseTest {
     }
 
     private ImportResponse postImport(byte[] archive, String authorization) throws Exception {
-        HttpUriRequest request = new HttpUriRequestBase("POST", URI.create("http://127.0.0.1:" + serverPort + "/v1/admin/system-import"));
+        return postImport(archive, authorization, "");
+    }
+
+    private ImportResponse postImport(byte[] archive, String authorization, String query) throws Exception {
+        HttpUriRequest request = new HttpUriRequestBase("POST", URI.create("http://127.0.0.1:" + serverPort + "/v1/admin/system-import" + query));
         request.setHeader("authorization", authorization);
         request.setEntity(new ByteArrayEntity(archive, ContentType.APPLICATION_OCTET_STREAM));
         return client.execute(request, response -> {

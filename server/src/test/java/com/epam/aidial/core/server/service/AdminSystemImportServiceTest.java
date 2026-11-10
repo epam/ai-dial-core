@@ -5,13 +5,18 @@ import com.epam.aidial.core.credentials.encryption.ContentEncryptionKeyService;
 import com.epam.aidial.core.credentials.exception.CekEncryptionException;
 import com.epam.aidial.core.credentials.keymanagement.KeyManagementService;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.service.AdminSystemImportService.ImportMode;
 import com.epam.aidial.core.server.util.CoreVersion;
 import com.epam.aidial.core.storage.blobstore.BlobAttributes;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TimerService;
+import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.StorageMetadata;
@@ -25,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import redis.embedded.RedisServer;
 
 import java.io.ByteArrayInputStream;
@@ -393,7 +399,7 @@ class AdminSystemImportServiceTest {
             }
         };
 
-        AdminSystemImportService.StagedImport staged = service.stage(trickle);
+        AdminSystemImportService.StagedImport staged = service.stage(trickle, ImportMode.REPLACE);
 
         assertEquals(1, staged.blobCount());
     }
@@ -409,7 +415,7 @@ class AdminSystemImportServiceTest {
     void testArchiveFromSameOrOlderReleaseIsAccepted() {
         for (String version : List.of(CORE_VERSION, "0.49.2")) {
             byte[] archive = archiveOf(version, entry("public/models/m1", "{}"));
-            AdminSystemImportService.StagedImport staged = service.stage(stream(archive));
+            AdminSystemImportService.StagedImport staged = service.stage(stream(archive), ImportMode.REPLACE);
             assertEquals(1, staged.blobCount());
             service.deleteStaging(staged);
         }
@@ -517,7 +523,7 @@ class AdminSystemImportServiceTest {
     @Test
     void testStagedEntriesAreOutsideTheBuckets() {
         byte[] archive = archiveOf(CORE_VERSION, entry("public/models/m1", "{}"));
-        AdminSystemImportService.StagedImport staged = service.stage(stream(archive));
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archive), ImportMode.REPLACE);
         assertFalse(storage.exists("public/models/m1"));
         assertTrue(staged.stagingPrefix().startsWith(AdminSystemImportService.STAGING_FOLDER + "/"));
     }
@@ -534,7 +540,7 @@ class AdminSystemImportServiceTest {
                 throw new com.epam.aidial.core.server.vertx.stream.InputStreamAdapter.StallTimeoutException("no data for 100 ms");
             }
         };
-        AdminSystemImportRejectedException e = assertThrows(AdminSystemImportRejectedException.class, () -> service.stage(stalling));
+        AdminSystemImportRejectedException e = assertThrows(AdminSystemImportRejectedException.class, () -> service.stage(stalling, ImportMode.REPLACE));
         assertEquals(HttpStatus.REQUEST_TIMEOUT, e.getStatus());
         assertNoBlobs();
     }
@@ -608,7 +614,7 @@ class AdminSystemImportServiceTest {
         AdminSystemImportService kmsService = newService(new AdminSystemImportService.Settings(), true);
         byte[] archive = archiveOf(CORE_VERSION, entry("platform/models/m1", "{}"), entry("platform/encryption_keys/cek", "wrapped-key"));
 
-        kmsService.replace(kmsService.stage(stream(archive)), new AdminSystemImportService.Progress());
+        kmsService.replace(kmsService.stage(stream(archive), ImportMode.REPLACE), new AdminSystemImportService.Progress(ImportMode.REPLACE));
 
         assertArrayEquals("wrapped-key".getBytes(StandardCharsets.UTF_8), readBytes("platform/encryption_keys/cek"));
         assertArrayEquals("public-key".getBytes(StandardCharsets.UTF_8), readBytes("public/encryption_keys/cek"));
@@ -622,7 +628,7 @@ class AdminSystemImportServiceTest {
         AdminSystemImportService kmsService = newService(new AdminSystemImportService.Settings(), true);
         byte[] archive = archiveOf(CORE_VERSION, entry("platform/models/m1", "{}"), entry("platform/encryption_keys/cek", "other-env-key"));
 
-        assertThrows(AdminSystemImportRejectedException.class, () -> kmsService.stage(stream(archive)));
+        assertThrows(AdminSystemImportRejectedException.class, () -> kmsService.stage(stream(archive), ImportMode.REPLACE));
 
         assertArrayEquals("old-key".getBytes(StandardCharsets.UTF_8), readBytes("platform/encryption_keys/cek"));
         assertFalse(storage.exists("platform/models/m1"));
@@ -645,10 +651,10 @@ class AdminSystemImportServiceTest {
         storage.store("public/models/old", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
         folderEntries.add("public/files/user1/dir");
 
-        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/new", "{}"))));
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/new", "{}"))), ImportMode.REPLACE);
         folderEntries.add(staged.stagingPrefix() + "public/files/user1/dir");
 
-        service.replace(staged, new AdminSystemImportService.Progress());
+        service.replace(staged, new AdminSystemImportService.Progress(ImportMode.REPLACE));
 
         Mockito.verify(storage, Mockito.never()).delete("public/files/user1/dir");
         Mockito.verify(storage, Mockito.never()).copy(eq(staged.stagingPrefix() + "public/files/user1/dir"), any(), isNull());
@@ -669,8 +675,8 @@ class AdminSystemImportServiceTest {
     @Test
     void testReplaceOrderIsWipePromoteInvalidateRebuild() {
         storage.store("public/models/old", "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
-        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/new", "{}"))));
-        AdminSystemImportService.Progress progress = new AdminSystemImportService.Progress();
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/new", "{}"))), ImportMode.REPLACE);
+        AdminSystemImportService.Progress progress = new AdminSystemImportService.Progress(ImportMode.REPLACE);
 
         AdminSystemImportService.ImportResult result = service.replace(staged, progress);
 
@@ -687,10 +693,10 @@ class AdminSystemImportServiceTest {
         }
         byte[] archive = archiveOf(CORE_VERSION,
                 entry("public/models/n1", "{}"), entry("public/models/n2", "{}"), entry("public/models/n3", "{}"));
-        AdminSystemImportService.StagedImport staged = service.stage(stream(archive));
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archive), ImportMode.REPLACE);
         assertEquals(3, staged.blobCount());
 
-        AdminSystemImportService.Progress progress = new AdminSystemImportService.Progress();
+        AdminSystemImportService.Progress progress = new AdminSystemImportService.Progress(ImportMode.REPLACE);
         AdminSystemImportService.ImportResult result = service.replace(staged, progress);
 
         assertEquals(3, result.importedBlobs());
@@ -729,13 +735,13 @@ class AdminSystemImportServiceTest {
 
     @Test
     void testSlowReplaceIsNotAborted() {
-        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/m1", "{}"))));
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/m1", "{}"))), ImportMode.REPLACE);
         when(mergedConfigStore.rebuildNowUnderBucketLocks()).thenAnswer(invocation -> {
             clock.addAndGet(LockService.LOCK_PERIOD.plusSeconds(10).toMillis());
             return null;
         });
 
-        AdminSystemImportService.ImportResult result = service.replace(staged, new AdminSystemImportService.Progress());
+        AdminSystemImportService.ImportResult result = service.replace(staged, new AdminSystemImportService.Progress(ImportMode.REPLACE));
 
         assertEquals(1, result.importedBlobs());
         assertTrue(storage.exists("public/models/m1"));
@@ -769,8 +775,8 @@ class AdminSystemImportServiceTest {
         AdminSystemImportService parallelService = newService(settings);
         probe.delayMs = 20;
 
-        AdminSystemImportService.StagedImport staged = parallelService.stage(stream(archiveOf(CORE_VERSION, entries)));
-        parallelService.replace(staged, new AdminSystemImportService.Progress());
+        AdminSystemImportService.StagedImport staged = parallelService.stage(stream(archiveOf(CORE_VERSION, entries)), ImportMode.REPLACE);
+        parallelService.replace(staged, new AdminSystemImportService.Progress(ImportMode.REPLACE));
 
         assertEquals(2, probe.maxInFlight.get());
     }
@@ -781,11 +787,11 @@ class AdminSystemImportServiceTest {
             storeOld("public/models/old" + i);
         }
         AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION,
-                entry("public/models/n1", "{}"), entry("public/models/n2", "{}"))));
+                entry("public/models/n1", "{}"), entry("public/models/n2", "{}"))), ImportMode.REPLACE);
         probe.events.clear();
         probe.delayMs = 20;
 
-        service.replace(staged, new AdminSystemImportService.Progress());
+        service.replace(staged, new AdminSystemImportService.Progress(ImportMode.REPLACE));
 
         List<String> events = List.copyOf(probe.events);
         assertTrue(events.lastIndexOf("delete:end") < events.indexOf("copy:start"), events::toString);
@@ -796,12 +802,12 @@ class AdminSystemImportServiceTest {
         for (int i = 0; i < 4; i++) {
             storeOld("public/models/old" + i);
         }
-        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/n1", "{}"))));
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/n1", "{}"))), ImportMode.REPLACE);
         probe.events.clear();
         probe.delayMs = 20;
         probe.failingDelete = "public/models/old0";
 
-        assertThrows(RuntimeException.class, () -> service.replace(staged, new AdminSystemImportService.Progress()));
+        assertThrows(RuntimeException.class, () -> service.replace(staged, new AdminSystemImportService.Progress(ImportMode.REPLACE)));
 
         assertEquals(0, probe.inFlight.get(), "every call in flight ends before the replace fails");
         assertFalse(probe.events.contains("copy:start"));
@@ -809,6 +815,161 @@ class AdminSystemImportServiceTest {
 
     private void storeOld(String path) {
         storage.store(path, "application/json", null, Map.of(), "{}".getBytes(StandardCharsets.UTF_8));
+    }
+
+    // ---- mode ----
+
+    @Test
+    void testModeDefaultsToMergeAndIsCaseInsensitive() {
+        assertEquals(ImportMode.MERGE, ImportMode.parse(null));
+        assertEquals(ImportMode.MERGE, ImportMode.parse("merge"));
+        assertEquals(ImportMode.REPLACE, ImportMode.parse("replace"));
+        assertEquals(ImportMode.REPLACE, ImportMode.parse("REPLACE"));
+        assertEquals(ImportMode.MERGE, ImportMode.parse("Merge"));
+    }
+
+    @Test
+    void testUnknownOrEmptyModeIsRejected() {
+        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(AdminSystemImportRejectedException.class, () -> ImportMode.parse("wipe")).getStatus());
+        assertThrows(AdminSystemImportRejectedException.class, () -> ImportMode.parse(""));
+    }
+
+    @Test
+    void testMergeKeepsBlobAbsentFromArchive() {
+        storeOld("platform/models/old");
+
+        AdminSystemImportService.ImportResult result = runImport(archiveOf(CORE_VERSION, entry("platform/models/m1", "{}")), ImportMode.MERGE);
+
+        assertTrue(storage.exists("platform/models/old"));
+        assertTrue(storage.exists("platform/models/m1"));
+        assertEquals(0, result.deletedBlobs());
+        assertEquals(1, result.importedBlobs());
+    }
+
+    @Test
+    void testMergeKeepsCredentials() {
+        storeOld("platform/credentials/t2");
+
+        runImport(archiveOf(CORE_VERSION, entry("platform/models/m1", "{}")), ImportMode.MERGE);
+
+        assertTrue(storage.exists("platform/credentials/t2"));
+    }
+
+    @Test
+    void testMergeOverwritesExistingBlob() {
+        storage.store("platform/models/m1", "text/plain", null, Map.of("k", "old"), "old".getBytes(StandardCharsets.UTF_8));
+
+        AdminSystemImportService.ImportResult result = runImport(archiveOf(CORE_VERSION, entry("platform/models/m1", "{\"v\":1}")), ImportMode.MERGE);
+
+        assertArrayEquals("{\"v\":1}".getBytes(StandardCharsets.UTF_8), readBytes("platform/models/m1"));
+        assertEquals(0, result.deletedBlobs());
+    }
+
+    @Test
+    void testMergeWritesNoWipeProgress() {
+        storeOld("platform/models/old");
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("platform/models/m1", "{}"))), ImportMode.MERGE);
+        AdminSystemImportService.Progress progress = new AdminSystemImportService.Progress(ImportMode.MERGE);
+
+        assertEquals(AdminSystemImportService.Progress.Phase.COPY, progress.getPhase());
+        service.replace(staged, progress);
+
+        assertEquals(0, progress.getDeleted());
+        Mockito.verify(storage, Mockito.never()).delete("platform/models/old");
+    }
+
+    @Test
+    void testMergeInvalidatesOnlyImportedBlobs() {
+        ResourceDescriptor imported = role("r1");
+        ResourceDescriptor other = role("r2");
+        resourceService.putResource(imported, "{}", EtagHeader.NEW_ONLY);
+        resourceService.putResource(other, "{}", EtagHeader.NEW_ONLY);
+        assertTrue(isQueued(imported) && isQueued(other));
+
+        runImport(archiveOf(CORE_VERSION, entry("platform/roles/r1", "{\"v\":\"imported\"}")), ImportMode.MERGE);
+
+        assertFalse(isCached(imported));
+        assertFalse(isQueued(imported));
+        assertTrue(isCached(other), "a resource that the archive does not hold keeps its cached entry");
+        assertTrue(isQueued(other), "a resource that the archive does not hold keeps its queued write");
+    }
+
+    @Test
+    void testReplaceStillInvalidatesTheBuckets() {
+        ResourceDescriptor imported = role("r1");
+        ResourceDescriptor other = role("r2");
+        resourceService.putResource(imported, "{}", EtagHeader.NEW_ONLY);
+        resourceService.putResource(other, "{}", EtagHeader.NEW_ONLY);
+
+        runImport(archiveOf(CORE_VERSION, entry("platform/roles/r1", "{}")), ImportMode.REPLACE);
+
+        assertFalse(isCached(other));
+        assertFalse(isQueued(other));
+    }
+
+    @Test
+    void testMergeKeepsTheKeyOfTheBucketThatHasOne() {
+        storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "old-key".getBytes(StandardCharsets.UTF_8));
+        when(keyManagementService.decrypt(any())).thenThrow(new CekEncryptionException("Decryption error", new RuntimeException()));
+        byte[] archive = archiveOf(CORE_VERSION, entry("platform/models/m1", "{}"), entry("platform/encryption_keys/cek", "other-env-key"));
+
+        AdminSystemImportService.ImportResult result = runKmsImport(archive, ImportMode.MERGE);
+
+        assertArrayEquals("old-key".getBytes(StandardCharsets.UTF_8), readBytes("platform/encryption_keys/cek"));
+        assertTrue(storage.exists("platform/models/m1"));
+        Mockito.verify(keyManagementService, Mockito.never()).decrypt(any());
+        Mockito.verify(contentEncryptionKeyService, Mockito.never()).invalidateKey(any());
+        assertEquals(1, result.importedBlobs());
+        assertEquals(1, result.warnings().size());
+        assertTrue(result.warnings().get(0).contains("platform/encryption_keys/cek"));
+    }
+
+    @Test
+    void testMergeTakesTheKeyOfTheBucketWithoutOne() {
+        byte[] archive = archiveOf(CORE_VERSION, entry("platform/models/m1", "{}"), entry("platform/encryption_keys/cek", "wrapped-key"));
+
+        AdminSystemImportService.ImportResult result = runKmsImport(archive, ImportMode.MERGE);
+
+        assertArrayEquals("wrapped-key".getBytes(StandardCharsets.UTF_8), readBytes("platform/encryption_keys/cek"));
+        Mockito.verify(keyManagementService).decrypt("wrapped-key".getBytes(StandardCharsets.UTF_8));
+        Mockito.verify(contentEncryptionKeyService).invalidateKey(new BucketInfo("platform", "platform/"));
+        Mockito.verify(contentEncryptionKeyService, Mockito.never()).invalidateKey(new BucketInfo("public", "public/"));
+        assertTrue(result.warnings().isEmpty());
+    }
+
+    @Test
+    void testMergeRejectsAnUnwrappableKeyOfTheBucketWithoutOne() {
+        when(keyManagementService.decrypt(any())).thenThrow(new CekEncryptionException("Decryption error", new RuntimeException()));
+        byte[] archive = archiveOf(CORE_VERSION, entry("platform/models/m1", "{}"), entry("platform/encryption_keys/cek", "other-env-key"));
+
+        assertThrows(AdminSystemImportRejectedException.class, () -> runKmsImport(archive, ImportMode.MERGE));
+
+        assertFalse(storage.exists("platform/encryption_keys/cek"));
+        assertFalse(storage.exists("platform/models/m1"));
+    }
+
+    @Test
+    void testMergeWithoutKeyAsksNoKms() {
+        runKmsImport(archiveOf(CORE_VERSION, entry("platform/models/m1", "{}")), ImportMode.MERGE);
+
+        Mockito.verify(keyManagementService, Mockito.never()).decrypt(any());
+        Mockito.verify(contentEncryptionKeyService, Mockito.never()).invalidateKey(any());
+    }
+
+    @Test
+    void testMergeSkipsKeyThatAppearedBeforeTheReplace() {
+        AdminSystemImportService kmsService = newService(new AdminSystemImportService.Settings(), true);
+        byte[] archive = archiveOf(CORE_VERSION, entry("platform/models/m1", "{}"), entry("platform/encryption_keys/cek", "wrapped-key"));
+        AdminSystemImportService.StagedImport staged = kmsService.stage(stream(archive), ImportMode.MERGE);
+        assertEquals(2, staged.blobCount());
+        storage.store("platform/encryption_keys/cek", "application/octet-stream", null, Map.of(), "new-key".getBytes(StandardCharsets.UTF_8));
+
+        AdminSystemImportService.ImportResult result = kmsService.replace(staged, new AdminSystemImportService.Progress(ImportMode.MERGE));
+
+        assertArrayEquals("new-key".getBytes(StandardCharsets.UTF_8), readBytes("platform/encryption_keys/cek"));
+        assertEquals(1, result.importedBlobs());
+        assertEquals(1, result.warnings().size());
+        Mockito.verify(contentEncryptionKeyService, Mockito.never()).invalidateKey(any());
     }
 
     // ---- guard ----
@@ -846,8 +1007,8 @@ class AdminSystemImportServiceTest {
 
     @Test
     void testStagingIsRemovedAfterSuccess() {
-        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/m1", "{}"))));
-        service.replace(staged, new AdminSystemImportService.Progress());
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archiveOf(CORE_VERSION, entry("public/models/m1", "{}"))), ImportMode.REPLACE);
+        service.replace(staged, new AdminSystemImportService.Progress(ImportMode.REPLACE));
         service.deleteStaging(staged);
 
         assertFalse(storage.exists(staged.stagingPrefix() + "public/models/m1"));
@@ -857,15 +1018,36 @@ class AdminSystemImportServiceTest {
     void testStagingIsRemovedAfterRejection() {
         byte[] badArchive = zip(manifest(CORE_VERSION), metadata("public/models/m1", "application/json"));
         // stage() already deletes its own staging on rejection; verify nothing is left for ANY prefix
-        assertThrows(AdminSystemImportRejectedException.class, () -> service.stage(stream(badArchive)));
+        assertThrows(AdminSystemImportRejectedException.class, () -> service.stage(stream(badArchive), ImportMode.REPLACE));
         assertNoBlobs();
     }
 
     // ---- helpers ----
 
     private AdminSystemImportService.ImportResult runImport(byte[] archive) {
-        AdminSystemImportService.StagedImport staged = service.stage(stream(archive));
-        return service.replace(staged, new AdminSystemImportService.Progress());
+        return runImport(archive, ImportMode.REPLACE);
+    }
+
+    private AdminSystemImportService.ImportResult runImport(byte[] archive, ImportMode mode) {
+        AdminSystemImportService.StagedImport staged = service.stage(stream(archive), mode);
+        return service.replace(staged, new AdminSystemImportService.Progress(mode));
+    }
+
+    private AdminSystemImportService.ImportResult runKmsImport(byte[] archive, ImportMode mode) {
+        AdminSystemImportService kmsService = newService(new AdminSystemImportService.Settings(), true);
+        return kmsService.replace(kmsService.stage(stream(archive), mode), new AdminSystemImportService.Progress(mode));
+    }
+
+    private static ResourceDescriptor role(String name) {
+        return new ResourceDescriptor(ResourceTypes.ROLE, name, List.of(), "platform", "platform/", false);
+    }
+
+    private boolean isCached(ResourceDescriptor descriptor) {
+        return redis.getMap(RedisUtil.redisKey(descriptor, null)).isExists();
+    }
+
+    private boolean isQueued(ResourceDescriptor descriptor) {
+        return redis.getScoredSortedSet("resource:queue", StringCodec.INSTANCE).contains(RedisUtil.redisKey(descriptor, null));
     }
 
     private byte[] readBytes(String path) {
@@ -888,7 +1070,7 @@ class AdminSystemImportServiceTest {
     }
 
     private AdminSystemImportRejectedException assertRejected(byte[] archive) {
-        return assertThrows(AdminSystemImportRejectedException.class, () -> service.stage(stream(archive)));
+        return assertThrows(AdminSystemImportRejectedException.class, () -> service.stage(stream(archive), ImportMode.REPLACE));
     }
 
     private static InputStream stream(byte[] archive) {
