@@ -20,9 +20,10 @@ import javax.annotation.Nullable;
 import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_MAPPER;
 
 /**
- * The body of an alias stored under {@code aliases/public/<name>}: {@code presentAs}, {@code target}, {@code userRoles}
- * and the display fields, nothing else. {@code userRoles} decides who may call it, as for an alias of the config file
- * (none means the target's); pricing, features and interfaces come from the target, so it has none of those.
+ * The body of an alias stored under {@code aliases/public/<name>} or {@code aliases/platform/<name>}:
+ * {@code presentAs}, {@code target}, {@code userRoles} and the display fields, nothing else. {@code userRoles}
+ * decides who may call it, as for an alias of the config file (none means the target's); pricing, features and
+ * interfaces come from the target, so it has none of those.
  */
 @UtilityClass
 public class StoredAliases {
@@ -42,6 +43,7 @@ public class StoredAliases {
             "description_keywords", "descriptionKeywords");
 
     private static final String PUBLIC_PREFIX = ResourceDescriptor.PUBLIC_BUCKET + "/";
+    private static final String PLATFORM_PREFIX = ResourceDescriptor.PLATFORM_BUCKET + "/";
     private static final Pattern URL_SAFE_NAME = Pattern.compile("^[A-Za-z0-9._-]+$");
 
     // what a GET answers on top of the fields, so that its body can be sent back as is
@@ -73,7 +75,7 @@ public class StoredAliases {
             }
         }
         if (!unsupported.isEmpty()) {
-            throw new IllegalArgumentException("Fields not supported for an alias in public storage: " + String.join(", ", unsupported)
+            throw new IllegalArgumentException("Fields not supported for a stored alias: " + String.join(", ", unsupported)
                     + ". An alias keeps presentAs, target, userRoles and the display fields; the rest comes from its target.");
         }
         return ConfigEntityCodec.treeToEntity(kept, Alias.class);
@@ -128,17 +130,20 @@ public class StoredAliases {
     }
 
     /**
-     * {@link AliasTargets#validateFields}, and a target that is a config deployment or a resource in the public
-     * bucket. A stored alias is open to the callers of its {@code userRoles}, so it must not point to a resource in a
-     * user's bucket, whose owner could change it at any time.
+     * {@link AliasTargets#validateFields}, and a target that is a config deployment or a resource in the public or
+     * platform bucket. A stored alias is open to the callers of its {@code userRoles}, so it must not point to a
+     * resource in a user's bucket, whose owner could change it at any time.
      */
     public List<ValidationWarning> validateFields(Alias alias) {
         List<ValidationWarning> warnings = AliasTargets.validateFields(alias);
         if (warnings.isEmpty()) {
             String path = alias.getTarget().getPath();
-            if (AliasTargets.isResourcePath(path) && !path.startsWith(path.substring(0, path.indexOf('/')) + "/" + PUBLIC_PREFIX)) {
-                warnings.add(new ValidationWarning("target.path",
-                        "The target of a stored alias must be a config deployment or a public resource: " + path));
+            if (AliasTargets.isResourcePath(path)) {
+                String typePrefix = path.substring(0, path.indexOf('/') + 1);
+                if (!path.startsWith(typePrefix + PUBLIC_PREFIX) && !path.startsWith(typePrefix + PLATFORM_PREFIX)) {
+                    warnings.add(new ValidationWarning("target.path",
+                            "The target of a stored alias must be a config deployment or a resource in public or platform storage: " + path));
+                }
             }
         }
         return warnings;
@@ -146,7 +151,7 @@ public class StoredAliases {
 
     /**
      * Whether {@code name} is a stored alias name its url carries unchanged, so that the id Core reports
-     * ({@code aliases/public/<name>}) is the id a caller sends back, in a path or in a body {@code model}: letters,
+     * ({@code aliases/public/<name>} or {@code aliases/platform/<name>}) is the id a caller sends back, in a path or in a body {@code model}: letters,
      * digits, {@code .}, {@code _} and {@code -}. A character the path encoding changes ({@code %}, {@code [}, a space)
      * or one a path can not carry as is ({@code :}) is refused.
      */

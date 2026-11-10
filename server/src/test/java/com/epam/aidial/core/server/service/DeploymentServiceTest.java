@@ -141,7 +141,6 @@ public class DeploymentServiceTest {
         stubConfigAccess();
         Alias alias = storedAlias("pub-v1");
         alias.setUserRoles(Set.of("default-user"));
-        when(accessService.hasReadAccess(any(ResourceDescriptor.class), eq(context))).thenReturn(true);
         when(aliasService.findStoredAlias(any())).thenReturn(alias);
 
         when(context.getUserRoles()).thenReturn(List.of("default-user"));
@@ -154,8 +153,6 @@ public class DeploymentServiceTest {
 
     @Test
     public void missingStoredAliasAnswersNotFound() {
-        when(accessService.hasReadAccess(any(ResourceDescriptor.class), eq(context))).thenReturn(true);
-
         assertThrows(ResourceNotFoundException.class, () -> service.findDeployment(context, "aliases/public/pub-v1"));
     }
 

@@ -1531,7 +1531,7 @@ public class ConfigResourceController implements Controller {
             case TOOL_SET -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.TOOL_SET,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case ALIAS -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
-                    ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
+                    bucket, bucket + ResourceDescriptor.PATH_SEPARATOR, path);
             default -> null;
         };
     }
@@ -1754,7 +1754,7 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * DELETE of an alias in public storage: the blob only, honouring {@code If-Match}. The target is not touched.
+     * DELETE of an alias in public or platform storage: the blob only, honouring {@code If-Match}. The target is not touched.
      */
     private Future<?> handleAliasDelete() {
         ResourceDescriptor descriptor = descriptorFor(ResourceTypes.ALIAS);
@@ -1798,9 +1798,10 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * GET of an alias in public storage, read the way calls read it ({@link StoredAliases#parse}): the stored fields
-     * with {@code status: valid}, or, for a blob calls ignore, the body as stored with {@code status: invalid} and its
-     * {@code validationWarnings}, as other config types show an invalid entity. Honours {@code If-None-Match}.
+     * GET of an alias in public or platform storage, read the way calls read it ({@link StoredAliases#parse}): the
+     * stored fields with {@code status: valid}, or, for a blob calls ignore, the body as stored with
+     * {@code status: invalid} and its {@code validationWarnings}, as other config types show an invalid entity.
+     * Honours {@code If-None-Match}.
      */
     private Future<?> handleAliasGet() {
         if (path == null || path.isEmpty()) {

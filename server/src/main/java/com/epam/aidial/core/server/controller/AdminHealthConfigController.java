@@ -26,7 +26,7 @@ import java.util.Map;
  * Admin-only health endpoint for the configuration subsystem. Reports
  * {@code {"status":"ok"|"degraded","skipped":[{"id":..., "reason":...}]}}
  * computed from {@link MergedConfigStore#getInvalidEntities()} (design 02 §4.1), plus the aliases, of the config
- * file ({@code aliases/<name>}) and stored ({@code aliases/public/<name>}), whose target is missing or no longer
+ * file ({@code aliases/<name>}) and stored ({@code aliases/public/<name>}, {@code aliases/platform/<name>}), whose target is missing or no longer
  * fits. Resource targets and the stored aliases are read for it, on the task executor.
  */
 public class AdminHealthConfigController implements Controller {
