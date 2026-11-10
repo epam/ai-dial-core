@@ -281,9 +281,12 @@ public class AccessService {
             Set<ResourceDescriptor> resources, ProxyContext context) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
                 lookupPermissions(resources, context, ResourceAccessType.ALL, initiatorPermissionRules);
-        permissions.replaceAll((resource, access) -> resource.isFolder() && orgUnitGrants.spansUnit(resource)
-                && !orgUnitGrants.readsEveryUnitUnder(context, resource) ? Set.of() : access);
+        permissions.replaceAll((resource, access) -> spansUnreadableUnit(resource, context) ? Set.of() : access);
         return permissions;
+    }
+
+    private boolean spansUnreadableUnit(ResourceDescriptor resource, ProxyContext context) {
+        return resource.isFolder() && orgUnitGrants.spansUnit(resource) && !orgUnitGrants.readsEveryUnitUnder(context, resource);
     }
 
     @VisibleForTesting
