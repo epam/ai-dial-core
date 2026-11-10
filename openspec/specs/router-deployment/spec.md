@@ -725,8 +725,8 @@ router's answer: the same verdict rules, `decision.timeoutMs`, candidate walk, r
 ### Requirement: Embedded decision failures
 Core SHALL answer `502` for the first decide request when the plugin's answer fails, or when the plugin cannot be
 called (no `plugins` entry by that name, or a type no loaded provider serves), as for an unreachable router. Core SHALL
-answer `504` when the plugin has not answered within `decision.timeoutMs`, and only then SHALL it tell the plugin the
-request is cancelled. A plugin's `4xx` answer SHALL be relayed as a router's.
+answer `504` when the plugin has not finished its answer, the status and the whole body, within `decision.timeoutMs`,
+and only then SHALL it tell the plugin the request is cancelled. A plugin's `4xx` answer SHALL be relayed as a router's.
 
 #### Scenario: Plugin fails
 - **WHEN** plugin `p1`'s answer to the decide request fails
@@ -737,7 +737,8 @@ request is cancelled. A plugin's `4xx` answer SHALL be relayed as a router's.
 - **THEN** the client receives `502`
 
 #### Scenario: Plugin too slow
-- **WHEN** the router declares `decision: {"timeoutMs": 200}` and `p1` does not answer the decide request
+- **WHEN** the router declares `decision: {"timeoutMs": 200}` and `p1` does not answer the decide request, or answers
+  `200` and never ends the body
 - **THEN** the client receives `504` within the second, and `p1`'s host reports the request cancelled
 
 #### Scenario: Plugin refuses the request
@@ -807,6 +808,11 @@ included, and as the request each fallback candidate is served from.
   `decision.body` answering `{"candidates": ["m1", "m2"]}`, and `m1` declares `defaults: {"temperature": 0.5}` and
   answers `503` after its upstream retries
 - **THEN** `m2` receives the `messages` `p2` passed, with `model` set to `m2` and no `temperature`
+
+#### Scenario: Skip inside an in-process call
+- **WHEN** `p2` calls `/openai/v1/chat/completions` with `model: rf`, and `rf` answers
+  `{"candidates": ["missing", "m2"]}`, where no deployment `missing` exists
+- **THEN** `m2` receives the `messages` `p2` passed, with `model` set to `m2`
 
 #### Scenario: In-process call on deployments-POST
 - **WHEN** `p2` calls `/openai/deployments/r2/chat/completions`

@@ -140,3 +140,26 @@ A review of the whole PR against `development` found two defects, both fixed:
 - **A plugin future that succeeds with `null` hung the request.** `EmbeddedProxyRequest.send` now fails the attempt,
   as for a plugin that throws. `EmbeddedOriginApiTest.testPluginAnswersNull`; deployment-origin "Embedded origin
   failure".
+
+## PR review, round 2
+
+Fixed:
+- **A skipped candidate in an in-process call re-entered with the call's live tree.** On a refusal before anything
+  was sent (`nextCandidateOrError`), the pass's request body was still unset, so the re-entry took the call's tree, not
+  the serialization D6 makes, and reset the body's read time. `nextCandidateOrError` now resets the request body to
+  the original bytes, as `retryWithNextCandidate` does; for a pass with client bytes this changes nothing. Only `model`
+  changes before such a refusal today, so this closes a latent gap.
+  `EmbeddedDecisionApiTest.testSkipInsideAnInProcessCall`; router-deployment "Skip inside an in-process call".
+- **The `OriginHost.cancelled()` Javadoc** said a decide plugin that answered is never told. D3 and
+  `testPluginTooSlow` tell a plugin that sent a status and then stalled its body past the deadline. The Javadoc,
+  `plugins.md` and the router-deployment requirement now say "has not finished its answer".
+
+Rejected:
+- A plugin answer whose `body()` is `null`. It breaks the `OriginResponse` contract, as a `null` `headers()` or a
+  throwing `statusCode()` would. Core guards its own seam, the future's value (round 1), not each method of the
+  plugin's answer. The decide still fails with `502`, and the pass's end closes the attempt.
+- A notice's plugin instance is given back when its answer settles, before its body is read. D3 records this; a
+  notice answer is `{}`, and a close needs a settings change in that window, whose effect is a notice failure, which
+  is logged and ignored.
+- `ChildPass` keeps each call's response until the attempt closes, and `closeChildPasses` keeps the closed attempts
+  until the pass ends. Today's plugins make at most one call per attempt; bound the list when a plugin makes many.

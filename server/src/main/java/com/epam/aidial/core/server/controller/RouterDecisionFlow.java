@@ -312,6 +312,9 @@ public class RouterDecisionFlow {
             return error;
         }
         if (!context.getResponse().closed()) {
+            // the next candidate starts from the client's bytes, as after a failed call: for an in-process call, the
+            // serialization, not the call's tree the refused candidate may have changed
+            context.setRequestBody(context.getOriginalRequestBody());
             if (decision.hasNext()) {
                 log.warn("Candidate {} of router {} skipped: {}", decision.current(), decision.getRouterName(), error.getMessage());
                 decision.skip(status, reason);

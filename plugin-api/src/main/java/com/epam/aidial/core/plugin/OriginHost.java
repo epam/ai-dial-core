@@ -39,9 +39,9 @@ public interface OriginHost {
      * writes no analytics row. An answer the plugin still gives is handled as an HTTP origin's answer after its
      * client went away: a model's answer is read to the end and charged.
      *
-     * <p>On a router's {@code POST /decide} request it completes only when the plugin has not answered within the
-     * router's {@code decision.timeoutMs}; Core does not watch the client of a decide request, and a plugin that
-     * answered, however its answer turned out, is never told.
+     * <p>On a router's {@code POST /decide} request it completes only when the plugin has not finished its answer, the
+     * status and the whole body, within the router's {@code decision.timeoutMs}; Core does not watch the client of a
+     * decide request, and a plugin that finished its answer, however it turned out, is never told.
      */
     Future<Void> cancelled();
 }

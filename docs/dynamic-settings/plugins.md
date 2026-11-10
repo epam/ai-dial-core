@@ -83,7 +83,7 @@ A [router in decision mode](routers.md#decision-mode) may serve an interface in 
 
 * **The key.** The decide request's `API-KEY` is the decide request's key, and the plugin's calls through its host carry it, as a router service's calls with that header do. In process the host serves the create operations only: `GET /v1/user/info` and file reads go to DIAL Core over HTTP with that `API-KEY`. The caller is in the request, so a plugin rarely needs them.
 * **When its calls end.** When the decide call ends, once DIAL Core has read the plugin's answer, DIAL Core cancels the plugin's calls still open and answers later ones `401`. A notice request (`X-DIAL-ROUTER-NOTICE: true`) carries no key: every call made while answering it is answered `401`.
-* **Cancellation.** DIAL Core does not watch the client of a decide request. `OriginHost.cancelled()` completes only when the plugin has not answered within the router's `decision.timeoutMs`; a plugin that answered is never told.
+* **Cancellation.** DIAL Core does not watch the client of a decide request. `OriginHost.cancelled()` completes only when the plugin has not finished its answer, the status and the whole body, within the router's `decision.timeoutMs`; a plugin that finished its answer is never told.
 
 ### The forward sample
 

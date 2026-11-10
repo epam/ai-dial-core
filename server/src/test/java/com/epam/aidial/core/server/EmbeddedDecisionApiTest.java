@@ -424,6 +424,21 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     @SneakyThrows
+    void testSkipInsideAnInProcessCall() {
+        try (TestWebServer server = server(request -> isDecide(request) ? json(200, "{\"candidates\": [\"missing\", \"m2\"]}")
+                : answer(request))) {
+            verify(chat("app", CHAT_BODY, "X-Test-Call", "/openai/v1/chat/completions", "X-Test-Call-Model", "rf"), 200);
+        }
+        JsonNode served = ProxyUtil.MAPPER.readTree(single(request -> isFor(request, "m2")).getBody().readUtf8());
+        assertEquals("hi", served.path("messages").path(0).path("content").asText());
+        assertEquals("m2", served.path("model").asText());
+        assertEquals("rf", TestOriginPluginProvider.REQUESTS.get(0).bodyTree().path("model").asText(),
+                "the next candidate is served from the serialization, not from the call's tree");
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
     void testInProcessCallOnDeploymentsPost() {
         try (TestWebServer server = server(request -> isDecide(request) ? json(200, "{\"candidates\": [\"m1\"]}") : answer(request))) {
             verify(chat("app", CHAT_BODY, "X-Test-Call", "/openai/deployments/r2/chat/completions"), 200);
