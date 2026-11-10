@@ -2376,15 +2376,15 @@ public class ConfigResourceController implements Controller {
         }
     }
 
-    private static ObjectNode redactAuthSettingsSecrets(ObjectNode node, boolean admin) {
-        redactSecretFields(node.get("auth_settings"), admin);
+    private static ObjectNode redactAuthSettingsSecrets(ObjectNode node, boolean revealHint) {
+        redactSecretFields(node.get("auth_settings"), revealHint);
         return node;
     }
 
-    private static ObjectNode redactExternalServiceSecrets(ObjectNode node, boolean admin) {
+    private static ObjectNode redactExternalServiceSecrets(ObjectNode node, boolean revealHint) {
         JsonNode externalServices = node.get("external_services");
         if (externalServices != null && externalServices.isObject()) {
-            externalServices.forEach(service -> redactSecretFields(service.get("auth_settings"), admin));
+            externalServices.forEach(service -> redactSecretFields(service.get("auth_settings"), revealHint));
         }
         return node;
     }
@@ -2411,6 +2411,12 @@ public class ConfigResourceController implements Controller {
                 : SecretFieldProcessor.stripEncryptedFields(record.getPayload(), entityClass);
         if (payload != null) {
             node.setAll(payload);
+        }
+        ResourceTypes type = resourceType();
+        if (type == ResourceTypes.TOOL_SET) {
+            redactAuthSettingsSecrets(node, false);
+        } else if (type == ResourceTypes.APPLICATION) {
+            redactExternalServiceSecrets(node, false);
         }
         node.put("name", record.getSimpleName());
         node.put("status", "invalid");
