@@ -61,22 +61,20 @@ public class AliasService {
     }
 
     /**
-     * Whether {@code resource} is where an alias is stored: an item directly in {@code aliases/public/} or
-     * {@code aliases/platform/}.
+     * Whether {@code resource} is where an alias is stored: an item directly in {@code aliases/public/}.
+     * Platform aliases ({@code aliases/platform/}) are merged into the config at reload time, not stored here.
      */
     public static boolean isStoredAliasLocation(ResourceDescriptor resource) {
         return resource.getType() == ResourceTypes.ALIAS
-                && (ResourceDescriptor.PUBLIC_BUCKET.equals(resource.getBucketName())
-                        || ResourceDescriptor.PLATFORM_BUCKET.equals(resource.getBucketName()))
+                && ResourceDescriptor.PUBLIC_BUCKET.equals(resource.getBucketName())
                 && !resource.isFolder()
                 && resource.getParentPath() == null;
     }
 
     /**
-     * The alias stored at {@code resource}, named by its url ({@code aliases/public/<name>} or
-     * {@code aliases/platform/<name>}), or null when the resource is not directly in one of those folders, does not
-     * exist, or cannot be read as an alias. Reads storage (through the resource cache), so it runs on the task
-     * executor.
+     * The alias stored at {@code resource}, named by its url ({@code aliases/public/<name>}), or null when the
+     * resource is not directly in {@code aliases/public/}, does not exist, or cannot be read as an alias. Reads
+     * storage (through the resource cache), so it runs on the task executor.
      */
     @Nullable
     public Alias findStoredAlias(ResourceDescriptor resource) {
@@ -88,24 +86,21 @@ public class AliasService {
     }
 
     /**
-     * The aliases stored directly in {@code aliases/public/} and {@code aliases/platform/}, each named by its url; a
-     * body that cannot be read as an alias is logged and left out. One folder listing and one read per alias, so it
-     * runs on the task executor.
+     * The aliases stored directly in {@code aliases/public/}, each named by its url; a body that cannot be read as
+     * an alias is logged and left out. One folder listing and one read per alias, so it runs on the task executor.
      */
     public List<Alias> listStoredAliases() {
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
+                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, null);
         List<Alias> aliases = new ArrayList<>();
-        for (String bucket : List.of(ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PLATFORM_BUCKET)) {
-            ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
-                    bucket, bucket + ResourceDescriptor.PATH_SEPARATOR, null);
-            for (Pair<ResourceItemMetadata, String> item : resourceService.listResources(folder, ignored -> { })) {
-                ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(item.getKey().getUrl(), encryptionService);
-                if (item.getValue() == null || !isStoredAliasLocation(resource)) {
-                    continue;
-                }
-                Alias alias = parseStored(resource, item.getValue());
-                if (alias != null) {
-                    aliases.add(alias);
-                }
+        for (Pair<ResourceItemMetadata, String> item : resourceService.listResources(folder, ignored -> { })) {
+            ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(item.getKey().getUrl(), encryptionService);
+            if (item.getValue() == null || !isStoredAliasLocation(resource)) {
+                continue;
+            }
+            Alias alias = parseStored(resource, item.getValue());
+            if (alias != null) {
+                aliases.add(alias);
             }
         }
         return aliases;

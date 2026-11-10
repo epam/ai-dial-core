@@ -1023,6 +1023,32 @@ public final class ConfigPostProcessor {
     }
 
     /**
+     * Targeted per-type helper for {@link MergedConfigStore}'s partial-update path — validates the
+     * single written entry. Sets the alias's name from {@code mapKey} and validates its target against the
+     * current config. A missing target is only a warning: the alias is kept but its calls answer 503.
+     */
+    static void validateSingleAlias(Config config, String mapKey,
+                                    @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Alias alias = config.getAliases().get(mapKey);
+        if (alias == null) {
+            return;
+        }
+        alias.setName(mapKey);
+        List<ValidationWarning> warnings = AliasTargets.validate(alias, config);
+        if (warnings.isEmpty()) {
+            if (AliasTargets.isTargetMissing(alias, config)) {
+                log.warn("Alias {} points to a missing deployment {}", mapKey, alias.getTarget().getPath());
+            }
+            return;
+        }
+        if (onSkip == null) {
+            throw new InvalidEntityException(ResourceTypes.ALIAS, mapKey, warnings);
+        }
+        config.getAliases().remove(mapKey);
+        onSkip.accept(ResourceTypes.ALIAS, new InvalidEntityException(ResourceTypes.ALIAS, mapKey, warnings));
+    }
+
+    /**
      * Runs after every other deployment type, so the name check sees all of them and a target is looked up in maps
      * already cleared of invalid entries. A target the config does not have is only a warning: one broken alias must
      * not stop the config from loading, and calls of it answer 503.

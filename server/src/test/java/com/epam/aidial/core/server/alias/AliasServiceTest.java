@@ -214,47 +214,37 @@ class AliasServiceTest {
 
     @Test
     void storedAliasIsReadOnDemandAndNamedByItsUrl() {
-        ResourceDescriptor publicResource = ResourceDescriptorFactory.fromAnyUrl("aliases/public/pub-v1", null);
-        when(resourceService.getResource(publicResource))
+        ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl("aliases/public/pub-v1", null);
+        when(resourceService.getResource(resource))
                 .thenReturn("{\"userRoles\":[\"default-user\"],\"target\":{\"path\":\"models/gpt-4\"}}");
-        Alias publicStored = service.findStoredAlias(publicResource);
-        when(context.getUserRoles()).thenReturn(List.of("default-user"));
-        assertEquals("aliases/public/pub-v1", publicStored.getName());
-        assertEquals(Set.of("default-user"), publicStored.getUserRoles());
-        assertEquals("aliases/public/pub-v1", ((AliasPass) service.toPass(context, publicStored)).getAlias().getName());
 
-        ResourceDescriptor platformResource = ResourceDescriptorFactory.fromAnyUrl("aliases/platform/plt-v1", null);
-        when(resourceService.getResource(platformResource))
-                .thenReturn("{\"userRoles\":[\"default-user\"],\"target\":{\"path\":\"models/gpt-4\"}}");
-        Alias platformStored = service.findStoredAlias(platformResource);
-        assertEquals("aliases/platform/plt-v1", platformStored.getName());
-        assertEquals("aliases/platform/plt-v1", ((AliasPass) service.toPass(context, platformStored)).getAlias().getName());
+        Alias stored = service.findStoredAlias(resource);
+        when(context.getUserRoles()).thenReturn(List.of("default-user"));
+
+        assertEquals("aliases/public/pub-v1", stored.getName());
+        assertEquals(Set.of("default-user"), stored.getUserRoles());
+        assertEquals("aliases/public/pub-v1", ((AliasPass) service.toPass(context, stored)).getAlias().getName());
     }
 
     @Test
-    void onlyItemsDirectlyInThePublicOrPlatformAliasFolderAreStoredAliases() {
+    void onlyItemsDirectlyInThePublicAliasFolderAreStoredAliases() {
         assertNull(service.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl("aliases/public/folder/pub-v1", null)));
         assertNull(service.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl("aliases/public/missing", null)));
-        assertNull(service.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl("aliases/platform/folder/plt-v1", null)));
-        assertNull(service.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl("aliases/platform/missing", null)));
+        assertNull(service.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl("aliases/platform/plt-v1", null)));
         ResourceDescriptor broken = ResourceDescriptorFactory.fromAnyUrl("aliases/public/broken", null);
         when(resourceService.getResource(broken)).thenReturn("{\"displayName\":\"no target\"}");
         assertNull(service.findStoredAlias(broken));
     }
 
     @Test
-    void storedAliasesAreListedFromBothBucketsFlat() {
-        ResourceDescriptor publicFlat = ResourceDescriptorFactory.fromAnyUrl("aliases/public/pub-v1", null);
-        ResourceDescriptor publicNested = ResourceDescriptorFactory.fromAnyUrl("aliases/public/folder/pub-v2", null);
-        ResourceDescriptor platformFlat = ResourceDescriptorFactory.fromAnyUrl("aliases/platform/plt-v1", null);
+    void storedAliasesAreListedFlat() {
+        ResourceDescriptor flat = ResourceDescriptorFactory.fromAnyUrl("aliases/public/pub-v1", null);
+        ResourceDescriptor nested = ResourceDescriptorFactory.fromAnyUrl("aliases/public/folder/pub-v2", null);
         String body = "{\"target\":{\"path\":\"models/gpt-4\"}}";
-        when(resourceService.listResources(any(), any()))
-                .thenReturn(List.of(Pair.of(new ResourceItemMetadata(publicFlat), body),
-                        Pair.of(new ResourceItemMetadata(publicNested), body)))
-                .thenReturn(List.of(Pair.of(new ResourceItemMetadata(platformFlat), body)));
+        when(resourceService.listResources(any(), any())).thenReturn(List.of(
+                Pair.of(new ResourceItemMetadata(flat), body), Pair.of(new ResourceItemMetadata(nested), body)));
 
-        assertEquals(List.of("aliases/public/pub-v1", "aliases/platform/plt-v1"),
-                service.listStoredAliases().stream().map(Alias::getName).toList());
+        assertEquals(List.of("aliases/public/pub-v1"), service.listStoredAliases().stream().map(Alias::getName).toList());
     }
 
     private static Alias alias(AliasPresentation presentation, String path) {

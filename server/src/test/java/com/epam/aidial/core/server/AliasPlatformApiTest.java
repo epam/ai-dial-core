@@ -1,9 +1,5 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.epam.aidial.core.storage.util.EtagHeader;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -19,14 +15,17 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Admin-managed aliases stored under {@code aliases/platform/<name>}: the management API, calling them by their url
- * under their {@code userRoles}, listings, health, and what is refused for them.
+ * Admin-managed aliases stored under {@code aliases/platform/<name>}: the management API, calling them by their
+ * short name after a config reload, listings, health, and what is refused for them.
+ *
+ * <p>Platform aliases differ from public aliases ({@code aliases/public/<name>}) in one key way: they are merged
+ * into the config at reload time and callable by their short name (e.g., {@code plt-v1}), just like a config-file
+ * alias. The management API still lives at {@code /v1/aliases/platform/<name>}.
  */
 class AliasPlatformApiTest extends ResourceBaseTest {
 
     private static final String CONFIG = "dial-config/aliases.json";
     private static final String ALIAS_URL = "/v1/aliases/platform/";
-    private static final String PLT = "aliases/platform/plt-v1";
 
     private static final String CHAT_REQUEST = "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String CHAT_RESPONSE = "{\"id\":\"cmpl_1\",\"object\":\"chat.completion\","
@@ -60,18 +59,21 @@ class AliasPlatformApiTest extends ResourceBaseTest {
 
         Response listing = admin(HttpMethod.GET, "/v1/metadata/aliases/platform/", null);
         assertEquals(200, listing.status(), listing.body());
-        assertTrue(listing.body().contains(PLT), listing.body());
+        assertTrue(listing.body().contains("aliases/platform/plt-v1"), listing.body());
 
+        // platform alias is callable by short name after a reload
+        reload();
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
                     "Content-Type", "application/json");
-            assertEquals(200, chat(PLT, "default-key").status());
+            assertEquals(200, chat("plt-v1", "default-key").status());
 
             assertEquals(204, admin(HttpMethod.DELETE, ALIAS_URL + "plt-v1", null).status());
+            reload();
             assertEquals(404, admin(HttpMethod.GET, ALIAS_URL + "plt-v1", null).status());
-            assertEquals(404, chat(PLT, "default-key").status());
+            assertEquals(404, chat("plt-v1", "default-key").status());
         }
-        assertFalse(ids(models("default-key")).contains(PLT));
+        assertFalse(ids(models("default-key")).contains("plt-v1"));
     }
 
     @Test
@@ -94,7 +96,6 @@ class AliasPlatformApiTest extends ResourceBaseTest {
         assertEquals(404, admin(HttpMethod.PUT, "/v1/aliases/" + bucket + "/plt-v1", MODEL_ALIAS).status());
         assertEquals(400, putAlias("folder/plt-v1", MODEL_ALIAS).status());
         assertEquals(400, putAlias("bad%20name", MODEL_ALIAS).status());
-        // the generic resource API does not serve aliases
         assertEquals(404, send(HttpMethod.PUT, "/v1/aliases/" + bucket + "/x", null, MODEL_ALIAS).status());
     }
 
@@ -104,7 +105,6 @@ class AliasPlatformApiTest extends ResourceBaseTest {
         assertBadRequest("{\"userRoles\":{\"role\":\"default-user\"},\"target\":{\"path\":\"models/gpt-4-internal\"}}");
         assertBadRequest("{\"endpoint\":\"http://x\",\"target\":{\"path\":\"models/gpt-4-internal\"}}");
         assertBadRequest("{\"target\":{\"path\":\"aliases/assistant\"}}");
-        assertBadRequest("{\"presentAs\":\"toolset\",\"target\":{\"path\":\"models/gpt-4-internal\"}}");
         assertBadRequest("{\"displayName\":\"No target\"}");
         assertBadRequest("{\"name\":\"other-v1\",\"target\":{\"path\":\"models/gpt-4-internal\"}}");
 
@@ -116,109 +116,84 @@ class AliasPlatformApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void platformResourceTargetIsAccepted() {
-        // a platform application can be the target of a platform alias
         verify(send(HttpMethod.PUT, "/v1/applications/platform/plt-app", null,
                 "{\"endpoint\": \"http://localhost:4848/plt-app/chat/completions\"}", "authorization", "admin"), 200);
         assertEquals(200, putAlias("plt-v1",
                 "{\"userRoles\":[\"default-user\"],\"target\":{\"path\":\"applications/platform/plt-app\"}}").status());
+        reload();
 
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/plt-app/chat/completions", 200, CHAT_RESPONSE,
                     "Content-Type", "application/json");
-            assertEquals(200, chat(PLT, "default-key").status());
+            assertEquals(200, chat("plt-v1", "default-key").status());
         }
     }
 
     @Test
     @DialConfigLocation(CONFIG)
-    void listedIdIsTheIdThatIsCalled() {
-        assertEquals(200, putAlias("Plt.v1_2-x", MODEL_ALIAS).status());
-        String id = "aliases/platform/Plt.v1_2-x";
-        assertTrue(ids(models("default-key")).contains(id), models("default-key").body());
-        try (TestWebServer server = new TestWebServer(4848)) {
-            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
-                    "Content-Type", "application/json");
-            assertEquals(200, chat(id, "default-key").status());
-        }
-    }
-
-    @Test
-    @DialConfigLocation(CONFIG)
-    void storedBlobThatCallsIgnoreIsShownInvalid() {
-        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
-                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "hand-v1");
-        dial.getProxy().getResourceService().putResource(descriptor, "{\"displayName\":\"no target\"}", EtagHeader.ANY, "test", false);
-
-        Response read = admin(HttpMethod.GET, ALIAS_URL + "hand-v1", null);
-        assertEquals(200, read.status(), read.body());
-        JsonObject body = new JsonObject(read.body());
-        assertEquals("invalid", body.getString("status"));
-        assertEquals("no target", body.getString("displayName"));
-        assertTrue(body.getJsonArray("validationWarnings").encode().contains("target.path"), read.body());
-
-        assertEquals(404, chat("aliases/platform/hand-v1", "default-key").status());
-        assertFalse(ids(models("default-key")).contains("aliases/platform/hand-v1"));
-    }
-
-    @Test
-    @DialConfigLocation(CONFIG)
-    void userRolesDecideWhoMayCallStoredAlias() {
+    void userRolesDecideWhoMayCallPlatformAlias() {
         assertEquals(200, putAlias("plt-v1", RESTRICTED_ALIAS).status());
+        reload();
 
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
                     "Content-Type", "application/json");
 
-            assertEquals(200, chat(PLT, "default-key").status());
+            assertEquals(200, chat("plt-v1", "default-key").status());
             // power-user may call the target directly, but has no role on the alias
-            assertEquals(403, chat(PLT, "power-key").status());
+            assertEquals(403, chat("plt-v1", "power-key").status());
         }
     }
 
     @Test
     @DialConfigLocation(CONFIG)
-    void userRolesDecideWhereStoredAliasIsListed() {
+    void userRolesDecideWhereAliasIsListed() {
         assertEquals(200, putAlias("plt-v1", RESTRICTED_ALIAS).status());
+        reload();
 
-        assertTrue(ids(models("default-key")).contains(PLT));
-        assertFalse(ids(models("power-key")).contains(PLT));
-        assertEquals(200, send(HttpMethod.GET, "/openai/models/" + PLT, null, "", "api-key", "default-key").status());
-        assertEquals(403, send(HttpMethod.GET, "/openai/models/" + PLT, null, "", "api-key", "power-key").status());
+        assertTrue(ids(models("default-key")).contains("plt-v1"));
+        assertFalse(ids(models("power-key")).contains("plt-v1"));
+        assertEquals(200, send(HttpMethod.GET, "/openai/models/plt-v1", null, "", "api-key", "default-key").status());
+        assertEquals(403, send(HttpMethod.GET, "/openai/models/plt-v1", null, "", "api-key", "power-key").status());
     }
 
     @Test
     @DialConfigLocation(CONFIG)
-    void storedAliasWithoutUserRolesTakesTheTargetRoles() {
+    void platformAliasWithoutUserRolesTakesTheTargetRoles() {
         assertEquals(200, putAlias("open-v1", "{\"target\":{\"path\":\"models/gpt-4-internal\"}}").status());
+        reload();
 
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
                     "Content-Type", "application/json");
 
             // gpt-4-internal is for power-user only
-            assertEquals(403, chat("aliases/platform/open-v1", "default-key").status());
-            assertEquals(200, chat("aliases/platform/open-v1", "power-key").status());
+            assertEquals(403, chat("open-v1", "default-key").status());
+            assertEquals(200, chat("open-v1", "power-key").status());
         }
-        assertTrue(ids(models("power-key")).contains("aliases/platform/open-v1"));
-        assertFalse(ids(models("default-key")).contains("aliases/platform/open-v1"));
+        assertTrue(ids(models("power-key")).contains("open-v1"));
+        assertFalse(ids(models("default-key")).contains("open-v1"));
     }
 
     @Test
     @DialConfigLocation(CONFIG)
-    void brokenTargetIsAcceptedAndReported() {
+    void brokenTargetIsAcceptedAndReportedAfterReload() {
         assertEquals(200, putAlias("broken-v1", "{\"target\":{\"path\":\"models/missing\"}}").status());
+        reload();
 
-        assertEquals(503, chat("aliases/platform/broken-v1", "default-key").status());
+        assertEquals(503, chat("broken-v1", "default-key").status());
         Response health = admin(HttpMethod.GET, "/v1/admin/health/config", null);
         assertEquals(200, health.status(), health.body());
-        assertTrue(health.body().contains("\"aliases/platform/broken-v1\""), health.body());
-        assertFalse(ids(models("default-key")).contains("aliases/platform/broken-v1"));
+        // platform alias is reported by its config key (short name under aliases/)
+        assertTrue(health.body().contains("aliases/broken-v1"), health.body());
+        assertFalse(ids(models("default-key")).contains("broken-v1"));
     }
 
     @Test
     @DialConfigLocation(CONFIG)
-    void otherBucketsAndFoldersHoldNoAlias() {
+    void otherBucketsAndFoldersHoldNoPlatformAlias() {
         assertEquals(200, putAlias("plt-v1", MODEL_ALIAS).status());
+        reload();
         AtomicInteger calls = new AtomicInteger();
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", request -> {
@@ -228,7 +203,7 @@ class AliasPlatformApiTest extends ResourceBaseTest {
 
             assertEquals(404, chat("aliases/" + bucket + "/plt-v1", "default-key").status());
             assertEquals(404, chat("aliases/platform/folder/plt-v1", "default-key").status());
-            for (String id : List.of("platform/plt-v1", "models/platform/plt-v1")) {
+            for (String id : List.of("aliases/platform/plt-v1", "platform/plt-v1")) {
                 Response response = chat(id, "default-key");
                 assertNotEquals(200, response.status(), id + ": " + response.body());
             }
@@ -238,7 +213,7 @@ class AliasPlatformApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void aliasesCannotBeSharedPublishedCopiedOrMoved() {
+    void aliasesCannotBeSharedCopiedOrMoved() {
         assertEquals(200, putAlias("plt-v1", MODEL_ALIAS).status());
 
         Response share = operationRequest("/v1/ops/resource/share/create",
@@ -277,6 +252,11 @@ class AliasPlatformApiTest extends ResourceBaseTest {
     private Response chat(String deployment, String apiKey) {
         return send(HttpMethod.POST, "/openai/deployments/" + deployment + "/chat/completions", null, CHAT_REQUEST,
                 "api-key", apiKey, "Content-Type", "application/json");
+    }
+
+    private void reload() {
+        Response response = send(HttpMethod.POST, "/v1/ops/config/reload", null, null, "Authorization", "admin");
+        assertEquals(200, response.status(), response.body());
     }
 
     private Response models(String apiKey) {
