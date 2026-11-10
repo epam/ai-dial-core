@@ -100,13 +100,19 @@ encoded resource name.
 
 ### Requirement: Who may declare resource dependencies
 While the static setting `applications.allowUserResourceDependencies` is `false` (the default), a write of an
-application with a non-empty section by a caller without explicit admin access SHALL be answered `403` before the shape
-rules are checked (a body that does not parse is still `400`). An admin's write to their own bucket is not gated. With
-the setting `true`, a user's section SHALL pass the same shape rules as an admin's.
+application by a caller without explicit admin access that submits a `resource_dependencies` section **different from
+the stored one** SHALL be answered `403` after the shape rules are checked (a body that does not parse is still `400`;
+a malformed section is `400`). A write that omits the section inherits the stored one and is not gated. A write that
+submits the same section as stored is accepted. An admin's write to their own bucket is not gated. With the setting
+`true`, a user's section SHALL pass the same shape rules as an admin's.
 
-#### Scenario: User with the setting off
-- **WHEN** a user sends `PUT /v1/applications/<own bucket>/app` with a valid section, or with a malformed one
-- **THEN** both writes are answered `403`
+#### Scenario: User with the setting off — valid section
+- **WHEN** a user sends `PUT /v1/applications/<own bucket>/app` with a valid section and no stored list
+- **THEN** Core answers `403`
+
+#### Scenario: User with the setting off — malformed section
+- **WHEN** a user sends `PUT /v1/applications/<own bucket>/app` with a malformed section
+- **THEN** Core answers `400`
 
 #### Scenario: Admin in their own bucket
 - **WHEN** an admin writes an application with a valid section to the admin's own bucket, the setting off
@@ -270,18 +276,18 @@ application created again at a deleted one's id SHALL start unapproved.
 - **THEN** the new review copy and, after approval, the published application are not approved
 
 ### Requirement: The approval lives only while the list does
-An update that removes the list SHALL delete the approval. A write by a caller without explicit admin access SHALL
-delete the approval of an application that declares a list or declared one before; an administrator's edit SHALL keep
-it.
+An update that removes the list SHALL delete the approval. A write that changes `resource_dependencies` — by a
+non-admin or by an administrator removing the list — SHALL delete the approval. A non-admin write that omits the
+section inherits the stored list and SHALL keep the approval. An administrator's edit to other fields SHALL keep it.
 
 #### Scenario: List removed and restored
 - **WHEN** an update removes an approved application's list, and a later update restores it
 - **THEN** `GET /v1/admin-consent/<id>` answers `{"consented": false}` after each
 
-#### Scenario: Edited by a non-administrator
+#### Scenario: Edited by a non-administrator — list unchanged
 - **WHEN** an administrator changes an approved application's endpoint, and then an org-unit editor does, keeping the
   list
-- **THEN** the application is approved after the first edit and not after the second
+- **THEN** the application is approved after both edits
 
 ### Requirement: Dependencies resolved into the per-request key
 On every route of the chat completions, Responses and Messages controllers (`/openai/deployments/{id}/chat/completions`,

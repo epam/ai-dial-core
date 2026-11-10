@@ -2213,11 +2213,11 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"]}"""));
         verify(response, 403);
 
-        // with the flag off a user learns nothing about the shape rules: 403, not 400
+        // a malformed section is a shape error (400) regardless of the author — shape check runs before the ceiling
         response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                 dependencyAppBody("""
                         {"kind": "dial.resourceLink", "link_id": "lnk_bad", "target": {"url": "files/public/*/"}, "access": ["read"]}"""));
-        verify(response, 403);
+        verify(response, 400);
 
         // The ceiling is keyed on the author, not the destination bucket: an admin prototyping in
         // their own bucket authors an admin app — the section is accepted even with the flag off.
