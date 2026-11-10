@@ -121,10 +121,8 @@ public class ConsentController {
             }
     )
     public Future<?> getAdminConsentStatus(String deploymentId) {
-        proxy.getTaskExecutor().submit(() -> {
-            requireAdmin();
-            return proxy.getConsentService().describeAdminConsent(context, deploymentId);
-        }).onSuccess(status -> context.respond(HttpStatus.OK, status))
+        asAdmin(() -> proxy.getConsentService().describeAdminConsent(context, deploymentId))
+                .onSuccess(status -> context.respond(HttpStatus.OK, status))
                 .onFailure(error -> handleAdminConsentError(deploymentId, error));
         return Future.succeededFuture();
     }
@@ -150,7 +148,7 @@ public class ConsentController {
     )
     public Future<?> grantAdminConsent(String deploymentId) {
         context.getRequest().body()
-                .onSuccess(body -> adminConsentOperation(deploymentId, "GRANT",
+                .onSuccess(body -> adminConsentOperation(deploymentId, AdminConsentAction.GRANT,
                         () -> proxy.getConsentService().grantAdminConsent(context, deploymentId, reviewedResources(body))))
                 .onFailure(error -> handleAdminConsentError(deploymentId, error));
         return Future.succeededFuture();
@@ -186,17 +184,19 @@ public class ConsentController {
             }
     )
     public Future<?> withdrawAdminConsent(String deploymentId) {
-        return adminConsentOperation(deploymentId, "WITHDRAW",
+        return adminConsentOperation(deploymentId, AdminConsentAction.WITHDRAW,
                 () -> proxy.getConsentService().withdrawAdminConsent(context, deploymentId));
     }
 
-    /** Admin only, checked before the deployment is resolved; audited on success and on failure. */
-    private Future<?> adminConsentOperation(String deploymentId, String action, Supplier<ConsentGrant> operation) {
-        proxy.getTaskExecutor().submit(() -> {
-            requireAdmin();
-            return operation.get();
-        })
-                .onComplete(result -> ResourceDependencyAuditLog.consent(context, deploymentId, action,
+    /** What an administrator did to an application's approval; the audit line carries the name. */
+    private enum AdminConsentAction {
+        GRANT, WITHDRAW
+    }
+
+    /** Audited on success and on failure. */
+    private Future<?> adminConsentOperation(String deploymentId, AdminConsentAction action, Supplier<ConsentGrant> operation) {
+        asAdmin(operation)
+                .onComplete(result -> ResourceDependencyAuditLog.consent(context, deploymentId, action.name(),
                         result.succeeded() ? snapshotOf(result.result()) : null, result.cause()))
                 .onSuccess(ignored -> context.respond(HttpStatus.OK))
                 .onFailure(error -> handleAdminConsentError(deploymentId, error));
@@ -207,6 +207,14 @@ public class ConsentController {
         return grant == null || grant.getConsent() == null ? null : grant.getConsent().getResources();
     }
 
+    /** Admin only, checked before the deployment is resolved. */
+    private <T> Future<T> asAdmin(Supplier<T> operation) {
+        return proxy.getTaskExecutor().submit(() -> {
+            requireAdmin();
+            return operation.get();
+        });
+    }
+
     private void requireAdmin() {
         // fail-closed: with no admin rules configured nobody is an administrator here
         if (!proxy.getAccessService().hasExplicitAdminAccess(context)) {
@@ -215,6 +223,22 @@ public class ConsentController {
     }
 
     private void handleRequestError(String deploymentId, Throwable error) {
+        handleConsentError("user", deploymentId, error);
+    }
+
+    private void handleAdminConsentError(String deploymentId, Throwable error) {
+        if (error instanceof HttpException httpException) {
+            log.warn("Admin consent rejected for deployment {} status={}", deploymentId, httpException.getStatus());
+            context.respond(httpException);
+        } else if (error instanceof IllegalArgumentException) {
+            log.warn("Invalid admin consent request for deployment {}: {}", deploymentId, error.getMessage());
+            context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+        } else {
+            handleConsentError("admin", deploymentId, error);
+        }
+    }
+
+    private void handleConsentError(String kind, String deploymentId, Throwable error) {
         if (error instanceof PermissionDeniedException) {
             log.warn("Forbidden deployment {}", deploymentId);
             context.respond(HttpStatus.FORBIDDEN, error.getMessage());
@@ -222,29 +246,9 @@ public class ConsentController {
             log.warn("Deployment not found {}", deploymentId, error);
             context.respond(HttpStatus.NOT_FOUND, error.getMessage());
         } else {
-            log.error("Failed to process user consent", error);
+            log.error("Failed to process {} consent", kind, error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to process user consent for deployment=%s".formatted(deploymentId));
-        }
-    }
-
-    private void handleAdminConsentError(String deploymentId, Throwable error) {
-        if (error instanceof PermissionDeniedException) {
-            log.warn("Forbidden admin consent for deployment {}", deploymentId);
-            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
-        } else if (error instanceof ResourceNotFoundException) {
-            log.warn("Deployment not found {}", deploymentId);
-            context.respond(HttpStatus.NOT_FOUND, error.getMessage());
-        } else if (error instanceof HttpException httpException) {
-            log.warn("Admin consent rejected for deployment {} status={}", deploymentId, httpException.getStatus());
-            context.respond(httpException);
-        } else if (error instanceof IllegalArgumentException) {
-            log.warn("Invalid admin consent request for deployment {}: {}", deploymentId, error.getMessage());
-            context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
-        } else {
-            log.error("Failed to process admin consent", error);
-            context.respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to process admin consent for deployment=%s".formatted(deploymentId));
+                    "Failed to process %s consent for deployment=%s".formatted(kind, deploymentId));
         }
     }
 
