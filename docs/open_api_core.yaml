@@ -7805,6 +7805,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/metadata/policies/{bucket}/{path}:
     get:
       tags:
@@ -19732,7 +19733,6 @@ components:
       enum:
       - passthrough
       - translator
-      - embedded
     InterfaceType:
       type: string
       enum:
@@ -21819,6 +21819,8 @@ components:
           $ref: "#/components/schemas/InterfaceType"
         out:
           $ref: "#/components/schemas/InterfaceType"
+        plugin:
+          type: string
     TranslatorRef:
       type: object
       properties:
