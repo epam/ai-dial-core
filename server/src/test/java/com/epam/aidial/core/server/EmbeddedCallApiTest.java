@@ -505,7 +505,10 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
             Response refused = chat("/anthropic/v1/messages", messages("gpt-3-turbo"),
                     "X-Test-Call", "/openai/deployments/gpt-3-turbo/chat/completions");
 
-            assertEquals(429, refused.status(), refused.body());
+            // the call is refused 429; the test plugin answers with that status, and an only origin answering 429
+            // is "Service is not available" to the caller, as for an origin over HTTP
+            assertEquals(503, refused.status(), refused.body());
+            assertEquals("Service is not available", refused.body());
             assertEquals(2, TestOriginPluginProvider.REQUESTS.size());
         }
     }
