@@ -77,7 +77,7 @@ While it answers a request, an origin plugin can call another deployment through
 * **How the call is checked, charged and logged.** As a request the plugin's deployment sends DIAL Core with its per-request key: the target's role, consent and access checks, its limits against the caller's, a token-stats span under the plugin's request, a per-request key for the target's origin, and an analytics row with `parent_deployment` the plugin's deployment. The row has no `request.body`, `response.body` or `assembled_response`, whatever the key: the plugin's own row logs the bodies once. A plugin that changes the body before the call sends the target a body no row carries.
 * **When a call ends.** When DIAL Core cancels the plugin's answer (the client went away, or a retry moved past it), or the plugin cancels the call's answer, the target's request stops as one whose client went away does: a model target still reads its origin to the end and charges it. When the plugin's request ends, or a router in decision mode falls back from the plugin's deployment to another candidate, DIAL Core cancels the answers of its calls that are still open, and answers a later call `401` `Unknown api key`.
 
-A plugin that calls its own deployment calls itself again and again: there is no depth limit.
+A plugin that calls its own deployment calls itself again and again. DIAL Core stops such a chain at 32 deployments: the call past that gets the answer `400` `Call depth limit reached: 32`.
 
 ### Translating for a deployment
 

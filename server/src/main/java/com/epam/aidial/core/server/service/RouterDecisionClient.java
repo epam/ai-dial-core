@@ -21,6 +21,7 @@ import io.netty.channel.ConnectTimeoutException;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
@@ -147,9 +148,13 @@ public class RouterDecisionClient {
         MultiMap headers = routerHeaders(context, router, type, attempts);
         headers.set(Proxy.HEADER_ROUTER_NOTICE, "true");
         // no key: a plugin answering the notice in process has every call it makes refused
+        Vertx vertx = context.getProxy().getVertx();
         request(context, router, type, null, null, timeoutMs, "Tell %s router about a broken answer")
-                .compose(request -> send(request, headers, null))
-                .compose(ProxyResponse::body)
+                .compose(request -> {
+                    // a plugin has no idle timeout: the decision budget bounds the notice, and tells it to stop
+                    long timer = vertx.setTimer(timeoutMs, ignore -> request.reset());
+                    return send(request, headers, null).compose(ProxyResponse::body).onComplete(ignore -> vertx.cancelTimer(timer));
+                })
                 .onFailure(error -> log.warn("Notice to router {} failed: {}", router.getName(), error.getMessage()));
     }
 

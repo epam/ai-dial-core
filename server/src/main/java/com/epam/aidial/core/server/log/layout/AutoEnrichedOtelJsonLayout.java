@@ -165,7 +165,10 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
             Object value = pair.value;
             boolean json = value == null || value instanceof String || value instanceof Number || value instanceof Boolean
                     || value instanceof Collection<?> || value instanceof Map<?, ?> || value instanceof JsonNode;
-            attributes.putIfAbsent(pair.key, json ? value : String.valueOf(value));
+            // not putIfAbsent, which would replace an attribute Core set to null
+            if (!attributes.containsKey(pair.key)) {
+                attributes.put(pair.key, json ? value : String.valueOf(value));
+            }
         }
     }
 

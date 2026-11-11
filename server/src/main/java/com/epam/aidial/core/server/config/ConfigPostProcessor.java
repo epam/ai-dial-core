@@ -198,7 +198,8 @@ public final class ConfigPostProcessor {
         List<PluginProvider.Problem> problems;
         try {
             problems = List.copyOf(provider.validate(plugin.getSettings()));
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | LinkageError e) {
+            // plugin code: a jar missing a class throws NoClassDefFoundError on first use
             log.warn("Plugin provider of type '{}' failed to check plugin '{}'", plugin.getType(), name, e);
             warnings.add(new ValidationWarning("settings", messageWithEntityPrefix("Plugin", name,
                     "The plugin provider of type '" + plugin.getType() + "' failed to check the settings")));

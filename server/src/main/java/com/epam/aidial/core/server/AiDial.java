@@ -164,6 +164,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -572,7 +573,12 @@ public class AiDial {
             }
             close(client, HttpClient::close);
             // no request arrives now, and the plugins close their own Vert.x clients before Vert.x closes
-            close(embeddedOrigins, EmbeddedOrigins::close);
+            try {
+                close(embeddedOrigins, EmbeddedOrigins::close);
+            } catch (TimeoutException e) {
+                // plugin code: one that hangs in close() does not keep the rest from closing
+                log.warn("Plugins did not close in time");
+            }
             close(resourceService);
             close(complexResourceSweepService);
             close(budgetCounterSweepService);

@@ -43,6 +43,11 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
             return proxy.getTaskExecutor().submit(() -> {
                 proxy.getApiKeyStore().updatePerRequestApiKey(perRequestKey, json -> updateAutoSharedAttachments(json, permittedAttachments, perRequestKey));
                 return tree;
+            }).map(stored -> {
+                // an origin plugin's in-process calls share this record and never read the stored key again: without
+                // this its next call would not see the grant. Back on the request's context, where the calls read it
+                addAttachments(context.getApiKeyData(), permittedAttachments);
+                return stored;
             });
         } catch (Throwable e) {
             return Future.failedFuture(e);
@@ -59,6 +64,11 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
             log.error(errorMsg);
             throw new IllegalArgumentException(errorMsg);
         }
+        addAttachments(apiKeyData, permittedAttachments);
+        return ProxyUtil.convertToString(apiKeyData);
+    }
+
+    private static void addAttachments(ApiKeyData apiKeyData, Map<String, Set<ResourceAccessType>> permittedAttachments) {
         for (Map.Entry<String, Set<ResourceAccessType>> entry : permittedAttachments.entrySet()) {
             String url = entry.getKey();
             Set<ResourceAccessType> permissions = entry.getValue();
@@ -68,7 +78,6 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
                 apiKeyData.getAttachedFiles().put(url, new AutoSharedData(permissions));
             }
         }
-        return ProxyUtil.convertToString(apiKeyData);
     }
 
     private void processAttachedFile(String url, Map<String, Set<ResourceAccessType>> permittedAttachments) {

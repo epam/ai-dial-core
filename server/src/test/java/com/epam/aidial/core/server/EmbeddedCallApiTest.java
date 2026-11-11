@@ -218,6 +218,20 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         analyticsRows.forEach(row -> assertEquals("app", row.getDeploymentName()));
     }
 
+    // deployment-origin "Depth limit of calls from an origin plugin"
+
+    @Test
+    void testPluginCallingItsOwnDeployment() {
+        servedApp();
+
+        Response response = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
+                "X-Test-Call", "/openai/deployments/app/chat/completions", "X-Test-Call-Again", "true");
+
+        assertEquals(400, response.status(), response.body());
+        assertTrue(response.body().contains("Call depth limit reached: 32"), response.body());
+        assertEquals(32, TestOriginPluginProvider.REQUESTS.size());
+    }
+
     // deployment-origin "Calls end with the plugin's pass"
 
     @Test

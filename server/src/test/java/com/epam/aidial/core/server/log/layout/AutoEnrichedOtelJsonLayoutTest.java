@@ -495,6 +495,18 @@ class AutoEnrichedOtelJsonLayoutTest {
     }
 
     @Test
+    void shouldKeepCoreNullAttributeOverKeyValuePair() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute(null, null);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        LoggingEvent event = infoEvent("forged");
+        event.addKeyValuePair(new KeyValuePair("user.id", "x"));
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event)).get("Attributes");
+
+        assertTrue(attributes.get("user.id").isNull(), attributes.toString());
+    }
+
+    @Test
     void shouldKeepCoreAttributeOverKeyValuePair() throws Exception {
         contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
         LoggingEvent event = infoEvent("forged");

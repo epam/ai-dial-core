@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <li>{@code X-Test-Call: <path>} calls that path through the host with the request's {@code bodyTree} and relays the
  *   call's answer, a cancel of it counted in {@link #CANCELLED} and passed on. The call carries every header but the
  *   {@code X-Test-Call*} ones, so a plugin of this type serving the target does not call again;</li>
+ *   <li>{@code X-Test-Call-Again} makes the call carry the {@code X-Test-Call*} headers too, so such a target calls again;</li>
  *   <li>{@code X-Test-Call-Model: <name>} sets {@code model} in the tree first;</li>
  *   <li>{@code X-Test-Call-Cancel} cancels the call after its first chunk and answers a chat completion itself;</li>
  *   <li>{@code X-Test-Await-Cancel} answers nothing until the host says the request is cancelled, then counts it in
@@ -217,7 +218,8 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         }
         MultiMap headers = MultiMap.caseInsensitiveMultiMap();
         request.headers().forEach(header -> {
-            if (!header.getKey().regionMatches(true, 0, "X-Test-Call", 0, "X-Test-Call".length())) {
+            if (request.headers().contains("X-Test-Call-Again")
+                    || !header.getKey().regionMatches(true, 0, "X-Test-Call", 0, "X-Test-Call".length())) {
                 headers.add(header.getKey(), header.getValue());
             }
         });

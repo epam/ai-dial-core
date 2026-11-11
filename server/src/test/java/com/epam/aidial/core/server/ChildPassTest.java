@@ -16,6 +16,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -116,6 +117,16 @@ class ChildPassTest {
         OriginResponse answer = await(call("/openai/v1/chat/completions", body()));
 
         assertEquals(401, answer.statusCode());
+        verify(proxy, never()).dispatch(any());
+    }
+
+    @Test
+    void testCallAtTheDepthLimitAnswers400() throws Exception {
+        parent.getProxyApiKeyData().setExecutionPath(Collections.nCopies(ChildPass.MAX_CALL_DEPTH, "app"));
+
+        OriginResponse answer = await(call("/openai/v1/chat/completions", body()));
+
+        assertEquals(400, answer.statusCode());
         verify(proxy, never()).dispatch(any());
     }
 

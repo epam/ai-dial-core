@@ -75,6 +75,16 @@ public class TranslatorTest {
     }
 
     @Test
+    void blankPluginIsReadAsAbsent() throws Exception {
+        Translator translator = MAPPER.readValue("""
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "http://t", "plugin": ""}
+                """, Translator.class);
+
+        assertNull(translator.getPlugin());
+        assertEquals("http://t", translator.getBaseUrl());
+    }
+
+    @Test
     void inlineDefinitionMissingOutIsRejectedOnRead() {
         String json = """
                 {

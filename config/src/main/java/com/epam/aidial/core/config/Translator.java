@@ -66,7 +66,8 @@ public class Translator {
         }
         this.in = in;
         this.out = out;
-        this.baseUrl = baseUrl;
-        this.plugin = plugin;
+        // the one left out is null, not blank: readers tell the two kinds apart by null
+        this.baseUrl = hasBaseUrl ? baseUrl : null;
+        this.plugin = hasPlugin ? plugin : null;
     }
 }

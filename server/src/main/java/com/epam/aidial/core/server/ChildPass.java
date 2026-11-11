@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.upstream.ChildServerRequest;
 import com.epam.aidial.core.server.upstream.ChildServerResponse;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import io.opentelemetry.sdk.trace.IdGenerator;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.impl.ContextInternal;
@@ -15,9 +16,7 @@ import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 import javax.annotation.Nullable;
 
 /**
@@ -37,6 +36,10 @@ public final class ChildPass implements OriginHost {
     private static final List<RouteTemplate> CREATE_ROUTES = List.of(RouteTemplate.POST_DEPLOYMENT,
             RouteTemplate.LLM_CHAT_COMPLETIONS_API, RouteTemplate.LLM_RESPONSES_API, RouteTemplate.LLM_RESPONSES_API_UNVERSIONED,
             RouteTemplate.LLM_MESSAGES_API);
+
+    // a plugin whose calls come back to itself is stopped here: an in-process call has no connection pool or timeout
+    // to slow it down, as a deployment calling itself over HTTP has
+    static final int MAX_CALL_DEPTH = 32;
 
     private final Proxy proxy;
     private final ProxyContext parent;
@@ -102,9 +105,16 @@ public final class ChildPass implements OriginHost {
             return pluginContext.failedFuture(new IllegalArgumentException("A call cannot create a background response"));
         }
 
+        ApiKeyData key = callKey != null ? callKey : parent.getProxyApiKeyData();
+        List<String> executionPath = key.getExecutionPath();
+        if (executionPath != null && executionPath.size() >= MAX_CALL_DEPTH) {
+            response.setStatusCode(HttpStatus.BAD_REQUEST.getCode()).end("Call depth limit reached: " + MAX_CALL_DEPTH);
+            return response.answer();
+        }
+
         ChildServerRequest request = new ChildServerRequest(call.uri(), call.headers(), response);
-        ProxyContext child = new ProxyContext(proxy, request, callKey != null ? callKey : parent.getProxyApiKeyData(), null, null,
-                mintSpanId(), parent.getTraceFlags());
+        ProxyContext child = new ProxyContext(proxy, request, key, null, null,
+                IdGenerator.random().generateSpanId(), parent.getTraceFlags());
         child.setCallTree(call.body());
         responses.add(response);
         response.answer().onSuccess(answer -> {
@@ -171,9 +181,5 @@ public final class ChildPass implements OriginHost {
 
     private static boolean isResponses(String path) {
         return RouteTemplate.LLM_RESPONSES_API.matches(path) || RouteTemplate.LLM_RESPONSES_API_UNVERSIONED.matches(path);
-    }
-
-    private static String mintSpanId() {
-        return HexFormat.of().toHexDigits(ThreadLocalRandom.current().nextLong());
     }
 }
