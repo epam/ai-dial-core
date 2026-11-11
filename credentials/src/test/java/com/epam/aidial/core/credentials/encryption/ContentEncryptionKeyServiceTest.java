@@ -93,4 +93,15 @@ class ContentEncryptionKeyServiceTest {
         assertEquals(expectedDescriptor, descriptorCaptor.getValue());
     }
 
+    @Test
+    void invalidateKey_forRootBucket() {
+        BucketInfo bucketInfo = new BucketInfo("public", "public/");
+        when(rootBucketExtractor.apply(bucketInfo)).thenReturn(bucketInfo);
+
+        contentEncryptionKeyService.invalidateKey(bucketInfo);
+
+        verify(mockContentEncryptionKeyManager).invalidate(
+                new ResourceDescriptor(ResourceTypes.ENCRYPTION_KEYS, CEK_FILENAME, List.of(), "public", "public/", false));
+    }
+
 }

@@ -95,6 +95,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     private static final long REBUILD_DEBOUNCE_MS = 500;
     private static final long NO_PENDING_TIMER = -1L;
+    static final String REBUILD_EVENT_URL = "config/rebuild";
     private static final String REASON_PARSE = "parse_error";
     private static final String REASON_VALIDATION = "validation_error";
     public static final String REASON_DECRYPTION = "decryption_error";
@@ -307,6 +308,10 @@ public final class MergedConfigStore implements ConfigStore {
     private void onResourceEvent(ResourceEvent event) {
         String senderPodId = event.getSenderPodId();
         if (senderPodId != null && senderPodId.equals(thisPodId)) {
+            return;
+        }
+        if (REBUILD_EVENT_URL.equals(event.getUrl())) {
+            requestRebuild();
             return;
         }
         if (!isManagedEventUrl(event.getUrl())) {
@@ -641,6 +646,14 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
+    /**
+     * Tells every other pod to rebuild its merged config, for a change that writes many blobs without a per-entity event.
+     * Each pod rebuilds through {@link #requestRebuild()}, so it waits for the bucket locks the caller may still hold.
+     */
+    public void requestRebuildOnAllPods() {
+        resourceService.publishUpdate(REBUILD_EVENT_URL);
+    }
+
     private void onRebuildTimerFire(long firingId) {
         // Bail out if we were superseded between scheduling and firing — the replacement timer
         // will run (or already has). Belt-and-suspenders against Vert.x's best-effort cancelTimer.
@@ -677,15 +690,23 @@ public final class MergedConfigStore implements ConfigStore {
     public Config rebuildNow() {
         // Distributed bucket lock: same partial-state hazard as reload/timer — a full blob scan on
         // this pod must not interleave with a peer pod's in-flight multi-blob apply (design 02 §4.4).
-        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
-            rebuildLock.lock();
-            try {
-                cancelPendingRebuild();
-                return rebuild();
-            } finally {
-                rebuildLock.unlock();
-            }
-        });
+        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, this::rebuildNowUnderBucketLocks);
+    }
+
+    /**
+     * The body of {@link #rebuildNow()}, for a caller that already holds {@link #ADMIN_BUCKET_LOCATIONS} (a
+     * system import's replace phase). Calling this without holding them lets the blob scan interleave with a
+     * peer pod's in-flight multi-blob apply (design 02 §4.4); every other caller must go through
+     * {@link #rebuildNow()} instead.
+     */
+    public Config rebuildNowUnderBucketLocks() {
+        rebuildLock.lock();
+        try {
+            cancelPendingRebuild();
+            return rebuild();
+        } finally {
+            rebuildLock.unlock();
+        }
     }
 
     private void cancelPendingRebuild() {
