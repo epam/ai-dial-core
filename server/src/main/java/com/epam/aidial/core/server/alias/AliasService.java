@@ -167,13 +167,18 @@ public class AliasService {
 
     /**
      * Whether the caller may use {@code alias}, whose target is resolved: by the alias's {@code userRoles}, or else by
-     * the target's {@code userRoles} or the caller's read access to the target resource.
+     * the target's {@code userRoles} or the caller's read access to the target resource. For platform-bucket resource
+     * targets the bucket is admin-only, so access is determined by the target deployment's {@code userRoles} rather
+     * than by the bucket-level ACL.
      */
     private boolean hasAccess(ProxyContext context, Alias alias, Target target) {
         if (alias.getUserRoles() != null) {
             return alias.hasAccess(context.getUserRoles());
         }
         if (target.isResource()) {
+            if (ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName())) {
+                return target.deployment().hasAccess(context.getUserRoles());
+            }
             return accessService.hasReadAccess(target.resource(), context);
         }
         return target.deployment().hasAccess(context.getUserRoles());
@@ -292,18 +297,27 @@ public class AliasService {
             return null;
         }
         if (alias.getUserRoles() == null && target.isResource()) {
-            try {
-                if (!accessService.hasReadAccess(target.resource(), context)) {
+            boolean isPlatformTarget = ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName());
+            if (isPlatformTarget) {
+                if (!target.deployment().hasAccess(context.getUserRoles())) {
                     return null;
                 }
-            } catch (RuntimeException e) {
-                log.warn("Can't check access to the target of alias {}: {}", alias.getName(), e.getMessage());
-                return null;
+            } else {
+                try {
+                    if (!accessService.hasReadAccess(target.resource(), context)) {
+                        return null;
+                    }
+                } catch (RuntimeException e) {
+                    log.warn("Can't check access to the target of alias {}: {}", alias.getName(), e.getMessage());
+                    return null;
+                }
             }
         }
         Deployment view = AliasPasses.view(alias, presentation, target.deployment());
-        if (alias.getUserRoles() == null && !target.isResource()) {
-            view.setUserRoles(target.deployment().getUserRoles());
+        if (alias.getUserRoles() == null) {
+            if (!target.isResource() || ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName())) {
+                view.setUserRoles(target.deployment().getUserRoles());
+            }
         }
         return view;
     }

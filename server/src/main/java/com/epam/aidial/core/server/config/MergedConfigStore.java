@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.server.alias.StoredAliases;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
@@ -1088,6 +1089,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.setToolsets(new LinkedHashMap<>(config.getToolsets()));
             case POLICY -> config.setPolicies(new HashMap<>(config.getPolicies()));
             case POLICY_ASSIGNMENT -> config.setPolicyAssignments(new HashMap<>(config.getPolicyAssignments()));
+            case ALIAS -> config.setAliases(new LinkedHashMap<>(config.getAliases()));
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -1690,7 +1692,14 @@ public final class MergedConfigStore implements ConfigStore {
                 return new BlobPutResult(entity, previous);
             }
             case ALIAS -> {
-                Alias entity = BLOB_MAPPER.treeToValue(node, Alias.class);
+                Alias dirty = BLOB_MAPPER.treeToValue(node, Alias.class);
+                List<ValidationWarning> warnings = StoredAliases.validateFields(dirty);
+                if (!warnings.isEmpty()) {
+                    throw new InvalidEntityException(ResourceTypes.ALIAS, mapKey, warnings);
+                }
+                // Round-trip through toJson to strip fields the management API would reject (pricing, features, etc.)
+                // so the config alias carries only the fields a stored alias keeps, matching what GET returns.
+                Alias entity = BLOB_MAPPER.treeToValue(StoredAliases.toJson(dirty), Alias.class);
                 Object previous = config.getAliases().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);

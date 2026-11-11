@@ -177,6 +177,25 @@ class AliasPlatformApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void noUserRolesAliasTakesPlatformResourceTargetRoles() {
+        verify(send(HttpMethod.PUT, "/v1/applications/platform/plt-app", null,
+                "{\"endpoint\": \"http://localhost:4848/plt-app/chat/completions\",\"userRoles\":[\"default-user\"]}", "authorization", "admin"), 200);
+        // no userRoles on the alias: the alias inherits access from the target's userRoles
+        assertEquals(200, putAlias("open-plt-v1", "{\"target\":{\"path\":\"applications/platform/plt-app\"}}").status());
+        reload();
+
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/plt-app/chat/completions", 200, CHAT_RESPONSE,
+                    "Content-Type", "application/json");
+
+            assertEquals(200, chat("open-plt-v1", "default-key").status());
+            // power-user has no role on the target application, so the alias is also denied
+            assertEquals(403, chat("open-plt-v1", "power-key").status());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void brokenTargetIsAcceptedAndReportedAfterReload() {
         assertEquals(200, putAlias("broken-v1", "{\"target\":{\"path\":\"models/missing\"}}").status());
         reload();
