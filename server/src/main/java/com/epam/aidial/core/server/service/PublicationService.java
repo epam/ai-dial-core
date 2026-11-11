@@ -416,6 +416,14 @@ public class PublicationService {
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
         }
+        // with no second person deciding, the requester must still be allowed to publish what they asked for
+        if (!admin && orgUnitApprovals.isRequester(context, publication)) {
+            for (Publication.Resource item : publication.getResources()) {
+                if (item.getAction() != Publication.ResourceAction.DELETE) {
+                    requireCredentialsPublishable(context, item, ResourceDescriptorFactory.fromPrivateUrl(item.getSourceUrl(), encryption));
+                }
+            }
+        }
 
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
                 .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
@@ -629,6 +637,8 @@ public class PublicationService {
             throw new PermissionDeniedException("You don't have permission to access resource " + sourceUrl);
         }
 
+        requireCredentialsPublishable(context, resource, source);
+
         if (source.isFolder()) {
             throw new IllegalArgumentException("Source resource is folder: " + sourceUrl);
         }
@@ -674,6 +684,13 @@ public class PublicationService {
         }
 
         resource.setReviewUrl(reviewUrl);
+    }
+
+    private void requireCredentialsPublishable(ProxyContext context, Publication.Resource resource, ResourceDescriptor source) {
+        if (resource.isPublishCredentials() && source.getType() == ResourceTypes.TOOL_SET
+                && !(accessService.hasWriteAccess(source, context) || accessService.hasAdminAccess(context))) {
+            throw new PermissionDeniedException("You don't have permission to publish credentials of " + resource.getSourceUrl());
+        }
     }
 
     private void validateResourceForDeletion(Publication.Resource resource, String targetFolder, Set<String> urls,

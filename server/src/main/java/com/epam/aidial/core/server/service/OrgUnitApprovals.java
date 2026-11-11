@@ -44,12 +44,12 @@ public class OrgUnitApprovals {
     }
 
     /**
-     * Approve or reject: the caller may read and write publications in every unit the request touches, and it isn't
-     * the caller's own. Rules a request still carries, as one filed before its folder became a unit does, are never
+     * Approve or reject: the caller may read and write publications in every unit the request touches, their own
+     * request included. Rules a request still carries, as one filed before its folder became a unit does, are never
      * stored inside a unit.
      */
     public boolean mayDecide(ProxyContext context, Publication publication) {
-        if (!isEnabled() || !isPerson(context) || isRequester(context, publication)) {
+        if (!isEnabled() || !isPerson(context)) {
             return false;
         }
         return grantedInEveryUnit(context, publication, orgUnits.getUnitList().units(), OrgUnitRoles.READ, OrgUnitRoles.WRITE);
@@ -178,10 +178,10 @@ public class OrgUnitApprovals {
         }
     }
 
-    private boolean isRequester(ProxyContext context, Publication publication) {
+    public boolean isRequester(ProxyContext context, Publication publication) {
         String bucket = encryption.encrypt(BucketBuilder.buildInitiatorBucket(context));
         String url = publication.getUrl();
-        return url == null || url.startsWith(PUBLICATIONS + ResourceDescriptor.PATH_SEPARATOR + bucket + ResourceDescriptor.PATH_SEPARATOR);
+        return url != null && url.startsWith(PUBLICATIONS + ResourceDescriptor.PATH_SEPARATOR + bucket + ResourceDescriptor.PATH_SEPARATOR);
     }
 
     private static boolean isPerson(ProxyContext context) {

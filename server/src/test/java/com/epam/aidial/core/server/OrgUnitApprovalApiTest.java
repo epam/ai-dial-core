@@ -3,6 +3,8 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -12,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -205,13 +208,41 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testNoSelfApproval() {
+    void testApproverDecidesOwnRequest() {
         assign("public/Acme", "{\"type\": \"claimsPredicate\", \"source\": \"roles\", \"function\": \"EQUAL\", \"targets\": [\"user\"]}");
         String own = request("public/Acme/", "Acme/a.txt", null);
+        String rejected = request("public/Acme/", "Acme/b.txt", null);
 
-        assertEquals(List.of(own), urls(list("user")));
-        assertEquals(403, decide("approve", own, "user").status());
-        assertEquals(200, decide("approve", own, APPROVER).status());
+        assertEquals(Set.of(own, rejected), Set.copyOf(urls(list("user"))));
+        assertEquals(200, decide("approve", own, "user").status());
+        assertEquals(200, decide("reject", rejected, "user").status());
+        assertEquals(200, send(HttpMethod.GET, "/v1/files/public/Acme/a.txt", null, null, "authorization", "user").status());
+    }
+
+    @Test
+    void testOwnApprovalRechecksPublishingCredentials() {
+        assign("public/Acme", USERS);
+        String toolset = "toolsets/4X25dj1mja51jykqxsXnCH/creds";
+        assertEquals(200, send(HttpMethod.PUT, "/v1/" + toolset, null, TOOLSET_CREATE_REQEUST_BODY, "authorization", "admin").status());
+        Response shared = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                {"invitationType": "link", "resources": [{"url": "%s", "permissions": ["READ", "WRITE"]}]}
+                """.formatted(toolset), "authorization", "admin");
+        assertEquals(200, shared.status(), shared.body());
+        String link = ProxyUtil.convertToObject(shared.body(), InvitationLink.class).invitationLink();
+        assertEquals(200, send(HttpMethod.GET, link, "accept=true", null, "authorization", "user").status());
+
+        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                {"name": "t", "targetFolder": "public/Acme/", "resources": [{"action": "ADD", "sourceUrl": "%s",
+                 "targetUrl": "toolsets/public/Acme/creds", "publishCredentials": true}]}
+                """.formatted(toolset), "authorization", "user");
+        assertEquals(200, created.status(), created.body());
+        String url = new JsonObject(created.body()).getString("url");
+        assertEquals(200, send(HttpMethod.POST, "/v1/ops/resource/share/revoke", null, """
+                {"resources": [{"url": "%s", "permissions": ["WRITE"]}]}
+                """.formatted(toolset), "authorization", "admin").status());
+
+        assertEquals(403, decide("approve", url, "user").status());
+        assertEquals(200, decide("approve", url, APPROVER).status(), "another approver decides as before");
     }
 
     @Test

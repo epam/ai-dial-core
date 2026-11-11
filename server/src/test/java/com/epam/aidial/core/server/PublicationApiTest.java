@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.data.Publications;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -96,6 +97,42 @@ class PublicationApiTest extends ResourceBaseTest {
             assertTrue(tokenBody.get().contains("client_secret=" + plaintextSecret),
                     "published app's external-service secret must decrypt to plaintext, got: " + tokenBody.get());
         }
+    }
+
+    @Test
+    void testPublishingToolsetCredentialsNeedsWriteAccess() {
+        String owner = "4X25dj1mja51jykqxsXnCH";
+        for (String name : List.of("read-toolset", "write-toolset")) {
+            verify(send(HttpMethod.PUT, "/v1/toolsets/%s/%s".formatted(owner, name), null, TOOLSET_CREATE_REQEUST_BODY,
+                    "authorization", "admin"), 200);
+        }
+        acceptShare("toolsets/%s/read-toolset".formatted(owner), "[\"READ\"]");
+        acceptShare("toolsets/%s/write-toolset".formatted(owner), "[\"READ\", \"WRITE\"]");
+
+        assertEquals(403, publishToolset(owner, "read-toolset", true).status());
+        verify(publishToolset(owner, "read-toolset", false), 200);
+        verify(publishToolset(owner, "write-toolset", true), 200);
+    }
+
+    private void acceptShare(String url, String permissions) {
+        Response response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                {"invitationType": "link", "resources": [{"url": "%s", "permissions": %s}]}
+                """.formatted(url, permissions), "authorization", "admin");
+        verify(response, 200);
+        InvitationLink link = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        verify(send(HttpMethod.GET, link.invitationLink(), "accept=true", null, "authorization", "user"), 200);
+    }
+
+    private Response publishToolset(String owner, String name, boolean publishCredentials) {
+        return send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                {
+                    "name": "%s",
+                    "targetFolder": "public/%s/",
+                    "resources": [{"action": "ADD", "sourceUrl": "toolsets/%s/%s", "targetUrl": "toolsets/public/%s/%s",
+                                   "publishCredentials": %s}]
+                }
+                """.formatted(name, name + "-" + publishCredentials, owner, name, name + "-" + publishCredentials, name, publishCredentials),
+                "authorization", "user");
     }
 
     @Test
