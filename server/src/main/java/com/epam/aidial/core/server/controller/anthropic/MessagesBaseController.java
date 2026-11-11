@@ -58,8 +58,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     }
 
     /**
-     * The shared chain. Subclasses may override {@link #addFunctionsBeforeResolver} to inject functions that must run
-     * after {@link CollectDeploymentsFn} and before the resolver — {@link MessagesController} does so to add
+     * The shared chain. Subclasses may override {@link #addFunctionsBeforeCollectDeployments} to inject functions that
+     * run before {@link CollectDeploymentsFn} and the resolver — {@link MessagesController} does so to add
      * {@link com.epam.aidial.core.server.function.BuildUpstreamCacheFn}, while {@code count_tokens} inherits the base
      * chain unchanged.
      */

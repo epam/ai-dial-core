@@ -27,6 +27,7 @@ import com.epam.aidial.core.server.service.ExternalServicesWriteMode;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
+
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -79,7 +80,6 @@ public class ResourceController extends AccessControlBaseController {
 
     private final ToolSetService toolSetService;
     private final DeploymentService deploymentService;
-    private final ResourceDependencyValidator resourceDependencyValidator;
 
     public ResourceController(Proxy proxy, ProxyContext context, boolean metadata) {
         // PUT and DELETE require write access, GET - read
@@ -91,7 +91,6 @@ public class ResourceController extends AccessControlBaseController {
         this.resourceService = proxy.getResourceService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.deploymentService = proxy.getDeploymentService();
-        this.resourceDependencyValidator = proxy.getResourceDependencyValidator();
         this.metadata = metadata;
     }
 

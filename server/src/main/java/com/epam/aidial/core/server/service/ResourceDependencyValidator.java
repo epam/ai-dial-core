@@ -11,8 +11,6 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
-import lombok.RequiredArgsConstructor;
-
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,11 +26,14 @@ import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.FORBIDDEN;
 
 /**
- * Write-time rules for the {@code resourceDependencies} section: its shape, and whether a user-authored application may
- * declare one. Declaring needs no permission on the target; the user's reach is checked per request.
+ * Write-time shape rules for the {@code resourceDependencies} section.
+ * Declaring needs no permission on the target; the user's reach is checked per request.
+ * The user-authored ceiling is enforced in {@link ApplicationService#inheritOrGuardDependencies}.
  */
-@RequiredArgsConstructor
 public class ResourceDependencyValidator {
+
+    private ResourceDependencyValidator() {
+    }
 
     /** A declaration larger than this is wrong-shaped; it should be folder-scoped links, not a file inventory. */
     public static final int MAX_DECLARED_DEPENDENCIES = 100;
@@ -55,8 +56,6 @@ public class ResourceDependencyValidator {
 
     /** WRITE on these would let an application re-point the caller's deployments, and with them later calls and stored credentials. */
     private static final Set<ResourceTypes> READ_ONLY_RESOURCE_TYPES = Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
-
-    private final boolean allowUserResourceDependencies;
 
     public static void validateShape(Application application) {
         String error = findShapeError(application);
