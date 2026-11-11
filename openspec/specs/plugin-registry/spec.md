@@ -142,8 +142,8 @@ never served with settings older than the config it was routed by.
 - **WHEN** an admin then sends `DELETE /v1/plugins/platform/p1`
 - **THEN** the next chat completion for `app` is answered `502`
 
-### Requirement: Closing an origin plugin
-Core SHALL close an origin plugin instance it no longer uses, once, and never on an event loop. It SHALL close an
+### Requirement: Closing a plugin
+Core SHALL close each plugin instance it creates, whatever its kind, once and never on an event loop. It SHALL close an
 instance replaced after its entry changed, and an instance whose entry was removed at the next request that names the
 entry, each once no request is in flight on it. It SHALL close every instance when it shuts down. A request SHALL
 never reach a closed instance, and a close that fails SHALL not affect later requests.
