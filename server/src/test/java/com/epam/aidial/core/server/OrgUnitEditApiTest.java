@@ -260,16 +260,30 @@ public class OrgUnitEditApiTest extends ResourceBaseTest {
                 {"endpoint": "http://example.com/v1/completions", "display_name": "App", "interceptors": ["unknown"]}
                 """, "authorization", EDITOR).status());
 
-        assertEquals(403, copy("app", "copied", false).status(), "a new app with interceptors");
-        assertEquals(403, copy("app", "plain", true).status(), "interceptors added");
-        assertEquals(403, copy("plain", "app", true).status(), "interceptors removed");
+        assertEquals(200, copy("app", "copied", false).status(), "a copy keeps interceptors set in the shared space");
         assertEquals(200, copy("plain", "plain-copy", false).status());
+        assertEquals(200, copy("plain-copy", "plain", true).status(), "replacing an app is as open as deleting it");
+        assertEquals(List.of("interceptor1"), interceptors("public/Acme/copied"));
         Response renamed = send(HttpMethod.POST, "/v1/ops/resource/move", null, new JsonObject()
-                .put("sourceUrl", "applications/public/Acme/app").put("destinationUrl", "applications/public/Acme/renamed").encode(),
+                .put("sourceUrl", "applications/public/Acme/copied").put("destinationUrl", "applications/public/Acme/renamed").encode(),
                 "authorization", EDITOR);
         assertEquals(200, renamed.status(), renamed.body());
-        assertEquals(List.of("interceptor1"), new JsonObject(send(HttpMethod.GET, "/v1/applications/public/Acme/renamed", null, null,
-                "authorization", "admin").body()).getJsonArray("interceptors").getList());
+        assertEquals(List.of("interceptor1"), interceptors("public/Acme/renamed"));
+
+        String own = "applications/" + new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", EDITOR).body())
+                .getString("bucket") + "/app";
+        assertEquals(200, send(HttpMethod.POST, "/v1/ops/resource/copy", null, new JsonObject()
+                .put("sourceUrl", "applications/public/Acme/app").put("destinationUrl", own).encode(), "authorization", EDITOR).status());
+        for (String operation : List.of("copy", "move")) {
+            Response back = send(HttpMethod.POST, "/v1/ops/resource/" + operation, null, new JsonObject()
+                    .put("sourceUrl", own).put("destinationUrl", "applications/public/Acme/back").encode(), "authorization", EDITOR);
+            assertEquals(403, back.status(), operation + " brings interceptors from outside the shared space");
+        }
+    }
+
+    private List<Object> interceptors(String path) {
+        return new JsonObject(send(HttpMethod.GET, "/v1/applications/" + path, null, null, "authorization", "admin").body())
+                .getJsonArray("interceptors").getList();
     }
 
     private Response copy(String from, String to, boolean overwrite) {
