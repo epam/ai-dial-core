@@ -657,12 +657,13 @@ public class ResourceController extends AccessControlBaseController {
         });
     }
 
-    private void validateCustomApplication(Application application) {
+    private void validateCustomApplication(Application application, boolean unitRoleWrite) {
         try {
             checkCreateCodeApp(application);
             validateSchemaBasedApplication(application);
             if (!application.getInterceptors().isEmpty()) {
-                if (!accessService.hasAdminAccess(context)) {
+                // a write through a unit role may keep the stored interceptors, which the service checks under the lock
+                if (!unitRoleWrite && !accessService.hasAdminAccess(context)) {
                     throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
                 }
                 Config config = context.getConfig();
@@ -769,8 +770,9 @@ public class ResourceController extends AccessControlBaseController {
                 AdminManagedFieldsWriteMode adminManagedFieldsWriteMode =
                         AdminManagedFieldsWriteMode.of(adminPublicWrite, bodyJson);
                 return taskExecutor.submit(() -> {
-                    validateCustomApplication(application);
-                    if (isUnitRoleWrite(descriptor, adminPublicWrite)) {
+                    boolean unitRoleWrite = isUnitRoleWrite(descriptor, adminPublicWrite);
+                    validateCustomApplication(application, unitRoleWrite);
+                    if (unitRoleWrite) {
                         return applicationService.putApplicationByUnitRole(descriptor, etag, author, application,
                                 externalServicesWriteMode).getKey();
                     }

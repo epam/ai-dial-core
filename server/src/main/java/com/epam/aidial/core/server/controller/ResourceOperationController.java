@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.OrgUnitService;
@@ -24,6 +25,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
+import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -40,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -61,6 +64,7 @@ public class ResourceOperationController {
     private final OrgUnitService orgUnitService;
     private final ApplicationSchemaService applicationSchemaService;
     private final CatalogSchemaService catalogSchemaService;
+    private final ApplicationService applicationService;
 
     public ResourceOperationController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -73,6 +77,7 @@ public class ResourceOperationController {
         this.orgUnitService = proxy.getOrgUnitService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.catalogSchemaService = proxy.getCatalogSchemaService();
+        this.applicationService = proxy.getApplicationService();
     }
 
     @ApiOperation(
@@ -140,7 +145,7 @@ public class ResourceOperationController {
                     return taskExecutor.submit(() -> lockService.underBucketLocks(buckets, () -> {
                         orgUnitService.requireSameUnit(source, destination);
                         resourceOperationService.moveResourceLocked(context, source, destination, request.isOverwrite(),
-                                deployment -> checkSharedCopy(deployment, source, destination));
+                                deployment -> checkSharedCopy(deployment, source, destination, true));
                         return null;
                     }));
                 })
@@ -217,7 +222,7 @@ public class ResourceOperationController {
 
                     return taskExecutor.submit(() -> {
                         resourceOperationService.copyResource(context, source, destination, request.isOverwrite(),
-                                deployment -> checkSharedCopy(deployment, source, destination));
+                                deployment -> checkSharedCopy(deployment, source, destination, false));
                         return null;
                     });
                 })
@@ -279,7 +284,7 @@ public class ResourceOperationController {
      * everything below it, which rules or child units may close to the caller even when the folder is readable, so
      * they can't refer to one. A copy into or out of the shared space doesn't keep forwarding callers' tokens either.
      */
-    private void checkSharedCopy(Deployment deployment, ResourceDescriptor source, ResourceDescriptor destination) {
+    private void checkSharedCopy(Deployment deployment, ResourceDescriptor source, ResourceDescriptor destination, boolean move) {
         if (!orgUnitService.isEnabled() || accessService.hasAdminAccess(context)) {
             return;
         }
@@ -289,6 +294,9 @@ public class ResourceOperationController {
         }
         if (!destination.isPublic()) {
             return;
+        }
+        if (deployment instanceof Application application) {
+            requireSameInterceptors(application, source, destination, move);
         }
 
         Set<ResourceDescriptor> files = new HashSet<>(catalogSchemaService.getFiles(deployment));
@@ -300,6 +308,25 @@ public class ResourceOperationController {
             if (file.isFolder() || !permissions.get(file).contains(ResourceAccessType.READ)) {
                 throw new PermissionDeniedException("No read access to %s, which the resource refers to".formatted(file.getUrl()));
             }
+        }
+    }
+
+    /**
+     * Only DIAL admins add, remove or reorder an application's interceptors, as on a write through a unit role; renaming an
+     * application inside its unit keeps them.
+     */
+    private void requireSameInterceptors(Application application, ResourceDescriptor source, ResourceDescriptor destination, boolean move) {
+        List<String> stored;
+        try {
+            stored = applicationService.getApplication(destination).getValue().getInterceptors();
+        } catch (ResourceNotFoundException e) {
+            if (move && source.isPublic()) {
+                return;
+            }
+            stored = List.of();
+        }
+        if (!Objects.requireNonNullElse(stored, List.of()).equals(Objects.requireNonNullElse(application.getInterceptors(), List.of()))) {
+            throw new PermissionDeniedException("Only admins are allowed to change interceptors");
         }
     }
 

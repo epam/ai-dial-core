@@ -236,6 +236,7 @@ public class ApplicationService {
             prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
             if (inheritForwardAuthToken) {
                 application.setForwardAuthToken(existing != null && existing.isForwardAuthToken());
+                requireSameInterceptors(application, existing);
             }
             List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
             purgeableExternalServices.setValue(externalServices);
@@ -248,6 +249,13 @@ public class ApplicationService {
         externalServiceService.purgeApplicationCredentials(resource, purgeableExternalServices.get());
 
         return Pair.of(meta, toStore.getValue());
+    }
+
+    private static void requireSameInterceptors(Application application, Application existing) {
+        List<String> stored = existing == null ? List.of() : Objects.requireNonNullElse(existing.getInterceptors(), List.of());
+        if (!stored.equals(Objects.requireNonNullElse(application.getInterceptors(), List.of()))) {
+            throw new HttpException(HttpStatus.FORBIDDEN, "Only admins are allowed to change interceptors");
+        }
     }
 
     // app_identity and allow_user_external_services are admin-managed: a field the mode does not honor is

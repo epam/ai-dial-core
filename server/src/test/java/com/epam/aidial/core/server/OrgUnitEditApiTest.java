@@ -229,6 +229,56 @@ public class OrgUnitEditApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testApplicationsKeepTheirInterceptors() {
+        assertEquals(200, send(HttpMethod.PUT, "/v1/applications/public/Acme/app", null, """
+                {"endpoint": "http://example.com/v1/completions", "display_name": "App", "interceptors": ["interceptor1"]}
+                """, "authorization", "admin").status());
+        assertEquals(200, send(HttpMethod.PUT, "/v1/applications/public/Acme/plain", null, """
+                {"endpoint": "http://example.com/v1/completions", "display_name": "Plain"}
+                """, "authorization", "admin").status());
+
+        for (String caller : List.of(EDITOR, ADMIN)) {
+            Response kept = send(HttpMethod.PUT, "/v1/applications/public/Acme/app", null, """
+                    {"endpoint": "http://example.com/v2/completions", "display_name": "%s", "interceptors": ["interceptor1"]}
+                    """.formatted(caller), "authorization", caller);
+            assertEquals(200, kept.status(), kept.body());
+
+            assertEquals(403, send(HttpMethod.PUT, "/v1/applications/public/Acme/app", null, """
+                    {"endpoint": "http://example.com/v2/completions", "display_name": "App"}
+                    """, "authorization", caller).status(), caller);
+            assertEquals(403, send(HttpMethod.PUT, "/v1/applications/public/Acme/plain", null, """
+                    {"endpoint": "http://example.com/v1/completions", "display_name": "Plain", "interceptors": ["interceptor1"]}
+                    """, "authorization", caller).status(), caller);
+            assertEquals(403, send(HttpMethod.PUT, "/v1/applications/public/Acme/fresh", null, """
+                    {"endpoint": "http://example.com/v1/completions", "display_name": "Fresh", "interceptors": ["interceptor1"]}
+                    """, "authorization", caller).status(), caller);
+        }
+        JsonObject stored = new JsonObject(send(HttpMethod.GET, "/v1/applications/public/Acme/app", null, null, "authorization", "admin").body());
+        assertEquals("http://example.com/v2/completions", stored.getString("endpoint"));
+        assertEquals(List.of("interceptor1"), stored.getJsonArray("interceptors").getList());
+        assertEquals(400, send(HttpMethod.PUT, "/v1/applications/public/Acme/app", null, """
+                {"endpoint": "http://example.com/v1/completions", "display_name": "App", "interceptors": ["unknown"]}
+                """, "authorization", EDITOR).status());
+
+        assertEquals(403, copy("app", "copied", false).status(), "a new app with interceptors");
+        assertEquals(403, copy("app", "plain", true).status(), "interceptors added");
+        assertEquals(403, copy("plain", "app", true).status(), "interceptors removed");
+        assertEquals(200, copy("plain", "plain-copy", false).status());
+        Response renamed = send(HttpMethod.POST, "/v1/ops/resource/move", null, new JsonObject()
+                .put("sourceUrl", "applications/public/Acme/app").put("destinationUrl", "applications/public/Acme/renamed").encode(),
+                "authorization", EDITOR);
+        assertEquals(200, renamed.status(), renamed.body());
+        assertEquals(List.of("interceptor1"), new JsonObject(send(HttpMethod.GET, "/v1/applications/public/Acme/renamed", null, null,
+                "authorization", "admin").body()).getJsonArray("interceptors").getList());
+    }
+
+    private Response copy(String from, String to, boolean overwrite) {
+        return send(HttpMethod.POST, "/v1/ops/resource/copy", null, new JsonObject()
+                .put("sourceUrl", "applications/public/Acme/" + from).put("destinationUrl", "applications/public/Acme/" + to)
+                .put("overwrite", overwrite).encode(), "authorization", EDITOR);
+    }
+
+    @Test
     void testCopiesAndMovesDontForwardTokens() {
         assertEquals(200, send(HttpMethod.PUT, "/v1/applications/public/Acme/app", null, """
                 {"endpoint": "http://example.com/v1/completions", "display_name": "App", "forward_auth_token": true}
