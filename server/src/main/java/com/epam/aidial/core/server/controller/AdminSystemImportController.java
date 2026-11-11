@@ -141,8 +141,8 @@ public class AdminSystemImportController implements Controller {
     }
 
     /**
-     * Runs on the event loop once the stage phase has accepted the archive. Sends the {@code 200} head, starts the
-     * progress timer, and submits the replace phase.
+     * Runs on the event loop once the stage phase has accepted the archive. Submits the replace phase, which releases
+     * the guard on its own thread when it ends, then starts the progress timer and sends the {@code 200} head.
      */
     private void onAccepted(LockService.Lock guard, StagedImport staged) {
         HttpServerResponse response = context.getResponse().setChunked(true);
@@ -150,12 +150,18 @@ public class AdminSystemImportController implements Controller {
         response.setStatusCode(HttpStatus.OK.getCode());
 
         Progress progress = new Progress(staged.mode());
-        response.write(progressLine(progress).encode() + "\n");
+        Future<ImportResult> replaced = taskExecutor.submit(() -> {
+            try {
+                return importService.replace(staged, progress);
+            } finally {
+                guard.close();
+            }
+        });
         long timerId = vertx.setPeriodic(progressIntervalMs, ignored -> response.write(progressLine(progress).encode() + "\n"));
+        response.write(progressLine(progress).encode() + "\n");
 
-        taskExecutor.submit(() -> importService.replace(staged, progress)).onComplete(ar -> {
+        replaced.onComplete(ar -> {
             vertx.cancelTimer(timerId);
-            guard.close();
             taskExecutor.submit(() -> {
                 importService.deleteStaging(staged);
                 return null;

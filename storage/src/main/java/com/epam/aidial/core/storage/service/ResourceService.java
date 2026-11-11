@@ -1353,7 +1353,7 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
         try {
-            return ResourceTypes.of(segments[1]).name().toLowerCase() + ":" + BlobStorageUtil.toStoragePath(prefix, blobPath);
+            return RedisUtil.redisKey(ResourceTypes.of(segments[1]), blobPath, prefix);
         } catch (IllegalArgumentException e) {
             return null;
         }

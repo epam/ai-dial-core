@@ -9,7 +9,6 @@ import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.TempFolderCleaner;
@@ -25,14 +24,20 @@ import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.SequenceInputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
@@ -161,8 +166,8 @@ public class AdminSystemImportService {
 
         progress.setPhase(Progress.Phase.COPY);
         progress.setTotal(staged.blobCount());
-        List<String> copiedPaths = promoteStagedBlobs(staged, warnings, progress);
-        long copied = copiedPaths.size();
+        PromotedBlobs promoted = promoteStagedBlobs(staged, warnings, progress);
+        long copied = promoted.copied();
         long copyEndedAt = clock.getAsLong();
 
         progress.setPhase(Progress.Phase.INVALIDATE);
@@ -170,8 +175,8 @@ public class AdminSystemImportService {
             resourceService.invalidate(staged.bucketLocations());
             invalidateEncryptionKeys(staged.bucketLocations());
         } else {
-            resourceService.invalidateBlobs(copiedPaths);
-            invalidateEncryptionKeys(bucketLocationsOfKeys(copiedPaths));
+            invalidateImportedBlobs(staged.stagingPrefix());
+            invalidateEncryptionKeys(promoted.keyBucketLocations());
         }
         long invalidateEndedAt = clock.getAsLong();
 
@@ -219,7 +224,7 @@ public class AdminSystemImportService {
             do {
                 PageSet<? extends StorageMetadata> page = blobStorage.list(bucketLocation, marker, PAGE_SIZE, true);
                 for (StorageMetadata meta : page) {
-                    if (meta.getType() == StorageType.BLOB && !isUnderEncryptionKeys(bucketLocation, meta.getName())) {
+                    if (meta.getType() == StorageType.BLOB && !validationService.isEncryptionKey(meta.getName())) {
                         String path = meta.getName();
                         deletes.submit(() -> {
                             blobStorage.delete(path);
@@ -235,10 +240,6 @@ public class AdminSystemImportService {
         return deleted;
     }
 
-    private static boolean isUnderEncryptionKeys(String bucketLocation, String path) {
-        return path.startsWith(bucketLocation + ResourceTypes.ENCRYPTION_KEYS.group() + ResourceDescriptor.PATH_SEPARATOR);
-    }
-
     private void invalidateEncryptionKeys(List<String> bucketLocations) {
         for (String bucketLocation : bucketLocations) {
             String bucketName = Strings.CS.removeEnd(bucketLocation, ResourceDescriptor.PATH_SEPARATOR);
@@ -246,18 +247,26 @@ public class AdminSystemImportService {
         }
     }
 
-    private List<String> bucketLocationsOfKeys(List<String> blobPaths) {
-        return blobPaths.stream()
-                .filter(validationService::isEncryptionKey)
-                .map(path -> path.substring(0, path.indexOf(ResourceDescriptor.PATH_SEPARATOR) + 1))
-                .distinct()
-                .toList();
+    private void invalidateImportedBlobs(String stagingPrefix) {
+        String marker = null;
+        do {
+            PageSet<? extends StorageMetadata> page = blobStorage.list(stagingPrefix, marker, PAGE_SIZE, true);
+            List<String> paths = new ArrayList<>();
+            for (StorageMetadata meta : page) {
+                if (meta.getType() == StorageType.BLOB) {
+                    paths.add(meta.getName().substring(stagingPrefix.length()));
+                }
+            }
+            resourceService.invalidateBlobs(paths);
+            marker = page.getNextMarker();
+        } while (marker != null);
     }
 
-    private List<String> promoteStagedBlobs(StagedImport staged, List<String> warnings, Progress progress) {
+    private PromotedBlobs promoteStagedBlobs(StagedImport staged, List<String> warnings, Progress progress) {
         String stagingPrefix = staged.stagingPrefix();
         BlobCalls copies = newCalls();
-        List<String> copiedPaths = new ArrayList<>();
+        long copied = 0;
+        Set<String> keyBucketLocations = new LinkedHashSet<>();
         String marker = null;
         do {
             PageSet<? extends StorageMetadata> page = blobStorage.list(stagingPrefix, marker, PAGE_SIZE, true);
@@ -273,13 +282,16 @@ public class AdminSystemImportService {
                         blobStorage.copy(stagedPath, realPath, null);
                         progress.addCopied();
                     });
-                    copiedPaths.add(realPath);
+                    copied++;
+                    if (validationService.isEncryptionKey(realPath)) {
+                        keyBucketLocations.add(realPath.substring(0, realPath.indexOf(ResourceDescriptor.PATH_SEPARATOR) + 1));
+                    }
                 }
             }
             marker = page.getNextMarker();
         } while (marker != null);
         copies.awaitAll();
-        return copiedPaths;
+        return new PromotedBlobs(copied, List.copyOf(keyBucketLocations));
     }
 
     private boolean isKeyKeptInMerge(ImportMode mode, String path) {
@@ -324,8 +336,8 @@ public class AdminSystemImportService {
         validationService.validateManifestEntry(first);
         validationService.validateManifest(metadataReader.readManifest(zip));
 
-        Set<Long> seenNames = new HashSet<>();
-        seenNames.add(hash64(first.getName()));
+        Set<UUID> seenNames = new HashSet<>();
+        seenNames.add(fingerprint(first.getName()));
 
         String pendingMetadataName = null;
         String pendingBlobPath = null;
@@ -337,7 +349,7 @@ public class AdminSystemImportService {
 
         for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
             String name = entry.getName();
-            if (!seenNames.add(hash64(name))) {
+            if (!seenNames.add(fingerprint(name))) {
                 throw rejected("Duplicate entry: " + name);
             }
 
@@ -382,6 +394,7 @@ public class AdminSystemImportService {
         if (blobCount == 0 && keptKeys == 0) {
             throw rejected("Archive has no blob entries");
         }
+        timed.transferTo(OutputStream.nullOutputStream());
         uploads.awaitAll();
         log.info("System import stage finished: mode={}, blobs={}, keptKeys={}, bytes={}, duration={}ms, waitingForClient={}ms",
                 mode, blobCount, keptKeys, timed.bytes, clock.getAsLong() - startedAt, timed.waitNanos / NANOS_PER_MILLI);
@@ -404,14 +417,14 @@ public class AdminSystemImportService {
         zip.closeEntry();
     }
 
-    private static long hash64(String name) {
-        // FNV-1a 64-bit: duplicate names are tracked by a hash of the name, not the name itself, to bound memory
-        long hash = 0xcbf29ce484222325L;
-        for (byte b : name.getBytes(StandardCharsets.UTF_8)) {
-            hash ^= (b & 0xffL);
-            hash *= 0x100000001b3L;
+    private static UUID fingerprint(String name) {
+        // duplicate names are tracked by the first 128 bits of their SHA-256, not by the names, to bound memory
+        try {
+            ByteBuffer digest = ByteBuffer.wrap(MessageDigest.getInstance("SHA-256").digest(name.getBytes(StandardCharsets.UTF_8)));
+            return new UUID(digest.getLong(), digest.getLong());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
         }
-        return hash;
     }
 
     private static AdminSystemImportRejectedException rejected(String message) {
@@ -460,6 +473,9 @@ public class AdminSystemImportService {
     }
 
     public record ImportResult(long importedBlobs, long deletedBlobs, List<String> warnings) {
+    }
+
+    private record PromotedBlobs(long copied, List<String> keyBucketLocations) {
     }
 
     /**

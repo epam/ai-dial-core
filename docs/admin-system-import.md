@@ -110,7 +110,9 @@ all. There is no limit on the number of entries or on the archive size.
   default lock period of 5 minutes and does not renew them (lock renewal is tracked separately, issue #2169). A
   replace that runs longer than that lets the locks lapse — it still finishes and Core logs a warning, but a second
   system import, a write, or an export running at that point can interleave with it. Do not start a second system
-  import, or an export, before the first has answered.
+  import, or an export, before the first has answered. The guard that keeps a second system import out is a lock of the
+  same kind: it is taken before the upload is read and is not renewed, so an upload that takes longer than 5 minutes
+  lets a second system import start as well.
 - **Other pods** are told to rebuild their merged config and do so as soon as the import releases the bucket locks.
   A pod that missed the message, or a response with the warning "The other pods were not told to rebuild", rebuilds within
   `config.reload` (60 s by default).

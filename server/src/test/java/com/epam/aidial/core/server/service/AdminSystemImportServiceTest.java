@@ -40,6 +40,7 @@ import java.io.InputStream;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -970,6 +971,52 @@ class AdminSystemImportServiceTest {
         assertEquals(1, result.importedBlobs());
         assertEquals(1, result.warnings().size());
         Mockito.verify(contentEncryptionKeyService, Mockito.never()).invalidateKey(any());
+    }
+
+    @Test
+    void testMergeInvalidatesImportedBlobsOfEveryListingPage() {
+        List<Entry> entries = new ArrayList<>();
+        for (int i = 0; i < 1200; i++) {
+            entries.add(entry("platform/roles/r" + i, "{}"));
+        }
+        resourceService.putResource(role("r1100"), "{}", EtagHeader.NEW_ONLY);
+        resourceService.putResource(role("kept"), "{}", EtagHeader.NEW_ONLY);
+
+        runImport(archiveOf(CORE_VERSION, entries.toArray(new Entry[0])), ImportMode.MERGE);
+
+        assertFalse(isQueued(role("r1100")), "a blob on the second listing page is invalidated too");
+        assertTrue(isQueued(role("kept")));
+    }
+
+    @Test
+    void testStageReadsTheWholeBody() {
+        byte[] archive = archiveOf(CORE_VERSION, entry("platform/models/m1", "{}"));
+        byte[] withTail = Arrays.copyOf(archive, archive.length + 10_000);
+        ByteArrayInputStream body = new ByteArrayInputStream(withTail);
+
+        service.stage(body, ImportMode.MERGE);
+
+        assertEquals(0, body.available());
+    }
+
+    @Test
+    void testWipeKeepsEncryptionKeysWhateverTheCase() {
+        storage.store("platform/Encryption_Keys/cek", "application/octet-stream", null, Map.of(), "key".getBytes(StandardCharsets.UTF_8));
+        storeOld("platform/models/old");
+
+        runImport(archiveOf(CORE_VERSION, entry("platform/models/m1", "{}")), ImportMode.REPLACE);
+
+        assertTrue(storage.exists("platform/Encryption_Keys/cek"));
+        assertFalse(storage.exists("platform/models/old"));
+    }
+
+    @Test
+    void testWipeDeletesAnEntryThatOnlyStartsLikeTheKeysGroup() {
+        storeOld("platform/encryption_keysX/y");
+
+        runImport(archiveOf(CORE_VERSION, entry("platform/models/m1", "{}")), ImportMode.REPLACE);
+
+        assertFalse(storage.exists("platform/encryption_keysX/y"));
     }
 
     // ---- guard ----
