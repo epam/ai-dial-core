@@ -657,15 +657,17 @@ public class ResourceController extends AccessControlBaseController {
         });
     }
 
-    private void validateCustomApplication(Application application, boolean unitRoleWrite) {
+    private void requireAdminToSetInterceptors(Application application) {
+        if (!application.getInterceptors().isEmpty() && !accessService.hasAdminAccess(context)) {
+            throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
+        }
+    }
+
+    private void validateCustomApplication(Application application) {
         try {
             checkCreateCodeApp(application);
             validateSchemaBasedApplication(application);
             if (!application.getInterceptors().isEmpty()) {
-                // a write through a unit role may keep the stored interceptors, which the service checks under the lock
-                if (!unitRoleWrite && !accessService.hasAdminAccess(context)) {
-                    throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
-                }
                 Config config = context.getConfig();
                 for (String interceptor : application.getInterceptors()) {
                     if (!config.getInterceptors().containsKey(interceptor)) {
@@ -770,12 +772,14 @@ public class ResourceController extends AccessControlBaseController {
                 AdminManagedFieldsWriteMode adminManagedFieldsWriteMode =
                         AdminManagedFieldsWriteMode.of(adminPublicWrite, bodyJson);
                 return taskExecutor.submit(() -> {
-                    boolean unitRoleWrite = isUnitRoleWrite(descriptor, adminPublicWrite);
-                    validateCustomApplication(application, unitRoleWrite);
-                    if (unitRoleWrite) {
+                    if (isUnitRoleWrite(descriptor, adminPublicWrite)) {
+                        // the service lets the write keep the stored interceptors, checked under the lock
+                        validateCustomApplication(application);
                         return applicationService.putApplicationByUnitRole(descriptor, etag, author, application,
                                 externalServicesWriteMode).getKey();
                     }
+                    requireAdminToSetInterceptors(application);
+                    validateCustomApplication(application);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
                             adminManagedFieldsWriteMode, externalServicesWriteMode).getKey();
                 });
