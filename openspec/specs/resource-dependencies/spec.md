@@ -276,10 +276,10 @@ application created again at a deleted one's id SHALL start unapproved.
 - **THEN** the new review copy and, after approval, the published application are not approved
 
 ### Requirement: Non-admin writes keep the approval only when cosmetic fields changed
-An update that removes the list SHALL delete the approval. A write by a non-admin SHALL delete the approval unless the
-only fields that differ from the stored application are `display_name`, `icon_url` and `description`; any other
-change — routing fields, the list, or anything else — drops the approval. An administrator's edit SHALL keep the
-approval unless the list is removed.
+An update that removes the list SHALL delete the approval. A write by a non-admin SHALL delete the approval unless
+only `display_name`, `icon_url` or `description` differ from the stored application; fields `GET` adds
+(`author`, `created_at`, `updated_at`, auth statuses) and external service secrets SHALL NOT count. An administrator's
+edit SHALL keep the approval unless the list is removed.
 
 #### Scenario: List removed and restored
 - **WHEN** an update removes an approved application's list, and a later update restores it
@@ -299,6 +299,11 @@ approval unless the list is removed.
 #### Scenario: Non-admin changes only display name — approval kept
 - **WHEN** an administrator approves an application, and then an org-unit editor changes only `display_name` (keeping
   the list and the endpoint)
+- **THEN** the application is approved after the editor's write
+
+#### Scenario: Non-admin read-modify-write of the description — approval kept
+- **WHEN** an administrator approves an application (also one with an external service secret or a route secret), and
+  then an org-unit editor GETs it, changes only `description` and PUTs the response back
 - **THEN** the application is approved after the editor's write
 
 ### Requirement: Dependencies resolved into the per-request key

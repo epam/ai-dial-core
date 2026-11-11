@@ -120,11 +120,12 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
             "interfaces.openaiChatCompletions.base_url, false",
             "interfaces.anthropicMessages.base_url, false",
             "responses_endpoint, false",
-            "display_name, true"
+            "display_name, true",
+            "description, true"
     })
     void testUnitEditorKeepsApprovalOnlyWhenChangingDisplayFields(String field, boolean kept) {
         String app = "applications/public/Acme/routed-app-" + field.replace('.', '-').replace('_', '-');
-        JsonObject declaring = new JsonObject("""
+        String declaring = """
                 {
                   "endpoint": "http://localhost:4850/chat/completions",
                   "responses_endpoint": "http://localhost:4850/responses",
@@ -137,19 +138,74 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
                     {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
                   ]
                 }
-                """);
-        verify(send(HttpMethod.PUT, "/v1/" + app, null, declaring.encode(), "authorization", "admin", "If-None-Match", "*"), 200);
+                """;
+        String value = "display_name".equals(field) || "description".equals(field) ? "Edited" : "http://editor.example";
+        assertEditorRoundTripKeepsApproval(app, declaring, field, value, kept);
+    }
+
+    @Test
+    void testUnitEditorDescriptionEditKeepsApprovalOfAppWithExternalServiceSecret() {
+        String declaring = """
+                {
+                  "endpoint": "http://localhost:4850/chat/completions",
+                  "display_name": "Ext Svc App",
+                  "external_services": {
+                    "salesforce": {
+                      "display_name": "Salesforce",
+                      "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "test-client-id",
+                        "client_secret": "test-client-secret",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token",
+                        "redirect_uri": "http://localhost:3000/auth/signin"
+                      }
+                    }
+                  },
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
+                  ]
+                }
+                """;
+        assertEditorRoundTripKeepsApproval("applications/public/Acme/ext-svc-app", declaring, "description", "Edited", true);
+    }
+
+    @Test
+    void testUnitEditorDescriptionEditKeepsApprovalOfAppWithRouteSecret() {
+        String declaring = """
+                {
+                  "endpoint": "http://localhost:4850/chat/completions",
+                  "display_name": "Route Secret App",
+                  "routes": {
+                    "index-search": {
+                      "paths": ["/v1/index(/[^/]+)*$"],
+                      "rewritePath": true,
+                      "methods": ["POST"],
+                      "upstreams": [{"endpoint": "http://localhost:4848", "key": "route-secret-1"}]
+                    }
+                  },
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
+                  ]
+                }
+                """;
+        assertEditorRoundTripKeepsApproval("applications/public/Acme/route-secret-app", declaring, "description", "Edited", true);
+    }
+
+    /** An admin creates and approves the app; the editor GETs it, changes one field and PUTs it back, as a UI does. */
+    private void assertEditorRoundTripKeepsApproval(String app, String declaring, String field, String value, boolean kept) {
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, declaring, "authorization", "admin", "If-None-Match", "*"), 200);
         verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
 
-        // the editor puts the app back without the list, changing only one field
-        JsonObject edited = declaring.copy();
-        edited.remove("resource_dependencies");
+        Response read = send(HttpMethod.GET, "/v1/" + app, null, "", "authorization", "azp:ed");
+        verify(read, 200);
+        JsonObject edited = new JsonObject(read.body());
         String[] path = field.split("\\.");
         JsonObject parent = edited;
         for (int i = 0; i < path.length - 1; i++) {
             parent = parent.getJsonObject(path[i]);
         }
-        parent.put(path[path.length - 1], "display_name".equals(field) ? "Renamed App" : "http://editor.example");
+        parent.put(path[path.length - 1], value);
         verify(send(HttpMethod.PUT, "/v1/" + app, null, edited.encode(), "authorization", "azp:ed"), 200);
         assertConsented(app, kept);
     }
