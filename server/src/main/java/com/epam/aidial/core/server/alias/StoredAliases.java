@@ -151,10 +151,9 @@ public class StoredAliases {
 
     /**
      * Whether {@code name} is a stored alias name its url carries unchanged, so that the id Core reports
-     * ({@code aliases/public/<name>} or {@code aliases/platform/<name>}) is the id a caller sends back
-     * in a path or body {@code model} field: letters, digits, {@code .}, {@code _} and {@code -}.
-     * A character the path encoding changes ({@code %}, {@code [}, a space) or one a path cannot
-     * carry as-is ({@code :}) is refused.
+     * ({@code aliases/public/<name>}) is the id a caller sends back, in a path or in a body {@code model}: letters,
+     * digits, {@code .}, {@code _} and {@code -}. A character the path encoding changes ({@code %}, {@code [}, a space)
+     * or one a path can not carry as is ({@code :}) is refused.
      */
     public boolean isUrlSafeName(String name) {
         return URL_SAFE_NAME.matcher(name).matches() && name.equals(UrlUtil.encodePathSegment(name));

@@ -175,10 +175,7 @@ public class AliasService {
         if (alias.getUserRoles() != null) {
             return alias.hasAccess(context.getUserRoles());
         }
-        if (target.isResource()) {
-            if (ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName())) {
-                return target.deployment().hasAccess(context.getUserRoles());
-            }
+        if (target.isResource() && !ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName())) {
             return accessService.hasReadAccess(target.resource(), context);
         }
         return target.deployment().hasAccess(context.getUserRoles());
