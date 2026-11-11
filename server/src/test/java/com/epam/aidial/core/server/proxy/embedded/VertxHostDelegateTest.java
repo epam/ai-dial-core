@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.config.Key;
-import com.epam.aidial.core.plugin.OriginCall;
-import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.plugin.Call;
+import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -116,7 +116,7 @@ class VertxHostDelegateTest {
     void testCallAfterCloseAnswers401() throws Exception {
         host.close();
 
-        OriginResponse answer = await(call("/openai/v1/chat/completions", body()));
+        Response answer = await(call("/openai/v1/chat/completions", body()));
 
         assertEquals(401, answer.statusCode());
         verify(proxy, never()).dispatch(any());
@@ -126,7 +126,7 @@ class VertxHostDelegateTest {
     void testCallAtTheDepthLimitAnswers400() throws Exception {
         parent.getProxyApiKeyData().setExecutionPath(Collections.nCopies(VertxHostDelegate.MAX_CALL_DEPTH, "app"));
 
-        OriginResponse answer = await(call("/openai/v1/chat/completions", body()));
+        Response answer = await(call("/openai/v1/chat/completions", body()));
 
         assertEquals(400, answer.statusCode());
         verify(proxy, never()).dispatch(any());
@@ -153,7 +153,7 @@ class VertxHostDelegateTest {
     void testRouterHostWithoutKeyIsClosed() throws Exception {
         host = VertxHostDelegate.forRouter(proxy, parent, pluginContext, null);
 
-        OriginResponse answer = await(call("/openai/v1/chat/completions", body()));
+        Response answer = await(call("/openai/v1/chat/completions", body()));
 
         assertEquals(401, answer.statusCode());
         verify(proxy, never()).dispatch(any());
@@ -178,7 +178,7 @@ class VertxHostDelegateTest {
 
     @Test
     void testPendingCallFailsOnClose() {
-        Future<OriginResponse> pending = call("/openai/v1/chat/completions", body());
+        Future<Response> pending = call("/openai/v1/chat/completions", body());
         awaitConditionQuietly(() -> dispatched.size() == 1);
 
         host.close();
@@ -234,8 +234,8 @@ class VertxHostDelegateTest {
         awaitCondition(() -> runs.get() == 1);
     }
 
-    private Future<OriginResponse> call(String uri, ObjectNode body) {
-        return on(pluginContext, () -> host.call(new OriginCall(uri, MultiMap.caseInsensitiveMultiMap(), body)));
+    private Future<Response> call(String uri, ObjectNode body) {
+        return on(pluginContext, () -> host.call(new Call(uri, MultiMap.caseInsensitiveMultiMap(), body)));
     }
 
     private static ObjectNode body() {

@@ -30,6 +30,7 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Vertx;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
@@ -874,6 +875,11 @@ public class ConfigPostProcessorTest {
             @Override
             public List<Problem> validate(ObjectNode settings) {
                 return validate.apply(settings);
+            }
+
+            @Override
+            public com.epam.aidial.core.plugin.Plugin create(ObjectNode settings, Vertx vertx) {
+                throw new UnsupportedOperationException();
             }
         }));
     }

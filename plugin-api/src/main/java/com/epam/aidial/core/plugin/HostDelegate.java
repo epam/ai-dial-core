@@ -11,16 +11,16 @@ import io.vertx.core.Future;
  * the calls, its {@link #cancelled()} signal, and the rule that its calls end with the request. Do not keep it past
  * the answer: a call made after the request ended is answered {@code 401}.
  */
-public interface OriginHost {
+public interface HostDelegate {
 
     /**
      * Calls a deployment in process, as a child pass of the request the plugin answers: Core checks, limits, charges
      * and logs it as a request that deployment's per-request key sends to Core, with no HTTP request into Core.
      *
      * <p>Call it on the context {@link OriginPlugin#handle} was called on. The future completes there with the answer
-     * once its status and headers are known, and the answer's body emits there, as an {@link OriginResponse} of a
+     * once its status and headers are known, and the answer's body emits there, as an {@link Response} of a
      * plugin does. An answer of any status, {@code 404} or {@code 429} included, completes the future; it fails only
-     * for a call Core cannot serve: a path outside the operations {@link OriginCall#uri()} names, a Responses call
+     * for a call Core cannot serve: a path outside the operations {@link Call#uri()} names, a Responses call
      * with {@code background: true}, or an answer cut before its status.
      *
      * <p>A call ends with the request it belongs to: once the plugin's request has ended, Core cancels the answers
@@ -29,15 +29,15 @@ public interface OriginHost {
      * <p>On a router's {@code POST /decide} request, the calls carry the decide request's key instead, and they end
      * with the decide call: once the plugin's answer has been read, Core cancels the calls still open. A notice request
      * ({@code X-DIAL-ROUTER-NOTICE}) carries no key, so every call made while answering it is answered {@code 401}.
-     * In process a plugin can call only the operations {@link OriginCall#uri()} names; {@code GET /v1/user/info} and
+     * In process a plugin can call only the operations {@link Call#uri()} names; {@code GET /v1/user/info} and
      * file reads go to Core over HTTP with the {@code API-KEY} header of the request.
      */
-    Future<OriginResponse> call(OriginCall call);
+    Future<Response> call(Call call);
 
     /**
      * A signal from Core to the plugin; it cancels nothing itself. It is the only way a plugin learns, before it has
      * answered, that its answer is no longer wanted, so that it can abort its own upstream work. After the plugin has
-     * answered, Core calls {@link OriginResponse#cancel()} too.
+     * answered, Core calls {@link Response#cancel()} too.
      *
      * <p>Completes when Core stops waiting for this request's answer: the client went away before the plugin answered,
      * or Core moved on from the answer (the client went away while it was relayed, or a retry). It completes on the

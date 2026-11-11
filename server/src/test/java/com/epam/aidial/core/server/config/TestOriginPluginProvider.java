@@ -1,11 +1,11 @@
 package com.epam.aidial.core.server.config;
 
-import com.epam.aidial.core.plugin.OriginCall;
-import com.epam.aidial.core.plugin.OriginHost;
+import com.epam.aidial.core.plugin.Call;
+import com.epam.aidial.core.plugin.HostDelegate;
 import com.epam.aidial.core.plugin.OriginPlugin;
-import com.epam.aidial.core.plugin.OriginPluginProvider;
-import com.epam.aidial.core.plugin.OriginRequest;
-import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.plugin.PluginProvider;
+import com.epam.aidial.core.plugin.Request;
+import com.epam.aidial.core.plugin.Response;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <li>{@code X-Test-Status: <code>} answers that status;</li>
  *   <li>{@code X-Test-Status-For-Endpoint: <endpoint>=<code>} answers that status to the call for that upstream;</li>
  *   <li>{@code X-Test-Fail: call} fails the call, and {@code X-Test-Fail: null} completes it with no answer;</li>
- *   <li>{@code X-Test-Hold} streams one event every 100 ms until {@link OriginResponse#cancel()}, as a long answer does;</li>
+ *   <li>{@code X-Test-Hold} streams one event every 100 ms until {@link Response#cancel()}, as a long answer does;</li>
  *   <li>{@code X-Test-Call: <path>} calls that path through the host with the request's {@code bodyTree} and relays the
  *   call's answer, a cancel of it counted in {@link #CANCELLED} and passed on. The call carries every header but the
  *   {@code X-Test-Call*} ones, so a plugin of this type serving the target does not call again;</li>
@@ -65,14 +65,14 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link OriginPlugin#close} throw once it is recorded in {@link #CLOSED}. Tests clear the recorded state with
  * {@link #reset}.
  */
-public class TestOriginPluginProvider implements OriginPluginProvider {
+public class TestOriginPluginProvider implements PluginProvider {
 
     public static final String TYPE = "test-origin";
 
     /**
      * Every request a {@code test-origin} plugin was called with, oldest first.
      */
-    public static final List<OriginRequest> REQUESTS = new CopyOnWriteArrayList<>();
+    public static final List<Request> REQUESTS = new CopyOnWriteArrayList<>();
     public static final AtomicInteger CANCELLED = new AtomicInteger();
     /**
      * The value of {@link #CANCELLED} when each request arrived, in the order of {@link #REQUESTS}.
@@ -136,7 +136,7 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
     private record TestPlugin(String greeting, boolean closeFails) implements OriginPlugin {
 
         @Override
-        public Future<OriginResponse> handle(OriginRequest request, OriginHost host) {
+        public Future<Response> handle(Request request, HostDelegate host) {
             return answer(request, host, greeting);
         }
 
@@ -149,7 +149,7 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         }
     }
 
-    private static Future<OriginResponse> answer(OriginRequest request, OriginHost host, String greeting) {
+    private static Future<Response> answer(Request request, HostDelegate host, String greeting) {
         if ("/decide".equals(request.uri())) {
             return decide(request, host);
         }
@@ -210,7 +210,7 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         return Future.succeededFuture(json(404, "{\"error\":{\"message\":\"test-origin serves no " + path + "\"}}"));
     }
 
-    private static Future<OriginResponse> call(OriginRequest request, OriginHost host, String path, String greeting) {
+    private static Future<Response> call(Request request, HostDelegate host, String path, String greeting) {
         ObjectNode body = request.bodyTree();
         String model = request.headers().get("X-Test-Call-Model");
         if (model != null) {
@@ -223,12 +223,12 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
                 headers.add(header.getKey(), header.getValue());
             }
         });
-        Future<OriginResponse> answer = host.call(new OriginCall(path, headers, body));
+        Future<Response> answer = host.call(new Call(path, headers, body));
         if (!request.headers().contains("X-Test-Call-Cancel")) {
             return answer.map(Relay::new);
         }
         return answer.compose(called -> {
-            Promise<OriginResponse> own = Promise.promise();
+            Promise<Response> own = Promise.promise();
             called.body().handler(chunk -> {
                 if (!own.future().isComplete()) {
                     called.cancel();
@@ -239,12 +239,12 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         });
     }
 
-    private static Future<OriginResponse> decide(OriginRequest request, OriginHost host) {
+    private static Future<Response> decide(Request request, HostDelegate host) {
         Decided decided = new Decided(request, new AtomicBoolean(), Promise.promise(), new CopyOnWriteArrayList<>());
         DECIDED.add(decided);
         HOSTS.add(new Host(host, Vertx.currentContext()));
         host.cancelled().onComplete(ignored -> decided.cancelled().set(true));
-        Future<OriginResponse> answer;
+        Future<Response> answer;
         try {
             answer = verdict(request, host, decided);
         } catch (RuntimeException e) {
@@ -253,7 +253,7 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         return answer.onComplete(ignored -> decided.settled().tryComplete());
     }
 
-    private static Future<OriginResponse> verdict(OriginRequest request, OriginHost host, Decided decided) {
+    private static Future<Response> verdict(Request request, HostDelegate host, Decided decided) {
         MultiMap headers = request.headers();
         Context context = Vertx.currentContext();
         if (headers.contains("X-DIAL-ROUTER-NOTICE")) {
@@ -307,8 +307,8 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
      * Calls {@code path} through the host with a small chat body of its own, and records how the call's answer ended.
      * The future completes when that answer has ended or failed.
      */
-    private static Future<Void> callThrough(OriginHost host, String path, boolean stream, Decided decided) {
-        Call call = new Call(path, new AtomicReference<>("sent"));
+    private static Future<Void> callThrough(HostDelegate host, String path, boolean stream, Decided decided) {
+        DecideCall call = new DecideCall(path, new AtomicReference<>("sent"));
         decided.calls().add(call);
         ObjectNode body;
         try {
@@ -320,13 +320,13 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
             body.put("stream", true);
         }
         Promise<Void> done = Promise.promise();
-        host.call(new OriginCall(path, MultiMap.caseInsensitiveMultiMap(), body)).onComplete(result -> {
+        host.call(new Call(path, MultiMap.caseInsensitiveMultiMap(), body)).onComplete(result -> {
             if (result.failed()) {
                 call.outcome().set("failed: " + result.cause().getMessage());
                 done.complete();
                 return;
             }
-            OriginResponse answer = result.result();
+            Response answer = result.result();
             call.outcome().set(Integer.toString(answer.statusCode()));
             answer.body().exceptionHandler(error -> {
                 call.outcome().set(answer.statusCode() + " failed");
@@ -368,7 +368,7 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
                  "usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}""".formatted(greeting);
     }
 
-    private static OriginResponse chatStream(String greeting, boolean hold) {
+    private static Response chatStream(String greeting, boolean hold) {
         Deque<Buffer> events = new ArrayDeque<>();
         events.add(event("{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":0,\"model\":\"test\","
                 + "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"" + greeting + "\"}}]}"));
@@ -388,28 +388,28 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         return Buffer.buffer("data: " + data + "\n\n");
     }
 
-    private static OriginResponse json(int status, String body) {
+    private static Response json(int status, String body) {
         Deque<Buffer> chunks = new ArrayDeque<>();
         chunks.add(Buffer.buffer(body));
         return new Answer(status, MultiMap.caseInsensitiveMultiMap().add("Content-Type", "application/json"),
                 new ChunkStream(chunks, false));
     }
 
-    public record Host(OriginHost host, Context context) {
+    public record Host(HostDelegate host, Context context) {
     }
 
     /**
      * A decide or notice request: whether the host reported it cancelled, when the plugin's answer settled, and the
      * calls the plugin made through its host while answering it.
      */
-    public record Decided(OriginRequest request, AtomicBoolean cancelled, Promise<Void> settled, List<Call> calls) {
+    public record Decided(Request request, AtomicBoolean cancelled, Promise<Void> settled, List<DecideCall> calls) {
     }
 
     /**
      * A call a deciding plugin made: {@code sent}, then the answer's status, then {@code <status> ended} or
      * {@code <status> failed} as its body ended, or {@code failed: <message>} when the call itself failed.
      */
-    public record Call(String path, AtomicReference<String> outcome) {
+    public record DecideCall(String path, AtomicReference<String> outcome) {
     }
 
     /**
@@ -421,7 +421,7 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
     /**
      * A call's answer relayed as the plugin's own.
      */
-    private record Relay(OriginResponse called) implements OriginResponse {
+    private record Relay(Response called) implements Response {
 
         @Override
         public int statusCode() {
@@ -445,7 +445,7 @@ public class TestOriginPluginProvider implements OriginPluginProvider {
         }
     }
 
-    private record Answer(int statusCode, MultiMap headers, ChunkStream body) implements OriginResponse {
+    private record Answer(int statusCode, MultiMap headers, ChunkStream body) implements Response {
         @Override
         public void cancel() {
             CANCELLED.incrementAndGet();

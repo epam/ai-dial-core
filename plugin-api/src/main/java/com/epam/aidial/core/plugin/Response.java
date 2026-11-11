@@ -7,7 +7,7 @@ import io.vertx.core.streams.ReadStream;
 /**
  * A plugin's answer. Core relays it as it relays an HTTP origin's answer: the status, the headers and the body.
  */
-public interface OriginResponse {
+public interface Response {
 
     int statusCode();
 

@@ -1,9 +1,8 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.plugin.OriginCall;
-import com.epam.aidial.core.plugin.OriginCaller;
-import com.epam.aidial.core.plugin.OriginRequest;
-import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.plugin.Call;
+import com.epam.aidial.core.plugin.Caller;
+import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -59,9 +58,9 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
 
         verify(response, 200);
         assertTrue(response.body().contains("from-p2"), response.body());
-        List<OriginRequest> requests = TestOriginPluginProvider.REQUESTS;
+        List<Request> requests = TestOriginPluginProvider.REQUESTS;
         assertEquals(2, requests.size());
-        OriginRequest target = requests.get(1);
+        Request target = requests.get(1);
         assertEquals(HttpMethod.POST, target.method());
         assertEquals("/openai/deployments/m2/chat/completions", target.uri());
         assertTrue(target.body().toString().contains("\"messages\""), target.body().toString());
@@ -158,7 +157,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         verify(chat("/anthropic/v1/messages", "{\"model\":\"app\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
                 "X-Test-Call", "/anthropic/v1/messages", "X-Test-Call-Model", "m2"), 200);
 
-        List<OriginRequest> requests = TestOriginPluginProvider.REQUESTS;
+        List<Request> requests = TestOriginPluginProvider.REQUESTS;
         assertEquals(4, requests.size());
         assertEquals("/openai/v1/responses", requests.get(1).uri());
         assertEquals("/anthropic/v1/messages", requests.get(3).uri());
@@ -244,9 +243,9 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         awaitAnalyticsRows(1);
 
         TestOriginPluginProvider.Host kept = TestOriginPluginProvider.HOSTS.get(0);
-        CompletableFuture<OriginResponse> answer = new CompletableFuture<>();
+        CompletableFuture<com.epam.aidial.core.plugin.Response> answer = new CompletableFuture<>();
         kept.context().runOnContext(ignored -> kept.host()
-                .call(new OriginCall("/openai/deployments/m2/chat/completions", MultiMap.caseInsensitiveMultiMap(),
+                .call(new Call("/openai/deployments/m2/chat/completions", MultiMap.caseInsensitiveMultiMap(),
                         ProxyUtil.MAPPER.createObjectNode().put("model", "m2")))
                 .onComplete(result -> {
                     if (result.succeeded()) {
@@ -450,7 +449,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
 
         verify(response, 200);
         assertTrue(response.body().contains("from-http"), response.body());
-        OriginRequest translated = TestOriginPluginProvider.REQUESTS.get(0);
+        Request translated = TestOriginPluginProvider.REQUESTS.get(0);
         assertEquals("/anthropic/v1/messages", translated.uri());
         assertNotEquals("proxyKey1", translated.headers().get("API-KEY"));
         assertNotNull(seen.get());
@@ -543,8 +542,8 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
 
         verify(send(HttpMethod.GET, "/openai/v1/responses/" + id, null, null), 200);
 
-        List<OriginRequest> requests = TestOriginPluginProvider.REQUESTS;
-        OriginRequest item = requests.get(requests.size() - 1);
+        List<Request> requests = TestOriginPluginProvider.REQUESTS;
+        Request item = requests.get(requests.size() - 1);
         assertEquals(HttpMethod.GET, item.method());
         assertTrue(item.uri().startsWith("/openai/v1/responses/"), item.uri());
     }
@@ -580,7 +579,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
 
         verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
 
-        OriginCaller caller = TestOriginPluginProvider.REQUESTS.get(0).caller();
+        Caller caller = TestOriginPluginProvider.REQUESTS.get(0).caller();
         assertEquals("EPM-RTC-GPT", caller.project());
         assertEquals(List.of("default"), caller.roles());
         assertNull(caller.userId());
@@ -593,7 +592,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.POST, "/openai/deployments/app/chat/completions", null, CHAT_BODY,
                 "content-type", "application/json", "authorization", "user"), 200);
 
-        OriginCaller caller = TestOriginPluginProvider.REQUESTS.get(0).caller();
+        Caller caller = TestOriginPluginProvider.REQUESTS.get(0).caller();
         assertEquals("user", caller.userId());
         assertEquals(List.of("user"), caller.roles());
     }
@@ -676,9 +675,9 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
 
     @SneakyThrows
     private static int callThrough(TestOriginPluginProvider.Host kept, String uri) {
-        CompletableFuture<OriginResponse> answer = new CompletableFuture<>();
+        CompletableFuture<com.epam.aidial.core.plugin.Response> answer = new CompletableFuture<>();
         kept.context().runOnContext(ignored -> kept.host()
-                .call(new OriginCall(uri, MultiMap.caseInsensitiveMultiMap(), ProxyUtil.MAPPER.createObjectNode().put("model", "m2")))
+                .call(new Call(uri, MultiMap.caseInsensitiveMultiMap(), ProxyUtil.MAPPER.createObjectNode().put("model", "m2")))
                 .onComplete(result -> {
                     if (result.succeeded()) {
                         result.result().cancel();

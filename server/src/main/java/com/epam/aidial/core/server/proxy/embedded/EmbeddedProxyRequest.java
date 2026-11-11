@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.proxy.embedded;
 
-import com.epam.aidial.core.plugin.OriginCaller;
-import com.epam.aidial.core.plugin.OriginRequest;
+import com.epam.aidial.core.plugin.Caller;
+import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.plugin.PluginManager.Lease;
@@ -103,7 +103,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     @Override
     public Future<ProxyResponse> send(Buffer body) {
         Promise<ProxyResponse> promise = context.promise();
-        OriginRequest request = new OriginRequest(method, absoluteUri.substring(baseUrl.length()), headers, body,
+        Request request = new Request(method, absoluteUri.substring(baseUrl.length()), headers, body,
                 router != null ? router.bodyTree() : bodyTree(body), caller());
         VertxHostDelegate attempt = router != null
                 ? VertxHostDelegate.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey())
@@ -208,9 +208,9 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
         }
     }
 
-    private OriginCaller caller() {
+    private Caller caller() {
         List<String> roles = proxyContext.getUserRoles();
-        return new OriginCaller(proxyContext.getUserId(), roles == null ? List.of() : List.copyOf(roles), proxyContext.getProject());
+        return new Caller(proxyContext.getUserId(), roles == null ? List.of() : List.copyOf(roles), proxyContext.getProject());
     }
 
     @Override

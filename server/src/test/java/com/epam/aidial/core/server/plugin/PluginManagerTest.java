@@ -161,8 +161,16 @@ class PluginManagerTest {
     }
 
     @Test
-    void testProviderThatServesNoRequests() {
+    void testPluginThatServesNoRequestsIsClosed() throws InterruptedException {
+        int closed = TestEchoPluginProvider.CLOSED.get();
+
         assertFailure(configWith(new Plugin(TestEchoPluginProvider.TYPE, greeting("hi"))), "serves no requests");
+
+        long deadline = System.currentTimeMillis() + 5000;
+        while (TestEchoPluginProvider.CLOSED.get() == closed && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertEquals(closed + 1, TestEchoPluginProvider.CLOSED.get());
     }
 
     @Test

@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.proxy.embedded;
 
-import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.plugin.Response;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -32,7 +32,7 @@ import static com.epam.aidial.core.server.proxy.embedded.EmbeddedServerRequest.u
  * write acks and the drain handler run on the child's context, where its pipe runs.
  *
  * <p>{@link #reset} cuts the answer, as a dropped connection does: the call fails before the head, the body after it.
- * The plugin's {@link OriginResponse#cancel} closes the response, as a client going away does: every later write fails
+ * The plugin's {@link Response#cancel} closes the response, as a client going away does: every later write fails
  * its ack and a pending drain handler fires, so a pipe into the response fails on its next write.
  */
 public final class EmbeddedServerResponse implements HttpServerResponse {
@@ -42,7 +42,7 @@ public final class EmbeddedServerResponse implements HttpServerResponse {
 
     private final ContextInternal childContext;
     private final ContextInternal parentContext;
-    private final Promise<OriginResponse> head;
+    private final Promise<Response> head;
     private final InboundBuffer<Object> body;
     private final AnswerBody reader = new AnswerBody();
     private final MultiMap headers = MultiMap.caseInsensitiveMultiMap();
@@ -74,7 +74,7 @@ public final class EmbeddedServerResponse implements HttpServerResponse {
      * The call's answer. It completes on the plugin's context once the pass writes its head, and fails when the pass
      * resets the response before.
      */
-    public Future<OriginResponse> answer() {
+    public Future<Response> answer() {
         return head.future();
     }
 
@@ -489,7 +489,7 @@ public final class EmbeddedServerResponse implements HttpServerResponse {
         throw unsupported("removeCookies");
     }
 
-    private record Answer(int statusCode, MultiMap headers, EmbeddedServerResponse response) implements OriginResponse {
+    private record Answer(int statusCode, MultiMap headers, EmbeddedServerResponse response) implements Response {
 
         @Override
         public ReadStream<Buffer> body() {

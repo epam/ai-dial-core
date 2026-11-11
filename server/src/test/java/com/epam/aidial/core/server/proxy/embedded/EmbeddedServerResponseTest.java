@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server.proxy.embedded;
 
-import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.plugin.Response;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -60,7 +60,7 @@ class EmbeddedServerResponseTest {
             return response.putHeader("X-B", "2");
         });
 
-        OriginResponse answer = await(response.answer());
+        Response answer = await(response.answer());
         assertEquals(201, answer.statusCode());
         assertEquals("1", answer.headers().get("X-A"));
         assertNull(answer.headers().get("X-B"));
@@ -71,7 +71,7 @@ class EmbeddedServerResponseTest {
     void testEndWithoutWrite() throws Exception {
         onChild(() -> response.setStatusCode(404).end("missing"));
 
-        OriginResponse answer = await(response.answer());
+        Response answer = await(response.answer());
         assertEquals(404, answer.statusCode());
         assertEquals("missing", read(answer).get(5, TimeUnit.SECONDS));
         assertTrue(response.ended());
@@ -92,7 +92,7 @@ class EmbeddedServerResponseTest {
     @Test
     void testChunksReachThePluginWithItsContextCurrent() throws Exception {
         onChild(() -> response.write("a"));
-        OriginResponse answer = await(response.answer());
+        Response answer = await(response.answer());
         List<Context> seen = new CopyOnWriteArrayList<>();
         CompletableFuture<Void> ended = new CompletableFuture<>();
         onParent(() -> {
@@ -110,7 +110,7 @@ class EmbeddedServerResponseTest {
     @Test
     void testBackpressureAndDrainOnTheChildContext() throws Exception {
         onChild(() -> response.write("0"));
-        OriginResponse answer = await(response.answer());
+        Response answer = await(response.answer());
         List<Context> drained = new CopyOnWriteArrayList<>();
         boolean full = onChild(() -> {
             response.drainHandler(ignored -> drained.add(Vertx.currentContext()));
@@ -133,7 +133,7 @@ class EmbeddedServerResponseTest {
         Thread writer = Thread.ofVirtual().start(() -> response.setStatusCode(500).end("failed"));
         writer.join(5000);
 
-        OriginResponse answer = await(response.answer());
+        Response answer = await(response.answer());
         assertEquals(500, answer.statusCode());
         assertEquals("failed", read(answer).get(5, TimeUnit.SECONDS));
         assertEquals(500, response.getStatusCode());
@@ -152,7 +152,7 @@ class EmbeddedServerResponseTest {
     @Test
     void testResetAfterTheHeadFailsTheBody() throws Exception {
         onChild(() -> response.write("a"));
-        OriginResponse answer = await(response.answer());
+        Response answer = await(response.answer());
 
         onChild(response::reset);
 
@@ -174,7 +174,7 @@ class EmbeddedServerResponseTest {
     @Test
     void testCancelFailsAnUnreadBody() throws Exception {
         onChild(() -> response.write("a"));
-        OriginResponse answer = await(response.answer());
+        Response answer = await(response.answer());
         CompletableFuture<String> read = read(answer);
         onParent(() -> answer.body().pause());
 
@@ -190,7 +190,7 @@ class EmbeddedServerResponseTest {
     @Test
     void testCancelLeavesBodyReadToItsEnd() throws Exception {
         onChild(() -> response.end("all"));
-        OriginResponse answer = await(response.answer());
+        Response answer = await(response.answer());
         assertEquals("all", read(answer).get(5, TimeUnit.SECONDS));
         List<Throwable> errors = new CopyOnWriteArrayList<>();
         onParent(() -> answer.body().exceptionHandler(errors::add));
@@ -220,7 +220,7 @@ class EmbeddedServerResponseTest {
             source.emit("a");
             return null;
         });
-        OriginResponse answer = await(response.answer());
+        Response answer = await(response.answer());
 
         onParent(() -> {
             answer.cancel();
@@ -238,7 +238,7 @@ class EmbeddedServerResponseTest {
     @Test
     void testCancelReleasesPausedPipe() throws Exception {
         onChild(() -> response.write("0"));
-        OriginResponse answer = await(response.answer());
+        Response answer = await(response.answer());
         List<Context> drained = new CopyOnWriteArrayList<>();
         onChild(() -> {
             response.drainHandler(ignored -> drained.add(Vertx.currentContext()));
@@ -282,7 +282,7 @@ class EmbeddedServerResponseTest {
         }
     }
 
-    private CompletableFuture<String> read(OriginResponse answer) {
+    private CompletableFuture<String> read(Response answer) {
         CompletableFuture<String> result = new CompletableFuture<>();
         Buffer content = Buffer.buffer();
         onParent(() -> {

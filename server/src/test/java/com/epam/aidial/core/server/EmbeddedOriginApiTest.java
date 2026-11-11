@@ -1,6 +1,6 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.plugin.OriginRequest;
+import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.server.config.TestEchoPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider.Closed;
@@ -168,7 +168,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         Response response = chat("/openai/deployments/app/chat/completions?api-version=1", "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}");
 
         verify(response, 200);
-        OriginRequest request = onlyRequest();
+        Request request = onlyRequest();
         assertEquals(HttpMethod.POST, request.method());
         assertEquals("/openai/deployments/app/chat/completions?api-version=1", request.uri());
         assertNotNull(request.headers().get("X-DIAL-DEPLOYMENT-FEATURES"));
@@ -229,7 +229,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         verify(chat("/anthropic/v1/messages/count_tokens", body), 200);
 
         assertEquals(List.of("/anthropic/v1/messages", "/anthropic/v1/messages/count_tokens"),
-                TestOriginPluginProvider.REQUESTS.stream().map(OriginRequest::uri).toList());
+                TestOriginPluginProvider.REQUESTS.stream().map(Request::uri).toList());
     }
 
     @Test
@@ -255,7 +255,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testBodyTreeOfRetriedAttempt() {
         verify(retriedChat(), 200);
 
-        List<OriginRequest> requests = TestOriginPluginProvider.REQUESTS;
+        List<Request> requests = TestOriginPluginProvider.REQUESTS;
         assertEquals(2, requests.size());
         requests.forEach(EmbeddedOriginApiTest::assertBodyTreeIsTheBody);
         assertNotSame(requests.get(0).bodyTree(), requests.get(1).bodyTree());
@@ -321,11 +321,13 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testProviderThatDoesNotServeRequests() {
+    void testPluginThatServesNoRequests() {
+        int closed = TestEchoPluginProvider.CLOSED.get();
         putPlugin("p2", "{\"type\": \"" + TestEchoPluginProvider.TYPE + "\", \"settings\": {\"greeting\": \"hi\"}}");
         verify(adminPut("/v1/applications/platform/app", embeddedChat("p2")), 200);
 
         assertConnectFailure(chat("/openai/deployments/app/chat/completions", CHAT_BODY));
+        awaitCondition(() -> TestEchoPluginProvider.CLOSED.get() == closed + 1);
     }
 
     @Test
@@ -689,18 +691,18 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         return ProxyUtil.MAPPER.readTree(created.body()).path("id").asText();
     }
 
-    private static OriginRequest onlyRequest() {
+    private static Request onlyRequest() {
         assertEquals(1, TestOriginPluginProvider.REQUESTS.size(), () -> TestOriginPluginProvider.REQUESTS.toString());
         return TestOriginPluginProvider.REQUESTS.get(0);
     }
 
-    private static OriginRequest lastRequest() {
-        List<OriginRequest> requests = TestOriginPluginProvider.REQUESTS;
+    private static Request lastRequest() {
+        List<Request> requests = TestOriginPluginProvider.REQUESTS;
         return requests.get(requests.size() - 1);
     }
 
     @SneakyThrows
-    private static void assertBodyTreeIsTheBody(OriginRequest request) {
+    private static void assertBodyTreeIsTheBody(Request request) {
         assertNotNull(request.bodyTree(), request.uri());
         assertEquals(ProxyUtil.MAPPER.readTree(request.body().getBytes()), request.bodyTree(), request.uri());
     }

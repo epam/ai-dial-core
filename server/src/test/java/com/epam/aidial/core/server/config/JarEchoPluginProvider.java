@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server.config;
 
+import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Vertx;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -27,6 +29,12 @@ public class JarEchoPluginProvider implements PluginProvider {
     @Override
     public List<Problem> validate(ObjectNode settings) {
         return List.of();
+    }
+
+    @Override
+    public Plugin create(ObjectNode settings, Vertx vertx) {
+        return new Plugin() {
+        };
     }
 
     /**

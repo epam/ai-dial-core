@@ -4,10 +4,10 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
-import com.epam.aidial.core.plugin.OriginHost;
+import com.epam.aidial.core.plugin.HostDelegate;
 import com.epam.aidial.core.plugin.OriginPlugin;
-import com.epam.aidial.core.plugin.OriginRequest;
-import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.plugin.Request;
+import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -232,7 +232,7 @@ class RouterDecisionClientTest {
 
     @Test
     void embeddedDecideReadFromThePlugin() throws Exception {
-        AtomicReference<OriginRequest> seen = new AtomicReference<>();
+        AtomicReference<Request> seen = new AtomicReference<>();
         plugin((request, host) -> {
             seen.set(request);
             return Future.succeededFuture(answer(200, "{\"candidates\": [\"x\"]}", true));
@@ -246,14 +246,14 @@ class RouterDecisionClientTest {
 
     @Test
     void noCancelAfterTheRouterAnswered() throws Exception {
-        AtomicReference<OriginHost> refused = new AtomicReference<>();
+        AtomicReference<HostDelegate> refused = new AtomicReference<>();
         plugin((request, host) -> {
             refused.set(host);
             return Future.succeededFuture(answer(400, "{\"error\": {}}", true));
         });
         assertEquals(400, failure(embeddedRouter(null)).getStatus().getCode());
 
-        AtomicReference<OriginHost> failed = new AtomicReference<>();
+        AtomicReference<HostDelegate> failed = new AtomicReference<>();
         plugin((request, host) -> {
             failed.set(host);
             return Future.failedFuture(new IllegalStateException("router failed"));
@@ -267,10 +267,10 @@ class RouterDecisionClientTest {
 
     @Test
     void cancelAtTheDeadline() throws Exception {
-        AtomicReference<OriginHost> kept = new AtomicReference<>();
+        AtomicReference<HostDelegate> kept = new AtomicReference<>();
         plugin((request, host) -> {
             kept.set(host);
-            return Promise.<OriginResponse>promise().future();
+            return Promise.<Response>promise().future();
         });
 
         assertEquals(504, failure(embeddedRouter(100L)).getStatus().getCode());
@@ -279,7 +279,7 @@ class RouterDecisionClientTest {
 
     @Test
     void cancelWhenTheBodyStallsPastTheDeadline() throws Exception {
-        AtomicReference<OriginHost> kept = new AtomicReference<>();
+        AtomicReference<HostDelegate> kept = new AtomicReference<>();
         plugin((request, host) -> {
             kept.set(host);
             return Future.succeededFuture(answer(200, "{\"candidates\": ", false));
@@ -355,8 +355,8 @@ class RouterDecisionClientTest {
     /**
      * A plugin's answer with {@code body}, ended unless {@code ends} is false, as a body that stalls.
      */
-    private static OriginResponse answer(int status, String body, boolean ends) {
-        return new OriginResponse() {
+    private static Response answer(int status, String body, boolean ends) {
+        return new Response() {
             @Override
             public int statusCode() {
                 return status;

@@ -9,5 +9,5 @@ import java.util.List;
  * @param roles   the caller's roles
  * @param project the project of the caller's API key, or the project claim of its JWT; null when there is none
  */
-public record OriginCaller(String userId, List<String> roles, String project) {
+public record Caller(String userId, List<String> roles, String project) {
 }

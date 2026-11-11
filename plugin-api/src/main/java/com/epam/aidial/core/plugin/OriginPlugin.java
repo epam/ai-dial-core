@@ -11,7 +11,7 @@ import io.vertx.core.Future;
  *
  * <p>Core closes it as every {@link Plugin}: after the last request of an instance it replaced or whose entry was
  * removed, and at shutdown. After {@link #close}, Core calls the instance only to read or cancel an answer it holds
- * already: one given after {@link OriginHost#cancelled()} completed, or one in flight at shutdown.
+ * already: one given after {@link HostDelegate#cancelled()} completed, or one in flight at shutdown.
  */
 public interface OriginPlugin extends Plugin {
 
@@ -19,7 +19,7 @@ public interface OriginPlugin extends Plugin {
      * Answers one request. A failed future, or an exception thrown here, counts as an origin that failed to send its
      * response headers.
      *
-     * @param host calls other deployments for this request, see {@link OriginHost#call}
+     * @param host calls other deployments for this request, see {@link HostDelegate#call}
      */
-    Future<OriginResponse> handle(OriginRequest request, OriginHost host);
+    Future<Response> handle(Request request, HostDelegate host);
 }

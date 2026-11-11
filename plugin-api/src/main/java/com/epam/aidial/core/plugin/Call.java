@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
 
 /**
- * A {@code POST} an origin plugin sends to a deployment through {@link OriginHost#call}.
+ * A {@code POST} an origin plugin sends to a deployment through {@link HostDelegate#call}.
  *
  * @param uri     the path and query of a create operation: a deployments-POST action such as
  *                {@code /openai/deployments/<name>/chat/completions}, {@code /openai/v1/chat/completions},
@@ -20,5 +20,5 @@ import io.vertx.core.MultiMap;
  * @param body    the request's body. Core takes it: the called deployment's processing changes it in place, so a
  *                plugin that calls twice with one body passes a {@code deepCopy()}
  */
-public record OriginCall(String uri, MultiMap headers, ObjectNode body) {
+public record Call(String uri, MultiMap headers, ObjectNode body) {
 }

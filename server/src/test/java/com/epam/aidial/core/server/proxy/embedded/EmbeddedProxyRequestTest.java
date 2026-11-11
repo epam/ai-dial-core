@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server.proxy.embedded;
 
-import com.epam.aidial.core.plugin.OriginCall;
-import com.epam.aidial.core.plugin.OriginHost;
+import com.epam.aidial.core.plugin.Call;
+import com.epam.aidial.core.plugin.HostDelegate;
 import com.epam.aidial.core.plugin.OriginPlugin;
-import com.epam.aidial.core.plugin.OriginRequest;
-import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.plugin.Request;
+import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.plugin.PluginManager.Lease;
@@ -77,7 +77,7 @@ class EmbeddedProxyRequestTest {
 
     @Test
     void testPluginGetsThePathAndQuery() throws Exception {
-        AtomicReference<OriginRequest> seen = new AtomicReference<>();
+        AtomicReference<Request> seen = new AtomicReference<>();
 
         await(request((call, host) -> {
             seen.set(call);
@@ -104,7 +104,7 @@ class EmbeddedProxyRequestTest {
 
     @Test
     void testResetBeforeTheAnswerCancelsIt() {
-        Promise<OriginResponse> pending = Promise.promise();
+        Promise<Response> pending = Promise.promise();
         EmbeddedProxyRequest request = request((call, host) -> pending.future());
         Future<ProxyResponse> sent = request.send(Buffer.buffer("{}"));
 
@@ -136,7 +136,7 @@ class EmbeddedProxyRequestTest {
 
         request((call, host) -> {
             cancelled.set(host.cancelled());
-            return Promise.<OriginResponse>promise().future();
+            return Promise.<Response>promise().future();
         }, closed).send(Buffer.buffer("{}"));
 
         await(cancelled.get());
@@ -204,7 +204,7 @@ class EmbeddedProxyRequestTest {
     void testClientGoneBeforeTheSendReleasesAfterTheAnswer() throws Exception {
         HttpServerResponse closed = mock(HttpServerResponse.class);
         when(closed.closed()).thenReturn(true);
-        Promise<OriginResponse> answer = Promise.promise();
+        Promise<Response> answer = Promise.promise();
         EmbeddedProxyRequest request = request((call, host) -> answer.future(), closed);
 
         // on the request's context, as in Core: the attempt closes there at once
@@ -244,7 +244,7 @@ class EmbeddedProxyRequestTest {
     @Test
     void testRouterRequestGetsTheGivenTreeAndLeavesTheContextsAlone() throws Exception {
         ObjectNode tree = ProxyUtil.MAPPER.createObjectNode().put("model", "r1");
-        AtomicReference<OriginRequest> seen = new AtomicReference<>();
+        AtomicReference<Request> seen = new AtomicReference<>();
 
         await(routerRequest((call, host) -> {
             seen.set(call);
@@ -273,7 +273,7 @@ class EmbeddedProxyRequestTest {
 
     @Test
     void testRouterAttemptEndsOnceItsAnswerIsRead() throws Exception {
-        AtomicReference<OriginHost> kept = new AtomicReference<>();
+        AtomicReference<HostDelegate> kept = new AtomicReference<>();
         ProxyResponse response = await(routerRequest((call, host) -> {
             kept.set(host);
             return Future.succeededFuture(new Answer(stream(false)));
@@ -282,7 +282,7 @@ class EmbeddedProxyRequestTest {
         assertEquals("answer", await(response.body()).toString());
 
         awaitCondition(() -> released.get() == 1);
-        OriginResponse late = await(onContext(() -> kept.get().call(new OriginCall("/openai/v1/chat/completions",
+        Response late = await(onContext(() -> kept.get().call(new Call("/openai/v1/chat/completions",
                 MultiMap.caseInsensitiveMultiMap(), ProxyUtil.MAPPER.createObjectNode()))));
         assertEquals(401, late.statusCode());
         assertFalse(kept.get().cancelled().isComplete(), "an answered decision is not cancelled");
@@ -291,7 +291,7 @@ class EmbeddedProxyRequestTest {
 
     @Test
     void testRouterAttemptEndsWhenThePluginFails() throws Exception {
-        AtomicReference<OriginHost> kept = new AtomicReference<>();
+        AtomicReference<HostDelegate> kept = new AtomicReference<>();
 
         assertThrows(ExecutionException.class, () -> await(routerRequest((call, host) -> {
             kept.set(host);
@@ -307,7 +307,7 @@ class EmbeddedProxyRequestTest {
         AtomicReference<Future<Void>> cancelled = new AtomicReference<>();
         EmbeddedProxyRequest request = routerRequest((call, host) -> {
             cancelled.set(host.cancelled());
-            return Promise.<OriginResponse>promise().future();
+            return Promise.<Response>promise().future();
         }, new ApiKeyData(), null);
         request.send(Buffer.buffer());
         awaitCondition(() -> cancelled.get() != null);
@@ -375,7 +375,7 @@ class EmbeddedProxyRequestTest {
         return new OneChunkStream(vertx.getOrCreateContext(), paused);
     }
 
-    private static final class Answer implements OriginResponse {
+    private static final class Answer implements Response {
 
         private final ReadStream<Buffer> body;
         private final AtomicInteger cancelled = new AtomicInteger();

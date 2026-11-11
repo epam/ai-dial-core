@@ -23,12 +23,15 @@ import io.vertx.core.http.HttpMethod;
  *                 the analytics row and the limits. A decide request carries the client's body only when the router
  *                 declares {@code decision.body: true}, and it is the client's own buffer, which Core reuses for the
  *                 deployments it then serves
- * @param bodyTree {@code body} as a parsed JSON object; null for a request whose body Core does not parse, such as a
- *                 Responses item operation, or a decide request without the body. Read-only, unless the plugin hands
- *                 it to {@link OriginHost#call}, which takes it. A decide request's tree is the plugin's own copy, which
- *                 it may change
+ * @param bodyTree {@code body} as a parsed JSON object, the same JSON: {@code body} is this tree serialized, or the
+ *                 client's own bytes when Core changed nothing. Both are given so that a plugin neither parses nor
+ *                 serializes the body again: one passing it on unchanged sends {@code body}, one reading its fields or
+ *                 calling {@link HostDelegate#call} uses the tree. Null for a request whose body Core does not parse,
+ *                 such as a Responses item operation, or a decide request without the body. Read-only, unless the
+ *                 plugin hands it to {@link HostDelegate#call}, which takes it. A decide request's tree is the
+ *                 plugin's own copy, which it may change
  * @param caller   who sent the request
  */
-public record OriginRequest(HttpMethod method, String uri, MultiMap headers, Buffer body,
-                            ObjectNode bodyTree, OriginCaller caller) {
+public record Request(HttpMethod method, String uri, MultiMap headers, Buffer body,
+                      ObjectNode bodyTree, Caller caller) {
 }

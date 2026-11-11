@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.proxy.embedded;
 
-import com.epam.aidial.core.plugin.OriginCall;
-import com.epam.aidial.core.plugin.OriginHost;
-import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.plugin.Call;
+import com.epam.aidial.core.plugin.HostDelegate;
+import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -31,7 +31,7 @@ import javax.annotation.Nullable;
  * {@code 401}, as an HTTP child gets once the key is deleted.
  */
 @Slf4j
-public final class VertxHostDelegate implements OriginHost {
+public final class VertxHostDelegate implements HostDelegate {
 
     private static final List<RouteTemplate> CREATE_ROUTES = List.of(RouteTemplate.POST_DEPLOYMENT,
             RouteTemplate.LLM_CHAT_COMPLETIONS_API, RouteTemplate.LLM_RESPONSES_API, RouteTemplate.LLM_RESPONSES_API_UNVERSIONED,
@@ -83,7 +83,7 @@ public final class VertxHostDelegate implements OriginHost {
     }
 
     @Override
-    public Future<OriginResponse> call(OriginCall call) {
+    public Future<Response> call(Call call) {
         if (call == null || call.uri() == null || call.body() == null) {
             return pluginContext.failedFuture(new IllegalArgumentException("A call needs a uri and a body"));
         }

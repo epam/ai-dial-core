@@ -1,9 +1,8 @@
 package com.epam.aidial.core.server;
 
-import com.epam.aidial.core.plugin.OriginCall;
-import com.epam.aidial.core.plugin.OriginCaller;
-import com.epam.aidial.core.plugin.OriginRequest;
-import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.plugin.Call;
+import com.epam.aidial.core.plugin.Caller;
+import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider.Decided;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
@@ -98,7 +97,7 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
         try (TestWebServer server = server(this::answer)) {
             verify(chat("r1", CHAT_BODY, "X-Test-Decide", "m1"), 200);
         }
-        OriginCaller caller = decided(0).request().caller();
+        Caller caller = decided(0).request().caller();
         assertEquals("EPM-RTC-GPT", caller.project());
         assertEquals(List.of("default"), caller.roles());
         assertNull(caller.userId());
@@ -116,7 +115,7 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
             verify(response, 200);
             assertEquals("r1", ProxyUtil.MAPPER.readTree(response.body()).path("model").asText(), response.body());
         }
-        OriginRequest decide = decided(0).request();
+        Request decide = decided(0).request();
         assertEquals("/decide", decide.uri());
         assertEquals("r1", decide.headers().get("X-DIAL-ROUTER"));
         assertEquals("openaiChatCompletions", decide.headers().get("X-DIAL-API"));
@@ -279,7 +278,7 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
             CompletableFuture<Response> pending = CompletableFuture.supplyAsync(() -> chat("r1", CHAT_BODY, "X-Test-Decide", "m1"));
             awaitCondition(() -> received.stream().anyMatch(request -> isFor(request, "m1")));
 
-            CompletableFuture<OriginResponse> answer = callThrough(TestOriginPluginProvider.HOSTS.get(0), "m2");
+            CompletableFuture<com.epam.aidial.core.plugin.Response> answer = callThrough(TestOriginPluginProvider.HOSTS.get(0), "m2");
 
             assertEquals(401, answer.get(5, TimeUnit.SECONDS).statusCode());
             assertFalse(pending.isDone(), "the pass was still serving the chosen model");
@@ -301,7 +300,7 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
             CompletableFuture<Response> pending = CompletableFuture.supplyAsync(() -> chat("rf", CHAT_BODY, "X-Test-Fail", "call"));
             awaitCondition(() -> received.stream().anyMatch(request -> isFor(request, "m2")));
 
-            CompletableFuture<OriginResponse> answer = callThrough(TestOriginPluginProvider.HOSTS.get(0), "m1");
+            CompletableFuture<com.epam.aidial.core.plugin.Response> answer = callThrough(TestOriginPluginProvider.HOSTS.get(0), "m1");
 
             assertEquals(401, answer.get(5, TimeUnit.SECONDS).statusCode());
             assertFalse(pending.isDone(), "the pass was still serving the next candidate");
@@ -322,7 +321,7 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
 
             Decided decide = awaitDecided(0);
             awaitCondition(() -> !decide.calls().isEmpty());
-            TestOriginPluginProvider.Call call = decide.calls().get(0);
+            TestOriginPluginProvider.DecideCall call = decide.calls().get(0);
             awaitCondition(() -> call.outcome().get().endsWith("failed") || call.outcome().get().startsWith("failed"));
             assertFalse(pending.isDone(), "the call was cut off by the end of the decide call, not by the end of the pass");
             verify(pending.get(10, TimeUnit.SECONDS), 200);
@@ -358,7 +357,7 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
         }
         List<String> sent = List.of(CHAT_BODY, chat, messages, responses);
         for (int i = 0; i < sent.size(); i++) {
-            OriginRequest decide = decided(i).request();
+            Request decide = decided(i).request();
             assertEquals(sent.get(i), decide.body().toString(), "the client's bytes, unchanged");
             assertNotNull(decide.bodyTree(), sent.get(i));
             assertEquals(ProxyUtil.MAPPER.readTree(sent.get(i)), decide.bodyTree(), "the parsed body");
@@ -456,7 +455,7 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
             verify(chat("app", CHAT_BODY, "X-Test-Call", "/openai/v1/chat/completions", "X-Test-Call-Model", "rb",
                     "X-Test-Decide", "m1"), 200);
         }
-        OriginRequest decide = decided(0).request();
+        Request decide = decided(0).request();
         JsonNode bytes = ProxyUtil.MAPPER.readTree(decide.body().getBytes());
         assertEquals("rb", bytes.path("model").asText());
         assertEquals(bytes, decide.bodyTree(), "the plugin's tree is the call's, as its bytes are");
@@ -466,10 +465,10 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
     /**
      * A chat completion to {@code model} through a host the test plugin recorded, made on the plugin's context.
      */
-    private static CompletableFuture<OriginResponse> callThrough(TestOriginPluginProvider.Host kept, String model) {
-        CompletableFuture<OriginResponse> answer = new CompletableFuture<>();
+    private static CompletableFuture<com.epam.aidial.core.plugin.Response> callThrough(TestOriginPluginProvider.Host kept, String model) {
+        CompletableFuture<com.epam.aidial.core.plugin.Response> answer = new CompletableFuture<>();
         kept.context().runOnContext(ignored -> kept.host()
-                .call(new OriginCall("/openai/deployments/" + model + "/chat/completions", MultiMap.caseInsensitiveMultiMap(),
+                .call(new Call("/openai/deployments/" + model + "/chat/completions", MultiMap.caseInsensitiveMultiMap(),
                         ProxyUtil.MAPPER.createObjectNode().put("model", model)))
                 .onComplete(result -> {
                     if (result.succeeded()) {

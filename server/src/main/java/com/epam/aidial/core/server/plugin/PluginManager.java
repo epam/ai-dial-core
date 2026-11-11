@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.plugin;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.plugin.OriginPlugin;
-import com.epam.aidial.core.plugin.OriginPluginProvider;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import io.vertx.core.Future;
@@ -42,8 +41,8 @@ public class PluginManager {
      * The plugin serving the entry {@code name} of {@code config}. Takes no lock, as it runs on the event loop: two
      * requests racing on a new declaration may each create a plugin, and the one replaced is closed.
      *
-     * @throws IllegalStateException when no entry has that name, its provider is not loaded or serves no requests,
-     *                               creating the plugin fails, or Core is shutting down
+     * @throws IllegalStateException when no entry has that name, its provider is not loaded, creating the plugin fails
+     *                               or makes one that serves no requests, or Core is shutting down
      */
     public OriginPlugin resolve(Config config, String name) {
         return instance(config, name).plugin;
@@ -102,15 +101,16 @@ public class PluginManager {
         if (provider == null) {
             throw new IllegalStateException("No plugin provider of type '" + declaration.getType() + "' is loaded");
         }
-        if (!(provider instanceof OriginPluginProvider originProvider)) {
-            throw new IllegalStateException("The plugin provider of type '" + declaration.getType() + "' serves no requests");
-        }
-        OriginPlugin plugin;
+        com.epam.aidial.core.plugin.Plugin created;
         try {
-            plugin = originProvider.create(declaration.getSettings(), vertx);
+            created = provider.create(declaration.getSettings(), vertx);
         } catch (RuntimeException | LinkageError e) {
             // plugin code: a jar missing a class throws NoClassDefFoundError on first use
             throw new IllegalStateException("Plugin '" + name + "' cannot be created: " + e.getMessage(), e);
+        }
+        if (!(created instanceof OriginPlugin plugin)) {
+            closePlugin(name, created);
+            throw new IllegalStateException("The plugin of type '" + declaration.getType() + "' serves no requests");
         }
         Instance instance = new Instance(name, plugin);
         open.add(instance);
@@ -178,13 +178,17 @@ public class PluginManager {
 
         private Future<Void> close() {
             open.remove(this);
-            return taskExecutor.submit(() -> {
-                plugin.close();
-                return null;
-            }).otherwise(error -> {
-                log.warn("Plugin '{}' failed to close:", name, error);
-                return null;
-            }).mapEmpty();
+            return closePlugin(name, plugin);
         }
+    }
+
+    private Future<Void> closePlugin(String name, com.epam.aidial.core.plugin.Plugin plugin) {
+        return taskExecutor.submit(() -> {
+            plugin.close();
+            return null;
+        }).otherwise(error -> {
+            log.warn("Plugin '{}' failed to close:", name, error);
+            return null;
+        }).mapEmpty();
     }
 }

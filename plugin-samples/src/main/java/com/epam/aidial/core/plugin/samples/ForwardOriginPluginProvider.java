@@ -1,11 +1,11 @@
 package com.epam.aidial.core.plugin.samples;
 
-import com.epam.aidial.core.plugin.OriginCall;
-import com.epam.aidial.core.plugin.OriginHost;
+import com.epam.aidial.core.plugin.Call;
+import com.epam.aidial.core.plugin.HostDelegate;
 import com.epam.aidial.core.plugin.OriginPlugin;
-import com.epam.aidial.core.plugin.OriginPluginProvider;
-import com.epam.aidial.core.plugin.OriginRequest;
-import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.plugin.PluginProvider;
+import com.epam.aidial.core.plugin.Request;
+import com.epam.aidial.core.plugin.Response;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -17,14 +17,14 @@ import java.util.regex.Pattern;
 
 /**
  * Origin plugins of type {@code forward}: each request goes on to one deployment, in process, through
- * {@link OriginHost#call}. Settings: {@code {"deployment": "<name>"}}.
+ * {@link HostDelegate#call}. Settings: {@code {"deployment": "<name>"}}.
  * <ul>
  *   <li>A deployments-POST action goes to the same action of that deployment.</li>
  *   <li>Chat completions, Responses and Messages keep their path, with {@code model} set to that deployment.</li>
  * </ul>
  * The call's answer is the plugin's answer, so a cancel of it reaches the call.
  */
-public class ForwardOriginPluginProvider implements OriginPluginProvider {
+public class ForwardOriginPluginProvider implements PluginProvider {
 
     public static final String TYPE = "forward";
 
@@ -49,12 +49,12 @@ public class ForwardOriginPluginProvider implements OriginPluginProvider {
         return (request, host) -> forward(request, host, deployment);
     }
 
-    private static Future<OriginResponse> forward(OriginRequest request, OriginHost host, String deployment) {
+    private static Future<Response> forward(Request request, HostDelegate host, String deployment) {
         ObjectNode body = request.bodyTree();
         if (body == null) {
             return Future.failedFuture(new IllegalArgumentException("forward serves the create operations only, not " + request.uri()));
         }
-        return host.call(new OriginCall(target(request.uri(), deployment, body), request.headers(), body));
+        return host.call(new Call(target(request.uri(), deployment, body), request.headers(), body));
     }
 
     /**
