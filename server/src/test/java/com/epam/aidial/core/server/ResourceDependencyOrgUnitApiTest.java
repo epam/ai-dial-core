@@ -5,6 +5,8 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -107,32 +109,49 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 200);
         assertConsented(app, true);
 
-        // a non-admin changing the endpoint drops the approval (routing-field protection)
+        // a non-admin changing the endpoint drops the approval
         verify(send(HttpMethod.PUT, "/v1/" + app, null, body.formatted("http://editor.example/chat/completions"),
                 "authorization", "azp:ed"), 200);
         assertConsented(app, false);
     }
 
-    @Test
-    void testUnitEditorNonRoutingEditKeepsApproval() {
-        String app = "applications/public/Acme/non-routing-edit-app";
-        String declaring = """
+    @ParameterizedTest
+    @CsvSource({
+            "interfaces.openaiChatCompletions.base_url, false",
+            "interfaces.anthropicMessages.base_url, false",
+            "responses_endpoint, false",
+            "display_name, true"
+    })
+    void testUnitEditorKeepsApprovalOnlyWhenChangingDisplayFields(String field, boolean kept) {
+        String app = "applications/public/Acme/routed-app-" + field.replace('.', '-').replace('_', '-');
+        JsonObject declaring = new JsonObject("""
                 {
                   "endpoint": "http://localhost:4850/chat/completions",
-                  "display_name": "Original Name",
+                  "responses_endpoint": "http://localhost:4850/responses",
+                  "display_name": "Routed App",
+                  "interfaces": {
+                    "openaiChatCompletions": {"base_url": "http://localhost:4850"},
+                    "anthropicMessages": {"base_url": "http://localhost:4850"}
+                  },
                   "resource_dependencies": [
                     {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
                   ]
                 }
-                """;
-        verify(send(HttpMethod.PUT, "/v1/" + app, null, declaring, "authorization", "admin", "If-None-Match", "*"), 200);
+                """);
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, declaring.encode(), "authorization", "admin", "If-None-Match", "*"), 200);
         verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
 
-        // editor changes only display_name (no routing fields, no list) — approval survives
-        verify(send(HttpMethod.PUT, "/v1/" + app, null, """
-                {"endpoint": "http://localhost:4850/chat/completions", "display_name": "Renamed App"}
-                """, "authorization", "azp:ed"), 200);
-        assertConsented(app, true);
+        // the editor puts the app back without the list, changing only one field
+        JsonObject edited = declaring.copy();
+        edited.remove("resource_dependencies");
+        String[] path = field.split("\\.");
+        JsonObject parent = edited;
+        for (int i = 0; i < path.length - 1; i++) {
+            parent = parent.getJsonObject(path[i]);
+        }
+        parent.put(path[path.length - 1], "display_name".equals(field) ? "Renamed App" : "http://editor.example");
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, edited.encode(), "authorization", "azp:ed"), 200);
+        assertConsented(app, kept);
     }
 
     @Test

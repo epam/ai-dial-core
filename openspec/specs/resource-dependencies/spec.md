@@ -275,11 +275,11 @@ application created again at a deleted one's id SHALL start unapproved.
   list and the same target
 - **THEN** the new review copy and, after approval, the published application are not approved
 
-### Requirement: The approval lives only while the list and the routing fields do
-An update that removes the list SHALL delete the approval. A write by a non-admin that changes `resource_dependencies`,
-`endpoint`, `mcp.endpoint` or `function` SHALL delete the approval. A non-admin write that omits the section inherits
-the stored list and SHALL keep the approval; a non-admin write that keeps the same list and routing fields SHALL keep
-it too. An administrator's edit SHALL keep the approval unless the list is removed.
+### Requirement: Non-admin writes keep the approval only when cosmetic fields changed
+An update that removes the list SHALL delete the approval. A write by a non-admin SHALL delete the approval unless the
+only fields that differ from the stored application are `display_name`, `icon_url` and `description`; any other
+change — routing fields, the list, or anything else — drops the approval. An administrator's edit SHALL keep the
+approval unless the list is removed.
 
 #### Scenario: List removed and restored
 - **WHEN** an update removes an approved application's list, and a later update restores it
@@ -288,6 +288,12 @@ it too. An administrator's edit SHALL keep the approval unless the list is remov
 #### Scenario: Non-admin changes endpoint — approval dropped
 - **WHEN** an administrator approves an application, and then an org-unit editor changes only the endpoint (keeping
   the list)
+- **THEN** the application is not approved after the editor's write
+
+#### Scenario: Non-admin changes an interface base url or the responses endpoint — approval dropped
+- **WHEN** an administrator approves an application, and then an org-unit editor puts it back without the list,
+  changing only `interfaces.openaiChatCompletions.base_url`, `interfaces.anthropicMessages.base_url` or
+  `responses_endpoint`
 - **THEN** the application is not approved after the editor's write
 
 #### Scenario: Non-admin changes only display name — approval kept
