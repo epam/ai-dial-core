@@ -7,7 +7,7 @@ import com.epam.aidial.core.plugin.OriginRequest;
 import com.epam.aidial.core.plugin.OriginResponse;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.plugin.OriginPluginManager.Lease;
+import com.epam.aidial.core.server.plugin.PluginManager.Lease;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;

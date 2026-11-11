@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Slf4j
 @RequiredArgsConstructor
-public class OriginPluginManager {
+public class PluginManager {
 
     // the users count of a closed instance
     private static final int CLOSED = Integer.MIN_VALUE;

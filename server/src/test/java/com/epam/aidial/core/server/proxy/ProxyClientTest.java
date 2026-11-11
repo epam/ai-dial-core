@@ -4,7 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.plugin.OriginPluginManager;
+import com.epam.aidial.core.server.plugin.PluginManager;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
@@ -41,7 +41,7 @@ class ProxyClientTest {
 
     @BeforeEach
     void createClient() {
-        client = new ProxyClient(mock(HttpClient.class), vertx, mock(OriginPluginManager.class));
+        client = new ProxyClient(mock(HttpClient.class), vertx, mock(PluginManager.class));
         // at a redecide or a notice the pass's deployment is the candidate that failed, here a user's custom application
         Application custom = new Application();
         custom.setName("applications/bucket-of-a-user/custom");

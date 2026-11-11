@@ -46,7 +46,7 @@ import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpAuthorizationChallengeProvider;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
-import com.epam.aidial.core.server.plugin.OriginPluginManager;
+import com.epam.aidial.core.server.plugin.PluginManager;
 import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.proxy.ProxyClient;
 import com.epam.aidial.core.server.security.AccessService;
@@ -182,7 +182,7 @@ public class AiDial {
     private volatile int serverPort;
     private HttpClient client;
     private WebSocketClient webSocketClient;
-    private OriginPluginManager originPluginManager;
+    private PluginManager pluginManager;
 
     private RedissonClient redis;
     private Proxy proxy;
@@ -427,8 +427,8 @@ public class AiDial {
             budgetCounterSweepService = new BudgetCounterSweepService(timerService, resourceService, lockService, redis,
                     mergedConfigStore, budgetCounterSweepSettings, backgroundTracer);
 
-            originPluginManager = new OriginPluginManager(pluginRegistry, vertx, taskExecutor);
-            ProxyClient proxyClient = new ProxyClient(client, vertx, originPluginManager);
+            pluginManager = new PluginManager(pluginRegistry, vertx, taskExecutor);
+            ProxyClient proxyClient = new ProxyClient(client, vertx, pluginManager);
             ResponsesApiClient responsesApiClient = new ResponsesApiClient(proxyClient, clientOptions);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
@@ -574,7 +574,7 @@ public class AiDial {
             close(client, HttpClient::close);
             // no request arrives now, and the plugins close their own Vert.x clients before Vert.x closes
             try {
-                close(originPluginManager, OriginPluginManager::close);
+                close(pluginManager, PluginManager::close);
             } catch (TimeoutException e) {
                 // plugin code: one that hangs in close() does not keep the rest from closing
                 log.warn("Plugins did not close in time");

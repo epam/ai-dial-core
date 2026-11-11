@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CollectResponseAttachmentsFnTest {
 
     @Test
-    void testGrantDoesNotChangeTheMapsAReaderHolds() {
+    void testGrantLeavesTheMapsReadersHoldUnchanged() {
         ApiKeyData key = new ApiKeyData();
         key.getAttachedFiles().put("files/b/old.txt", new AutoSharedData(ResourceAccessType.READ_ONLY));
         Map<String, AutoSharedData> files = key.getAttachedFiles();

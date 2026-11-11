@@ -12,7 +12,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouterDecision;
-import com.epam.aidial.core.server.plugin.OriginPluginManager;
+import com.epam.aidial.core.server.plugin.PluginManager;
 import com.epam.aidial.core.server.proxy.ProxyClient;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
@@ -58,7 +58,7 @@ class RouterDecisionClientTest {
     private Vertx vertx;
     private HttpClient client;
     private Proxy proxy;
-    private OriginPluginManager originPluginManager;
+    private PluginManager pluginManager;
     private MockWebServer server;
     private ProxyContext context;
     private final MultiMap clientHeaders = MultiMap.caseInsensitiveMultiMap();
@@ -73,8 +73,8 @@ class RouterDecisionClientTest {
         proxy = mock(Proxy.class);
         when(proxy.getVertx()).thenReturn(vertx);
         when(proxy.getClient()).thenReturn(client);
-        originPluginManager = mock(OriginPluginManager.class);
-        when(proxy.getProxyClient()).thenReturn(new ProxyClient(client, vertx, originPluginManager));
+        pluginManager = mock(PluginManager.class);
+        when(proxy.getProxyClient()).thenReturn(new ProxyClient(client, vertx, pluginManager));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions().setConnectTimeout(5000));
         HttpServerRequest request = mock(HttpServerRequest.class);
         when(request.headers()).thenReturn(clientHeaders);
@@ -337,7 +337,7 @@ class RouterDecisionClientTest {
     }
 
     private void plugin(OriginPlugin plugin) {
-        when(originPluginManager.acquire(any(), eq("p1"))).thenReturn(new OriginPluginManager.Lease(plugin, () -> {
+        when(pluginManager.acquire(any(), eq("p1"))).thenReturn(new PluginManager.Lease(plugin, () -> {
         }));
     }
 
