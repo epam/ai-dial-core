@@ -153,23 +153,36 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
 
     /**
      * The record's SLF4J key-value pairs, as an origin plugin writes its fields: under their keys, after Core's own
-     * attributes, which a pair cannot replace. A value Jackson has no form for is written as its text, so it never
-     * sends the line to the fallback.
+     * attributes, which a pair cannot replace. A value Jackson has no form for, a list or map holding one included, is
+     * written as its text, and a pair without a key is dropped, so a pair never sends the line to the fallback.
      */
-    private static void enrichKeyValuePairs(ILoggingEvent event, Map<String, Object> attributes) {
+    private void enrichKeyValuePairs(ILoggingEvent event, Map<String, Object> attributes) {
         List<KeyValuePair> pairs = event.getKeyValuePairs();
         if (pairs == null) {
             return;
         }
         for (KeyValuePair pair : pairs) {
-            Object value = pair.value;
-            boolean json = value == null || value instanceof String || value instanceof Number || value instanceof Boolean
-                    || value instanceof Collection<?> || value instanceof Map<?, ?> || value instanceof JsonNode;
             // not putIfAbsent, which would replace an attribute Core set to null
-            if (!attributes.containsKey(pair.key)) {
-                attributes.put(pair.key, json ? value : String.valueOf(value));
+            if (pair.key != null && !attributes.containsKey(pair.key)) {
+                attributes.put(pair.key, jsonValue(pair.value));
             }
         }
+    }
+
+    private Object jsonValue(Object value) {
+        if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean
+                || value instanceof JsonNode) {
+            return value;
+        }
+        if (value instanceof Collection<?> || value instanceof Map<?, ?>) {
+            try {
+                // converted here, where a failure is this value's, not the whole line's
+                return objectMapper.valueToTree(value);
+            } catch (IllegalArgumentException e) {
+                return String.valueOf(value);
+            }
+        }
+        return String.valueOf(value);
     }
 
     private void enrichOpenTelemetrySpan(ILoggingEvent event, Map<String, Object> attributes) {

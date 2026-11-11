@@ -96,6 +96,17 @@ class EmbeddedProxyRequestTest {
     }
 
     @Test
+    void testAnswerWithoutBodyFailsTheSend() throws Exception {
+        // completed on the request's context, where a throw from the answer would be reported and swallowed
+        EmbeddedProxyRequest request = request((call, host) -> context.succeededFuture(new Answer(null)));
+
+        Future<ProxyResponse> sent = onContext(() -> request.send(Buffer.buffer("{}")));
+
+        ExecutionException error = assertThrows(ExecutionException.class, () -> await(sent));
+        assertInstanceOf(IllegalStateException.class, error.getCause());
+    }
+
+    @Test
     void testPluginMissingClassFailsTheSend() {
         assertSendFails((call, host) -> {
             throw new NoClassDefFoundError("com/example/Missing");

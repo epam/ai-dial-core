@@ -137,9 +137,20 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
                 // given back once the attempt has closed too: the plugin is closed neither before its answer nor
                 // under its calls
                 attempt.whenClosed(taken.onDone());
-                // a null answer fails the attempt, as a plugin that throws does
+                // a null answer, or one without a body or headers, fails the attempt, as a plugin that throws does
                 Throwable failure = result.failed() ? result.cause()
                         : result.result() == null ? new IllegalStateException("The plugin answered null") : null;
+                EmbeddedProxyResponse answer = null;
+                if (failure == null) {
+                    try {
+                        answer = router == null
+                                ? new EmbeddedProxyResponse(result.result(), attempt::cancel)
+                                : new EmbeddedProxyResponse(result.result(), attempt::cancel, attempt::close);
+                    } catch (RuntimeException e) {
+                        // thrown here, on a context the plugin completed, it would be swallowed and the request left hanging
+                        failure = e;
+                    }
+                }
                 if (failure != null) {
                     if (clientGone) {
                         // ponytail: the pass ends here, as after a client gone from an application: no retry, no
@@ -152,9 +163,6 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
                     promise.fail(failure);
                     return;
                 }
-                EmbeddedProxyResponse answer = router == null
-                        ? new EmbeddedProxyResponse(result.result(), attempt::cancel)
-                        : new EmbeddedProxyResponse(result.result(), attempt::cancel, attempt::close);
                 response = answer;
                 if (reset) {
                     answer.discard();

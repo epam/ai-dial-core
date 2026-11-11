@@ -330,6 +330,8 @@ public class ResponseItemController implements Controller {
                 })
                 .onFailure(error -> {
                     response.reset();
+                    // tells a plugin that its answer is no longer read; an HTTP answer is left to the connection
+                    proxyResponse.discard();
                     log.warn("Can't send streaming response to client. Error:", error);
                 })
                 .mapEmpty();

@@ -30,10 +30,17 @@ final class EmbeddedProxyResponse implements ProxyResponse {
 
     /**
      * @param onBodyRead runs once {@link #body()} has read the whole body or failed
+     * @throws IllegalStateException when the answer has no headers or no body
      */
     EmbeddedProxyResponse(Response answer, Runnable onDiscard, Runnable onBodyRead) {
+        if (answer.headers() == null) {
+            throw new IllegalStateException("The plugin answered without headers");
+        }
         this.answer = answer;
         this.body = answer.body();
+        if (body == null) {
+            throw new IllegalStateException("The plugin answered without a body");
+        }
         this.onDiscard = onDiscard;
         this.onBodyRead = onBodyRead;
     }

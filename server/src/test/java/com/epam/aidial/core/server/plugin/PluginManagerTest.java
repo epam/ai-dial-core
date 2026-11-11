@@ -84,6 +84,33 @@ class PluginManagerTest {
     }
 
     @Test
+    void testLeaseGivenBackTwiceCountsOnce() throws Exception {
+        Config hello = configWith(origin("hello"));
+        Lease first = origins.acquire(hello, "p1");
+        Lease second = origins.acquire(hello, "p1");
+        origins.resolve(configWith(origin("hi")), "p1");
+
+        first.onDone().run();
+        first.onDone().run();
+        Thread.sleep(100);
+
+        assertEquals(List.of(), TestOriginPluginProvider.CLOSED, "the second attempt still holds it");
+        second.onDone().run();
+        awaitClosed(1);
+    }
+
+    @Test
+    void testShutdownWaitsForPluginAlreadyClosing() throws Exception {
+        origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello").put("closeMillis", 300))), "p1");
+        // replaced while idle: its close starts at once
+        origins.resolve(configWith(origin("hi")), "p1");
+
+        await(origins.close());
+
+        assertEquals(List.of("hello", "hi"), TestOriginPluginProvider.CLOSED.stream().map(Closed::greeting).sorted().toList());
+    }
+
+    @Test
     void testCloseRunsOffTheEventLoop() throws Exception {
         Lease hello = origins.acquire(configWith(origin("hello")), "p1");
         origins.resolve(configWith(origin("hi")), "p1");

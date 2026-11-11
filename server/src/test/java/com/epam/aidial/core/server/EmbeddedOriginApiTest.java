@@ -498,6 +498,27 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     }
 
     @Test
+    @SneakyThrows
+    void testClientGoneFromStreamedItemCancelsThePluginsAnswer() {
+        String dialId = createdResponse();
+
+        try (HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()) {
+            HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + serverPort + "/openai/v1/responses/" + dialId + "?stream=true"))
+                    .header("api-key", "proxyKey1")
+                    .GET()
+                    .build();
+            HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream body = response.body()) {
+                assertEquals(200, response.statusCode());
+                byte[] first = new byte[16];
+                assertTrue(body.read(first) > 0);
+            }
+        }
+
+        awaitCondition(() -> TestOriginPluginProvider.CANCELLED.get() == 1);
+    }
+
+    @Test
     void testPluginGoneBeforeTheItemOperation() {
         String dialId = createdResponse();
         verify(send(HttpMethod.DELETE, "/v1/plugins/platform/p1", null, "", "authorization", "admin"), 204);

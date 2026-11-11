@@ -6,6 +6,7 @@ import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -50,7 +52,7 @@ public class PluginManager {
 
     /**
      * The plugin serving the entry {@code name} of {@code config}, held for one attempt: it is not closed until the
-     * lease's {@code onDone} runs, which the caller runs once.
+     * lease's {@code onDone} runs. A second run of {@code onDone} does nothing.
      *
      * @throws IllegalStateException as {@link #resolve} does, or when the plugin closed twice while the attempt started
      */
@@ -63,12 +65,19 @@ public class PluginManager {
                 throw new IllegalStateException("Plugin '" + name + "' closed while a request started on it");
             }
         }
-        return new Lease(instance.plugin, instance::release);
+        Instance held = instance;
+        AtomicBoolean done = new AtomicBoolean();
+        // a count given back twice would close the instance under another attempt
+        return new Lease(held.plugin, () -> {
+            if (done.compareAndSet(false, true)) {
+                held.release();
+            }
+        });
     }
 
     /**
      * Closes every plugin, those in use included, and fails every later {@link #resolve} and {@link #acquire}. The
-     * future completes once the plugins have closed.
+     * future completes once the plugins have closed, those already closing included.
      */
     public Future<Void> close() {
         closed = true;
@@ -143,6 +152,8 @@ public class PluginManager {
         private final AtomicInteger users = new AtomicInteger();
         // replaced or removed: closed once no attempt holds it
         private volatile boolean retired;
+        // completes once its plugin has closed
+        private final Promise<Void> closing = Promise.promise();
 
         Instance(String name, OriginPlugin plugin) {
             this.name = name;
@@ -171,14 +182,18 @@ public class PluginManager {
             }
         }
 
-        // closes it whatever attempts hold it, unless it is closed already
+        // closes it whatever attempts hold it, unless it is closing already
         Future<Void> closeNow() {
-            return users.getAndSet(CLOSED) == CLOSED ? Future.succeededFuture() : close();
+            return users.getAndSet(CLOSED) == CLOSED ? closing.future() : close();
         }
 
         private Future<Void> close() {
-            open.remove(this);
-            return closePlugin(name, plugin);
+            // it stays in open until its plugin has closed, so that shutdown waits for a close already running
+            closePlugin(name, plugin).onComplete(ignored -> {
+                open.remove(this);
+                closing.complete();
+            });
+            return closing.future();
         }
     }
 

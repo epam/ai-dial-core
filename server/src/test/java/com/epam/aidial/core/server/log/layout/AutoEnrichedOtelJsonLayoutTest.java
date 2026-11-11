@@ -546,6 +546,22 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals("as text", attributes.get("value").asText());
     }
 
+    @Test
+    void shouldWriteListOfUnknownValuesAsTextAndDropPairWithoutKey() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        LoggingEvent event = infoEvent("odd list");
+        // an empty bean, which Jackson cannot write
+        event.addKeyValuePair(new KeyValuePair("items", List.of(new Object())));
+        event.addKeyValuePair(new KeyValuePair(null, "no key"));
+        event.addKeyValuePair(new KeyValuePair("model", "gpt-a"));
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event)).get("Attributes");
+
+        assertNotNull(attributes, "not the fallback line");
+        assertTrue(attributes.get("items").isTextual(), attributes.toString());
+        assertEquals("gpt-a", attributes.get("model").asText());
+    }
+
     private static LoggingEvent infoEvent(String message) {
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         LoggingEvent event = new LoggingEvent();

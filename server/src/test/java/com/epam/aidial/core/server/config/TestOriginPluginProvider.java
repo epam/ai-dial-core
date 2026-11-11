@@ -37,7 +37,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <li>{@code X-Test-Status: <code>} answers that status;</li>
  *   <li>{@code X-Test-Status-For-Endpoint: <endpoint>=<code>} answers that status to the call for that upstream;</li>
  *   <li>{@code X-Test-Fail: call} fails the call, and {@code X-Test-Fail: null} completes it with no answer;</li>
- *   <li>{@code X-Test-Hold} streams one event every 100 ms until {@link Response#cancel()}, as a long answer does;</li>
+ *   <li>{@code X-Test-Hold} streams one event every 100 ms until {@link Response#cancel()}, as a long answer does, and
+ *   so does a {@code GET} of a stored response with {@code stream=true};</li>
  *   <li>{@code X-Test-Call: <path>} calls that path through the host with the request's {@code bodyTree} and relays the
  *   call's answer, a cancel of it counted in {@link #CANCELLED} and passed on. The call carries every header but the
  *   {@code X-Test-Call*} ones, so a plugin of this type serving the target does not call again;</li>
@@ -62,7 +63,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * </ul>
  * {@code X-Test-Fail: call} and {@code X-Test-Await-Cancel} apply to a decide request too.
  * The setting {@code failCreate: true} makes {@link #create} throw, and {@code closeFails: true} makes the plugin's
- * {@link OriginPlugin#close} throw once it is recorded in {@link #CLOSED}. Tests clear the recorded state with
+ * {@link OriginPlugin#close} throw once it is recorded in {@link #CLOSED}; {@code closeMillis: <ms>} makes it take that
+ * long before it is recorded. Tests clear the recorded state with
  * {@link #reset}.
  */
 public class TestOriginPluginProvider implements PluginProvider {
@@ -130,10 +132,11 @@ public class TestOriginPluginProvider implements PluginProvider {
         if (settings.path("failCreate").asBoolean()) {
             throw new IllegalStateException("test-origin was told not to start");
         }
-        return new TestPlugin(settings.path("greeting").asText("ok"), settings.path("closeFails").asBoolean());
+        return new TestPlugin(settings.path("greeting").asText("ok"), settings.path("closeFails").asBoolean(),
+                settings.path("closeMillis").asLong());
     }
 
-    private record TestPlugin(String greeting, boolean closeFails) implements OriginPlugin {
+    private record TestPlugin(String greeting, boolean closeFails, long closeMillis) implements OriginPlugin {
 
         @Override
         public Future<Response> handle(Request request, HostDelegate host) {
@@ -142,6 +145,13 @@ public class TestOriginPluginProvider implements PluginProvider {
 
         @Override
         public void close() {
+            if (closeMillis > 0) {
+                try {
+                    Thread.sleep(closeMillis);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             CLOSED.add(new Closed(greeting, Context.isOnEventLoopThread()));
             if (closeFails) {
                 throw new IllegalStateException("test-origin was told not to close");
@@ -195,6 +205,9 @@ public class TestOriginPluginProvider implements PluginProvider {
         if (path.startsWith("/openai/v1/responses/")) {
             String id = path.substring("/openai/v1/responses/".length()).replace("/cancel", "");
             String state = path.endsWith("/cancel") ? "cancelled" : "completed";
+            if (request.method() == HttpMethod.GET && request.uri().contains("stream=true")) {
+                return Future.succeededFuture(itemStream(id));
+            }
             return Future.succeededFuture(request.method() == HttpMethod.DELETE
                     ? json(200, "{\"id\":\"%s\",\"object\":\"response\",\"deleted\":true}".formatted(id))
                     : json(200, "{\"id\":\"%s\",\"object\":\"response\",\"status\":\"%s\"}".formatted(id, state)));
@@ -366,6 +379,15 @@ public class TestOriginPluginProvider implements PluginProvider {
                 {"id":"chatcmpl-1","object":"chat.completion","created":0,"model":"test",
                  "choices":[{"index":0,"message":{"role":"assistant","content":"%s"},"finish_reason":"stop"}],
                  "usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}""".formatted(greeting);
+    }
+
+    // a streamed GET of a stored response, held open as X-Test-Hold holds a chat stream
+    private static Response itemStream(String id) {
+        Deque<Buffer> events = new ArrayDeque<>();
+        events.add(Buffer.buffer("event: response.in_progress\ndata: {\"type\":\"response.in_progress\",\"response\":"
+                + "{\"id\":\"" + id + "\",\"object\":\"response\",\"status\":\"in_progress\"}}\n\n"));
+        return new Answer(200, MultiMap.caseInsensitiveMultiMap().add("Content-Type", "text/event-stream"),
+                new ChunkStream(events, true));
     }
 
     private static Response chatStream(String greeting, boolean hold) {
