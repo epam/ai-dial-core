@@ -24,6 +24,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.security.IdpNotFoundException;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
+import com.epam.aidial.core.server.service.AdminSystemImportService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.BackgroundJobService;
@@ -216,6 +217,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AdminSystemExportService adminSystemExportService;
     private final AdminSystemExportService.Settings adminSystemExportSettings;
     private final OrgUnitService orgUnitService;
+    private final AdminSystemImportService adminSystemImportService;
+    private final AdminSystemImportService.Settings adminSystemImportSettings;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -287,7 +290,7 @@ public class Proxy implements Handler<HttpServerRequest> {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
                 return;
             }
-        } else {
+        } else if (!isSystemImport(request)) {
             // not only the case, Content-Length can be missing when Transfer-Encoding: chunked
             if (contentLength > resourceService.getMaxSize()) {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
@@ -510,5 +513,10 @@ public class Proxy implements Handler<HttpServerRequest> {
     private static boolean isMcpResourceMetadataPath(String path) {
         return TOOLSET_PROXY_METADATA_PATTERN.matcher(path).matches()
                 || APPLICATION_MCP_PROXY_METADATA_PATTERN.matcher(path).matches();
+    }
+
+    private static boolean isSystemImport(HttpServerRequest request) {
+        String path = request.path();
+        return request.method() == HttpMethod.POST && path != null && RouteTemplate.ADMIN_SYSTEM_IMPORT.matches(path);
     }
 }
