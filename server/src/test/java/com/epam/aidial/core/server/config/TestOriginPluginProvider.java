@@ -17,6 +17,7 @@ import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.streams.ReadStream;
 
 import java.util.ArrayDeque;
@@ -62,7 +63,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <li>on a notice, {@code X-Test-Notice-Call: <path>} calls that path through the host first.</li>
  * </ul>
  * {@code X-Test-Fail: call} and {@code X-Test-Await-Cancel} apply to a decide request too.
- * The setting {@code failCreate: true} makes {@link #create} throw, {@code createNull: true} return null, and
+ * The setting {@code failCreate: true} makes {@link #create} throw, {@code createNull: true} return null,
+ * {@code mutateSettings: true} change the settings it gets, and
  * {@code closeFails: true} makes the plugin's
  * {@link OriginPlugin#close} throw once it is recorded in {@link #CLOSED}; {@code closeMillis: <ms>} makes it take that
  * long before it is recorded. Tests clear the recorded state with
@@ -90,6 +92,10 @@ public class TestOriginPluginProvider implements PluginProvider {
      */
     public static final AtomicReference<Vertx> CREATED_WITH = new AtomicReference<>();
     /**
+     * Whether the last plugin was created on a duplicated context, a request's own.
+     */
+    public static final AtomicBoolean CREATED_ON_DUPLICATE = new AtomicBoolean();
+    /**
      * How many requests the host told it were cancelled before it answered.
      */
     public static final AtomicInteger TOLD_CANCELLED = new AtomicInteger();
@@ -114,6 +120,7 @@ public class TestOriginPluginProvider implements PluginProvider {
         TOLD_CANCELLED.set(0);
         CLOSED.clear();
         DECIDED.clear();
+        CREATED_ON_DUPLICATE.set(false);
     }
 
     @Override
@@ -130,6 +137,11 @@ public class TestOriginPluginProvider implements PluginProvider {
     @Override
     public OriginPlugin create(ObjectNode settings, Vertx vertx) {
         CREATED_WITH.set(vertx);
+        ContextInternal current = ContextInternal.current();
+        CREATED_ON_DUPLICATE.set(current != null && current.isDuplicate());
+        if (settings.path("mutateSettings").asBoolean()) {
+            settings.put("mutated", true);
+        }
         if (settings.path("failCreate").asBoolean()) {
             throw new IllegalStateException("test-origin was told not to start");
         }

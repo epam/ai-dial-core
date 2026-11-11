@@ -198,7 +198,8 @@ public final class ConfigPostProcessor {
         }
         List<PluginProvider.Problem> problems;
         try {
-            problems = List.copyOf(provider.validate(plugin.getSettings()));
+            // a copy: a provider that changed the settings would change the config being validated
+            problems = List.copyOf(provider.validate(plugin.getSettings() == null ? null : plugin.getSettings().deepCopy()));
         } catch (RuntimeException | LinkageError e) {
             // plugin code: a jar missing a class throws NoClassDefFoundError on first use
             log.warn("Plugin provider of type '{}' failed to check plugin '{}'", plugin.getType(), name, e);

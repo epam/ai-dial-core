@@ -5,9 +5,11 @@ import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.impl.ContextInternal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -112,7 +114,7 @@ public class PluginManager {
         }
         com.epam.aidial.core.plugin.Plugin created;
         try {
-            created = provider.create(declaration.getSettings(), vertx);
+            created = create(provider, declaration.getSettings());
         } catch (RuntimeException | LinkageError e) {
             // plugin code: a jar missing a class throws NoClassDefFoundError on first use
             throw new IllegalStateException("Plugin '" + name + "' cannot be created: " + e.getMessage(), e);
@@ -197,6 +199,26 @@ public class PluginManager {
                 closing.complete();
             });
             return closing.future();
+        }
+    }
+
+    /**
+     * Gives the provider its own copy of the settings, so a change it makes cannot turn the entry into a new declaration
+     * at every rebuild. Runs it outside the duplicated context of the request that got here first: a timer the plugin
+     * sets up there would keep that request's context, and the request it holds, for the plugin's life.
+     */
+    private com.epam.aidial.core.plugin.Plugin create(PluginProvider provider, ObjectNode settings) {
+        ObjectNode copy = settings == null ? null : settings.deepCopy();
+        ContextInternal current = ContextInternal.current();
+        if (current == null) {
+            return provider.create(copy, vertx);
+        }
+        ContextInternal base = current.unwrap();
+        ContextInternal previous = base.beginDispatch();
+        try {
+            return provider.create(copy, vertx);
+        } finally {
+            base.endDispatch(previous);
         }
     }
 

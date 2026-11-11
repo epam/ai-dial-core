@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,10 +21,12 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -62,6 +65,33 @@ class PluginManagerTest {
         assertSame(first, origins.resolve(config, "p1"));
         // a rebuild makes new objects for the same declaration
         assertSame(first, origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello"))), "p1"));
+    }
+
+    @Test
+    void testProviderChangingItsSettingsKeepsThePlugin() {
+        OriginPlugin first = origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE,
+                greeting("hello").put("mutateSettings", true))), "p1");
+
+        // the rebuild's declaration equals the one the plugin was created from
+        assertSame(first, origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE,
+                greeting("hello").put("mutateSettings", true))), "p1"));
+    }
+
+    @Test
+    void testPluginCreatedOutsideTheRequestsContext() throws Exception {
+        ContextInternal request = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
+        CompletableFuture<OriginPlugin> created = new CompletableFuture<>();
+
+        request.runOnContext(ignored -> {
+            try {
+                created.complete(origins.resolve(configWith(origin("hello")), "p1"));
+            } catch (RuntimeException e) {
+                created.completeExceptionally(e);
+            }
+        });
+
+        assertNotNull(created.get(5, TimeUnit.SECONDS));
+        assertFalse(TestOriginPluginProvider.CREATED_ON_DUPLICATE.get());
     }
 
     @Test
