@@ -83,7 +83,7 @@ public class ApplicationService {
     private final int checkSize;
     @Getter
     private final boolean includeCustomApps;
-    private final boolean allowUserResourceDependencies;
+    private final boolean allowUserAuthoredDependencies;
 
     private final ApplicationSchemaService applicationSchemaService;
     private final CatalogSchemaService catalogSchemaService;
@@ -123,7 +123,7 @@ public class ApplicationService {
         this.checkDelay = settings.getLong("checkDelay", 300000L);
         this.checkSize = settings.getInteger("checkSize", 64);
         this.includeCustomApps = settings.getBoolean("includeCustomApps", false);
-        this.allowUserResourceDependencies = settings.getBoolean("allowUserResourceDependencies", false);
+        this.allowUserAuthoredDependencies = settings.getBoolean("allowUserAuthoredDependencies", false);
 
         if (controller.isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 300000L);
@@ -314,9 +314,9 @@ public class ApplicationService {
         List<ResourceDependency> stored = existing != null ? existing.getResourceDependencies() : null;
         if (!dependenciesSubmitted) {
             application.setResourceDependencies(stored);
-        } else if (!allowUserResourceDependencies && !Objects.equals(application.getResourceDependencies(), stored)) {
+        } else if (!allowUserAuthoredDependencies && !Objects.equals(application.getResourceDependencies(), stored)) {
             throw new HttpException(HttpStatus.FORBIDDEN,
-                    "User-authored applications may not change resource dependencies (applications.allowUserResourceDependencies is disabled)");
+                    "User-authored applications may not change resource dependencies (applications.allowUserAuthoredDependencies is disabled)");
         }
     }
 

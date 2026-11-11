@@ -54,7 +54,7 @@ public class AdminConsentService {
             throw new HttpException(CONFLICT, "The declaration changed since it was reviewed: " + deploymentId);
         }
         ConsentGrant grant = new ConsentGrant()
-                .setConsent(adminConsentOf(declared))
+                .setConsent(newConsent(declared))
                 .setGrantedBy(context.getInitiatorId())
                 .setGrantedAt(clock.getAsLong());
         resourceService.putResource(adminConsentDescriptor(application.getName()),
@@ -128,7 +128,7 @@ public class AdminConsentService {
                 ? MergedConfigStore.resolveMapKeyFor(application) : application.getUrl());
     }
 
-    private static Consent adminConsentOf(List<Consent.ResourceEntry> declared) {
+    private static Consent newConsent(List<Consent.ResourceEntry> declared) {
         Consent consent = new Consent();
         consent.setResources(declared);
         return consent;

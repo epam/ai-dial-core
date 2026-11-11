@@ -96,7 +96,7 @@
   },
   "applications": {
     "includeCustomApps": true,
-    "allowUserResourceDependencies": false
+    "allowUserAuthoredDependencies": false
   },
   "access": {
     "admin": {

@@ -11,6 +11,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.UrlUtil;
+
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collections;

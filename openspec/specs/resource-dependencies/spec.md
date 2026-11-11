@@ -99,7 +99,7 @@ encoded resource name.
 - **THEN** `POST /v1/admin/validate` reports it `FAILED`
 
 ### Requirement: Who may declare resource dependencies
-While the static setting `applications.allowUserResourceDependencies` is `false` (the default), a write of an
+While the static setting `applications.allowUserAuthoredDependencies` is `false` (the default), a write of an
 application by a caller without explicit admin access that submits a `resource_dependencies` section **different from
 the stored one** SHALL be answered `403` after the shape rules are checked (a body that does not parse is still `400`;
 a malformed section is `400`). A write that omits the section inherits the stored one and is not gated. A write that
@@ -119,7 +119,7 @@ submits the same section as stored is accepted. An admin's write to their own bu
 - **THEN** Core answers `200`
 
 #### Scenario: User with the setting on
-- **WHEN** `applications.allowUserResourceDependencies` is `true` and a user writes a valid section to the own bucket
+- **WHEN** `applications.allowUserAuthoredDependencies` is `true` and a user writes a valid section to the own bucket
 - **THEN** Core answers `200`, and a section declaring `{current-user}/` is answered `400`
 
 #### Scenario: No admin rules

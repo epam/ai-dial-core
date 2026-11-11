@@ -531,7 +531,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
         @Override
         protected JsonObject additionalSettingsOverrides() {
             return new JsonObject()
-                    .put("applications", new JsonObject().put("allowUserResourceDependencies", true))
+                    .put("applications", new JsonObject().put("allowUserAuthoredDependencies", true))
                     .put("access", new JsonObject()
                             .put("admin", new JsonObject().put("rules", new JsonArray()
                                     .add(new JsonObject().put("source", "roles").put("function", "EQUAL").put("targets", new JsonArray().add("admin")))))
@@ -594,7 +594,7 @@ public class ResourceDependencyConsentApiTest extends ResourceBaseTest {
 
         @Override
         protected JsonObject additionalSettingsOverrides() {
-            return new JsonObject().put("applications", new JsonObject().put("allowUserResourceDependencies", true));
+            return new JsonObject().put("applications", new JsonObject().put("allowUserAuthoredDependencies", true));
         }
 
         @Test

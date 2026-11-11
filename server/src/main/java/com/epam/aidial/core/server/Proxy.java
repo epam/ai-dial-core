@@ -38,7 +38,6 @@ import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
-
 import com.epam.aidial.core.server.service.ResourceOperationService;
 import com.epam.aidial.core.server.service.ResponseMappingService;
 import com.epam.aidial.core.server.service.ResponsesApiClient;

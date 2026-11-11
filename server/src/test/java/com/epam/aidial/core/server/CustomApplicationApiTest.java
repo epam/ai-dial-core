@@ -2275,7 +2275,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
 
         @Override
         protected JsonObject additionalSettingsOverrides() {
-            return new JsonObject().put("applications", new JsonObject().put("allowUserResourceDependencies", true));
+            return new JsonObject().put("applications", new JsonObject().put("allowUserAuthoredDependencies", true));
         }
 
         @Test

@@ -4,7 +4,7 @@
     "reload": 60000
   },
   "applications": {
-    "allowUserResourceDependencies": false
+    "allowUserAuthoredDependencies": false
   },
   "redis": {
     "singleServerConfig": {

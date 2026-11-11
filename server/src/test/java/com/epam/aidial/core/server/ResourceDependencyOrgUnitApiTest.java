@@ -24,7 +24,7 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
     @Override
     protected JsonObject additionalSettingsOverrides() {
         return new JsonObject().put("orgUnits", new JsonObject().put("enabled", true))
-                .put("applications", new JsonObject().put("allowUserResourceDependencies", true));
+                .put("applications", new JsonObject().put("allowUserAuthoredDependencies", true));
     }
 
     @BeforeEach
@@ -169,7 +169,7 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
         assertEquals(200, response.status(), response.body());
     }
 
-    /** allowUserResourceDependencies is off: a unit editor may not introduce or change the list, but may omit it. */
+    /** allowUserAuthoredDependencies is off: a unit editor may not introduce or change the list, but may omit it. */
     public static class FlagOff extends ResourceBaseTest {
 
         private static final String APP = "applications/public/Acme/flag-off-app";

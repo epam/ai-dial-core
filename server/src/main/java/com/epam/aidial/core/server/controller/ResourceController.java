@@ -27,7 +27,6 @@ import com.epam.aidial.core.server.service.ExternalServicesWriteMode;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
-
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
