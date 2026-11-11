@@ -62,7 +62,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <li>on a notice, {@code X-Test-Notice-Call: <path>} calls that path through the host first.</li>
  * </ul>
  * {@code X-Test-Fail: call} and {@code X-Test-Await-Cancel} apply to a decide request too.
- * The setting {@code failCreate: true} makes {@link #create} throw, and {@code closeFails: true} makes the plugin's
+ * The setting {@code failCreate: true} makes {@link #create} throw, {@code createNull: true} return null, and
+ * {@code closeFails: true} makes the plugin's
  * {@link OriginPlugin#close} throw once it is recorded in {@link #CLOSED}; {@code closeMillis: <ms>} makes it take that
  * long before it is recorded. Tests clear the recorded state with
  * {@link #reset}.
@@ -131,6 +132,9 @@ public class TestOriginPluginProvider implements PluginProvider {
         CREATED_WITH.set(vertx);
         if (settings.path("failCreate").asBoolean()) {
             throw new IllegalStateException("test-origin was told not to start");
+        }
+        if (settings.path("createNull").asBoolean()) {
+            return null;
         }
         return new TestPlugin(settings.path("greeting").asText("ok"), settings.path("closeFails").asBoolean(),
                 settings.path("closeMillis").asLong());

@@ -429,6 +429,21 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     }
 
     @Test
+    @SneakyThrows
+    void testCustomApplicationRefusedByValidate() {
+        plugin("p1", "{}");
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, """
+                {"manifests": [{"kind": "Application", "name": "applications/public/my-app",
+                  "spec": {"interfaces": {"openaiChatCompletions": {"plugin": "p1"}}}}]}
+                """, "authorization", "admin");
+
+        verify(response, 422);
+        JsonNode result = ProxyUtil.MAPPER.readTree(response.body()).path("results").path(0);
+        assertEquals("FAILED", result.path("status").asText(), response.body());
+        assertEquals("A plugin is reserved for platform deployments", result.path("error").asText(), response.body());
+    }
+
+    @Test
     void testCustomApplicationWithInlineTranslatorPluginRefusedOnWrite() {
         Response put = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/my-app", null, """
                 {"interfaces": {"anthropicMessages": {"mode": "translator",

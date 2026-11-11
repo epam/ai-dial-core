@@ -207,6 +207,13 @@ class PluginManagerTest {
         assertFailure(configWith(new Plugin(TestOriginPluginProvider.TYPE, settings)), "Plugin 'p1' cannot be created");
     }
 
+    @Test
+    void testProviderReturningNullCannotCreate() {
+        ObjectNode settings = JsonNodeFactory.instance.objectNode().put("createNull", true);
+
+        assertFailure(configWith(new Plugin(TestOriginPluginProvider.TYPE, settings)), "its provider returned null");
+    }
+
     private void assertFailure(Config config, String message) {
         IllegalStateException error = assertThrows(IllegalStateException.class, () -> origins.resolve(config, "p1"));
         assertTrue(error.getMessage().contains(message), error.getMessage());

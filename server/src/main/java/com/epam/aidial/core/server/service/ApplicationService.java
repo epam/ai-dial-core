@@ -684,9 +684,19 @@ public class ApplicationService {
             ValidationWarning warning = warnings.get(0);
             throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, warning.getField() + ": " + warning.getMessage());
         }
-        if (!ResourceDescriptor.PLATFORM_BUCKET.equals(resource.getBucketName()) && hasEmbeddedInterface(application)) {
-            throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, "A plugin is reserved for platform deployments");
+        String pluginError = pluginOutsidePlatformError(resource.getBucketName(), application);
+        if (pluginError != null) {
+            throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, pluginError);
         }
+    }
+
+    /**
+     * The error of an application outside the platform bucket that names a plugin, null for any other; checked by every
+     * write and by {@code /v1/admin/validate}.
+     */
+    public static String pluginOutsidePlatformError(String bucket, Application application) {
+        return !ResourceDescriptor.PLATFORM_BUCKET.equals(bucket) && hasEmbeddedInterface(application)
+                ? "A plugin is reserved for platform deployments" : null;
     }
 
     private static boolean hasEmbeddedInterface(Application application) {

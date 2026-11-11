@@ -5,11 +5,13 @@ import com.epam.aidial.core.plugin.HostDelegate;
 import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.plugin.PluginManager.Lease;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
@@ -21,6 +23,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.impl.ContextInternal;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.streams.ReadStream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -73,6 +76,30 @@ class EmbeddedProxyRequestTest {
     @BeforeEach
     void recordAttempts() {
         doAnswer(invocation -> attempts.add(invocation.getArgument(0))).when(pass).addHostDelegate(any());
+        // the tree the chain parsed, as a first attempt finds it
+        when(pass.getRequestTree()).thenReturn(ProxyUtil.MAPPER.createObjectNode());
+    }
+
+    @Test
+    void testRetriedAttemptParsesTheBodyOffTheEventLoop() throws Exception {
+        // an earlier attempt took the chain's tree
+        when(pass.getRequestTree()).thenReturn(null);
+        Proxy proxy = mock(Proxy.class);
+        when(proxy.getTaskExecutor()).thenReturn(new AsyncTaskExecutor(vertx, new JsonObject()));
+        when(pass.getProxy()).thenReturn(proxy);
+        AtomicReference<Request> seen = new AtomicReference<>();
+        AtomicReference<Context> calledOn = new AtomicReference<>();
+        EmbeddedProxyRequest request = request((call, host) -> {
+            seen.set(call);
+            calledOn.set(Vertx.currentContext());
+            return Future.succeededFuture(new Answer(stream(false)));
+        });
+
+        await(onContext(() -> request.send(Buffer.buffer("{\"model\":\"m\"}"))));
+
+        assertEquals("m", seen.get().bodyTree().path("model").asText());
+        assertSame(context, calledOn.get());
+        verify(proxy).getTaskExecutor();
     }
 
     @Test

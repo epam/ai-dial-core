@@ -102,9 +102,25 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
 
     @Override
     public Future<ProxyResponse> send(Buffer body) {
+        if (router != null) {
+            return send(body, router.bodyTree());
+        }
+        // taken from the context, so that a later attempt does not get a tree an earlier call has changed
+        ObjectNode tree = proxyContext.getRequestTree();
+        proxyContext.setRequestTree(null);
+        if (tree != null || body.length() == 0) {
+            return send(body, tree);
+        }
+        // a retried attempt: the body is parsed again, off the event loop, and the plugin called back on this context
+        return proxyContext.getProxy().getTaskExecutor().submit(() -> parseOrNull(body))
+                .compose(parsed -> reset
+                        ? Future.failedFuture(new IllegalStateException("The request was reset before the plugin was called"))
+                        : send(body, parsed));
+    }
+
+    private Future<ProxyResponse> send(Buffer body, @Nullable ObjectNode tree) {
         Promise<ProxyResponse> promise = context.promise();
-        Request request = new Request(method, absoluteUri.substring(baseUrl.length()), headers, body,
-                router != null ? router.bodyTree() : bodyTree(body), caller());
+        Request request = new Request(method, absoluteUri.substring(baseUrl.length()), headers, body, tree, caller());
         VertxHostDelegate attempt = router != null
                 ? VertxHostDelegate.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey())
                 : new VertxHostDelegate(proxyContext.getProxy(), proxyContext, context);
@@ -191,16 +207,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
         }
     }
 
-    /**
-     * The tree the chain serialised into {@code body}, taken from the context so that a later attempt does not get a
-     * tree an earlier call has changed. A retried attempt finds none and parses the body.
-     */
-    private ObjectNode bodyTree(Buffer body) {
-        ObjectNode tree = proxyContext.getRequestTree();
-        proxyContext.setRequestTree(null);
-        if (tree != null || body.length() == 0) {
-            return tree;
-        }
+    private static ObjectNode parseOrNull(Buffer body) {
         try {
             return ProxyUtil.parseObject(body);
         } catch (IOException | RuntimeException e) {

@@ -117,6 +117,9 @@ public class PluginManager {
             // plugin code: a jar missing a class throws NoClassDefFoundError on first use
             throw new IllegalStateException("Plugin '" + name + "' cannot be created: " + e.getMessage(), e);
         }
+        if (created == null) {
+            throw new IllegalStateException("Plugin '" + name + "' cannot be created: its provider returned null");
+        }
         if (!(created instanceof OriginPlugin plugin)) {
             closePlugin(name, created);
             throw new IllegalStateException("The plugin of type '" + declaration.getType() + "' serves no requests");
