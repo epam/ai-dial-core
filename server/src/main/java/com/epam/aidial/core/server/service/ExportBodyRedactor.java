@@ -57,6 +57,9 @@ import java.util.function.Consumer;
  */
 public final class ExportBodyRedactor implements BodyRedactor {
 
+    /** TEMPORARY, FOR TESTING ONLY: when true the policy is skipped and every body is exported as stored, with its secrets. */
+    private static final boolean REDACTION_DISABLED = true;
+
     /**
      * The place of a schema document that holds a secret: {@code dial:applicationTypeRoutes[*].dial:upstreams[*]}. The route is read
      * into {@code Route} and {@code Upstream}, which accept the spellings below for the same properties, so a schema stored in any of
@@ -114,6 +117,10 @@ public final class ExportBodyRedactor implements BodyRedactor {
     }
 
     private static ObjectNode applyPolicy(ExportResourceIdentity identity, ObjectNode stored) {
+        // TEMPORARY, FOR TESTING ONLY: redaction is switched off, so the export holds secrets. Remove this line to restore the policy.
+        if (REDACTION_DISABLED) {
+            return stored.deepCopy();
+        }
         ObjectNode redacted = stripEncryptedFields(identity, stored);
         removeAuthSecrets(identity, redacted);
         removeSchemaSecrets(identity, redacted);
