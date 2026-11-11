@@ -17,6 +17,7 @@ public enum HttpStatus {
     NOT_FOUND(404),
     METHOD_NOT_ALLOWED(405),
     NOT_ACCEPTABLE(406),
+    REQUEST_TIMEOUT(408),
     CONFLICT(409),
     PRECONDITION_FAILED(412),
     REQUEST_ENTITY_TOO_LARGE(413),
@@ -56,6 +57,7 @@ public enum HttpStatus {
             case 404 -> NOT_FOUND;
             case 405 -> METHOD_NOT_ALLOWED;
             case 406 -> NOT_ACCEPTABLE;
+            case 408 -> REQUEST_TIMEOUT;
             case 409 -> CONFLICT;
             case 412 -> PRECONDITION_FAILED;
             case 413 -> REQUEST_ENTITY_TOO_LARGE;

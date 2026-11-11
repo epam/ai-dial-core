@@ -369,6 +369,20 @@ Refer to [Admin system export](docs/admin-system-export.md) to learn more.
 </details>
 
 <details> 
+<summary><b>Admin System Import Configurations</b></summary>
+
+Settings of `POST /v1/admin/system-import`, which merges the archive
+`POST /v1/admin/system-export` produces into the `public` and `platform` buckets, or replaces them with it (`mode=replace`). Refer to [Admin system import](docs/admin-system-import.md) to learn more.
+
+| Setting                            | Default | Required | Description                                                                                                                                              |
+|-------------------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| adminSystemImport.stallTimeout     | 60000   |    No    | Time in milliseconds the stage phase waits for the next chunk of the upload before failing it with `408` and releasing the guard. Must be positive, otherwise Core does not start. |
+| adminSystemImport.progressInterval | 15000   |    No    | Time in milliseconds between progress lines on the response while the replace phase runs. Must be positive, otherwise Core does not start.              |
+| adminSystemImport.parallelism      | 4       |    No    | Blob storage calls a system import runs at a time while it stages, wipes, copies and deletes its staging. Must be at least 1, otherwise Core does not start. Above 5, also raise the JVM option `-Dhttp.maxConnections` to at least this value, so idle connections to blob storage are reused instead of reopened. |
+
+</details>
+
+<details> 
 <summary><b>Redis Configurations</b></summary>
 
 | Setting                                  | Default | Required | Description                                                                                                                                                                                                                                                                                                                                                                                    |

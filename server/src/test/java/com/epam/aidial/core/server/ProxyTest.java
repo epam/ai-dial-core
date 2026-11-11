@@ -185,6 +185,22 @@ public class ProxyTest {
     }
 
     @Test
+    public void testHandle_SystemImportSkipsBodySizeLimit() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.path()).thenReturn("/v1/admin/system-import");
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("application/zip");
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Long.toString(1L << 30));
+
+        proxy.handle(request);
+
+        verify(response, never()).setStatusCode(REQUEST_ENTITY_TOO_LARGE.getCode());
+        verify(request).pause();
+    }
+
+    @Test
     public void testHandle_HealthCheck() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
