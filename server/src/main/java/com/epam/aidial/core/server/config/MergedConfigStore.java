@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Alias;
-import com.epam.aidial.core.server.alias.StoredAliases;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
@@ -23,6 +22,7 @@ import com.epam.aidial.core.config.policy.PolicyKind;
 import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
+import com.epam.aidial.core.server.alias.StoredAliases;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.budget.EffectiveBudgets;
 import com.epam.aidial.core.server.security.ApiKeyStore;
