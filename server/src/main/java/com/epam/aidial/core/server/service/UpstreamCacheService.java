@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.function.request.CacheKey;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.util.HashUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.service.LockService;
 import lombok.extern.slf4j.Slf4j;
@@ -63,9 +64,16 @@ public class UpstreamCacheService {
         this.prefix = prefix;
     }
 
+    /**
+     * Auto-cached prefixes are scoped to the initiator: callers sharing a prompt prefix (e.g. a harness system prompt)
+     * must not all be pinned to the single upstream that served the first of them.
+     *
+     * @param initiatorId the request initiator, or null when unknown, in which case prefixes are shared
+     */
     public CacheBreakpointContext buildCacheBreakpointContext(RequestObject request, CachePolicy policy, Model model,
-                                                                InterfaceType interfaceType) {
+                                                                InterfaceType interfaceType, String initiatorId) {
         boolean autoCaching = isAutoCaching(model, interfaceType);
+        String initiatorHash = autoCaching && initiatorId != null ? HashUtil.sha256Hex(initiatorId) : null;
         List<String> fieldsOrder = interfaceType.getFieldsHashingOrder();
         List<String> breakpoints = new ArrayList<>();
         Map<String, String> prefixToHash = new HashMap<>();
@@ -74,7 +82,7 @@ public class UpstreamCacheService {
             if (autoCaching || cacheKey.hasBreakpoint()) {
                 breakpoints.add(path);
             }
-            prefixToHash.put(path, cacheKey.hash());
+            prefixToHash.put(path, initiatorHash == null ? cacheKey.hash() : HashUtil.sha256Hex(initiatorHash + cacheKey.hash()));
         }
         return new CacheBreakpointContext(breakpoints, prefixToHash, policy);
     }
