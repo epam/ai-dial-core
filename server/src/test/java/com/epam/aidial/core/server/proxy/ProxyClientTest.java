@@ -1,10 +1,10 @@
-package com.epam.aidial.core.server.upstream;
+package com.epam.aidial.core.server.proxy;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.config.EmbeddedOrigins;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.plugin.OriginPluginManager;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
@@ -22,11 +22,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class OriginClientTest {
+class ProxyClientTest {
 
     private static Vertx vertx;
 
-    private OriginClient client;
+    private ProxyClient client;
     private ProxyContext context;
 
     @BeforeAll
@@ -41,7 +41,7 @@ class OriginClientTest {
 
     @BeforeEach
     void createClient() {
-        client = new OriginClient(mock(HttpClient.class), vertx, mock(EmbeddedOrigins.class));
+        client = new ProxyClient(mock(HttpClient.class), vertx, mock(OriginPluginManager.class));
         // at a redecide or a notice the pass's deployment is the candidate that failed, here a user's custom application
         Application custom = new Application();
         custom.setName("applications/bucket-of-a-user/custom");

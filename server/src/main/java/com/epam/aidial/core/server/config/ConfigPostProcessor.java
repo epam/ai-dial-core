@@ -35,6 +35,7 @@ import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.alias.AliasTargets;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.OrgUnitRoles;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;

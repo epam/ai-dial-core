@@ -1,10 +1,12 @@
-package com.epam.aidial.core.server.upstream;
+package com.epam.aidial.core.server.proxy;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.config.EmbeddedOrigins;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.plugin.OriginPluginManager;
+import com.epam.aidial.core.server.proxy.embedded.EmbeddedProxyRequest;
+import com.epam.aidial.core.server.proxy.http.HttpProxyRequest;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -23,13 +25,13 @@ import javax.annotation.Nullable;
  * interface names.
  */
 @RequiredArgsConstructor
-public class OriginClient {
+public class ProxyClient {
 
     private static final String PLATFORM_APPLICATIONS = "applications/" + ResourceDescriptor.PLATFORM_BUCKET + "/";
 
     private final HttpClient client;
     private final Vertx vertx;
-    private final EmbeddedOrigins embeddedOrigins;
+    private final OriginPluginManager originPluginManager;
 
     public Future<ProxyRequest> http(RequestOptions options) {
         return client.request(options).map(HttpProxyRequest::new);
@@ -53,10 +55,10 @@ public class OriginClient {
                 throw new IllegalStateException("A plugin is reserved for platform deployments: " + application.getName());
             }
             // fails here, for an entry that cannot serve; each attempt takes the plugin when it is sent
-            embeddedOrigins.resolve(config, plugin);
+            originPluginManager.resolve(config, plugin);
             String baseUrl = DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin;
             return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context,
-                    () -> embeddedOrigins.acquire(config, plugin), method, baseUrl, absoluteUri));
+                    () -> originPluginManager.acquire(config, plugin), method, baseUrl, absoluteUri));
         } catch (RuntimeException e) {
             return vertxContext.failedFuture(e);
         }
@@ -74,10 +76,10 @@ public class OriginClient {
         ContextInternal vertxContext = (ContextInternal) vertx.getOrCreateContext();
         try {
             Config config = context.getConfig();
-            embeddedOrigins.resolve(config, plugin);
+            originPluginManager.resolve(config, plugin);
             String baseUrl = DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin;
             return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context,
-                    () -> embeddedOrigins.acquire(config, plugin), method, baseUrl, absoluteUri,
+                    () -> originPluginManager.acquire(config, plugin), method, baseUrl, absoluteUri,
                     new EmbeddedProxyRequest.RouterRequest(callKey, bodyTree)));
         } catch (RuntimeException e) {
             return vertxContext.failedFuture(e);

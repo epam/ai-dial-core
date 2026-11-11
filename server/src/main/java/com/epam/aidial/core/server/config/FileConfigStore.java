@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.config;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.validation.ValidationModule;
 import com.fasterxml.jackson.databind.JsonNode;

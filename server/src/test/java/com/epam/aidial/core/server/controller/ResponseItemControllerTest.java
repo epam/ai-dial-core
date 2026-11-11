@@ -10,10 +10,10 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.proxy.ProxyClient;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
-import com.epam.aidial.core.server.upstream.OriginClient;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -97,7 +97,7 @@ public class ResponseItemControllerTest {
     void stubConfig() {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
-        lenient().when(proxy.getOriginClient()).thenAnswer(invocation -> new OriginClient(proxy.getClient(), null, null));
+        lenient().when(proxy.getProxyClient()).thenAnswer(invocation -> new ProxyClient(proxy.getClient(), null, null));
     }
 
     @BeforeEach

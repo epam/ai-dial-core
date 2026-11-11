@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.upstream;
+package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.server.Proxy;
 import io.netty.handler.codec.DecoderResult;
@@ -32,7 +32,7 @@ import javax.security.cert.X509Certificate;
  * query, with the call's headers. The pass takes the call's body as a tree, so {@link #body()} is empty and already
  * read. Members no controller of the create operations uses throw.
  */
-public final class ChildServerRequest implements HttpServerRequest {
+public final class EmbeddedServerRequest implements HttpServerRequest {
 
     /**
      * The headers Core sets for an origin itself. A plugin that forwards its own request's headers would otherwise pass
@@ -57,7 +57,7 @@ public final class ChildServerRequest implements HttpServerRequest {
      * @param uri     the path and query of the call
      * @param headers the call's headers, copied
      */
-    public ChildServerRequest(String uri, MultiMap headers, HttpServerResponse response) {
+    public EmbeddedServerRequest(String uri, MultiMap headers, HttpServerResponse response) {
         this.uri = uri;
         int question = uri.indexOf('?');
         this.path = question < 0 ? uri : uri.substring(0, question);

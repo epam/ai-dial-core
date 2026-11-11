@@ -24,6 +24,7 @@ import com.epam.aidial.core.config.UpstreamAuthConfig;
 import com.epam.aidial.core.config.UpstreamAuthType;
 import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.plugin.PluginProvider;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.fasterxml.jackson.core.JsonProcessingException;

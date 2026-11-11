@@ -1,6 +1,7 @@
-package com.epam.aidial.core.server.upstream;
+package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;

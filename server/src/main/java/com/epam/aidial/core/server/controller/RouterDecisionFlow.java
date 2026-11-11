@@ -12,10 +12,10 @@ import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.RouterDecisionClient;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
@@ -373,7 +373,7 @@ public class RouterDecisionFlow {
         }
         context.setProxyApiKeyData(null);
         // an origin plugin's in-process calls carry the failed candidate's key without a lookup: they end with it
-        context.closeChildPasses();
+        context.closeHostDelegates();
         context.setCacheBreakpointContext(null);
         context.setUpstreamBodyReceived(false);
         context.setSpanUsageStats(null);

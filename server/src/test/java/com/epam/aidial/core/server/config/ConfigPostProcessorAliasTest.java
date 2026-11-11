@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import lombok.SneakyThrows;

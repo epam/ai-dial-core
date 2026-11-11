@@ -1,6 +1,7 @@
-package com.epam.aidial.core.server.config;
+package com.epam.aidial.core.server.plugin;
 
 import com.epam.aidial.core.plugin.PluginProvider;
+import com.google.common.annotations.VisibleForTesting;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.BufferedReader;
@@ -37,7 +38,8 @@ public final class PluginRegistry {
 
     private final Map<String, PluginProvider> providers;
 
-    PluginRegistry(Map<String, PluginProvider> providers) {
+    @VisibleForTesting
+    public PluginRegistry(Map<String, PluginProvider> providers) {
         this.providers = providers;
     }
 

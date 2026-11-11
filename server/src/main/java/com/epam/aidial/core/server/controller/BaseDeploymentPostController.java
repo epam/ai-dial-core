@@ -20,13 +20,13 @@ import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
-import com.epam.aidial.core.server.upstream.ProxyRequest;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -152,7 +152,7 @@ public class BaseDeploymentPostController {
     protected void finalizeRequest() {
         // every terminal path of all four LLM surfaces reaches here, including the respond(...) helpers above;
         // ResponseItemController, which is not one of them, closes its child passes in its own finalizeRequest
-        context.closeChildPasses();
+        context.closeHostDelegates();
         GenAiTraceAttributes.setLatencyAttributes(context);
         // the router row reads the span's stats, which a root's endSpan deletes
         decisions.writeRouterRow()
@@ -451,7 +451,7 @@ public class BaseDeploymentPostController {
         HttpServerRequest request = context.getRequest();
         context.setProxyRequestUri(absoluteUri);
         if (plugin != null) {
-            return proxy.getOriginClient().embedded(context, request.method(), absoluteUri, plugin);
+            return proxy.getProxyClient().embedded(context, request.method(), absoluteUri, plugin);
         }
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(absoluteUri)
@@ -460,7 +460,7 @@ public class BaseDeploymentPostController {
                 .setConnectTimeout(proxy.getClientOptions().getConnectTimeout())
                 .setIdleTimeout(proxy.getClientOptions().getIdleTimeout());
 
-        return proxy.getOriginClient().http(options);
+        return proxy.getProxyClient().http(options);
     }
 
     protected Future<ProxyRequest> createProxyRequest(InterfaceType type) {

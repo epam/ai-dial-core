@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.config;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.policy.BudgetInstance;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;

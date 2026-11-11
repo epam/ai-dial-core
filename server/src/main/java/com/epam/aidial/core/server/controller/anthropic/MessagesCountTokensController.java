@@ -12,7 +12,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;

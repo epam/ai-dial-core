@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
+import com.epam.aidial.core.server.proxy.ProxyClient;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -24,7 +25,6 @@ import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
-import com.epam.aidial.core.server.upstream.OriginClient;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -104,7 +104,7 @@ public class ResponsesControllerTest {
     void stubConfig() {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
-        lenient().when(proxy.getOriginClient()).thenAnswer(invocation -> new OriginClient(proxy.getClient(), null, null));
+        lenient().when(proxy.getProxyClient()).thenAnswer(invocation -> new ProxyClient(proxy.getClient(), null, null));
     }
 
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)

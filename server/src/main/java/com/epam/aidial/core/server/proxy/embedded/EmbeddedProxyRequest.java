@@ -1,11 +1,12 @@
-package com.epam.aidial.core.server.upstream;
+package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.plugin.OriginCaller;
 import com.epam.aidial.core.plugin.OriginRequest;
-import com.epam.aidial.core.server.ChildPass;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.config.EmbeddedOrigins.Lease;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.plugin.OriginPluginManager.Lease;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -30,7 +31,7 @@ import javax.annotation.Nullable;
  * {@code OriginPlugin} contract says; nothing moves a callback back onto it. Put a forwarding adapter in front of the
  * plugin's stream once a plugin needs threads of its own.
  */
-final class EmbeddedProxyRequest implements ProxyRequest {
+public final class EmbeddedProxyRequest implements ProxyRequest {
 
     private final ContextInternal context;
     private final ProxyContext proxyContext;
@@ -42,7 +43,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
     // set for a router's decide or notice request, null for a request to a deployment's interface
     private final RouterRequest router;
     private EmbeddedProxyResponse response;
-    private ChildPass host;
+    private VertxHostDelegate host;
     private boolean reset;
     // the plugin's future completed
     private boolean settled;
@@ -55,7 +56,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
      * @param baseUrl      the {@code plugin://<name>} url the interface resolves to
      * @param absoluteUri  that url with the path and query, the plugin getting the path and query
      */
-    EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Lease> lease, HttpMethod method,
+    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Lease> lease, HttpMethod method,
                          String baseUrl, String absoluteUri) {
         this(context, proxyContext, lease, method, baseUrl, absoluteUri, null);
     }
@@ -63,7 +64,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
     /**
      * @param router for a router's decide or notice request: the key its calls carry and the body tree it gets
      */
-    EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Lease> lease, HttpMethod method,
+    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Lease> lease, HttpMethod method,
                          String baseUrl, String absoluteUri, RouterRequest router) {
         this.context = context;
         this.proxyContext = proxyContext;
@@ -80,7 +81,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
      * watch the client, whose leaving the decision handles. It closes once the plugin's answer has been read or has
      * failed.
      */
-    record RouterRequest(@Nullable ApiKeyData callKey, @Nullable ObjectNode bodyTree) {
+    public record RouterRequest(@Nullable ApiKeyData callKey, @Nullable ObjectNode bodyTree) {
     }
 
     @Override
@@ -104,12 +105,12 @@ final class EmbeddedProxyRequest implements ProxyRequest {
         Promise<ProxyResponse> promise = context.promise();
         OriginRequest request = new OriginRequest(method, absoluteUri.substring(baseUrl.length()), headers, body,
                 router != null ? router.bodyTree() : bodyTree(body), caller());
-        ChildPass attempt = router != null
-                ? ChildPass.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey())
-                : new ChildPass(proxyContext.getProxy(), proxyContext, context);
+        VertxHostDelegate attempt = router != null
+                ? VertxHostDelegate.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey())
+                : new VertxHostDelegate(proxyContext.getProxy(), proxyContext, context);
         host = attempt;
         // registered for a router request too: the pass's end closes an attempt nothing else closed
-        proxyContext.addChildPass(attempt);
+        proxyContext.addHostDelegate(attempt);
         if (router == null) {
             // the relay notices a client gone once it writes; while the plugin works, Core watches the connection itself
             HttpServerResponse client = proxyContext.getResponse();
@@ -144,7 +145,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
                         // ponytail: the pass ends here, as after a client gone from an application: no retry, no
                         // row, no finalize, the per-request key expiring by its TTL. Its attempts close, so that an
                         // earlier one gives its plugin back too
-                        proxyContext.closeChildPasses();
+                        proxyContext.closeHostDelegates();
                         return;
                     }
                     closeRouterAttempt(attempt);
@@ -176,7 +177,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
      * A router request's attempt ends with its answer: its calls carry the decide key, which an in-process call does
      * not look up again, so invalidating the key alone would not stop them.
      */
-    private void closeRouterAttempt(ChildPass attempt) {
+    private void closeRouterAttempt(VertxHostDelegate attempt) {
         if (router != null) {
             attempt.close();
         }
@@ -199,7 +200,7 @@ final class EmbeddedProxyRequest implements ProxyRequest {
         }
     }
 
-    private void onClientGone(ChildPass attempt) {
+    private void onClientGone(VertxHostDelegate attempt) {
         // runs on the request's context, as the plugin's callbacks do
         if (!settled && !reset) {
             clientGone = true;

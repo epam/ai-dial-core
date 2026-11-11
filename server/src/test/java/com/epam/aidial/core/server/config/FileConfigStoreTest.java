@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Router;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;

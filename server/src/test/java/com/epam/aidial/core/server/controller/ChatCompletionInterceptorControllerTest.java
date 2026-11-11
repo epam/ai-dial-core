@@ -9,9 +9,9 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.proxy.ProxyClient;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.security.ApiKeyStore;
-import com.epam.aidial.core.server.upstream.OriginClient;
-import com.epam.aidial.core.server.upstream.ProxyRequest;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -61,7 +61,7 @@ public class ChatCompletionInterceptorControllerTest {
     void stubConfig() {
         // buildUri resolves translator references against the request's config on every call
         lenient().when(context.getConfig()).thenReturn(new Config());
-        lenient().when(proxy.getOriginClient()).thenAnswer(invocation -> new OriginClient(proxy.getClient(), null, null));
+        lenient().when(proxy.getProxyClient()).thenAnswer(invocation -> new ProxyClient(proxy.getClient(), null, null));
     }
 
     @Test

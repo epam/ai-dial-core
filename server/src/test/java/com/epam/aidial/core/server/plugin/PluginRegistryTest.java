@@ -1,5 +1,8 @@
-package com.epam.aidial.core.server.config;
+package com.epam.aidial.core.server.plugin;
 
+import com.epam.aidial.core.server.config.JarEchoPluginProvider;
+import com.epam.aidial.core.server.config.TestEchoPluginProvider;
+import com.epam.aidial.core.server.config.TestOriginPluginProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;

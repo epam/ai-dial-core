@@ -1,8 +1,10 @@
-package com.epam.aidial.core.server;
+package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.plugin.OriginCall;
 import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -37,7 +39,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class ChildPassTest {
+class VertxHostDelegateTest {
 
     private static Vertx vertx;
 
@@ -45,7 +47,7 @@ class ChildPassTest {
     private Proxy proxy;
     private ProxyContext parent;
     private final List<ProxyContext> dispatched = new CopyOnWriteArrayList<>();
-    private ChildPass host;
+    private VertxHostDelegate host;
 
     @BeforeAll
     static void startVertx() {
@@ -73,7 +75,7 @@ class ChildPassTest {
         parent = mock(ProxyContext.class);
         when(parent.getProxyApiKeyData()).thenReturn(key);
         when(parent.getTraceFlags()).thenReturn("01");
-        host = new ChildPass(proxy, parent, pluginContext);
+        host = new VertxHostDelegate(proxy, parent, pluginContext);
     }
 
     @Test
@@ -122,7 +124,7 @@ class ChildPassTest {
 
     @Test
     void testCallAtTheDepthLimitAnswers400() throws Exception {
-        parent.getProxyApiKeyData().setExecutionPath(Collections.nCopies(ChildPass.MAX_CALL_DEPTH, "app"));
+        parent.getProxyApiKeyData().setExecutionPath(Collections.nCopies(VertxHostDelegate.MAX_CALL_DEPTH, "app"));
 
         OriginResponse answer = await(call("/openai/v1/chat/completions", body()));
 
@@ -137,7 +139,7 @@ class ChildPassTest {
         decideKey.setPerRequestKey("decide-key");
         decideKey.setTraceId("trace-2");
         decideKey.setSpanId("span-2");
-        host = ChildPass.forRouter(proxy, parent, pluginContext, decideKey);
+        host = VertxHostDelegate.forRouter(proxy, parent, pluginContext, decideKey);
 
         call("/openai/v1/chat/completions", body());
 
@@ -149,7 +151,7 @@ class ChildPassTest {
 
     @Test
     void testRouterHostWithoutKeyIsClosed() throws Exception {
-        host = ChildPass.forRouter(proxy, parent, pluginContext, null);
+        host = VertxHostDelegate.forRouter(proxy, parent, pluginContext, null);
 
         OriginResponse answer = await(call("/openai/v1/chat/completions", body()));
 

@@ -4,7 +4,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;

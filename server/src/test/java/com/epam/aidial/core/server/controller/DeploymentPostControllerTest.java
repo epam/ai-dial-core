@@ -17,14 +17,14 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.proxy.ProxyClient;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.TracingSettings;
-import com.epam.aidial.core.server.upstream.OriginClient;
-import com.epam.aidial.core.server.upstream.ProxyRequest;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -133,7 +133,7 @@ public class DeploymentPostControllerTest {
     void stubConfig() {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
-        lenient().when(proxy.getOriginClient()).thenAnswer(invocation -> new OriginClient(proxy.getClient(), null, null));
+        lenient().when(proxy.getProxyClient()).thenAnswer(invocation -> new ProxyClient(proxy.getClient(), null, null));
         lenient().when(proxy.getBlockingCallTracer()).thenReturn(BlockingCallTracer.NOOP);
     }
 

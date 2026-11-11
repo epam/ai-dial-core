@@ -10,12 +10,12 @@ import com.epam.aidial.core.plugin.OriginRequest;
 import com.epam.aidial.core.plugin.OriginResponse;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.config.EmbeddedOrigins;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouterDecision;
-import com.epam.aidial.core.server.upstream.OriginClient;
-import com.epam.aidial.core.server.upstream.ProxyRequest;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
+import com.epam.aidial.core.server.plugin.OriginPluginManager;
+import com.epam.aidial.core.server.proxy.ProxyClient;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.storage.http.HttpException;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -58,7 +58,7 @@ class RouterDecisionClientTest {
     private Vertx vertx;
     private HttpClient client;
     private Proxy proxy;
-    private EmbeddedOrigins embeddedOrigins;
+    private OriginPluginManager originPluginManager;
     private MockWebServer server;
     private ProxyContext context;
     private final MultiMap clientHeaders = MultiMap.caseInsensitiveMultiMap();
@@ -73,8 +73,8 @@ class RouterDecisionClientTest {
         proxy = mock(Proxy.class);
         when(proxy.getVertx()).thenReturn(vertx);
         when(proxy.getClient()).thenReturn(client);
-        embeddedOrigins = mock(EmbeddedOrigins.class);
-        when(proxy.getOriginClient()).thenReturn(new OriginClient(client, vertx, embeddedOrigins));
+        originPluginManager = mock(OriginPluginManager.class);
+        when(proxy.getProxyClient()).thenReturn(new ProxyClient(client, vertx, originPluginManager));
         when(proxy.getClientOptions()).thenReturn(new HttpClientOptions().setConnectTimeout(5000));
         HttpServerRequest request = mock(HttpServerRequest.class);
         when(request.headers()).thenReturn(clientHeaders);
@@ -295,9 +295,9 @@ class RouterDecisionClientTest {
         when(late.headers()).thenReturn(MultiMap.caseInsensitiveMultiMap());
         when(late.send()).thenReturn(Promise.<ProxyResponse>promise().future());
         Promise<ProxyRequest> connecting = Promise.promise();
-        OriginClient origins = mock(OriginClient.class);
+        ProxyClient origins = mock(ProxyClient.class);
         when(origins.http(any())).thenReturn(connecting.future());
-        when(proxy.getOriginClient()).thenReturn(origins);
+        when(proxy.getProxyClient()).thenReturn(origins);
 
         assertEquals(504, failure(router(100L)).getStatus().getCode());
         connecting.complete(late);
@@ -337,7 +337,7 @@ class RouterDecisionClientTest {
     }
 
     private void plugin(OriginPlugin plugin) {
-        when(embeddedOrigins.acquire(any(), eq("p1"))).thenReturn(new EmbeddedOrigins.Lease(plugin, () -> {
+        when(originPluginManager.acquire(any(), eq("p1"))).thenReturn(new OriginPluginManager.Lease(plugin, () -> {
         }));
     }
 

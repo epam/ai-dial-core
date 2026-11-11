@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.upstream;
+package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.plugin.OriginResponse;
 import io.vertx.core.Context;
@@ -28,13 +28,13 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ChildServerResponseTest {
+class EmbeddedServerResponseTest {
 
     private static Vertx vertx;
 
     private ContextInternal parent;
     private ContextInternal child;
-    private ChildServerResponse response;
+    private EmbeddedServerResponse response;
 
     @BeforeAll
     static void startVertx() {
@@ -50,7 +50,7 @@ class ChildServerResponseTest {
     void createResponse() {
         parent = (ContextInternal) vertx.getOrCreateContext();
         child = parent.duplicate();
-        response = new ChildServerResponse(child, parent);
+        response = new EmbeddedServerResponse(child, parent);
     }
 
     @Test
@@ -318,7 +318,7 @@ class ChildServerResponseTest {
             this.context = context;
         }
 
-        Future<Void> pipeTo(ChildServerResponse response) {
+        Future<Void> pipeTo(EmbeddedServerResponse response) {
             return pipe().endOnFailure(false).endOnSuccess(false).to(response);
         }
 

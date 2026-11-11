@@ -1,10 +1,12 @@
-package com.epam.aidial.core.server.config;
+package com.epam.aidial.core.server.plugin;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.plugin.OriginPlugin;
-import com.epam.aidial.core.server.config.EmbeddedOrigins.Lease;
+import com.epam.aidial.core.server.config.TestEchoPluginProvider;
+import com.epam.aidial.core.server.config.TestOriginPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider.Closed;
+import com.epam.aidial.core.server.plugin.OriginPluginManager.Lease;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -27,13 +29,13 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class EmbeddedOriginsTest {
+class OriginPluginManagerTest {
 
     private static final PluginRegistry REGISTRY = PluginRegistry.load(Path.of("no-plugins-dir"));
 
     // a real one: the executor that closes plugins needs a context
     private final Vertx vertx = Vertx.vertx();
-    private final EmbeddedOrigins origins = new EmbeddedOrigins(REGISTRY, vertx, new AsyncTaskExecutor(vertx, new JsonObject()));
+    private final OriginPluginManager origins = new OriginPluginManager(REGISTRY, vertx, new AsyncTaskExecutor(vertx, new JsonObject()));
 
     @BeforeEach
     void clearRecords() {
@@ -94,7 +96,7 @@ class EmbeddedOriginsTest {
     @Test
     void testAcquireAfterTheResolvedPluginClosedGetsAnOpenOne() throws Exception {
         Config config = configWith(origin("hello"));
-        // as OriginClient.embedded does, before the attempt is sent
+        // as ProxyClient.embedded does, before the attempt is sent
         OriginPlugin resolved = origins.resolve(config, "p1");
         origins.resolve(configWith(origin("hi")), "p1");
         awaitClosed(1);

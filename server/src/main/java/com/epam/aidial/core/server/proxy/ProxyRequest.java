@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.upstream;
+package com.epam.aidial.core.server.proxy;
 
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;

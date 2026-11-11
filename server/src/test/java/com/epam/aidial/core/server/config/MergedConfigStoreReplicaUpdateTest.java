@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;

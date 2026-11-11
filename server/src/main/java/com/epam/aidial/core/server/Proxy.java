@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
+import com.epam.aidial.core.server.proxy.ProxyClient;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -56,7 +57,6 @@ import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
-import com.epam.aidial.core.server.upstream.OriginClient;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -217,7 +217,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AdminSystemExportService adminSystemExportService;
     private final AdminSystemExportService.Settings adminSystemExportSettings;
     private final OrgUnitService orgUnitService;
-    private final OriginClient originClient;
+    private final ProxyClient proxyClient;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -228,7 +228,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
     }
 
-    void handleError(Throwable error, HttpServerRequest request) {
+    public void handleError(Throwable error, HttpServerRequest request) {
         if (!request.response().ended()) {
             HttpStatus status;
             String message;
@@ -492,7 +492,7 @@ public class Proxy implements Handler<HttpServerRequest> {
      * origin plugin's in-process call starts here too.
      */
     @SneakyThrows
-    Future<?> dispatch(ProxyContext context) {
+    public Future<?> dispatch(ProxyContext context) {
         GenAiTraceAttributes.initialize(context);
         ContextManager.setProxyContext(context);
         ControllerTemplate controllerTemplate = ControllerSelector.select(context.getRequest());

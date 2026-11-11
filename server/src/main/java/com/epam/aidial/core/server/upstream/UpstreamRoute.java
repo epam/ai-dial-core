@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;

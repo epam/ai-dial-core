@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.config;
+package com.epam.aidial.core.server.plugin;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Plugin;
@@ -18,13 +18,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * The origin plugins serving the {@code plugins} entries, created from an entry's settings on the first request it
- * serves and again on the first request after the entry changes. A plugin replaced that way, or whose entry a request
- * names after it was removed, is closed once no attempt holds it; every plugin is closed by {@link #close}.
+ * The cache and lifecycle of the origin plugin instances serving the {@code plugins} entries. An instance is created
+ * from an entry's settings on the first request it serves and again on the first request after the entry changes. A
+ * plugin replaced that way, or whose entry a request names after it was removed, is closed once no attempt holds it;
+ * every plugin is closed by {@link #close}.
  */
 @Slf4j
 @RequiredArgsConstructor
-public class EmbeddedOrigins {
+public class OriginPluginManager {
 
     // the users count of a closed instance
     private static final int CLOSED = Integer.MIN_VALUE;

@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.upstream;
+package com.epam.aidial.core.server.proxy.embedded;
 
 import io.vertx.core.MultiMap;
 import io.vertx.core.http.HttpMethod;
@@ -12,11 +12,11 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
-class ChildServerRequestTest {
+class EmbeddedServerRequestTest {
 
     @Test
     void testPathQueryAndMethod() {
-        ChildServerRequest request = request("/openai/deployments/m/chat/completions?api-version=1&x=a%20b", MultiMap.caseInsensitiveMultiMap());
+        EmbeddedServerRequest request = request("/openai/deployments/m/chat/completions?api-version=1&x=a%20b", MultiMap.caseInsensitiveMultiMap());
 
         assertEquals(HttpMethod.POST, request.method());
         assertEquals("/openai/deployments/m/chat/completions", request.path());
@@ -30,7 +30,7 @@ class ChildServerRequestTest {
 
     @Test
     void testPathWithoutQuery() {
-        ChildServerRequest request = request("/openai/v1/responses", MultiMap.caseInsensitiveMultiMap());
+        EmbeddedServerRequest request = request("/openai/v1/responses", MultiMap.caseInsensitiveMultiMap());
 
         assertEquals("/openai/v1/responses", request.path());
         assertNull(request.query());
@@ -46,10 +46,10 @@ class ChildServerRequestTest {
                 .add("X-DIAL-APPLICATION-ID", "app").add("X-DIAL-APPLICATION-PROPERTIES", "{}").add("X-DIAL-DEPLOYMENT-FEATURES", "{}")
                 .add("Content-Type", "text/plain").add("X-Custom", "kept");
 
-        ChildServerRequest request = request("/openai/v1/chat/completions", headers);
+        EmbeddedServerRequest request = request("/openai/v1/chat/completions", headers);
 
         MultiMap seen = request.headers();
-        for (String dropped : ChildServerRequest.DROPPED_HEADERS) {
+        for (String dropped : EmbeddedServerRequest.DROPPED_HEADERS) {
             assertFalse(seen.contains(dropped), dropped);
         }
         assertEquals("kept", seen.get("X-Custom"));
@@ -63,10 +63,10 @@ class ChildServerRequestTest {
     void testResponse() {
         HttpServerResponse response = mock(HttpServerResponse.class);
 
-        assertSame(response, new ChildServerRequest("/x", MultiMap.caseInsensitiveMultiMap(), response).response());
+        assertSame(response, new EmbeddedServerRequest("/x", MultiMap.caseInsensitiveMultiMap(), response).response());
     }
 
-    private static ChildServerRequest request(String uri, MultiMap headers) {
-        return new ChildServerRequest(uri, headers, mock(HttpServerResponse.class));
+    private static EmbeddedServerRequest request(String uri, MultiMap headers) {
+        return new EmbeddedServerRequest(uri, headers, mock(HttpServerResponse.class));
     }
 }

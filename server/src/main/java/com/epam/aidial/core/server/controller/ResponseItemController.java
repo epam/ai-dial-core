@@ -20,9 +20,9 @@ import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachments
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
 import com.epam.aidial.core.server.function.RouterModelFn;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -132,7 +132,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> finalizeRequest() {
-        context.closeChildPasses();
+        context.closeHostDelegates();
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData == null) {
             return Future.succeededFuture();

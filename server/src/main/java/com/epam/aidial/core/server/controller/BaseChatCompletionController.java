@@ -20,10 +20,10 @@ import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSe
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.sse.SseEvent;
 import com.epam.aidial.core.server.token.UsagePerModel;
-import com.epam.aidial.core.server.upstream.ProxyRequest;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;

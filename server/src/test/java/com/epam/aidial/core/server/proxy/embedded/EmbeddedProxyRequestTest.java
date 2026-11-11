@@ -1,14 +1,14 @@
-package com.epam.aidial.core.server.upstream;
+package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.plugin.OriginCall;
 import com.epam.aidial.core.plugin.OriginHost;
 import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.OriginRequest;
 import com.epam.aidial.core.plugin.OriginResponse;
-import com.epam.aidial.core.server.ChildPass;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.config.EmbeddedOrigins.Lease;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.plugin.OriginPluginManager.Lease;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Context;
@@ -56,7 +56,7 @@ class EmbeddedProxyRequestTest {
 
     private final ProxyContext pass = mock(ProxyContext.class);
     // the attempts the pass registered
-    private final List<ChildPass> attempts = new CopyOnWriteArrayList<>();
+    private final List<VertxHostDelegate> attempts = new CopyOnWriteArrayList<>();
     private final AtomicInteger released = new AtomicInteger();
     private ContextInternal context;
 
@@ -72,7 +72,7 @@ class EmbeddedProxyRequestTest {
 
     @BeforeEach
     void recordAttempts() {
-        doAnswer(invocation -> attempts.add(invocation.getArgument(0))).when(pass).addChildPass(any());
+        doAnswer(invocation -> attempts.add(invocation.getArgument(0))).when(pass).addHostDelegate(any());
     }
 
     @Test
@@ -184,7 +184,7 @@ class EmbeddedProxyRequestTest {
         await(request((call, host) -> Future.succeededFuture(new Answer(stream(false)))).send(Buffer.buffer("{}")));
         assertEquals(0, released.get());
 
-        attempts.forEach(ChildPass::close);
+        attempts.forEach(VertxHostDelegate::close);
 
         awaitCondition(() -> released.get() == 1);
     }
@@ -195,7 +195,7 @@ class EmbeddedProxyRequestTest {
             throw new IllegalStateException("plugin defect");
         }, IllegalStateException.class);
 
-        attempts.forEach(ChildPass::close);
+        attempts.forEach(VertxHostDelegate::close);
 
         awaitCondition(() -> released.get() == 1);
     }
@@ -236,7 +236,7 @@ class EmbeddedProxyRequestTest {
 
         request((call, host) -> Future.failedFuture(new IllegalStateException("stopped")), closed).send(Buffer.buffer("{}"));
 
-        verify(pass).closeChildPasses();
+        verify(pass).closeHostDelegates();
     }
 
     // a router's decide or notice request
@@ -268,7 +268,7 @@ class EmbeddedProxyRequestTest {
 
         assertInstanceOf(IllegalStateException.class, error.getCause());
         verify(client, never()).closeHandler(any());
-        verify(pass, never()).closeChildPasses();
+        verify(pass, never()).closeHostDelegates();
     }
 
     @Test

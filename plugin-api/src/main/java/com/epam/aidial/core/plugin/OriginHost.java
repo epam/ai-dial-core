@@ -5,6 +5,11 @@ import io.vertx.core.Future;
 /**
  * Core, as one request of an origin plugin sees it. It serves the calls the plugin makes to other deployments while
  * it answers that request.
+ *
+ * <p>Core creates one host per attempt to answer a request and hands it to {@link OriginPlugin#handle} with that
+ * request. It cannot be set up once for the plugin: it carries that request's per-request key, which authenticates
+ * the calls, its {@link #cancelled()} signal, and the rule that its calls end with the request. Do not keep it past
+ * the answer: a call made after the request ended is answered {@code 401}.
  */
 public interface OriginHost {
 
@@ -30,7 +35,11 @@ public interface OriginHost {
     Future<OriginResponse> call(OriginCall call);
 
     /**
-     * Completes when Core stops waiting for this request's answer: the client went away before the plugin answered,
+     * A signal from Core to the plugin; it cancels nothing itself. It is the only way a plugin learns, before it has
+     * answered, that its answer is no longer wanted, so that it can abort its own upstream work. After the plugin has
+     * answered, Core calls {@link OriginResponse#cancel()} too.
+     *
+     * <p>Completes when Core stops waiting for this request's answer: the client went away before the plugin answered,
      * or Core moved on from the answer (the client went away while it was relayed, or a retry). It completes on the
      * context {@link OriginPlugin#handle} was called on and never fails; on a request that ends normally it never
      * completes. A plugin still working should stop and release what it holds.

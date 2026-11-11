@@ -6,8 +6,8 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouterDecision;
-import com.epam.aidial.core.server.upstream.ProxyRequest;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -167,9 +167,9 @@ public class RouterDecisionClient {
         String uri = DeploymentEndpointUtil.resolveDecideUri(router, type);
         String plugin = DeploymentEndpointUtil.resolvePlugin(router, type, context.getConfig().getTranslators());
         if (plugin != null) {
-            return proxy.getOriginClient().embeddedForRouter(context, HttpMethod.POST, uri, plugin, callKey, bodyTree);
+            return proxy.getProxyClient().embeddedForRouter(context, HttpMethod.POST, uri, plugin, callKey, bodyTree);
         }
-        return proxy.getOriginClient().http(new RequestOptions()
+        return proxy.getProxyClient().http(new RequestOptions()
                 .setAbsoluteURI(uri)
                 .setMethod(HttpMethod.POST)
                 .setTraceOperation(operation.formatted(router.getName()))

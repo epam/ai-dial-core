@@ -1,12 +1,12 @@
-package com.epam.aidial.core.server;
+package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.plugin.OriginCall;
 import com.epam.aidial.core.plugin.OriginHost;
 import com.epam.aidial.core.plugin.OriginResponse;
+import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouteTemplate;
-import com.epam.aidial.core.server.upstream.ChildServerRequest;
-import com.epam.aidial.core.server.upstream.ChildServerResponse;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.opentelemetry.sdk.trace.IdGenerator;
 import io.vertx.core.Future;
@@ -31,7 +31,7 @@ import javax.annotation.Nullable;
  * {@code 401}, as an HTTP child gets once the key is deleted.
  */
 @Slf4j
-public final class ChildPass implements OriginHost {
+public final class VertxHostDelegate implements OriginHost {
 
     private static final List<RouteTemplate> CREATE_ROUTES = List.of(RouteTemplate.POST_DEPLOYMENT,
             RouteTemplate.LLM_CHAT_COMPLETIONS_API, RouteTemplate.LLM_RESPONSES_API, RouteTemplate.LLM_RESPONSES_API_UNVERSIONED,
@@ -48,7 +48,7 @@ public final class ChildPass implements OriginHost {
     private final ApiKeyData callKey;
     private final Promise<Void> cancelled;
     // touched on the plugin's context only
-    private final List<ChildServerResponse> responses = new ArrayList<>();
+    private final List<EmbeddedServerResponse> responses = new ArrayList<>();
     private boolean closed;
     private Runnable onClose;
 
@@ -56,11 +56,11 @@ public final class ChildPass implements OriginHost {
      * @param parent        the pass whose plugin makes the calls, with its proxy key
      * @param pluginContext the context the plugin was called on
      */
-    public ChildPass(Proxy proxy, ProxyContext parent, ContextInternal pluginContext) {
+    public VertxHostDelegate(Proxy proxy, ProxyContext parent, ContextInternal pluginContext) {
         this(proxy, parent, pluginContext, null, false);
     }
 
-    private ChildPass(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, ApiKeyData callKey, boolean closed) {
+    private VertxHostDelegate(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, ApiKeyData callKey, boolean closed) {
         this.proxy = proxy;
         this.parent = parent;
         this.pluginContext = pluginContext;
@@ -73,8 +73,8 @@ public final class ChildPass implements OriginHost {
      * The host of a router's decide or notice request: its calls carry {@code callKey}, the decide request's key. A
      * notice carries no key, so with none the host is closed from the start and every call is answered {@code 401}.
      */
-    public static ChildPass forRouter(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, @Nullable ApiKeyData callKey) {
-        return new ChildPass(proxy, parent, pluginContext, callKey, callKey == null);
+    public static VertxHostDelegate forRouter(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, @Nullable ApiKeyData callKey) {
+        return new VertxHostDelegate(proxy, parent, pluginContext, callKey, callKey == null);
     }
 
     @Override
@@ -92,7 +92,7 @@ public final class ChildPass implements OriginHost {
         if (otelContext != null) {
             childContext.putLocal(VertxContextStorageProvider.ACTIVE_CONTEXT, otelContext);
         }
-        ChildServerResponse response = new ChildServerResponse(childContext, pluginContext);
+        EmbeddedServerResponse response = new EmbeddedServerResponse(childContext, pluginContext);
         if (closed) {
             response.setStatusCode(HttpStatus.UNAUTHORIZED.getCode()).end("Unknown api key");
             return response.answer();
@@ -112,7 +112,7 @@ public final class ChildPass implements OriginHost {
             return response.answer();
         }
 
-        ChildServerRequest request = new ChildServerRequest(call.uri(), call.headers(), response);
+        EmbeddedServerRequest request = new EmbeddedServerRequest(call.uri(), call.headers(), response);
         ProxyContext child = new ProxyContext(proxy, request, key, null, null,
                 IdGenerator.random().generateSpanId(), parent.getTraceFlags());
         child.setCallTree(call.body());
@@ -152,7 +152,7 @@ public final class ChildPass implements OriginHost {
                 return;
             }
             closed = true;
-            responses.forEach(ChildServerResponse::cancel);
+            responses.forEach(EmbeddedServerResponse::cancel);
             responses.clear();
             if (onClose != null) {
                 onClose.run();

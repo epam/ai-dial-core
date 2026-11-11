@@ -29,12 +29,10 @@ import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
 import com.epam.aidial.core.server.alias.AliasService;
-import com.epam.aidial.core.server.config.EmbeddedOrigins;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.PlatformEntityLocationStrategy;
-import com.epam.aidial.core.server.config.PluginRegistry;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.controller.HealthCheckController;
@@ -48,6 +46,9 @@ import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpAuthorizationChallengeProvider;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
+import com.epam.aidial.core.server.plugin.OriginPluginManager;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
+import com.epam.aidial.core.server.proxy.ProxyClient;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
@@ -97,7 +98,6 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.tracing.TracingSettings;
-import com.epam.aidial.core.server.upstream.OriginClient;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxySettings;
@@ -182,7 +182,7 @@ public class AiDial {
     private volatile int serverPort;
     private HttpClient client;
     private WebSocketClient webSocketClient;
-    private EmbeddedOrigins embeddedOrigins;
+    private OriginPluginManager originPluginManager;
 
     private RedissonClient redis;
     private Proxy proxy;
@@ -427,9 +427,9 @@ public class AiDial {
             budgetCounterSweepService = new BudgetCounterSweepService(timerService, resourceService, lockService, redis,
                     mergedConfigStore, budgetCounterSweepSettings, backgroundTracer);
 
-            embeddedOrigins = new EmbeddedOrigins(pluginRegistry, vertx, taskExecutor);
-            OriginClient originClient = new OriginClient(client, vertx, embeddedOrigins);
-            ResponsesApiClient responsesApiClient = new ResponsesApiClient(originClient, clientOptions);
+            originPluginManager = new OriginPluginManager(pluginRegistry, vertx, taskExecutor);
+            ProxyClient proxyClient = new ProxyClient(client, vertx, originPluginManager);
+            ResponsesApiClient responsesApiClient = new ResponsesApiClient(proxyClient, clientOptions);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
@@ -454,7 +454,7 @@ public class AiDial {
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminSystemExportService, adminSystemExportSettings, orgUnitService, originClient);
+                    adminSystemExportService, adminSystemExportSettings, orgUnitService, proxyClient);
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
@@ -574,7 +574,7 @@ public class AiDial {
             close(client, HttpClient::close);
             // no request arrives now, and the plugins close their own Vert.x clients before Vert.x closes
             try {
-                close(embeddedOrigins, EmbeddedOrigins::close);
+                close(originPluginManager, OriginPluginManager::close);
             } catch (TimeoutException e) {
                 // plugin code: one that hangs in close() does not keep the rest from closing
                 log.warn("Plugins did not close in time");

@@ -10,14 +10,15 @@ import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
+import com.epam.aidial.core.server.proxy.embedded.VertxHostDelegate;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
-import com.epam.aidial.core.server.upstream.ProxyRequest;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -127,7 +128,7 @@ public class ProxyContext {
     // the tree the chain serialised into requestBody, kept for the plugin of an embedded interface until it is called
     private ObjectNode requestTree;
     // the hosts of the in-process calls this pass's plugin makes, one per attempt
-    private List<ChildPass> childPasses;
+    private List<VertxHostDelegate> hostDelegates;
     // the router's verdict when a router in decision mode chose the deployment of this pass
     private RouterDecision decision;
     // X-DIAL-APPLICATION-PROPERTIES for a typed router, built once in the pass that reaches it, before any connection
@@ -365,19 +366,19 @@ public class ProxyContext {
         return requestBody == null ? callTree : null;
     }
 
-    public void addChildPass(ChildPass childPass) {
-        if (childPasses == null) {
-            childPasses = new ArrayList<>();
+    public void addHostDelegate(VertxHostDelegate hostDelegate) {
+        if (hostDelegates == null) {
+            hostDelegates = new ArrayList<>();
         }
-        childPasses.add(childPass);
+        hostDelegates.add(hostDelegate);
     }
 
     /**
      * Ends the in-process calls of this pass's plugin, as the pass has ended.
      */
-    public void closeChildPasses() {
-        if (childPasses != null) {
-            childPasses.forEach(ChildPass::close);
+    public void closeHostDelegates() {
+        if (hostDelegates != null) {
+            hostDelegates.forEach(VertxHostDelegate::close);
         }
     }
 

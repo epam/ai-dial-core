@@ -4,10 +4,10 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.proxy.ProxyClient;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.token.TokenUsage;
-import com.epam.aidial.core.server.upstream.OriginClient;
-import com.epam.aidial.core.server.upstream.ProxyRequest;
-import com.epam.aidial.core.server.upstream.ProxyResponse;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
@@ -24,7 +24,7 @@ import lombok.SneakyThrows;
 
 @RequiredArgsConstructor
 public class ResponsesApiClient {
-    private final OriginClient originClient;
+    private final ProxyClient proxyClient;
     private final HttpClientOptions clientOptions;
 
     /**
@@ -36,8 +36,8 @@ public class ResponsesApiClient {
         String plugin = DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), InterfaceType.OPENAI_RESPONSES,
                 context.getConfig().getTranslators());
         Future<ProxyRequest> proxyRequest = plugin != null
-                ? originClient.embedded(context, method, url, plugin)
-                : originClient.http(new RequestOptions()
+                ? proxyClient.embedded(context, method, url, plugin)
+                : proxyClient.http(new RequestOptions()
                         .setAbsoluteURI(url)
                         .setMethod(method)
                         .setConnectTimeout(clientOptions.getConnectTimeout())
