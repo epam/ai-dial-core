@@ -11,6 +11,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 
@@ -68,16 +69,25 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
         return ProxyUtil.convertToString(apiKeyData);
     }
 
-    private static void addAttachments(ApiKeyData apiKeyData, Map<String, Set<ResourceAccessType>> permittedAttachments) {
+    /**
+     * Copy on write: the key record of an origin plugin's pass is shared by its in-process calls, which read these maps
+     * on virtual threads while another call's grant lands here, so the maps a reader holds are never changed.
+     */
+    @VisibleForTesting
+    static void addAttachments(ApiKeyData apiKeyData, Map<String, Set<ResourceAccessType>> permittedAttachments) {
+        Map<String, AutoSharedData> files = new HashMap<>(apiKeyData.getAttachedFiles());
+        Map<String, AutoSharedData> folders = new HashMap<>(apiKeyData.getAttachedFolders());
         for (Map.Entry<String, Set<ResourceAccessType>> entry : permittedAttachments.entrySet()) {
             String url = entry.getKey();
             Set<ResourceAccessType> permissions = entry.getValue();
             if (ResourceUtil.isFolder(url)) {
-                apiKeyData.getAttachedFolders().put(url, new AutoSharedData(permissions));
+                folders.put(url, new AutoSharedData(permissions));
             } else {
-                apiKeyData.getAttachedFiles().put(url, new AutoSharedData(permissions));
+                files.put(url, new AutoSharedData(permissions));
             }
         }
+        apiKeyData.setAttachedFiles(files);
+        apiKeyData.setAttachedFolders(folders);
     }
 
     private void processAttachedFile(String url, Map<String, Set<ResourceAccessType>> permittedAttachments) {

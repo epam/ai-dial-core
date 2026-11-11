@@ -45,9 +45,10 @@ public class ApiKeyData {
     private String traceId;
     // OpenTelemetry span ID created by the Core
     private String spanId;
-    // list of attached file URLs collected from conversation history of the current request
-    private Map<String, AutoSharedData> attachedFiles = new HashMap<>();
-    private Map<String, AutoSharedData> attachedFolders = new HashMap<>();
+    // list of attached file URLs collected from conversation history of the current request. Volatile: a grant from an
+    // origin plugin's in-process call replaces these maps (copy on write) while its other calls read them on virtual threads
+    private volatile Map<String, AutoSharedData> attachedFiles = new HashMap<>();
+    private volatile Map<String, AutoSharedData> attachedFolders = new HashMap<>();
     // list of deployments included into application properties
     @JsonAlias({"attachedToolSets", "attachedDeployments"})
     private Map<String, AutoSharedData> attachedDeployments = new HashMap<>();
