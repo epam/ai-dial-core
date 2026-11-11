@@ -87,7 +87,7 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testUnitEditorEditKeepsApprovalWhenListIsUnchanged() {
+    void testUnitEditorEndpointChangeDropsApproval() {
         String app = "applications/public/Acme/edited-app";
         String body = """
                 {
@@ -102,14 +102,36 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
                 "authorization", "admin", "If-None-Match", "*"), 200);
         verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
 
-        // an administrator's edit keeps the approval
+        // an administrator's endpoint change keeps the approval
         verify(send(HttpMethod.PUT, "/v1/" + app, null, body.formatted("http://localhost:4851/chat/completions"),
                 "authorization", "admin"), 200);
         assertConsented(app, true);
 
-        // an editor's read-modify-write that only changes the endpoint keeps the approval (list unchanged)
+        // a non-admin changing the endpoint drops the approval (routing-field protection)
         verify(send(HttpMethod.PUT, "/v1/" + app, null, body.formatted("http://editor.example/chat/completions"),
                 "authorization", "azp:ed"), 200);
+        assertConsented(app, false);
+    }
+
+    @Test
+    void testUnitEditorNonRoutingEditKeepsApproval() {
+        String app = "applications/public/Acme/non-routing-edit-app";
+        String declaring = """
+                {
+                  "endpoint": "http://localhost:4850/chat/completions",
+                  "display_name": "Original Name",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, declaring, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
+
+        // editor changes only display_name (no routing fields, no list) — approval survives
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, """
+                {"endpoint": "http://localhost:4850/chat/completions", "display_name": "Renamed App"}
+                """, "authorization", "azp:ed"), 200);
         assertConsented(app, true);
     }
 
@@ -128,9 +150,9 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.PUT, "/v1/" + app, null, declaring, "authorization", "admin", "If-None-Match", "*"), 200);
         verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
 
-        // editor omits resource_dependencies: the stored list is inherited, so the approval survives
+        // editor omits resource_dependencies and keeps the endpoint: the stored list is inherited, approval survives
         verify(send(HttpMethod.PUT, "/v1/" + app, null, """
-                {"endpoint": "http://editor.example/chat/completions", "display_name": "Delisted App"}
+                {"endpoint": "http://localhost:4850/chat/completions", "display_name": "Delisted App"}
                 """, "authorization", "azp:ed"), 200);
         assertConsented(app, true);
     }
@@ -217,7 +239,7 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
         @Test
         void testEditorOmittingTheListInheritsItAndKeepsApproval() {
             verify(send(HttpMethod.PUT, "/v1/" + APP, null, """
-                    {"endpoint": "http://editor.example/chat/completions", "display_name": "Flag Off App"}
+                    {"endpoint": "http://localhost:4850/chat/completions", "display_name": "Flag Off App"}
                     """, "authorization", "azp:ed"), 200);
             Response status = send(HttpMethod.GET, "/v1/admin-consent/" + APP, null, "", "authorization", "admin");
             verify(status, 200);

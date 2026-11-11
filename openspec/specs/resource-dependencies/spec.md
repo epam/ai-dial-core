@@ -275,19 +275,25 @@ application created again at a deleted one's id SHALL start unapproved.
   list and the same target
 - **THEN** the new review copy and, after approval, the published application are not approved
 
-### Requirement: The approval lives only while the list does
-An update that removes the list SHALL delete the approval. A write that changes `resource_dependencies` — by a
-non-admin or by an administrator removing the list — SHALL delete the approval. A non-admin write that omits the
-section inherits the stored list and SHALL keep the approval. An administrator's edit to other fields SHALL keep it.
+### Requirement: The approval lives only while the list and the routing fields do
+An update that removes the list SHALL delete the approval. A write by a non-admin that changes `resource_dependencies`,
+`endpoint`, `mcp.endpoint` or `function` SHALL delete the approval. A non-admin write that omits the section inherits
+the stored list and SHALL keep the approval; a non-admin write that keeps the same list and routing fields SHALL keep
+it too. An administrator's edit SHALL keep the approval unless the list is removed.
 
 #### Scenario: List removed and restored
 - **WHEN** an update removes an approved application's list, and a later update restores it
 - **THEN** `GET /v1/admin-consent/<id>` answers `{"consented": false}` after each
 
-#### Scenario: Edited by a non-administrator — list unchanged
-- **WHEN** an administrator changes an approved application's endpoint, and then an org-unit editor does, keeping the
-  list
-- **THEN** the application is approved after both edits
+#### Scenario: Non-admin changes endpoint — approval dropped
+- **WHEN** an administrator approves an application, and then an org-unit editor changes only the endpoint (keeping
+  the list)
+- **THEN** the application is not approved after the editor's write
+
+#### Scenario: Non-admin changes only display name — approval kept
+- **WHEN** an administrator approves an application, and then an org-unit editor changes only `display_name` (keeping
+  the list and the endpoint)
+- **THEN** the application is approved after the editor's write
 
 ### Requirement: Dependencies resolved into the per-request key
 On every route of the chat completions, Responses and Messages controllers (`/openai/deployments/{id}/chat/completions`,

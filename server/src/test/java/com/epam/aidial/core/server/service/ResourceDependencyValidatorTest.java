@@ -305,6 +305,13 @@ public class ResourceDependencyValidatorTest {
         assertEquals(null, ResourceDependencyValidator.findShapeError(appWith(dependency("skills/{current-user}/"))));
     }
 
+    @Test
+    void rejectsSurroundingWhitespaceInTargetUrl() {
+        assertTrue(validatorShapeMessage(appWith(dependency(" files/public/f/"))).contains("surrounding whitespace"));
+        assertTrue(validatorShapeMessage(appWith(dependency("files/public/f/ "))).contains("surrounding whitespace"));
+        assertTrue(validatorShapeMessage(appWith(dependency("\tskills/{current-user}/"))).contains("surrounding whitespace"));
+    }
+
     private static String validatorShapeMessage(Application application) {
         HttpException error = assertThrows(HttpException.class, () -> ResourceDependencyValidator.validateShape(application));
         assertEquals(HttpStatus.BAD_REQUEST, error.getStatus());

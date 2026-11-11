@@ -113,6 +113,9 @@ public class ResourceDependencyValidator {
         if (url == null || url.replace(ResourceDescriptor.PATH_SEPARATOR, "").isEmpty()) {
             return List.of(at + ": target.url is required");
         }
+        if (!url.equals(url.strip())) {
+            return List.of(at + ": target.url must not have surrounding whitespace");
+        }
         try {
             String[] segments = checkTarget(url);
             if (!isAllowedAccess(ResourceTypes.of(UrlUtil.tryDecodePath(segments[0])), dependency.getAccess())) {
@@ -249,7 +252,7 @@ public class ResourceDependencyValidator {
         if (dependency.getTarget() == null || dependency.getTarget().getUrl() == null) {
             return null;
         }
-        String url = dependency.getTarget().getUrl().trim();
+        String url = dependency.getTarget().getUrl();
         return url.isEmpty() ? null : url;
     }
 }

@@ -269,7 +269,8 @@ public class ApplicationService {
             boolean declares = declaresDependencies(application);
             boolean listChanged = !Objects.equals(application.getResourceDependencies(),
                     existing != null ? existing.getResourceDependencies() : null);
-            dropApproval.setValue(userAuthored ? listChanged : declared && !declares);
+            boolean routingChanged = userAuthored && routingChanged(application, existing);
+            dropApproval.setValue(userAuthored ? listChanged || routingChanged : declared && !declares);
             verifySchemaRichApp(application, existing);
             prepareApplicationFunction(resource, application, existing);
             if (inheritForwardAuthToken) {
@@ -282,7 +283,7 @@ public class ApplicationService {
             return serializeEncrypted(resource, merged);
         });
 
-        // the approval binds the list; an admin dropping the list withdraws it, a non-admin changing it withdraws it
+        // the approval binds the list and the routing fields; a non-admin changing either withdraws it; an admin dropping the list withdraws it
         if (dropApproval.isTrue()) {
             deleteAdminConsent(resource);
         }
@@ -302,6 +303,18 @@ public class ApplicationService {
         if (!mode.honorAllowUserExternalServices()) {
             application.setAllowUserExternalServices(existing != null && existing.isAllowUserExternalServices());
         }
+    }
+
+    // The approval binds the list AND the routing fields: changing endpoint, mcp.endpoint or function (all three route
+    // the per-request key to a different process) drops the approval even when the list is unchanged.
+    private static boolean routingChanged(Application application, Application existing) {
+        String existingEndpoint = existing != null ? existing.getEndpoint() : null;
+        String existingMcpEndpoint = existing != null && existing.getMcp() != null ? existing.getMcp().getEndpoint() : null;
+        Application.Function existingFunction = existing != null ? existing.getFunction() : null;
+        String newMcpEndpoint = application.getMcp() != null ? application.getMcp().getEndpoint() : null;
+        return !Objects.equals(application.getEndpoint(), existingEndpoint)
+                || !Objects.equals(newMcpEndpoint, existingMcpEndpoint)
+                || !Objects.equals(application.getFunction(), existingFunction);
     }
 
     // resource_dependencies is admin-managed when the flag is off: a non-admin omitting the section inherits the stored
