@@ -82,9 +82,9 @@ public class ConfigResourceMetadataController implements Controller {
                 @ApiResponse(code = 403),
                 @ApiResponse(code = 404),
                 @ApiResponse(code = 405, description = "Metadata listing is not supported for Global Settings",
-                    headers = {
-                        @ApiHeader(name = "Allow", description = "Supported HTTP methods", schema = String.class)
-                    }),
+                        headers = {
+                            @ApiHeader(name = "Allow", description = "Supported HTTP methods", schema = String.class)
+                        }),
                 @ApiResponse(code = 500)
             }
     )
@@ -338,7 +338,7 @@ public class ConfigResourceMetadataController implements Controller {
             parameters = {
                 @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                 @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
-                    description = "Empty for the root of the policies, a cost object folder (ending with a slash) to list its project policies, or a policy name."),
+                        description = "Empty for the root of the policies, a cost object folder (ending with a slash) to list its project policies, or a policy name."),
                 @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
                 @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),
@@ -359,7 +359,8 @@ public class ConfigResourceMetadataController implements Controller {
             parameters = {
                 @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                 @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
-                    description = "Empty for the cost objects that have assignments, a cost object folder (ending with a slash) to list its assignments, or an assignment path."),
+                        description = "Empty for the cost objects that have assignments, a cost object folder (ending with a slash) "
+                                + "to list its assignments, or an assignment path."),
                 @ApiParameter(name = "token", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_TOKEN),
                 @ApiParameter(name = "limit", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_LIMIT, schema = Integer.class),
                 @ApiParameter(name = "recursive", in = ParameterIn.QUERY, description = OpenApiDescriptions.METADATA_RECURSIVE, schema = Boolean.class),

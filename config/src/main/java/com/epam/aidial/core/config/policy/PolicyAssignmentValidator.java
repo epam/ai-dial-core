@@ -157,20 +157,32 @@ public class PolicyAssignmentValidator {
             return true;
         }
         return switch (a.getFunction()) {
-            case EQUAL -> switch (b.getFunction()) {
-                case EQUAL -> anyPair(a, b, (x, y) -> x.equalsIgnoreCase(y));
-                case CONTAIN -> anyPair(a, b, (x, y) -> lower(x).contains(lower(y)));
-                default -> anyPair(a, b, (x, y) -> matchesIgnoringCase(y, x));
-            };
-            case CONTAIN -> switch (b.getFunction()) {
-                case EQUAL -> anyPair(a, b, (x, y) -> lower(y).contains(lower(x)));
-                default -> true;
-            };
-            default -> switch (b.getFunction()) {
-                case EQUAL -> anyPair(a, b, (x, y) -> matchesIgnoringCase(x, y));
-                case REGEX -> anyPair(a, b, String::equals);
-                default -> true;
-            };
+            case EQUAL -> equalRuleOverlaps(a, b);
+            case CONTAIN -> containRuleOverlaps(a, b);
+            default -> regexRuleOverlaps(a, b);
+        };
+    }
+
+    private static boolean equalRuleOverlaps(PolicySubjectRule a, PolicySubjectRule b) {
+        return switch (b.getFunction()) {
+            case EQUAL -> anyPair(a, b, (x, y) -> x.equalsIgnoreCase(y));
+            case CONTAIN -> anyPair(a, b, (x, y) -> lower(x).contains(lower(y)));
+            default -> anyPair(a, b, (x, y) -> matchesIgnoringCase(y, x));
+        };
+    }
+
+    private static boolean containRuleOverlaps(PolicySubjectRule a, PolicySubjectRule b) {
+        return switch (b.getFunction()) {
+            case EQUAL -> anyPair(a, b, (x, y) -> lower(y).contains(lower(x)));
+            default -> true;
+        };
+    }
+
+    private static boolean regexRuleOverlaps(PolicySubjectRule a, PolicySubjectRule b) {
+        return switch (b.getFunction()) {
+            case EQUAL -> anyPair(a, b, (x, y) -> matchesIgnoringCase(x, y));
+            case REGEX -> anyPair(a, b, String::equals);
+            default -> true;
         };
     }
 

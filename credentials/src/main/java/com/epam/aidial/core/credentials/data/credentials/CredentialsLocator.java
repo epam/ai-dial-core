@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
  * to locate credentials without hardcoding bucket details.</p>
  *
  * <h3>Special Case</h3>
+ *
  * <p>If the credentials are stored in a user-specific bucket
  * and the user is the owner of the resource, the {@code CredentialsLocator}
  * may treat the user bucket as the source of credentials for both the {@link CredentialsLevel#USER}

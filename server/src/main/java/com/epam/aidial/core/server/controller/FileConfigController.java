@@ -91,8 +91,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/models/{name}",
@@ -110,8 +109,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/keys",
@@ -128,8 +126,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/keys/{name}",
@@ -147,8 +144,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/applications",
@@ -165,8 +161,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/applications/{name}",
@@ -184,8 +179,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/toolsets",
@@ -202,8 +196,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/toolsets/{name}",
@@ -221,8 +214,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/aliases",
@@ -239,8 +231,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/aliases/{name}",
@@ -258,8 +249,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/interceptors",
@@ -276,8 +266,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/interceptors/{name}",
@@ -295,8 +284,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/routers",
@@ -313,8 +301,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/routers/{name}",
@@ -332,8 +319,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/translators",
@@ -350,8 +336,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/translators/{name}",
@@ -369,8 +354,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/roles",
@@ -387,8 +371,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/roles/{name}",
@@ -406,8 +389,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/routes",
@@ -424,8 +406,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/routes/{name}",
@@ -443,8 +424,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/schemas",
@@ -461,8 +441,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/schemas/{name}",
@@ -480,8 +459,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/catalog_schemas",
@@ -498,8 +476,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/catalog_schemas/{name}",
@@ -517,8 +494,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/settings",
@@ -535,8 +511,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/settings/{name}",
@@ -554,8 +529,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            )
+                    })
     })
     public Future<?> handle() {
         HttpMethod method = context.getRequest().method();

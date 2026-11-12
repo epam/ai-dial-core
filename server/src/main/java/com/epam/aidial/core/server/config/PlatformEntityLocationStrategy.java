@@ -15,7 +15,7 @@ public class PlatformEntityLocationStrategy implements EntityLocationStrategy {
         }
         return switch (entityType) {
             case INTERCEPTOR, ROUTER, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS, MODEL, APP_TYPE_SCHEMA,
-                 CATALOG_SCHEMA, APPLICATION, TOOL_SET, POLICY, POLICY_ASSIGNMENT, ALIAS -> ResourceDescriptor.PLATFORM_BUCKET;
+                    CATALOG_SCHEMA, APPLICATION, TOOL_SET, POLICY, POLICY_ASSIGNMENT, ALIAS -> ResourceDescriptor.PLATFORM_BUCKET;
             default -> throw new IllegalArgumentException("Unsupported entity type for platform strategy: " + entityType);
         };
     }
