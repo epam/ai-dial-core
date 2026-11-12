@@ -390,7 +390,7 @@ public class AiDial {
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
                     toolSetService, resourceService, applicationSchemaService, aliasService);
 
-            ConsentService consentService = new ConsentService(deploymentService, resourceService, clock);
+            ConsentService consentService = new ConsentService(deploymentService, resourceService);
             AdminConsentService adminConsentService = new AdminConsentService(deploymentService, resourceService, clock);
             applicationService.setAdminConsentService(adminConsentService);
 

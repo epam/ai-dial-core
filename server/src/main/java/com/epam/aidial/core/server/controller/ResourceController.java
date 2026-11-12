@@ -777,9 +777,9 @@ public class ResourceController extends AccessControlBaseController {
                         return applicationService.putApplicationByUnitRole(descriptor, etag, author, application,
                                 externalServicesWriteMode, dependenciesSubmitted).getKey();
                     }
+                    boolean userAuthored = !accessService.hasExplicitAdminAccess(context);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
-                            adminManagedFieldsWriteMode, externalServicesWriteMode,
-                            !accessService.hasExplicitAdminAccess(context), dependenciesSubmitted).getKey();
+                            adminManagedFieldsWriteMode, externalServicesWriteMode, userAuthored, dependenciesSubmitted).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {

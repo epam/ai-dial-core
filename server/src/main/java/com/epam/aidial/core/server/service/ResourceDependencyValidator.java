@@ -148,9 +148,7 @@ public class ResourceDependencyValidator {
         if (access.contains(ResourceAccessType.SHARE)) {
             return null;
         }
-        EnumSet<ResourceAccessType> grantable = EnumSet.copyOf(access);
-        grantable.retainAll(EnumSet.of(ResourceAccessType.READ, ResourceAccessType.WRITE));
-        return grantable.isEmpty() ? null : Collections.unmodifiableSet(grantable);
+        return Collections.unmodifiableSet(EnumSet.copyOf(access));
     }
 
     /**

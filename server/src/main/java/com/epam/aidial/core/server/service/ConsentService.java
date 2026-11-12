@@ -21,7 +21,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.LongSupplier;
 
 public class ConsentService {
 
@@ -31,12 +30,9 @@ public class ConsentService {
 
     private final ResourceService resourceService;
 
-    private final LongSupplier clock;
-
-    public ConsentService(DeploymentService deploymentService, ResourceService resourceService, LongSupplier clock) {
+    public ConsentService(DeploymentService deploymentService, ResourceService resourceService) {
         this.deploymentService = deploymentService;
         this.resourceService = resourceService;
-        this.clock = clock;
     }
 
     public ReviewConsentResponse buildConsent(ProxyContext context, String deploymentId) {
