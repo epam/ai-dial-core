@@ -21,6 +21,7 @@ allprojects {
     }
 
     checkstyle {
+        toolVersion = "10.24.0"
         configDirectory = file("$rootProject.projectDir/checkstyle")
     }
 
@@ -93,6 +94,12 @@ allprojects {
             force "io.projectreactor.netty:reactor-netty-core:${reactor_netty_http_version}"
             force "io.projectreactor.netty:reactor-netty-http:${reactor_netty_http_version}"
         }
+    }
+
+    dependencies {
+        // Gradle 9 no longer puts the JUnit Platform launcher on the test runtime classpath
+        testRuntimeOnly platform("org.junit:junit-bom:${junit_version}")
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     }
 
 }
