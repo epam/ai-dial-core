@@ -61,7 +61,7 @@ In that case, the request (usually an upload or a modification of a resource) ca
 
 The status code indicates that the request entity was larger than limits defined by server:
 - `maxUploadedFileSize` defined in storage settings if content type is `multipart/form-data`. The default value is 512 Mb.
-- `maxSize` defined in resource settings. The default value is 67 Mb
+- `maxSize` defined in resource settings. The default value is 67 Mb. It does not apply to the archive sent to `POST /v1/admin/system-import`.
 
 #### 415 UNSUPPORTED_MEDIA_TYPE
 

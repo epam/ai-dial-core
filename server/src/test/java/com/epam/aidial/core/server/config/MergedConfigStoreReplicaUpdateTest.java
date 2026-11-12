@@ -428,6 +428,41 @@ public class MergedConfigStoreReplicaUpdateTest {
     }
 
     @Test
+    public void rebuildRequestFromAnotherPodSchedulesRebuild() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(vertx);
+
+        invokeOnResourceEvent(store, new ResourceEvent()
+                .setUrl(MergedConfigStore.REBUILD_EVENT_URL)
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("another-pod"));
+
+        verify(vertx, atLeastOnce()).setTimer(anyLong(), any());
+    }
+
+    @Test
+    public void rebuildRequestFromThisPodIsIgnored() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(vertx);
+
+        invokeOnResourceEvent(store, new ResourceEvent()
+                .setUrl(MergedConfigStore.REBUILD_EVENT_URL)
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId(POD_ID));
+
+        verifyNoInteractions(vertx);
+    }
+
+    @Test
+    public void requestRebuildOnAllPodsPublishesTheRebuildEvent() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+
+        store.requestRebuildOnAllPods();
+
+        verify(resourceService).publishUpdate(MergedConfigStore.REBUILD_EVENT_URL);
+    }
+
+    @Test
     public void fetchExceptionFallsBackToRequestRebuild() {
         MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
         Mockito.reset(vertx);
