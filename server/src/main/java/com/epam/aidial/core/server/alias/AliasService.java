@@ -62,6 +62,7 @@ public class AliasService {
 
     /**
      * Whether {@code resource} is where an alias is stored: an item directly in {@code aliases/public/}.
+     * Platform aliases ({@code aliases/platform/}) are merged into the config at reload time, not stored here.
      */
     public static boolean isStoredAliasLocation(ResourceDescriptor resource) {
         return resource.getType() == ResourceTypes.ALIAS
@@ -71,9 +72,9 @@ public class AliasService {
     }
 
     /**
-     * The alias stored at {@code resource}, named by its url ({@code aliases/public/<name>}), or null when the resource
-     * is not directly in {@code aliases/public/}, does not exist, or cannot be read as an alias. Reads storage (through
-     * the resource cache), so it runs on the task executor.
+     * The alias stored at {@code resource}, named by its url ({@code aliases/public/<name>}), or null when the
+     * resource is not directly in {@code aliases/public/}, does not exist, or cannot be read as an alias. Reads
+     * storage (through the resource cache), so it runs on the task executor.
      */
     @Nullable
     public Alias findStoredAlias(ResourceDescriptor resource) {
@@ -85,8 +86,8 @@ public class AliasService {
     }
 
     /**
-     * The aliases stored directly in {@code aliases/public/}, each named by its url; a body that cannot be read as an
-     * alias is logged and left out. One folder listing and one read per alias, so it runs on the task executor.
+     * The aliases stored directly in {@code aliases/public/}, each named by its url; a body that cannot be read as
+     * an alias is logged and left out. One folder listing and one read per alias, so it runs on the task executor.
      */
     public List<Alias> listStoredAliases() {
         ResourceDescriptor folder = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
@@ -166,13 +167,15 @@ public class AliasService {
 
     /**
      * Whether the caller may use {@code alias}, whose target is resolved: by the alias's {@code userRoles}, or else by
-     * the target's {@code userRoles} or the caller's read access to the target resource.
+     * the target's {@code userRoles} or the caller's read access to the target resource. For platform-bucket resource
+     * targets the bucket is admin-only, so access is determined by the target deployment's {@code userRoles} rather
+     * than by the bucket-level ACL.
      */
     private boolean hasAccess(ProxyContext context, Alias alias, Target target) {
         if (alias.getUserRoles() != null) {
             return alias.hasAccess(context.getUserRoles());
         }
-        if (target.isResource()) {
+        if (target.isResource() && !ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName())) {
             return accessService.hasReadAccess(target.resource(), context);
         }
         return target.deployment().hasAccess(context.getUserRoles());
@@ -291,18 +294,27 @@ public class AliasService {
             return null;
         }
         if (alias.getUserRoles() == null && target.isResource()) {
-            try {
-                if (!accessService.hasReadAccess(target.resource(), context)) {
+            boolean isPlatformTarget = ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName());
+            if (isPlatformTarget) {
+                if (!target.deployment().hasAccess(context.getUserRoles())) {
                     return null;
                 }
-            } catch (RuntimeException e) {
-                log.warn("Can't check access to the target of alias {}: {}", alias.getName(), e.getMessage());
-                return null;
+            } else {
+                try {
+                    if (!accessService.hasReadAccess(target.resource(), context)) {
+                        return null;
+                    }
+                } catch (RuntimeException e) {
+                    log.warn("Can't check access to the target of alias {}: {}", alias.getName(), e.getMessage());
+                    return null;
+                }
             }
         }
         Deployment view = AliasPasses.view(alias, presentation, target.deployment());
-        if (alias.getUserRoles() == null && !target.isResource()) {
-            view.setUserRoles(target.deployment().getUserRoles());
+        if (alias.getUserRoles() == null) {
+            if (!target.isResource() || ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName())) {
+                view.setUserRoles(target.deployment().getUserRoles());
+            }
         }
         return view;
     }

@@ -21,6 +21,7 @@ import com.epam.aidial.core.config.policy.PolicyKind;
 import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
+import com.epam.aidial.core.server.alias.StoredAliases;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.budget.EffectiveBudgets;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -111,7 +112,8 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.APPLICATION,
             ResourceTypes.TOOL_SET,
             ResourceTypes.POLICY,
-            ResourceTypes.POLICY_ASSIGNMENT);
+            ResourceTypes.POLICY_ASSIGNMENT,
+            ResourceTypes.ALIAS);
 
     private static final Set<String> MANAGED_URL_SEGMENTS = managedUrlSegments();
 
@@ -810,6 +812,7 @@ public final class MergedConfigStore implements ConfigStore {
                 // Passing no onSkip makes it throw whatever the mode, so that the caller falls back to a full
                 // rebuild, which sees both records and applies onInvalidEntity.
                 case POLICY_ASSIGNMENT -> ConfigPostProcessor.validateSingleAssignment(next, mapKey, null);
+                case ALIAS -> ConfigPostProcessor.validateSingleAlias(next, mapKey, onSkip);
                 default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
             }
         } catch (RuntimeException error) {
@@ -1080,6 +1083,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.setToolsets(new LinkedHashMap<>(config.getToolsets()));
             case POLICY -> config.setPolicies(new HashMap<>(config.getPolicies()));
             case POLICY_ASSIGNMENT -> config.setPolicyAssignments(new HashMap<>(config.getPolicyAssignments()));
+            case ALIAS -> config.setAliases(new LinkedHashMap<>(config.getAliases()));
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -1098,6 +1102,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().get(mapKey);
             case POLICY -> config.getPolicies().get(mapKey);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().get(mapKey);
+            case ALIAS -> config.getAliases().get(mapKey);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         };
     }
@@ -1116,6 +1121,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().put(mapKey, (ToolSet) entity);
             case POLICY -> config.getPolicies().put(mapKey, (Policy) entity);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().put(mapKey, (PolicyAssignment) entity);
+            case ALIAS -> config.getAliases().put(mapKey, (Alias) entity);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -1134,6 +1140,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().remove(mapKey);
             case POLICY -> config.getPolicies().remove(mapKey);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().remove(mapKey);
+            case ALIAS -> config.getAliases().remove(mapKey);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -1584,7 +1591,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     public static boolean isShortNameKeyed(ResourceTypes type) {
         return switch (type) {
-            case MODEL, INTERCEPTOR, TRANSLATOR, ROLE, APPLICATION, TOOL_SET -> true;
+            case MODEL, INTERCEPTOR, TRANSLATOR, ROLE, APPLICATION, TOOL_SET, ALIAS -> true;
             default -> false;
         };
     }
@@ -1667,6 +1674,19 @@ public final class MergedConfigStore implements ConfigStore {
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
+            case ALIAS -> {
+                Alias dirty = BLOB_MAPPER.treeToValue(node, Alias.class);
+                List<ValidationWarning> warnings = StoredAliases.validateFields(dirty);
+                if (!warnings.isEmpty()) {
+                    throw new InvalidEntityException(ResourceTypes.ALIAS, mapKey, warnings);
+                }
+                // Round-trip through toJson to strip fields the management API would reject (pricing, features, etc.)
+                // so the config alias carries only the fields a stored alias keeps, matching what GET returns.
+                Alias entity = BLOB_MAPPER.treeToValue(StoredAliases.toJson(dirty), Alias.class);
+                Object previous = config.getAliases().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
             default -> {
                 /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */
                 return new BlobPutResult(null, null);
@@ -1699,6 +1719,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> restore(config.getToolsets(), mapKey, (ToolSet) previous);
             case POLICY -> restore(config.getPolicies(), mapKey, (Policy) previous);
             case POLICY_ASSIGNMENT -> restore(config.getPolicyAssignments(), mapKey, (PolicyAssignment) previous);
+            case ALIAS -> restore(config.getAliases(), mapKey, (Alias) previous);
             default -> { /* no-op */ }
         }
     }

@@ -911,6 +911,20 @@ public final class ConfigPostProcessor {
     }
 
     /**
+     * Targeted per-type helper for {@link MergedConfigStore}'s partial-update path — validates the
+     * single written entry. Sets the alias's name from {@code mapKey} and validates its target against the
+     * current config. A missing target is only a warning: the alias is kept but its calls answer 503.
+     */
+    static void validateSingleAlias(Config config, String mapKey,
+                                    @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        Alias alias = config.getAliases().get(mapKey);
+        if (alias == null) {
+            return;
+        }
+        applyAliasEntry(config, mapKey, alias, onSkip, null);
+    }
+
+    /**
      * Runs after every other deployment type, so the name check sees all of them and a target is looked up in maps
      * already cleared of invalid entries. A target the config does not have is only a warning: one broken alias must
      * not stop the config from loading, and calls of it answer 503.
@@ -924,23 +938,39 @@ public final class ConfigPostProcessor {
             if (skipOnDuplicate(name, ResourceTypes.ALIAS, deploymentIds, onSkip, iterator)) {
                 continue;
             }
-            Alias alias = entry.getValue();
-            alias.setName(name);
-            List<ValidationWarning> warnings = AliasTargets.validate(alias, config);
-            if (!warnings.isEmpty()) {
-                if (onSkip == null) {
-                    throw new InvalidEntityException(ResourceTypes.ALIAS, name, warnings);
-                }
-                iterator.remove();
-                onSkip.accept(ResourceTypes.ALIAS, new InvalidEntityException(ResourceTypes.ALIAS, name, warnings));
-                continue;
+            if (applyAliasEntry(config, name, entry.getValue(), onSkip, iterator)) {
+                log.debug("Loading {}", entry.getValue());
             }
-            if (AliasTargets.isTargetMissing(alias, config)) {
-                log.warn("Alias {} points to a missing deployment {}", name, alias.getTarget().getPath());
-            }
-            warnOnLimitsUnderAliasName(config, name);
-            log.debug("Loading {}", alias);
         }
+    }
+
+    /**
+     * Sets name, validates target, logs warnings for a single alias entry. Removes the entry and routes through
+     * {@code onSkip} when validation fails. Returns {@code true} when the entry is kept, {@code false} when removed.
+     * Uses {@code removeFrom} to remove via the iterator (full-scan path); falls back to map remove (single-entry path).
+     */
+    private static boolean applyAliasEntry(Config config, String name, Alias alias,
+                                            @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip,
+                                            @Nullable Iterator<?> removeFrom) {
+        alias.setName(name);
+        List<ValidationWarning> warnings = AliasTargets.validate(alias, config);
+        if (!warnings.isEmpty()) {
+            if (onSkip == null) {
+                throw new InvalidEntityException(ResourceTypes.ALIAS, name, warnings);
+            }
+            if (removeFrom != null) {
+                removeFrom.remove();
+            } else {
+                config.getAliases().remove(name);
+            }
+            onSkip.accept(ResourceTypes.ALIAS, new InvalidEntityException(ResourceTypes.ALIAS, name, warnings));
+            return false;
+        }
+        if (AliasTargets.isTargetMissing(alias, config)) {
+            log.warn("Alias {} points to a missing deployment {}", name, alias.getTarget().getPath());
+        }
+        warnOnLimitsUnderAliasName(config, name);
+        return true;
     }
 
     /**

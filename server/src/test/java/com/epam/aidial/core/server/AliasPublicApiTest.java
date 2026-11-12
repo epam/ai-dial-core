@@ -98,9 +98,8 @@ class AliasPublicApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void aliasesLiveDirectlyInThePublicBucket() {
+    void aliasesLiveDirectlyInThePublicOrPlatformBucket() {
         assertEquals(404, admin(HttpMethod.PUT, "/v1/aliases/" + bucket + "/pub-v1", MODEL_ALIAS).status());
-        assertEquals(404, admin(HttpMethod.PUT, "/v1/aliases/platform/pub-v1", MODEL_ALIAS).status());
         assertEquals(400, putAlias("folder/pub-v1", MODEL_ALIAS).status());
         assertEquals(400, putAlias("bad%20name", MODEL_ALIAS).status());
         // the generic resource API does not serve aliases
