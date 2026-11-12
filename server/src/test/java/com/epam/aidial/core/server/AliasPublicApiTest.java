@@ -318,6 +318,29 @@ class AliasPublicApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void consentToTheAliasShowsTheResourcesItsTargetDeclares() {
+        verify(send(HttpMethod.PUT, "/v1/applications/public/declaring-app", null, """
+                {
+                  "endpoint": "http://localhost:4848/declaring-app/chat/completions",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_files", "target": {"url": "files/{current-user}/reports/"}, "access": ["read"]}
+                  ]
+                }
+                """, "authorization", "admin"), 200);
+        assertEquals(200, putAlias("declaring-v1",
+                "{\"userRoles\":[\"default-user\"],\"target\":{\"path\":\"applications/public/declaring-app\"}}").status());
+
+        Response review = send(HttpMethod.GET, "/v1/consent/aliases/public/declaring-v1", null, null, "api-key", "default-key");
+        assertEquals(200, review.status(), review.body());
+        JsonObject consent = new JsonObject(review.body());
+        assertFalse(consent.getBoolean("accepted"), review.body());
+        JsonArray resources = consent.getJsonObject("consent").getJsonArray("resources");
+        assertNotNull(resources, review.body());
+        assertTrue(resources.encode().contains("files/{current-user}/reports/"), review.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void listingsShowTheAliasByItsUrl() {
         verify(send(HttpMethod.PUT, "/v1/applications/public/res-app", null,
                 "{\"endpoint\": \"http://localhost:4848/res-app/chat/completions\"}", "authorization", "admin"), 200);

@@ -278,6 +278,11 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        get(RouteTemplate.ADMIN_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.getAdminConsentStatus(deploymentId);
+        });
         get(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             ConsentController controller = new ConsentController(context, proxy);
@@ -582,6 +587,11 @@ public class ControllerSelector {
             return new AdminHealthConfigController(context, authService, mergedConfigStore);
         });
         post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
+        post(RouteTemplate.ADMIN_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.grantAdminConsent(deploymentId);
+        });
         post(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             ConsentController controller = new ConsentController(context, proxy);
@@ -613,6 +623,11 @@ public class ControllerSelector {
             };
         });
         // DELETE routes
+        delete(RouteTemplate.ADMIN_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.withdrawAdminConsent(deploymentId);
+        });
         delete(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);
             String path = context.getRequest().path();

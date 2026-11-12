@@ -314,6 +314,19 @@ public class DeploymentService {
         return names;
     }
 
+    /**
+     * Whether an administrator may approve the application: one from the config, in the public or a review bucket, or in
+     * the administrator's own. The right to read it is not enough: its owner or sharer keeps control of it.
+     */
+    public boolean isApprovableLocation(ProxyContext context, String deploymentId) {
+        if (context.getConfig().selectDeployment(deploymentId) != null) {
+            return true;
+        }
+        ResourceDescriptor resource = toResourceDescriptor(context, deploymentId);
+        return resource.isPublic() || PublicationService.isReviewBucket(resource)
+                || accessService.isOwnerOf(context, resource.getBucketName());
+    }
+
     private ResourceDescriptor toResourceDescriptor(ProxyContext context, String resourceUrl) {
         String url;
         ResourceDescriptor resource;

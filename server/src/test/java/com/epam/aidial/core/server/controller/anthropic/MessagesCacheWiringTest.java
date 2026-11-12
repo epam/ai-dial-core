@@ -4,6 +4,8 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
+import com.epam.aidial.core.server.function.CollectDeploymentsFn;
+import com.epam.aidial.core.server.function.ResolveResourceDependenciesFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -40,6 +43,17 @@ class MessagesCacheWiringTest {
         MessagesCountTokensController controller = new MessagesCountTokensController(proxy, context);
 
         assertFalse(containsBuildUpstreamCacheFn(controller.enhancementFunctions));
+    }
+
+    @Test
+    void testMessagesController_keepsTheChatAndResponsesOrder() {
+        // ... BuildUpstreamCacheFn, CollectDeploymentsFn, ResolveResourceDependenciesFn — as on chat and Responses
+        List<BaseRequestFunction<RequestObject>> functions = new MessagesController(proxy, context).enhancementFunctions;
+        int size = functions.size();
+
+        assertInstanceOf(BuildUpstreamCacheFn.class, functions.get(size - 3));
+        assertInstanceOf(CollectDeploymentsFn.class, functions.get(size - 2));
+        assertInstanceOf(ResolveResourceDependenciesFn.class, functions.get(size - 1));
     }
 
     private static boolean containsBuildUpstreamCacheFn(List<BaseRequestFunction<RequestObject>> functions) {

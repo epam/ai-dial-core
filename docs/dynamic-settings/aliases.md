@@ -132,7 +132,7 @@ recorded under the target as for a direct rating.
 A Responses API response stored through an alias is read, cancelled and deleted through the alias
 (`/openai/v1/responses/<id>`, `.../cancel`), by the callers who may use the alias.
 
-When the target requires consent (`features.consentRequired`), so does the alias. `GET /v1/consent/<alias>` lists the
+When the target requires consent (`features.consentRequired`, or declared `resourceDependencies`), so does the alias. `GET /v1/consent/<alias>` lists the
 alias and its target, and the consent accepted with `POST /v1/consent/<alias>` covers both passes of the call; the
 caller needs no rights on the target.
 
