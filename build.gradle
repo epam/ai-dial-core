@@ -16,8 +16,13 @@ allprojects {
 
     java {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(21)
+            languageVersion = JavaLanguageVersion.of(25)
         }
+    }
+
+    lombok {
+        // the plugin's default Lombok (1.18.34) cannot compile on JDK 25; 1.18.40 is the first that can
+        version = "1.18.42"
     }
 
     checkstyle {
