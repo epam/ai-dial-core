@@ -15,8 +15,9 @@ import io.vertx.core.impl.ContextInternal;
 import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import javax.annotation.Nullable;
 
 /**
@@ -48,11 +49,11 @@ public final class VertxHostDelegate implements HostDelegate {
     private final ApiKeyData callKey;
     private final Promise<Void> cancelled;
     /**
-     * The answers of the calls, cancelled when the attempt closes: the pass serving a call then stops, as an HTTP child
-     * pass stops when its client goes away, instead of reading its upstream for an answer nobody reads. Touched on the
-     * plugin's context only.
+     * The answers of the calls whose passes may still write, cancelled when the attempt closes: the pass serving a call
+     * then stops, as an HTTP child pass stops when its client goes away, instead of reading its upstream for an answer
+     * nobody reads. An answer leaves once its pass has nothing left to write. Touched on the plugin's context only.
      */
-    private final List<EmbeddedServerResponse> responses = new ArrayList<>();
+    private final Set<EmbeddedServerResponse> responses = new HashSet<>();
     private boolean closed;
 
     /**
@@ -120,6 +121,12 @@ public final class VertxHostDelegate implements HostDelegate {
                 IdGenerator.random().generateSpanId(), parent.getTraceFlags());
         child.setCallTree(call.body());
         responses.add(response);
+        response.finished().onSuccess(ignored -> {
+            // once closed, close() owns the set: cancelling an answer may finish it while close() goes through the set
+            if (!closed) {
+                responses.remove(response);
+            }
+        });
         response.answer().onSuccess(answer -> {
             if (closed) {
                 answer.cancel();

@@ -47,6 +47,8 @@ public final class EmbeddedServerResponse implements HttpServerResponse {
      * and fails when the pass resets the response or the plugin cancels the call before. {@link #answer()} hands it out.
      */
     private final Promise<Response> head;
+    // completes once the pass has nothing left to write; see finished()
+    private final Promise<Void> finished;
     private final InboundBuffer<Object> body;
     private final AnswerBody reader = new AnswerBody();
     private final MultiMap headers = MultiMap.caseInsensitiveMultiMap();
@@ -71,6 +73,7 @@ public final class EmbeddedServerResponse implements HttpServerResponse {
         this.childContext = childContext;
         this.parentContext = parentContext;
         this.head = parentContext.promise();
+        this.finished = parentContext.promise();
         this.body = InboundBuffer.createPaused(parentContext, HIGH_WATER_MARK, ignored -> onDrain(), reader::handle);
     }
 
@@ -80,6 +83,14 @@ public final class EmbeddedServerResponse implements HttpServerResponse {
      */
     public Future<Response> answer() {
         return head.future();
+    }
+
+    /**
+     * Completes on the plugin's context once the pass has nothing left to write: it ended the answer, or the answer was
+     * cut or cancelled.
+     */
+    public Future<Void> finished() {
+        return finished.future();
     }
 
     @Override
@@ -279,6 +290,7 @@ public final class EmbeddedServerResponse implements HttpServerResponse {
             return false;
         }
         closed = true;
+        finished.tryComplete();
         HttpClosedException error = new HttpClosedException("The pass serving the call reset its response");
         if (!headWritten) {
             headWritten = true;
@@ -306,6 +318,7 @@ public final class EmbeddedServerResponse implements HttpServerResponse {
                 return;
             }
             closed = true;
+            finished.tryComplete();
             body.clear();
             HttpClosedException error = new HttpClosedException("The origin plugin cancelled the call");
             // the plugin may still wait for the head, or hold an answer it has not read to the end
@@ -352,8 +365,11 @@ public final class EmbeddedServerResponse implements HttpServerResponse {
             full = !writable;
             ack.tryComplete();
         });
-        if (end && endHandler != null) {
-            childContext.emit(null, endHandler);
+        if (end) {
+            finished.tryComplete();
+            if (endHandler != null) {
+                childContext.emit(null, endHandler);
+            }
         }
         return ack.future();
     }

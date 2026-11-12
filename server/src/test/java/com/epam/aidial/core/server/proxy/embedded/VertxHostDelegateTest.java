@@ -199,6 +199,24 @@ class VertxHostDelegateTest {
         assertThrows(ExecutionException.class, () -> await(next));
     }
 
+    @Test
+    void testEndedAnswerOutlivesClose() throws Exception {
+        Future<Response> pending = call("/openai/v1/chat/completions", body());
+        awaitCondition(() -> dispatched.size() == 1);
+        ProxyContext child = dispatched.get(0);
+        on(child, () -> child.getResponse().end("done"));
+        Response answer = await(pending);
+
+        // its pass had nothing left to write, so the attempt no longer holds the answer to cancel it
+        host.close();
+        CompletableFuture<String> read = new CompletableFuture<>();
+        Buffer seen = Buffer.buffer();
+        on(pluginContext, () -> answer.body().exceptionHandler(read::completeExceptionally)
+                .handler(seen::appendBuffer).endHandler(ignored -> read.complete(seen.toString())));
+
+        assertEquals("done", read.get(5, TimeUnit.SECONDS));
+    }
+
     private Future<Response> call(String uri, ObjectNode body) {
         return on(pluginContext, () -> host.call(new Call(uri, MultiMap.caseInsensitiveMultiMap(), body)));
     }
