@@ -27,7 +27,9 @@ def generatedDir = "${layout.buildDirectory.get()}/generated"
 
 def skeletonFile = "${generatedDir}/openapi-skeleton.yaml"
 def mergedFile = "${generatedDir}/openapi-merged.yaml"
+def mergedJsonFile = "${generatedDir}/openapi-merged.json"
 def targetSpec = "${rootDir}/docs/open_api_core.yaml"
+def targetJsonSpec = "${rootDir}/docs/open_api_core.json"
 def backupDir = "${rootDir}/openapi-generator/resources/bak"
 
 tasks.register('generateOpenApiSkeleton', JavaExec) {
@@ -46,6 +48,17 @@ tasks.register('mergeOpenApiSpec', JavaExec) {
             skeletonFile,
             targetSpec,
             mergedFile
+    ]
+}
+
+tasks.register('convertOpenApiSpecToJson', JavaExec) {
+    dependsOn mergeOpenApiSpec
+
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.epam.aidial.core.openapi.SpecJsonConverter'
+    args = [
+            mergedFile,
+            mergedJsonFile
     ]
 }
 
@@ -74,6 +87,7 @@ tasks.register('replaceSpec') {
     dependsOn(project.hasProperty("lint")
             ? "lintMergedOpenApi"
             : "mergeOpenApiSpec")
+    dependsOn convertOpenApiSpecToJson
 
     doLast {
         copy {
@@ -81,34 +95,42 @@ tasks.register('replaceSpec') {
             into file(targetSpec).parentFile
             rename { "open_api_core.yaml" }
         }
+        copy {
+            from file(mergedJsonFile)
+            into file(targetJsonSpec).parentFile
+            rename { "open_api_core.json" }
+        }
     }
 }
 
 tasks.register('checkOpenApiDiff') {
     dependsOn lintMergedOpenApi
+    dependsOn convertOpenApiSpecToJson
 
     doLast {
-        def currentSpec = file(targetSpec)
-        def generatedSpec = file(mergedFile)
+        [(targetSpec): mergedFile, (targetJsonSpec): mergedJsonFile].each { target, generated ->
+            def currentSpec = file(target)
+            def generatedSpec = file(generated)
 
-        if (!currentSpec.exists()) {
-            throw new GradleException("Current OpenAPI spec not found: ${targetSpec}")
-        }
+            if (!currentSpec.exists()) {
+                throw new GradleException("Current OpenAPI spec not found: ${target}")
+            }
 
-        if (!java.util.Arrays.equals(currentSpec.bytes, generatedSpec.bytes)) {
-            throw new GradleException("""
+            if (!java.util.Arrays.equals(currentSpec.bytes, generatedSpec.bytes)) {
+                throw new GradleException("""
 ============================================================
 OpenAPI specification differs from committed version.
 
 Current:
-${targetSpec}
+${target}
 
 Generated:
-${mergedFile}
+${generated}
 
 Run replaceSpec or review changes manually.
 ============================================================
 """)
+            }
         }
 
         logger.lifecycle("OpenAPI specification is up to date.")
