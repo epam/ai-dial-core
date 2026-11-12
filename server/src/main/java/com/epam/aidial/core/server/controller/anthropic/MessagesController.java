@@ -18,8 +18,14 @@ import com.epam.aidial.core.server.data.AnthropicErrorData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
+import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
+import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
+import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
+import com.epam.aidial.core.server.function.ResolveResourceDependenciesFn;
 import com.epam.aidial.core.server.function.RouterModelFn;
+import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
+import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
@@ -61,9 +67,19 @@ public class MessagesController extends MessagesBaseController {
         super(proxy, context);
     }
 
+    /**
+     * The base chain plus {@link BuildUpstreamCacheFn}: upstream cache pinning applies to {@code POST /anthropic/v1/messages}
+     * but not to {@link MessagesCountTokensController}.
+     */
     @Override
-    protected void addFunctionsBeforeCollectDeployments(List<BaseRequestFunction<RequestObject>> functions) {
-        functions.add(new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES));
+    protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
+        return List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES),
+                new EnhanceDeploymentRequestFn(proxy, context),
+                new CollectRequestApplicationFilesFn(proxy, context),
+                new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES),
+                new CollectDeploymentsFn(proxy, context),
+                new ResolveResourceDependenciesFn<>(proxy, context));
     }
 
     /**
