@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.plugin.Request;
-import com.epam.aidial.core.server.config.TestEchoPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider.Closed;
 import com.epam.aidial.core.server.data.ResponseMapping;
@@ -318,16 +317,6 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         Response response = chat("/openai/deployments/app/chat/completions", CHAT_BODY);
 
         assertConnectFailure(response);
-    }
-
-    @Test
-    void testPluginThatServesNoRequests() {
-        int closed = TestEchoPluginProvider.CLOSED.get();
-        putPlugin("p2", "{\"type\": \"" + TestEchoPluginProvider.TYPE + "\", \"settings\": {\"greeting\": \"hi\"}}");
-        verify(adminPut("/v1/applications/platform/app", embeddedChat("p2")), 200);
-
-        assertConnectFailure(chat("/openai/deployments/app/chat/completions", CHAT_BODY));
-        awaitCondition(() -> TestEchoPluginProvider.CLOSED.get() == closed + 1);
     }
 
     @Test

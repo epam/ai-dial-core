@@ -36,10 +36,6 @@ public interface PluginProvider {
      * Core calls it on the first request the entry serves and again on the first request after the entry changes,
      * possibly on a Vert.x event loop, so it must be quick and must not block. {@code settings} is read-only.
      *
-     * <p>The plugin's kind decides what the entry can serve: an {@link OriginPlugin} answers the requests of the
-     * deployment interfaces that name the entry. Core closes an instance of a kind the entry's use does not take, and
-     * fails that use.
-     *
      * @param vertx Core's Vert.x instance, for the clients and timers the plugin needs: create them here, once,
      *              rather than on the first request
      */

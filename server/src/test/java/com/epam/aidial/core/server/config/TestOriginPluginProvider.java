@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.plugin.Call;
 import com.epam.aidial.core.plugin.HostDelegate;
-import com.epam.aidial.core.plugin.OriginPlugin;
+import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
@@ -66,7 +66,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * The setting {@code failCreate: true} makes {@link #create} throw, {@code createNull: true} return null,
  * {@code mutateSettings: true} change the settings it gets, {@code createMillis: <ms>} take that long, and
  * {@code closeFails: true} makes the plugin's
- * {@link OriginPlugin#close} throw once it is recorded in {@link #CLOSED}. Tests clear the recorded state with
+ * {@link Plugin#close} throw once it is recorded in {@link #CLOSED}. Tests clear the recorded state with
  * {@link #reset}.
  */
 public class TestOriginPluginProvider implements PluginProvider {
@@ -134,7 +134,7 @@ public class TestOriginPluginProvider implements PluginProvider {
     }
 
     @Override
-    public OriginPlugin create(ObjectNode settings, Vertx vertx) {
+    public Plugin create(ObjectNode settings, Vertx vertx) {
         CREATED_WITH.set(vertx);
         ContextInternal current = ContextInternal.current();
         CREATED_ON_DUPLICATE.set(current != null && current.isDuplicate());
@@ -158,7 +158,7 @@ public class TestOriginPluginProvider implements PluginProvider {
         return new TestPlugin(settings.path("greeting").asText("ok"), settings.path("closeFails").asBoolean());
     }
 
-    private record TestPlugin(String greeting, boolean closeFails) implements OriginPlugin {
+    private record TestPlugin(String greeting, boolean closeFails) implements Plugin {
 
         @Override
         public Future<Response> handle(Request request, HostDelegate host) {

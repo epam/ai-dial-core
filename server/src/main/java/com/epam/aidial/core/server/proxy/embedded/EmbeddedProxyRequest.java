@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.plugin.Caller;
-import com.epam.aidial.core.plugin.OriginPlugin;
+import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.ProxyContext;
@@ -30,14 +30,14 @@ import javax.annotation.Nullable;
  * Not thread-safe: everything runs on that context.
  *
  * <p>ponytail: Core trusts the plugin to complete its future and emit its body on that context, as the
- * {@code OriginPlugin} contract says; nothing moves a callback back onto it. Put a forwarding adapter in front of the
+ * {@code Plugin} contract says; nothing moves a callback back onto it. Put a forwarding adapter in front of the
  * plugin's stream once a plugin needs threads of its own.
  */
 public final class EmbeddedProxyRequest implements ProxyRequest {
 
     private final ContextInternal context;
     private final ProxyContext proxyContext;
-    private final Supplier<OriginPlugin> plugin;
+    private final Supplier<Plugin> plugin;
     private final HttpMethod method;
     private final String baseUrl;
     private final String absoluteUri;
@@ -59,7 +59,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
      * @param baseUrl      the {@code plugin://<name>} url the interface resolves to
      * @param absoluteUri  that url with the path and query, the plugin getting the path and query
      */
-    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<OriginPlugin> plugin, HttpMethod method,
+    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin, HttpMethod method,
                          String baseUrl, String absoluteUri) {
         this(context, proxyContext, plugin, method, baseUrl, absoluteUri, null);
     }
@@ -67,7 +67,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     /**
      * @param router for a router's decide or notice request: the key its calls carry and the body tree it gets
      */
-    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<OriginPlugin> plugin, HttpMethod method,
+    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin, HttpMethod method,
                          String baseUrl, String absoluteUri, RouterRequest router) {
         this.context = context;
         this.proxyContext = proxyContext;

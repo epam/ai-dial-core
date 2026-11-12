@@ -42,26 +42,12 @@ public class ProxyClient {
      * {@code absoluteUri} is the {@code plugin://<name>} url the interface resolves to, with the path and query.
      *
      * <p>Every failure comes back as a failed future, for the caller's connect-failure path: no {@code plugins} entry
-     * by that name, a provider that is not loaded or serves no requests, a plugin that cannot be created, or an
+     * by that name, a provider that is not loaded, a plugin that cannot be created, or an
      * application that is not of the platform config. A plugin runs platform code, so a user's custom application is
      * never served by one.
      */
     public Future<ProxyRequest> embedded(ProxyContext context, HttpMethod method, String absoluteUri, String plugin) {
-        // on a virtual thread that AsyncTaskExecutor dispatched, this is the request's context, as on its event loop
-        ContextInternal vertxContext = (ContextInternal) vertx.getOrCreateContext();
-        try {
-            Config config = context.getConfig();
-            if (context.getDeployment() instanceof Application application && !isPlatform(config, application)) {
-                throw new IllegalStateException("A plugin is reserved for platform deployments: " + application.getName());
-            }
-            // fails here, for an entry that cannot serve; each attempt takes the plugin when it is sent
-            pluginManager.resolve(config, plugin);
-            String baseUrl = DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin;
-            return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context,
-                    () -> pluginManager.resolve(config, plugin), method, baseUrl, absoluteUri));
-        } catch (RuntimeException e) {
-            return vertxContext.failedFuture(e);
-        }
+        return embeddedRequest(context, method, absoluteUri, plugin, null);
     }
 
     /**
@@ -73,14 +59,23 @@ public class ProxyClient {
      */
     public Future<ProxyRequest> embeddedForRouter(ProxyContext context, HttpMethod method, String absoluteUri, String plugin,
                                                   @Nullable ApiKeyData callKey, @Nullable ObjectNode bodyTree) {
+        return embeddedRequest(context, method, absoluteUri, plugin, new EmbeddedProxyRequest.RouterRequest(callKey, bodyTree));
+    }
+
+    private Future<ProxyRequest> embeddedRequest(ProxyContext context, HttpMethod method, String absoluteUri, String plugin,
+                                                 @Nullable EmbeddedProxyRequest.RouterRequest router) {
+        // on a virtual thread that AsyncTaskExecutor dispatched, this is the request's context, as on its event loop
         ContextInternal vertxContext = (ContextInternal) vertx.getOrCreateContext();
         try {
             Config config = context.getConfig();
+            if (router == null && context.getDeployment() instanceof Application application && !isPlatform(config, application)) {
+                throw new IllegalStateException("A plugin is reserved for platform deployments: " + application.getName());
+            }
+            // fails here, for an entry that cannot serve; each attempt takes the plugin when it is sent
             pluginManager.resolve(config, plugin);
-            String baseUrl = DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin;
             return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context,
-                    () -> pluginManager.resolve(config, plugin), method, baseUrl, absoluteUri,
-                    new EmbeddedProxyRequest.RouterRequest(callKey, bodyTree)));
+                    () -> pluginManager.resolve(config, plugin), method, DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin,
+                    absoluteUri, router));
         } catch (RuntimeException e) {
             return vertxContext.failedFuture(e);
         }

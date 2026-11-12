@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
 
 /**
- * A {@code POST} an origin plugin sends to a deployment through {@link HostDelegate#call}.
+ * A {@code POST} a plugin sends to a deployment through {@link HostDelegate#call}.
  *
  * @param uri     the path and query of a create operation: a deployments-POST action such as
  *                {@code /openai/deployments/<name>/chat/completions}, {@code /openai/v1/chat/completions},

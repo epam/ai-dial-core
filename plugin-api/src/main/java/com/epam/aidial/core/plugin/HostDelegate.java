@@ -3,10 +3,10 @@ package com.epam.aidial.core.plugin;
 import io.vertx.core.Future;
 
 /**
- * Core, as one request of an origin plugin sees it. It serves the calls the plugin makes to other deployments while
+ * Core, as one request of a plugin sees it. It serves the calls the plugin makes to other deployments while
  * it answers that request.
  *
- * <p>Core creates one host per attempt to answer a request and hands it to {@link OriginPlugin#handle} with that
+ * <p>Core creates one host per attempt to answer a request and hands it to {@link Plugin#handle} with that
  * request. It cannot be set up once for the plugin: it carries that request's per-request key, which authenticates
  * the calls, its {@link #cancelled()} signal, and the rule that its calls end with the request. Do not keep it past
  * the answer: a call made after the request ended is answered {@code 401}.
@@ -17,7 +17,7 @@ public interface HostDelegate {
      * Calls a deployment in process, as a child pass of the request the plugin answers: Core checks, limits, charges
      * and logs it as a request that deployment's per-request key sends to Core, with no HTTP request into Core.
      *
-     * <p>Call it on the context {@link OriginPlugin#handle} was called on. The future completes there with the answer
+     * <p>Call it on the context {@link Plugin#handle} was called on. The future completes there with the answer
      * once its status and headers are known, and the answer's body emits there, as an {@link Response} of a
      * plugin does. An answer of any status, {@code 404} or {@code 429} included, completes the future; it fails only
      * for a call Core cannot serve: a path outside the operations {@link Call#uri()} names, a Responses call
@@ -41,7 +41,7 @@ public interface HostDelegate {
      *
      * <p>Completes when Core stops waiting for this request's answer: the client went away before the plugin answered,
      * or Core moved on from the answer (the client went away while it was relayed, or a retry). It completes on the
-     * context {@link OriginPlugin#handle} was called on and never fails; on a request that ends normally it never
+     * context {@link Plugin#handle} was called on and never fails; on a request that ends normally it never
      * completes. A plugin still working should stop and release what it holds.
      *
      * <p>Once the client has gone, an answer that fails ends the request quietly: Core tries no other upstream and

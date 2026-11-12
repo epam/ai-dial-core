@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.config;
 import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 
 import java.io.IOException;
@@ -33,8 +34,7 @@ public class JarEchoPluginProvider implements PluginProvider {
 
     @Override
     public Plugin create(ObjectNode settings, Vertx vertx) {
-        return new Plugin() {
-        };
+        return (request, host) -> Future.failedFuture(new UnsupportedOperationException("jar-echo serves no requests"));
     }
 
     /**

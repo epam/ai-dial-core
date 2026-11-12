@@ -5,7 +5,7 @@ import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.plugin.HostDelegate;
-import com.epam.aidial.core.plugin.OriginPlugin;
+import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.Proxy;
@@ -336,7 +336,7 @@ class RouterDecisionClientTest {
         return key;
     }
 
-    private void plugin(OriginPlugin plugin) {
+    private void plugin(Plugin plugin) {
         when(pluginManager.resolve(any(), eq("p1"))).thenReturn(plugin);
     }
 

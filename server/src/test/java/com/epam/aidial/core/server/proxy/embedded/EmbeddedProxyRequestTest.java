@@ -2,7 +2,7 @@ package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.plugin.Call;
 import com.epam.aidial.core.plugin.HostDelegate;
-import com.epam.aidial.core.plugin.OriginPlugin;
+import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.Proxy;
@@ -188,7 +188,7 @@ class EmbeddedProxyRequestTest {
     @Test
     void testSendTakesThePluginWhenSent() throws Exception {
         AtomicInteger taken = new AtomicInteger();
-        OriginPlugin plugin = (call, host) -> Future.succeededFuture(new Answer(stream(false)));
+        Plugin plugin = (call, host) -> Future.succeededFuture(new Answer(stream(false)));
         EmbeddedProxyRequest request = request(() -> {
             taken.incrementAndGet();
             return plugin;
@@ -300,30 +300,30 @@ class EmbeddedProxyRequestTest {
         await(cancelled.get());
     }
 
-    private void assertSendFails(OriginPlugin plugin, Class<? extends Throwable> cause) {
+    private void assertSendFails(Plugin plugin, Class<? extends Throwable> cause) {
         ExecutionException error = assertThrows(ExecutionException.class, () -> await(request(plugin).send(Buffer.buffer("{}"))));
         assertInstanceOf(cause, error.getCause());
     }
 
-    private EmbeddedProxyRequest request(OriginPlugin plugin) {
+    private EmbeddedProxyRequest request(Plugin plugin) {
         return request(plugin, mock(HttpServerResponse.class));
     }
 
-    private EmbeddedProxyRequest request(OriginPlugin plugin, HttpServerResponse client) {
+    private EmbeddedProxyRequest request(Plugin plugin, HttpServerResponse client) {
         return request(() -> plugin, client);
     }
 
-    private EmbeddedProxyRequest request(Supplier<OriginPlugin> plugin, HttpServerResponse client) {
+    private EmbeddedProxyRequest request(Supplier<Plugin> plugin, HttpServerResponse client) {
         context = (ContextInternal) vertx.getOrCreateContext();
         when(pass.getResponse()).thenReturn(client);
         return new EmbeddedProxyRequest(context, pass, plugin, HttpMethod.POST, "plugin://p1", "plugin://p1/openai/v1/responses?x=1");
     }
 
-    private EmbeddedProxyRequest routerRequest(OriginPlugin plugin, ApiKeyData callKey, ObjectNode tree) {
+    private EmbeddedProxyRequest routerRequest(Plugin plugin, ApiKeyData callKey, ObjectNode tree) {
         return routerRequest(plugin, callKey, tree, mock(HttpServerResponse.class));
     }
 
-    private EmbeddedProxyRequest routerRequest(OriginPlugin plugin, ApiKeyData callKey, ObjectNode tree, HttpServerResponse client) {
+    private EmbeddedProxyRequest routerRequest(Plugin plugin, ApiKeyData callKey, ObjectNode tree, HttpServerResponse client) {
         context = (ContextInternal) vertx.getOrCreateContext();
         when(pass.getResponse()).thenReturn(client);
         return new EmbeddedProxyRequest(context, pass, () -> plugin, HttpMethod.POST,

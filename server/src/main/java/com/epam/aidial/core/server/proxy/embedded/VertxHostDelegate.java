@@ -20,12 +20,12 @@ import java.util.List;
 import javax.annotation.Nullable;
 
 /**
- * Serves the in-process calls an origin plugin makes while it answers one attempt of an embedded pass. Each call is a
+ * Serves the in-process calls a plugin makes while it answers one attempt of an embedded pass. Each call is a
  * child pass: an in-memory request routed by Core's own controller selection, authenticated by the per-request key
  * record of the plugin's pass, so it is checked, limited, charged and logged as a request with that key, with no HTTP
  * request into Core and no key lookup.
  *
- * <p>Calls run on the plugin's context, the one {@code OriginPlugin.handle} was called on. Each child pass runs on a
+ * <p>Calls run on the plugin's context, the one {@code Plugin.handle} was called on. Each child pass runs on a
  * duplicate of it, with its own locals but the plugin's OTel context, so the child's HTTP origin calls are traced
  * under the plugin's server span. {@link #close} ends the attempt: open answers are cancelled and later calls get
  * {@code 401}, as an HTTP child gets once the key is deleted.

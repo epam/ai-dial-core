@@ -14,7 +14,7 @@ public interface Response {
     MultiMap headers();
 
     /**
-     * The body. It emits on the context {@link OriginPlugin#handle} was called on, and only from a task of its own: never
+     * The body. It emits on the context {@link Plugin#handle} was called on, and only from a task of its own: never
      * from inside a call Core makes to it ({@code handler}, {@code endHandler}, {@code fetch}, {@code resume}), as Core
      * sets its handlers one after another. It flows once Core has set a handler, unless Core pauses it.
      */

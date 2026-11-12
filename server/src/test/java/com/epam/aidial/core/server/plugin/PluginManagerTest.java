@@ -2,8 +2,6 @@ package com.epam.aidial.core.server.plugin;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Plugin;
-import com.epam.aidial.core.plugin.OriginPlugin;
-import com.epam.aidial.core.server.config.TestEchoPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider.Closed;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -21,6 +19,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -59,7 +58,7 @@ class PluginManagerTest {
     @Test
     void testSamePluginForTheSameAndForAnEqualDeclaration() {
         Config config = configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello")));
-        OriginPlugin first = origins.resolve(config, "p1");
+        com.epam.aidial.core.plugin.Plugin first = origins.resolve(config, "p1");
 
         assertSame(first, origins.resolve(config, "p1"));
         // a rebuild makes new objects for the same declaration
@@ -68,7 +67,7 @@ class PluginManagerTest {
 
     @Test
     void testProviderChangingItsSettingsKeepsThePlugin() {
-        OriginPlugin first = origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE,
+        com.epam.aidial.core.plugin.Plugin first = origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE,
                 greeting("hello").put("mutateSettings", true))), "p1");
 
         // the rebuild's declaration equals the one the plugin was created from
@@ -79,7 +78,7 @@ class PluginManagerTest {
     @Test
     void testPluginCreatedOutsideTheRequestsContext() throws Exception {
         ContextInternal request = ((ContextInternal) vertx.getOrCreateContext()).duplicate();
-        CompletableFuture<OriginPlugin> created = new CompletableFuture<>();
+        CompletableFuture<com.epam.aidial.core.plugin.Plugin> created = new CompletableFuture<>();
 
         request.runOnContext(ignored -> {
             try {
@@ -95,7 +94,7 @@ class PluginManagerTest {
 
     @Test
     void testNewPluginAfterSettingsChange() {
-        OriginPlugin hello = origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello"))), "p1");
+        com.epam.aidial.core.plugin.Plugin hello = origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello"))), "p1");
 
         assertNotSame(hello, origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hi"))), "p1"));
     }
@@ -115,12 +114,25 @@ class PluginManagerTest {
     void testRacingRequestsShareOnePlugin() throws Exception {
         Config config = configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello").put("createMillis", 200)));
 
-        CompletableFuture<OriginPlugin> first = CompletableFuture.supplyAsync(() -> origins.resolve(config, "p1"));
-        CompletableFuture<OriginPlugin> second = CompletableFuture.supplyAsync(() -> origins.resolve(config, "p1"));
+        CompletableFuture<com.epam.aidial.core.plugin.Plugin> first = CompletableFuture.supplyAsync(() -> origins.resolve(config, "p1"));
+        CompletableFuture<com.epam.aidial.core.plugin.Plugin> second = CompletableFuture.supplyAsync(() -> origins.resolve(config, "p1"));
 
         assertSame(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS));
         Thread.sleep(100);
         assertEquals(List.of(), TestOriginPluginProvider.CLOSED);
+    }
+
+    @Test
+    void testPluginCreatedDuringShutdownIsClosed() throws Exception {
+        Config config = configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("late").put("createMillis", 300)));
+        var resolving = CompletableFuture.supplyAsync(() -> origins.resolve(config, "p1"));
+        Thread.sleep(100);
+
+        await(origins.close());
+
+        ExecutionException error = assertThrows(ExecutionException.class, () -> resolving.get(5, TimeUnit.SECONDS));
+        assertTrue(error.getCause().getMessage().contains("shutting down"), error.getCause().getMessage());
+        awaitClosed(1);
     }
 
     @Test
@@ -137,7 +149,7 @@ class PluginManagerTest {
         ObjectNode failing = greeting("hello").put("closeFails", true);
         origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, failing)), "p1");
         Config hi = configWith(origin("hi"));
-        OriginPlugin current = origins.resolve(hi, "p1");
+        com.epam.aidial.core.plugin.Plugin current = origins.resolve(hi, "p1");
         awaitClosed(1);
 
         assertSame(current, origins.resolve(hi, "p1"));
@@ -170,19 +182,6 @@ class PluginManagerTest {
     @Test
     void testProviderNotLoaded() {
         assertFailure(configWith(new Plugin("missing", null)), "No plugin provider of type 'missing' is loaded");
-    }
-
-    @Test
-    void testPluginThatServesNoRequestsIsClosed() throws InterruptedException {
-        int closed = TestEchoPluginProvider.CLOSED.get();
-
-        assertFailure(configWith(new Plugin(TestEchoPluginProvider.TYPE, greeting("hi"))), "serves no requests");
-
-        long deadline = System.currentTimeMillis() + 5000;
-        while (TestEchoPluginProvider.CLOSED.get() == closed && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
-        assertEquals(closed + 1, TestEchoPluginProvider.CLOSED.get());
     }
 
     @Test

@@ -2,7 +2,7 @@ package com.epam.aidial.core.plugin.samples;
 
 import com.epam.aidial.core.plugin.Call;
 import com.epam.aidial.core.plugin.HostDelegate;
-import com.epam.aidial.core.plugin.OriginPlugin;
+import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
@@ -44,7 +44,7 @@ public class ForwardOriginPluginProvider implements PluginProvider {
     }
 
     @Override
-    public OriginPlugin create(ObjectNode settings, Vertx vertx) {
+    public Plugin create(ObjectNode settings, Vertx vertx) {
         String deployment = settings.get("deployment").asText();
         return (request, host) -> forward(request, host, deployment);
     }
