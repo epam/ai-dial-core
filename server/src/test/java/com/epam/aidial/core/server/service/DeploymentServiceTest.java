@@ -141,8 +141,9 @@ public class DeploymentServiceTest {
         stubConfigAccess();
         Alias alias = storedAlias("pub-v1");
         alias.setUserRoles(Set.of("default-user"));
-        when(accessService.hasReadAccess(any(ResourceDescriptor.class), eq(context))).thenReturn(true);
         when(aliasService.findStoredAlias(any())).thenReturn(alias);
+        // the public bucket is world-readable; ACL passes before the alias's userRoles check
+        when(accessService.hasReadAccess(any(), eq(context))).thenReturn(true);
 
         when(context.getUserRoles()).thenReturn(List.of("default-user"));
         assertSame(alias, service.findDeployment(context, "aliases/public/pub-v1"));
@@ -154,8 +155,8 @@ public class DeploymentServiceTest {
 
     @Test
     public void missingStoredAliasAnswersNotFound() {
-        when(accessService.hasReadAccess(any(ResourceDescriptor.class), eq(context))).thenReturn(true);
-
+        // the public bucket is world-readable; ACL passes, then findStoredAlias returns null → 404
+        when(accessService.hasReadAccess(any(), eq(context))).thenReturn(true);
         assertThrows(ResourceNotFoundException.class, () -> service.findDeployment(context, "aliases/public/pub-v1"));
     }
 
