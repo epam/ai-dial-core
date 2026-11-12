@@ -452,6 +452,70 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyPrecheckRejectsInvalidResourceDependencies() {
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null,
+                invalidResourceDependenciesBatch(true, "apply-deps-precheck"), "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals("SKIPPED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        JsonNode appResult = parsed.get("results").get(1);
+        assertEquals("FAILED", appResult.get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(appResult.get("error").asText().startsWith("Invalid resource dependencies"), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-deps-precheck-model", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/applications/platform/apply-deps-precheck-app", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyPrecheckFalseFailsInvalidResourceDependencies() {
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null,
+                invalidResourceDependenciesBatch(false, "apply-deps-partial"), "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        JsonNode appResult = parsed.get("results").get(1);
+        assertEquals("FAILED", appResult.get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(appResult.get("error").asText().startsWith("Invalid resource dependencies"), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-deps-partial-model", null, "",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/applications/platform/apply-deps-partial-app", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    private static String invalidResourceDependenciesBatch(boolean precheck, String prefix) {
+        return """
+                {
+                  "precheck": %s,
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/%s-model",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
+                      }
+                    },
+                    {
+                      "kind": "Application",
+                      "name": "applications/platform/%s-app",
+                      "spec": {
+                        "endpoint": "http://example.com/v1/completions",
+                        "resourceDependencies": [
+                          {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"url": "users/bob/files/f/"}, "access": ["read"]}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.formatted(precheck, prefix, prefix);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyRouteUpstreamWithoutKeyFails() {
         String body = """
                 {

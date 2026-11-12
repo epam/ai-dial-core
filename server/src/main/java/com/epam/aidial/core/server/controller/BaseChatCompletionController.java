@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestSkillsFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.ResolveResourceDependenciesFn;
 import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.StripUsagePerModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
@@ -90,7 +91,8 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
                 new BuildUpstreamCacheFn(proxy, context, requestedInterface()),
-                new CollectDeploymentsFn(proxy, context));
+                new CollectDeploymentsFn(proxy, context),
+                new ResolveResourceDependenciesFn<>(proxy, context));
     }
 
     /**

@@ -55,6 +55,7 @@ import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.AdminConsentService;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.service.AdminSystemImportService;
 import com.epam.aidial.core.server.service.AdminSystemImportValidationService;
@@ -406,13 +407,14 @@ public class AiDial {
                     toolSetService, resourceService, applicationSchemaService, aliasService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
+            AdminConsentService adminConsentService = new AdminConsentService(deploymentService, resourceService, clock);
+            applicationService.setAdminConsentService(adminConsentService);
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
             WellKnownResourceMetadataService wellKnownResourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
-
             ApiKeyValidation apiKeyValidation = Json.decodeValue(settings("apiKeyValidation").toBuffer(), ApiKeyValidation.class);
             boolean printAuthorizationHeader = settings.getBoolean("printAuthorizationHeader", false);
 
@@ -469,11 +471,12 @@ public class AiDial {
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, externalServiceService, userExternalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
+                    consentService, adminConsentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, securedResourceService, mcpHttpClientBuilder, toolSetRepairService, applicationSchemaService,
                     catalogSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
-                    perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
+                    perRequestPermissionService, resourceAuthSettingsEncryptionService,
+                    authSettingsResolver, clientChannelService, taskExecutor, version(),
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,

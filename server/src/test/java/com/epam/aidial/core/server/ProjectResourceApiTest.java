@@ -320,6 +320,55 @@ public class ProjectResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testMovePrivateProject() {
+        Map<String, byte[]> files = Map.of("README.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadProject("/move-from", files), 200);
+
+        Response moved = operationRequest("/v1/ops/resource/move", """
+                {
+                  "sourceUrl": "projects/%s/move-from",
+                  "destinationUrl": "projects/%s/move-to",
+                  "overwrite": false
+                }
+                """.formatted(bucket, bucket));
+        verify(moved, 200);
+
+        assertEquals(404, downloadProject("/move-from").status());
+        assertEquals(200, downloadProject("/move-to").status());
+    }
+
+    @Test
+    void testMoveSharedProjectKeepsAccess() {
+        Map<String, byte[]> files = Map.of("README.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadProject("/shared-from", files), 200);
+
+        Response share = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    { "url": "projects/%s/shared-from" }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(share, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(share.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+        verify(send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2"), 200);
+
+        Response moved = operationRequest("/v1/ops/resource/move", """
+                {
+                  "sourceUrl": "projects/%s/shared-from",
+                  "destinationUrl": "projects/%s/shared-to",
+                  "overwrite": false
+                }
+                """.formatted(bucket, bucket));
+        verify(moved, 200);
+
+        assertEquals(404, downloadProject("/shared-from").status());
+        assertEquals(200, downloadProject("/shared-to", "Api-key", "proxyKey2").status());
+    }
+
+    @Test
     void testMetadataListingClassifiesChildren() {
         Map<String, byte[]> files = Map.of("README.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         // deep PUT auto-vivifies the "cat" grouping folder

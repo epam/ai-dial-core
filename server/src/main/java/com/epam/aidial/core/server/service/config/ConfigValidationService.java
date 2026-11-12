@@ -30,6 +30,7 @@ import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.policy.PolicyAssignmentPrecheck;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.validation.ValidationUtil;
@@ -177,6 +178,10 @@ public class ConfigValidationService {
                     String pluginError = ApplicationService.pluginOutsidePlatformError(parsed.name().bucket(), applicationManifest.spec());
                     if (pluginError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, pluginError);
+                    }
+                    String dependencyError = ResourceDependencyValidator.findShapeError(applicationManifest.spec());
+                    if (dependencyError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, dependencyError);
                     }
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
                         String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(

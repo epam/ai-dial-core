@@ -299,6 +299,32 @@ public class AdminValidateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testValidateRejectsInvalidResourceDependencies() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Application",
+                      "name": "applications/platform/validate-invalid-deps",
+                      "spec": {
+                        "endpoint": "http://example.com/v1/completions",
+                        "resourceDependencies": [
+                          {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"url": "users/bob/files/f/"}, "access": ["read"]}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode result = ProxyUtil.MAPPER.readTree(response.body()).get("results").get(0);
+        assertEquals("FAILED", result.get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(result.get("error").asText().startsWith("Invalid resource dependencies"), () -> "Body: " + response.body());
+    }
+
+    @Test
+    @SneakyThrows
     void testValidateRejectsModelWhoseInBatchTranslatorDisagrees() {
         // Proves the in-batch translator is actually consulted, not merely tolerated: the model
         // attaches it to anthropicMessages while the translator converts from openaiResponses.

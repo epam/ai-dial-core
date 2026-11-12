@@ -98,9 +98,8 @@ class AliasPublicApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void aliasesLiveDirectlyInThePublicBucket() {
+    void aliasesLiveDirectlyInThePublicOrPlatformBucket() {
         assertEquals(404, admin(HttpMethod.PUT, "/v1/aliases/" + bucket + "/pub-v1", MODEL_ALIAS).status());
-        assertEquals(404, admin(HttpMethod.PUT, "/v1/aliases/platform/pub-v1", MODEL_ALIAS).status());
         assertEquals(400, putAlias("folder/pub-v1", MODEL_ALIAS).status());
         assertEquals(400, putAlias("bad%20name", MODEL_ALIAS).status());
         // the generic resource API does not serve aliases
@@ -315,6 +314,29 @@ class AliasPublicApiTest extends ResourceBaseTest {
 
         Response toolsets = send(HttpMethod.GET, "/openai/toolsets", null, "", "api-key", "default-key");
         assertTrue(ids(toolsets).contains("aliases/public/tools-v1"), toolsets.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void consentToTheAliasShowsTheResourcesItsTargetDeclares() {
+        verify(send(HttpMethod.PUT, "/v1/applications/public/declaring-app", null, """
+                {
+                  "endpoint": "http://localhost:4848/declaring-app/chat/completions",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_files", "target": {"url": "files/{current-user}/reports/"}, "access": ["read"]}
+                  ]
+                }
+                """, "authorization", "admin"), 200);
+        assertEquals(200, putAlias("declaring-v1",
+                "{\"userRoles\":[\"default-user\"],\"target\":{\"path\":\"applications/public/declaring-app\"}}").status());
+
+        Response review = send(HttpMethod.GET, "/v1/consent/aliases/public/declaring-v1", null, null, "api-key", "default-key");
+        assertEquals(200, review.status(), review.body());
+        JsonObject consent = new JsonObject(review.body());
+        assertFalse(consent.getBoolean("accepted"), review.body());
+        JsonArray resources = consent.getJsonObject("consent").getJsonArray("resources");
+        assertNotNull(resources, review.body());
+        assertTrue(resources.encode().contains("files/{current-user}/reports/"), review.body());
     }
 
     @Test

@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
+import com.epam.aidial.core.server.function.ResolveResourceDependenciesFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
@@ -55,17 +56,15 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     }
 
     /**
-     * The shared chain. {@link MessagesController} overrides this to append {@link
-     * com.epam.aidial.core.server.function.BuildUpstreamCacheFn} — {@code count_tokens} does not
-     * generate, so it must not build a cache breakpoint context.
+     * The chain of {@code count_tokens}; {@link MessagesController} declares its own.
      */
     protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
-        return List.of(
-                new CollectRequestStandardAttachmentsFn(proxy, context),
+        return List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
-                new CollectDeploymentsFn(proxy, context));
+                new CollectDeploymentsFn(proxy, context),
+                new ResolveResourceDependenciesFn<>(proxy, context));
     }
 
     public Future<?> handle() {

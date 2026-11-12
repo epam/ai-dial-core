@@ -46,6 +46,7 @@ import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -1616,7 +1617,7 @@ public class ConfigResourceController implements Controller {
             case TOOL_SET -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.TOOL_SET,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case ALIAS -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
-                    ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, path);
+                    bucket, bucket + ResourceDescriptor.PATH_SEPARATOR, path);
             default -> null;
         };
     }
@@ -1742,6 +1743,11 @@ public class ConfigResourceController implements Controller {
             if (!requestNode.isObject()) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "Request body must be a JSON object");
             }
+            Application application = type == ResourceTypes.APPLICATION
+                    ? ConfigEntityCodec.treeToEntity(requestNode, Application.class) : null;
+            if (application != null) {
+                ResourceDependencyValidator.validateShape(application);
+            }
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
                 rejectDuplicateDeploymentId(type, path);
                 // The platform bucket requires explicit admin access for every operation (see
@@ -1750,7 +1756,6 @@ public class ConfigResourceController implements Controller {
                 // this path is always admin context and may preserve forwardAuthToken.
                 Object decrypted = switch (type) {
                     case APPLICATION -> {
-                        Application application = ConfigEntityCodec.treeToEntity(requestNode, Application.class);
                         applicationService.putApplication(descriptor, etag, author, application, true, AdminManagedFieldsWriteMode.AUTHORITATIVE);
                         yield applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
                     }
@@ -1801,11 +1806,13 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * PUT-upsert of an alias in public storage, which is only a blob: a stored alias is read on demand by its url, never
-     * merged into the config. The body keeps only the fields {@link StoredAliases} names. Checks, all before the blob is
-     * written: the rules the config load applies ({@link AliasTargets#validate}), and for a resource target that exists,
-     * its type against {@code presentAs} (400). A target that does not exist is accepted: the alias is broken until it
-     * does, and the health report shows it when the target is a config deployment.
+     * PUT-upsert of an alias: writes the blob and, for a platform alias, immediately applies it to the merged config
+     * so the new alias is callable by its short name on this pod without waiting for a config reload or a replica event.
+     * A public alias is a stored alias read on demand, so it does not touch the merged config.
+     * The body keeps only the fields {@link StoredAliases} names. Checks, all before the blob is written: the rules the
+     * config load applies ({@link AliasTargets#validate}), and for a resource target that exists, its type against
+     * {@code presentAs} (400). A target that does not exist is accepted: the alias is broken until it does, and the
+     * health report shows it when the target is a config deployment.
      */
     private Future<?> handleAliasPut() {
         if (path == null || path.isEmpty()) {
@@ -1818,6 +1825,7 @@ public class ConfigResourceController implements Controller {
             return Future.succeededFuture();
         }
         ResourceDescriptor descriptor = descriptorFor(ResourceTypes.ALIAS);
+        boolean isPlatform = ResourceDescriptor.PLATFORM_BUCKET.equals(descriptor.getBucketName());
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         String author = context.getUserDisplayName();
 
@@ -1828,8 +1836,12 @@ public class ConfigResourceController implements Controller {
                 ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
                 etag.validate(existing == null ? null : existing.getEtag());
                 checkAliasTarget(alias);
-                return resourceService.putResource(descriptor,
+                ResourceItemMetadata meta = resourceService.putResource(descriptor,
                         StoredAliases.toJson(alias).toString(), EtagHeader.ANY, author, false);
+                if (isPlatform) {
+                    mergedConfigStore.applyEntityWrite(ResourceTypes.ALIAS, MergedConfigStore.resolveMapKeyFor(descriptor), alias);
+                }
+                return meta;
             }));
         }).onSuccess(meta -> context.putHeader(HttpHeaders.ETAG, meta.getEtag())
                 .respond(HttpStatus.OK, createNameEnvelope(path)))
@@ -1839,14 +1851,19 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * DELETE of an alias in public storage: the blob only, honouring {@code If-Match}. The target is not touched.
+     * DELETE of an alias: removes the blob and, for a platform alias, immediately removes it from the merged config.
+     * Honours {@code If-Match}. The target is not touched.
      */
     private Future<?> handleAliasDelete() {
         ResourceDescriptor descriptor = descriptorFor(ResourceTypes.ALIAS);
+        boolean isPlatform = ResourceDescriptor.PLATFORM_BUCKET.equals(descriptor.getBucketName());
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
             if (!resourceService.deleteResource(descriptor, etag, false)) {
                 throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + descriptor.getUrl());
+            }
+            if (isPlatform) {
+                mergedConfigStore.applyEntityDelete(ResourceTypes.ALIAS, MergedConfigStore.resolveMapKeyFor(descriptor));
             }
             return true;
         })).onSuccess(v -> context.respond(HttpStatus.NO_CONTENT)).onFailure(this::handleWriteError);
@@ -1883,9 +1900,10 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * GET of an alias in public storage, read the way calls read it ({@link StoredAliases#parse}): the stored fields
-     * with {@code status: valid}, or, for a blob calls ignore, the body as stored with {@code status: invalid} and its
-     * {@code validationWarnings}, as other config types show an invalid entity. Honours {@code If-None-Match}.
+     * GET of an alias in public or platform storage, read the way calls read it ({@link StoredAliases#parse}): the
+     * stored fields with {@code status: valid}, or, for a blob calls ignore, the body as stored with
+     * {@code status: invalid} and its {@code validationWarnings}, as other config types show an invalid entity.
+     * Honours {@code If-None-Match}.
      */
     private Future<?> handleAliasGet() {
         if (path == null || path.isEmpty()) {

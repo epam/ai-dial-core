@@ -40,6 +40,7 @@ import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.service.policy.PolicyService;
@@ -362,6 +363,10 @@ public class ConfigApplyService {
 
     private EntityResult applyApplication(Application application, String id, ParsedName parsed,
                                           Config scratch, List<EntityChange> pending) {
+        String dependencyError = ResourceDependencyValidator.findShapeError(application);
+        if (dependencyError != null) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, dependencyError);
+        }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.APPLICATION, parsed.bucket(), parsed.location(), parsed.name());
         // Only the platform bucket is materialized into MergedConfigStore (see EntityLocationStrategy) —

@@ -24,6 +24,7 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.security.IdpNotFoundException;
+import com.epam.aidial.core.server.service.AdminConsentService;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.service.AdminSystemImportService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -184,6 +185,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final HeartbeatService heartbeatService;
     private final UpstreamCacheService upstreamCacheService;
     private final ConsentService consentService;
+    private final AdminConsentService adminConsentService;
     private final DeploymentService deploymentService;
     private final HealthCheckController healthCheckController;
     private final WellKnownResourceMetadataService resourceMetadataService;
