@@ -31,6 +31,6 @@ jobs:
     with:
       images: |
         ${{ github.repository }}
-      java-version: "21"
+      java-version: "25"
       scan-tag: ${{ inputs.scan-tag }}
       force-image-scan: ${{ inputs.force-image-scan || false }}
