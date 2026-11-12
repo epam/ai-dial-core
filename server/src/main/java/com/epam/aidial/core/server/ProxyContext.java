@@ -379,6 +379,7 @@ public class ProxyContext {
     public void closeHostDelegates() {
         if (hostDelegates != null) {
             hostDelegates.forEach(VertxHostDelegate::close);
+            hostDelegates.clear();
         }
     }
 

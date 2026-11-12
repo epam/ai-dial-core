@@ -64,10 +64,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * </ul>
  * {@code X-Test-Fail: call} and {@code X-Test-Await-Cancel} apply to a decide request too.
  * The setting {@code failCreate: true} makes {@link #create} throw, {@code createNull: true} return null,
- * {@code mutateSettings: true} change the settings it gets, and
+ * {@code mutateSettings: true} change the settings it gets, {@code createMillis: <ms>} take that long, and
  * {@code closeFails: true} makes the plugin's
- * {@link OriginPlugin#close} throw once it is recorded in {@link #CLOSED}; {@code closeMillis: <ms>} makes it take that
- * long before it is recorded. Tests clear the recorded state with
+ * {@link OriginPlugin#close} throw once it is recorded in {@link #CLOSED}. Tests clear the recorded state with
  * {@link #reset}.
  */
 public class TestOriginPluginProvider implements PluginProvider {
@@ -139,6 +138,14 @@ public class TestOriginPluginProvider implements PluginProvider {
         CREATED_WITH.set(vertx);
         ContextInternal current = ContextInternal.current();
         CREATED_ON_DUPLICATE.set(current != null && current.isDuplicate());
+        long createMillis = settings.path("createMillis").asLong();
+        if (createMillis > 0) {
+            try {
+                Thread.sleep(createMillis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         if (settings.path("mutateSettings").asBoolean()) {
             settings.put("mutated", true);
         }
@@ -148,11 +155,10 @@ public class TestOriginPluginProvider implements PluginProvider {
         if (settings.path("createNull").asBoolean()) {
             return null;
         }
-        return new TestPlugin(settings.path("greeting").asText("ok"), settings.path("closeFails").asBoolean(),
-                settings.path("closeMillis").asLong());
+        return new TestPlugin(settings.path("greeting").asText("ok"), settings.path("closeFails").asBoolean());
     }
 
-    private record TestPlugin(String greeting, boolean closeFails, long closeMillis) implements OriginPlugin {
+    private record TestPlugin(String greeting, boolean closeFails) implements OriginPlugin {
 
         @Override
         public Future<Response> handle(Request request, HostDelegate host) {
@@ -161,13 +167,6 @@ public class TestOriginPluginProvider implements PluginProvider {
 
         @Override
         public void close() {
-            if (closeMillis > 0) {
-                try {
-                    Thread.sleep(closeMillis);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
             CLOSED.add(new Closed(greeting, Context.isOnEventLoopThread()));
             if (closeFails) {
                 throw new IllegalStateException("test-origin was told not to close");

@@ -6,7 +6,6 @@ import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.server.config.TestEchoPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider.Closed;
-import com.epam.aidial.core.server.plugin.PluginManager.Lease;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -102,65 +101,26 @@ class PluginManagerTest {
     }
 
     @Test
-    void testReplacedPluginClosedOnceAfterItsLastRelease() throws Exception {
-        Lease hello = origins.acquire(configWith(origin("hello")), "p1");
-        origins.resolve(configWith(origin("hi")), "p1");
-        Thread.sleep(100);
+    void testReplacedPluginClosedAtOnceOffTheEventLoop() throws Exception {
+        origins.resolve(configWith(origin("hello")), "p1");
 
+        // as a request does, on the event loop
+        vertx.runOnContext(ignored -> origins.resolve(configWith(origin("hi")), "p1"));
+
+        awaitClosed(1);
+        assertEquals(new Closed("hello", false), TestOriginPluginProvider.CLOSED.get(0));
+    }
+
+    @Test
+    void testRacingRequestsShareOnePlugin() throws Exception {
+        Config config = configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello").put("createMillis", 200)));
+
+        CompletableFuture<OriginPlugin> first = CompletableFuture.supplyAsync(() -> origins.resolve(config, "p1"));
+        CompletableFuture<OriginPlugin> second = CompletableFuture.supplyAsync(() -> origins.resolve(config, "p1"));
+
+        assertSame(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS));
+        Thread.sleep(100);
         assertEquals(List.of(), TestOriginPluginProvider.CLOSED);
-        hello.onDone().run();
-        awaitClosed(1);
-        assertEquals("hello", TestOriginPluginProvider.CLOSED.get(0).greeting());
-    }
-
-    @Test
-    void testLeaseGivenBackTwiceCountsOnce() throws Exception {
-        Config hello = configWith(origin("hello"));
-        Lease first = origins.acquire(hello, "p1");
-        Lease second = origins.acquire(hello, "p1");
-        origins.resolve(configWith(origin("hi")), "p1");
-
-        first.onDone().run();
-        first.onDone().run();
-        Thread.sleep(100);
-
-        assertEquals(List.of(), TestOriginPluginProvider.CLOSED, "the second attempt still holds it");
-        second.onDone().run();
-        awaitClosed(1);
-    }
-
-    @Test
-    void testShutdownWaitsForPluginAlreadyClosing() throws Exception {
-        origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello").put("closeMillis", 300))), "p1");
-        // replaced while idle: its close starts at once
-        origins.resolve(configWith(origin("hi")), "p1");
-
-        await(origins.close());
-
-        assertEquals(List.of("hello", "hi"), TestOriginPluginProvider.CLOSED.stream().map(Closed::greeting).sorted().toList());
-    }
-
-    @Test
-    void testCloseRunsOffTheEventLoop() throws Exception {
-        Lease hello = origins.acquire(configWith(origin("hello")), "p1");
-        origins.resolve(configWith(origin("hi")), "p1");
-
-        vertx.runOnContext(ignored -> hello.onDone().run());
-        awaitClosed(1);
-        assertFalse(TestOriginPluginProvider.CLOSED.get(0).onEventLoop());
-    }
-
-    @Test
-    void testAcquireAfterTheResolvedPluginClosedGetsAnOpenOne() throws Exception {
-        Config config = configWith(origin("hello"));
-        // as ProxyClient.embedded does, before the attempt is sent
-        OriginPlugin resolved = origins.resolve(config, "p1");
-        origins.resolve(configWith(origin("hi")), "p1");
-        awaitClosed(1);
-
-        Lease lease = origins.acquire(config, "p1");
-        assertNotSame(resolved, lease.plugin());
-        lease.onDone().run();
     }
 
     @Test
@@ -180,31 +140,26 @@ class PluginManagerTest {
         OriginPlugin current = origins.resolve(hi, "p1");
         awaitClosed(1);
 
-        Lease lease = origins.acquire(hi, "p1");
-        assertSame(current, lease.plugin());
-        lease.onDone().run();
+        assertSame(current, origins.resolve(hi, "p1"));
     }
 
     @Test
-    void testCloseClosesCurrentRetiredAndBusyPluginsOnce() throws Exception {
-        origins.resolve(configWith(origin("idle")), "p1");
-        Lease busy = origins.acquire(configWith(origin("busy")), "p1");
-        awaitClosed(1);
+    void testCloseClosesEveryPluginOnce() throws Exception {
+        origins.resolve(configWith(origin("replaced")), "p1");
         Config current = new Config();
         // a close that throws fails neither the others nor the future
         current.setPlugins(Map.of("p1", new Plugin(TestOriginPluginProvider.TYPE, greeting("current").put("closeFails", true)),
                 "p2", origin("other")));
         origins.resolve(current, "p1");
         origins.resolve(current, "p2");
+        awaitClosed(1);
 
         await(origins.close());
-        busy.onDone().run();
         Thread.sleep(100);
 
-        assertEquals(List.of("busy", "current", "idle", "other"),
+        assertEquals(List.of("current", "other", "replaced"),
                 TestOriginPluginProvider.CLOSED.stream().map(Closed::greeting).sorted().toList());
         assertThrows(IllegalStateException.class, () -> origins.resolve(current, "p1"));
-        assertThrows(IllegalStateException.class, () -> origins.acquire(current, "p1"));
     }
 
     @Test

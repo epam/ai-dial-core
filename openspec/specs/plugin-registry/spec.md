@@ -141,11 +141,21 @@ so a request is never served with settings older than the config it was routed b
 - **WHEN** an admin then sends `DELETE /v1/plugins/platform/p1`
 - **THEN** the next chat completion for `app` is answered `502`
 
-### Requirement: Closing a plugin
-Core SHALL close each plugin instance it creates, whatever its kind, once and never on an event loop. It SHALL close an
-instance replaced after its entry changed, and an instance whose entry was removed at the next request that names the
-entry, each once no request is in flight on it. It SHALL close every instance when it shuts down. A request SHALL
-never reach a closed instance, and a close that fails SHALL not affect later requests.
+### Requirement: Plugin of another kind
+A plugin that is not an origin plugin SHALL serve no request of an interface that names its entry. Core SHALL close
+the instance it created and answer as for a plugin it cannot create.
+
+#### Scenario: Plugin of another kind
+- **WHEN** `plugins.p2` of type `test-echo`, whose plugin is not an origin plugin, is named by the interface of
+  application `app`, and a chat completion for `app` is sent
+- **THEN** it is answered `502`, and the instance created for `p2` is closed
+
+### Requirement: Closing a plugin at once
+Core SHALL close each plugin instance it creates, whatever its kind, once and never on an event loop: an instance
+replaced after its entry changed when its replacement is created, an instance whose entry was removed at the next
+request naming the entry, both without waiting for the requests in flight on it, and every instance at shutdown.
+Requests racing on a new or changed entry SHALL share one instance, and a close that fails SHALL not affect later
+requests.
 
 #### Scenario: Replaced instance closed
 - **WHEN** `plugins.p1` of type `test-origin` with `settings.greeting: hello` serves application `app`, a chat
@@ -154,10 +164,14 @@ never reach a closed instance, and a close that fails SHALL not affect later req
 - **THEN** the instance that answered `hello` is closed, once, on a thread that is not an event loop, and the
   instance that answered `hi` is not
 
-#### Scenario: Busy instance closed after its answer
+#### Scenario: Busy instance closed at once
 - **WHEN** the `hello` instance is still streaming an answer when the settings change and the `hi` instance answers
   the next chat completion
-- **THEN** the `hello` instance is not closed until that stream ends, and is closed after it
+- **THEN** the `hello` instance is closed without waiting for that stream to end
+
+#### Scenario: Racing requests share one instance
+- **WHEN** two requests need `p1` at once and no instance was created from its settings yet
+- **THEN** one instance is created and both requests get it
 
 #### Scenario: Removed entry closed
 - **WHEN** an admin sends `DELETE /v1/plugins/platform/p1`, and the next chat completion for `app`, whose embedded
@@ -171,12 +185,3 @@ never reach a closed instance, and a close that fails SHALL not affect later req
 #### Scenario: Close fails
 - **WHEN** the replaced instance throws from its close
 - **THEN** its close was called once, and the next chat completion for `app` is answered by the new instance
-
-### Requirement: Plugin of another kind
-A plugin that is not an origin plugin SHALL serve no request of an interface that names its entry. Core SHALL close
-the instance it created and answer as for a plugin it cannot create.
-
-#### Scenario: Plugin of another kind
-- **WHEN** `plugins.p2` of type `test-echo`, whose plugin is not an origin plugin, is named by the interface of
-  application `app`, and a chat completion for `app` is sent
-- **THEN** it is answered `502`, and the instance created for `p2` is closed

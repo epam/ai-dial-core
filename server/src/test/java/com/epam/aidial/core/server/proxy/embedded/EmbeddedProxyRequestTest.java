@@ -8,7 +8,6 @@ import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.plugin.PluginManager.Lease;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -60,7 +59,6 @@ class EmbeddedProxyRequestTest {
     private final ProxyContext pass = mock(ProxyContext.class);
     // the attempts the pass registered
     private final List<VertxHostDelegate> attempts = new CopyOnWriteArrayList<>();
-    private final AtomicInteger released = new AtomicInteger();
     private ContextInternal context;
 
     @BeforeAll
@@ -188,25 +186,22 @@ class EmbeddedProxyRequestTest {
     }
 
     @Test
-    void testSendAcquiresBeforeTheCall() throws Exception {
-        AtomicInteger acquired = new AtomicInteger();
-        AtomicInteger acquiredAtCall = new AtomicInteger(-1);
-        OriginPlugin plugin = (call, host) -> {
-            acquiredAtCall.set(acquired.get());
-            return Future.succeededFuture(new Answer(stream(false)));
-        };
+    void testSendTakesThePluginWhenSent() throws Exception {
+        AtomicInteger taken = new AtomicInteger();
+        OriginPlugin plugin = (call, host) -> Future.succeededFuture(new Answer(stream(false)));
+        EmbeddedProxyRequest request = request(() -> {
+            taken.incrementAndGet();
+            return plugin;
+        }, mock(HttpServerResponse.class));
+        assertEquals(0, taken.get());
 
-        await(request(() -> {
-            acquired.incrementAndGet();
-            return new Lease(plugin, released::incrementAndGet);
-        }, mock(HttpServerResponse.class)).send(Buffer.buffer("{}")));
+        await(request.send(Buffer.buffer("{}")));
 
-        assertEquals(1, acquiredAtCall.get());
-        assertEquals(0, released.get());
+        assertEquals(1, taken.get());
     }
 
     @Test
-    void testFailedAcquireFailsTheSend() {
+    void testPluginThatCannotBeTakenFailsTheSend() {
         EmbeddedProxyRequest request = request(() -> {
             throw new IllegalStateException("Core is shutting down");
         }, mock(HttpServerResponse.class));
@@ -214,57 +209,6 @@ class EmbeddedProxyRequestTest {
         ExecutionException error = assertThrows(ExecutionException.class, () -> await(request.send(Buffer.buffer("{}"))));
 
         assertInstanceOf(IllegalStateException.class, error.getCause());
-        assertEquals(0, released.get());
-    }
-
-    @Test
-    void testReleasedOnceTheAttemptCloses() throws Exception {
-        await(request((call, host) -> Future.succeededFuture(new Answer(stream(false)))).send(Buffer.buffer("{}")));
-        assertEquals(0, released.get());
-
-        attempts.forEach(VertxHostDelegate::close);
-
-        awaitCondition(() -> released.get() == 1);
-    }
-
-    @Test
-    void testReleasedAfterThrowingCall() throws Exception {
-        assertSendFails((call, host) -> {
-            throw new IllegalStateException("plugin defect");
-        }, IllegalStateException.class);
-
-        attempts.forEach(VertxHostDelegate::close);
-
-        awaitCondition(() -> released.get() == 1);
-    }
-
-    @Test
-    void testClientGoneBeforeTheSendReleasesAfterTheAnswer() throws Exception {
-        HttpServerResponse closed = mock(HttpServerResponse.class);
-        when(closed.closed()).thenReturn(true);
-        Promise<Response> answer = Promise.promise();
-        EmbeddedProxyRequest request = request((call, host) -> answer.future(), closed);
-
-        // on the request's context, as in Core: the attempt closes there at once
-        onContext(() -> request.send(Buffer.buffer("{}")));
-        assertEquals(0, released.get());
-
-        onContext(() -> answer.tryFail("stopped"));
-        assertEquals(1, released.get());
-    }
-
-    @Test
-    void testResetCancelsTheAnswerBeforeTheRelease() throws Exception {
-        Answer answer = new Answer(stream(false));
-        AtomicInteger releasedAtCancel = new AtomicInteger(-1);
-        answer.onCancel = () -> releasedAtCancel.set(released.get());
-        EmbeddedProxyRequest request = request((call, host) -> Future.succeededFuture(answer));
-        await(onContext(() -> request.send(Buffer.buffer("{}"))));
-
-        onContext(request::reset);
-
-        assertEquals(0, releasedAtCancel.get());
-        assertEquals(1, released.get());
     }
 
     @Test
@@ -319,7 +263,6 @@ class EmbeddedProxyRequestTest {
 
         assertEquals("answer", await(response.body()).toString());
 
-        awaitCondition(() -> released.get() == 1);
         Response late = await(onContext(() -> kept.get().call(new Call("/openai/v1/chat/completions",
                 MultiMap.caseInsensitiveMultiMap(), ProxyUtil.MAPPER.createObjectNode()))));
         assertEquals(401, late.statusCode());
@@ -336,7 +279,9 @@ class EmbeddedProxyRequestTest {
             return Future.failedFuture(new IllegalStateException("router failed"));
         }, new ApiKeyData(), null).send(Buffer.buffer())));
 
-        awaitCondition(() -> released.get() == 1);
+        Response late = await(onContext(() -> kept.get().call(new Call("/openai/v1/chat/completions",
+                MultiMap.caseInsensitiveMultiMap(), ProxyUtil.MAPPER.createObjectNode()))));
+        assertEquals(401, late.statusCode());
         assertFalse(kept.get().cancelled().isComplete());
     }
 
@@ -365,13 +310,13 @@ class EmbeddedProxyRequestTest {
     }
 
     private EmbeddedProxyRequest request(OriginPlugin plugin, HttpServerResponse client) {
-        return request(() -> new Lease(plugin, released::incrementAndGet), client);
+        return request(() -> plugin, client);
     }
 
-    private EmbeddedProxyRequest request(Supplier<Lease> lease, HttpServerResponse client) {
+    private EmbeddedProxyRequest request(Supplier<OriginPlugin> plugin, HttpServerResponse client) {
         context = (ContextInternal) vertx.getOrCreateContext();
         when(pass.getResponse()).thenReturn(client);
-        return new EmbeddedProxyRequest(context, pass, lease, HttpMethod.POST, "plugin://p1", "plugin://p1/openai/v1/responses?x=1");
+        return new EmbeddedProxyRequest(context, pass, plugin, HttpMethod.POST, "plugin://p1", "plugin://p1/openai/v1/responses?x=1");
     }
 
     private EmbeddedProxyRequest routerRequest(OriginPlugin plugin, ApiKeyData callKey, ObjectNode tree) {
@@ -381,7 +326,7 @@ class EmbeddedProxyRequestTest {
     private EmbeddedProxyRequest routerRequest(OriginPlugin plugin, ApiKeyData callKey, ObjectNode tree, HttpServerResponse client) {
         context = (ContextInternal) vertx.getOrCreateContext();
         when(pass.getResponse()).thenReturn(client);
-        return new EmbeddedProxyRequest(context, pass, () -> new Lease(plugin, released::incrementAndGet), HttpMethod.POST,
+        return new EmbeddedProxyRequest(context, pass, () -> plugin, HttpMethod.POST,
                 "plugin://p1", "plugin://p1/decide", new EmbeddedProxyRequest.RouterRequest(callKey, tree));
     }
 
@@ -417,8 +362,6 @@ class EmbeddedProxyRequestTest {
 
         private final ReadStream<Buffer> body;
         private final AtomicInteger cancelled = new AtomicInteger();
-        private Runnable onCancel = () -> {
-        };
 
         Answer(ReadStream<Buffer> body) {
             this.body = body;
@@ -441,7 +384,6 @@ class EmbeddedProxyRequestTest {
 
         @Override
         public void cancel() {
-            onCancel.run();
             cancelled.incrementAndGet();
         }
     }

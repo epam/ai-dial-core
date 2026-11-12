@@ -42,6 +42,10 @@ public final class EmbeddedServerResponse implements HttpServerResponse {
 
     private final ContextInternal childContext;
     private final ContextInternal parentContext;
+    /**
+     * The call's answer: completes on the plugin's context with the status and headers once the pass writes its head,
+     * and fails when the pass resets the response or the plugin cancels the call before. {@link #answer()} hands it out.
+     */
     private final Promise<Response> head;
     private final InboundBuffer<Object> body;
     private final AnswerBody reader = new AnswerBody();

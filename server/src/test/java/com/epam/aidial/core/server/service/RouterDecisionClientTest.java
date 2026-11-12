@@ -337,8 +337,7 @@ class RouterDecisionClientTest {
     }
 
     private void plugin(OriginPlugin plugin) {
-        when(pluginManager.acquire(any(), eq("p1"))).thenReturn(new PluginManager.Lease(plugin, () -> {
-        }));
+        when(pluginManager.resolve(any(), eq("p1"))).thenReturn(plugin);
     }
 
     /**

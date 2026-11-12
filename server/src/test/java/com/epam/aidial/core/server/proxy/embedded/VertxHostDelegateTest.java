@@ -24,7 +24,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -198,40 +197,6 @@ class VertxHostDelegateTest {
         awaitCondition(() -> child.getResponse().closed());
         Future<Void> next = on(child, () -> child.getResponse().write(Buffer.buffer("more")));
         assertThrows(ExecutionException.class, () -> await(next));
-    }
-
-    @Test
-    void testWhenClosedRunsOnceOnClose() throws Exception {
-        AtomicInteger runs = new AtomicInteger();
-        host.whenClosed(runs::incrementAndGet);
-        assertEquals(0, runs.get());
-
-        host.close();
-        host.cancel();
-
-        awaitCondition(() -> runs.get() == 1);
-        Thread.sleep(50);
-        assertEquals(1, runs.get());
-    }
-
-    @Test
-    void testWhenClosedRunsOnCancel() throws Exception {
-        AtomicInteger runs = new AtomicInteger();
-        host.whenClosed(runs::incrementAndGet);
-
-        host.cancel();
-
-        awaitCondition(() -> runs.get() == 1);
-    }
-
-    @Test
-    void testWhenClosedRunsAtOnceOnClosedPass() throws Exception {
-        host.close();
-        AtomicInteger runs = new AtomicInteger();
-
-        host.whenClosed(runs::incrementAndGet);
-
-        awaitCondition(() -> runs.get() == 1);
     }
 
     private Future<Response> call(String uri, ObjectNode body) {

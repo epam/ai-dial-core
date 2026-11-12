@@ -47,10 +47,13 @@ public final class VertxHostDelegate implements HostDelegate {
     // the key record the calls carry; null for the parent pass's proxy key, read at each call
     private final ApiKeyData callKey;
     private final Promise<Void> cancelled;
-    // touched on the plugin's context only
+    /**
+     * The answers of the calls, cancelled when the attempt closes: the pass serving a call then stops, as an HTTP child
+     * pass stops when its client goes away, instead of reading its upstream for an answer nobody reads. Touched on the
+     * plugin's context only.
+     */
     private final List<EmbeddedServerResponse> responses = new ArrayList<>();
     private boolean closed;
-    private Runnable onClose;
 
     /**
      * @param parent        the pass whose plugin makes the calls, with its proxy key
@@ -154,23 +157,6 @@ public final class VertxHostDelegate implements HostDelegate {
             closed = true;
             responses.forEach(EmbeddedServerResponse::cancel);
             responses.clear();
-            if (onClose != null) {
-                onClose.run();
-            }
-        });
-    }
-
-    /**
-     * Runs {@code action} once the attempt closes, or at once when it has closed already. Takes one action. Safe to
-     * call from any thread.
-     */
-    public void whenClosed(Runnable action) {
-        pluginContext.emit(null, ignored -> {
-            if (closed) {
-                action.run();
-            } else {
-                onClose = action;
-            }
         });
     }
 

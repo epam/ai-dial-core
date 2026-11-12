@@ -1,14 +1,16 @@
 package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.plugin.Caller;
+import com.epam.aidial.core.plugin.OriginPlugin;
 import com.epam.aidial.core.plugin.Request;
+import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.plugin.PluginManager.Lease;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
@@ -35,7 +37,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
 
     private final ContextInternal context;
     private final ProxyContext proxyContext;
-    private final Supplier<Lease> lease;
+    private final Supplier<OriginPlugin> plugin;
     private final HttpMethod method;
     private final String baseUrl;
     private final String absoluteUri;
@@ -43,6 +45,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     // set for a router's decide or notice request, null for a request to a deployment's interface
     private final RouterRequest router;
     private EmbeddedProxyResponse response;
+    // serves the calls the plugin makes while it answers this attempt; set when the attempt is sent
     private VertxHostDelegate host;
     private boolean reset;
     // the plugin's future completed
@@ -52,23 +55,23 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
 
     /**
      * @param proxyContext the pass the plugin answers
-     * @param lease        takes the plugin for one attempt
+     * @param plugin       the plugin, taken when the attempt is sent
      * @param baseUrl      the {@code plugin://<name>} url the interface resolves to
      * @param absoluteUri  that url with the path and query, the plugin getting the path and query
      */
-    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Lease> lease, HttpMethod method,
+    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<OriginPlugin> plugin, HttpMethod method,
                          String baseUrl, String absoluteUri) {
-        this(context, proxyContext, lease, method, baseUrl, absoluteUri, null);
+        this(context, proxyContext, plugin, method, baseUrl, absoluteUri, null);
     }
 
     /**
      * @param router for a router's decide or notice request: the key its calls carry and the body tree it gets
      */
-    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Lease> lease, HttpMethod method,
+    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<OriginPlugin> plugin, HttpMethod method,
                          String baseUrl, String absoluteUri, RouterRequest router) {
         this.context = context;
         this.proxyContext = proxyContext;
-        this.lease = lease;
+        this.plugin = plugin;
         this.method = method;
         this.baseUrl = baseUrl;
         this.absoluteUri = absoluteUri;
@@ -120,91 +123,87 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
 
     private Future<ProxyResponse> send(Buffer body, @Nullable ObjectNode tree) {
         Promise<ProxyResponse> promise = context.promise();
-        Request request = new Request(method, absoluteUri.substring(baseUrl.length()), headers, body, tree, caller());
-        VertxHostDelegate attempt = router != null
-                ? VertxHostDelegate.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey())
-                : new VertxHostDelegate(proxyContext.getProxy(), proxyContext, context);
-        host = attempt;
+        host = router == null
+                ? new VertxHostDelegate(proxyContext.getProxy(), proxyContext, context)
+                : VertxHostDelegate.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey());
         // registered for a router request too: the pass's end closes an attempt nothing else closed
-        proxyContext.addHostDelegate(attempt);
+        proxyContext.addHostDelegate(host);
         if (router == null) {
-            // the relay notices a client gone once it writes; while the plugin works, Core watches the connection itself
-            HttpServerResponse client = proxyContext.getResponse();
-            client.closeHandler(ignored -> onClientGone(attempt));
-            if (client.closed()) {
-                // a close handler set on a closed connection never fires: a client gone during the parse or a retry
-                onClientGone(attempt);
-            }
-        }
-        Lease taken;
-        try {
-            taken = lease.get();
-        } catch (RuntimeException e) {
-            // Core is shutting down, the plugin closed twice while the attempt started, or creating it again failed:
-            // the attempt fails as a plugin that throws does
-            settled = true;
-            closeRouterAttempt(attempt);
-            promise.fail(e);
-            return promise.future();
+            watchClient();
         }
         try {
-            taken.plugin().handle(request, attempt).onComplete(result -> {
-                settled = true;
-                // given back once the attempt has closed too: the plugin is closed neither before its answer nor
-                // under its calls
-                attempt.whenClosed(taken.onDone());
-                // a null answer, or one without a body or headers, fails the attempt, as a plugin that throws does
-                Throwable failure = result.failed() ? result.cause()
-                        : result.result() == null ? new IllegalStateException("The plugin answered null") : null;
-                EmbeddedProxyResponse answer = null;
-                if (failure == null) {
-                    try {
-                        answer = router == null
-                                ? new EmbeddedProxyResponse(result.result(), attempt::cancel)
-                                : new EmbeddedProxyResponse(result.result(), attempt::cancel, attempt::close);
-                    } catch (RuntimeException e) {
-                        // thrown here, on a context the plugin completed, it would be swallowed and the request left hanging
-                        failure = e;
-                    }
-                }
-                if (failure != null) {
-                    if (clientGone) {
-                        // ponytail: the pass ends here, as after a client gone from an application: no retry, no
-                        // row, no finalize, the per-request key expiring by its TTL. Its attempts close, so that an
-                        // earlier one gives its plugin back too
-                        proxyContext.closeHostDelegates();
-                        return;
-                    }
-                    closeRouterAttempt(attempt);
-                    promise.fail(failure);
-                    return;
-                }
-                response = answer;
-                if (reset) {
-                    answer.discard();
-                    promise.fail(new IllegalStateException("The request was reset before the plugin answered"));
-                    return;
-                }
-                promise.complete(answer);
-            });
+            Request request = new Request(method, absoluteUri.substring(baseUrl.length()), headers, body, tree, caller());
+            plugin.get().handle(request, host).onComplete(result -> onAnswer(result, promise));
         } catch (RuntimeException | LinkageError e) {
-            // plugin code: a jar missing a class throws NoClassDefFoundError on first use
-            settled = true;
-            attempt.whenClosed(taken.onDone());
-            closeRouterAttempt(attempt);
-            promise.fail(e);
+            // Core is shutting down, creating the plugin again failed, or plugin code threw: a jar missing a class
+            // throws NoClassDefFoundError on first use
+            fail(promise, e);
         }
         return promise.future();
     }
 
     /**
-     * A router request's attempt ends with its answer: its calls carry the decide key, which an in-process call does
-     * not look up again, so invalidating the key alone would not stop them.
+     * The relay notices a client gone once it writes; while the plugin works, Core watches the connection itself.
      */
-    private void closeRouterAttempt(VertxHostDelegate attempt) {
-        if (router != null) {
-            attempt.close();
+    private void watchClient() {
+        HttpServerResponse client = proxyContext.getResponse();
+        client.closeHandler(ignored -> onClientGone());
+        if (client.closed()) {
+            // a close handler set on a closed connection never fires: a client gone during the parse or a retry
+            onClientGone();
         }
+    }
+
+    private void onAnswer(AsyncResult<Response> result, Promise<ProxyResponse> promise) {
+        settled = true;
+        Throwable failure = result.failed() ? result.cause() : null;
+        EmbeddedProxyResponse answer = null;
+        if (failure == null) {
+            try {
+                answer = toProxyResponse(result.result());
+            } catch (RuntimeException e) {
+                // thrown here, on a context the plugin completed, it would be swallowed and the request left hanging
+                failure = e;
+            }
+        }
+        if (failure != null && clientGone) {
+            // ponytail: the pass ends here, as after a client gone from an application: no retry, no row, no
+            // finalize; the per-request key and the trace's usage record expire by their TTL. Its attempts close,
+            // so that their calls end
+            proxyContext.closeHostDelegates();
+        } else if (failure != null) {
+            fail(promise, failure);
+        } else if (reset) {
+            response = answer;
+            answer.discard();
+            promise.fail(new IllegalStateException("The request was reset before the plugin answered"));
+        } else {
+            response = answer;
+            promise.complete(answer);
+        }
+    }
+
+    /**
+     * The plugin's answer as Core relays it. A null answer, or one without a body or headers, fails the attempt, as a
+     * plugin that throws does.
+     */
+    private EmbeddedProxyResponse toProxyResponse(@Nullable Response answer) {
+        if (answer == null) {
+            throw new IllegalStateException("The plugin answered null");
+        }
+        return router == null
+                ? new EmbeddedProxyResponse(answer, host::cancel)
+                : new EmbeddedProxyResponse(answer, host::cancel, host::close);
+    }
+
+    private void fail(Promise<ProxyResponse> promise, Throwable error) {
+        settled = true;
+        if (router != null) {
+            // a router request's attempt ends with its answer: its calls carry the decide key, which an in-process
+            // call does not look up again, so invalidating the key alone would not stop them
+            host.close();
+        }
+        promise.fail(error);
     }
 
     private static ObjectNode parseOrNull(Buffer body) {
@@ -215,11 +214,11 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
         }
     }
 
-    private void onClientGone(VertxHostDelegate attempt) {
+    private void onClientGone() {
         // runs on the request's context, as the plugin's callbacks do
         if (!settled && !reset) {
             clientGone = true;
-            attempt.cancel();
+            host.cancel();
         }
     }
 
@@ -232,7 +231,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     public boolean reset() {
         reset = true;
         if (response != null) {
-            // first: the answer is cancelled before its attempt closes and may give the plugin back
+            // first: the plugin's answer is cancelled before the calls it may relay are
             response.discard();
         }
         if (host != null) {

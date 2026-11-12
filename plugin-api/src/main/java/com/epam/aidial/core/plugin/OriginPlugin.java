@@ -9,9 +9,9 @@ import io.vertx.core.Future;
  * and must complete the returned future and emit the body of its answer on that same context: the code that relays
  * the answer to the client is not thread-safe.
  *
- * <p>Core closes it as every {@link Plugin}: after the last request of an instance it replaced or whose entry was
- * removed, and at shutdown. After {@link #close}, Core calls the instance only to read or cancel an answer it holds
- * already: one given after {@link HostDelegate#cancelled()} completed, or one in flight at shutdown.
+ * <p>Core closes it as every {@link Plugin}, see {@link #close}. The requests in flight on an instance Core closes
+ * keep using it: Core still reads or cancels their answers, and one that took the instance just before the close may
+ * still call {@link #handle}.
  */
 public interface OriginPlugin extends Plugin {
 

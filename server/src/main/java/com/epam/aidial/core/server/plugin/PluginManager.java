@@ -7,87 +7,40 @@ import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.impl.ContextInternal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * The cache and lifecycle of the origin plugin instances serving the {@code plugins} entries. An instance is created
- * from an entry's settings on the first request it serves and again on the first request after the entry changes. A
- * plugin replaced that way, or whose entry a request names after it was removed, is closed once no attempt holds it;
- * every plugin is closed by {@link #close}.
+ * The origin plugin instances serving the {@code plugins} entries, one per entry. An instance is created from an
+ * entry's settings on the first request it serves and again on the first request after the entry changes. The
+ * instance it replaces, or the instance of an entry a request names after it was removed, is closed at once, under the
+ * requests still in flight on it; every instance is closed by {@link #close}.
  */
 @Slf4j
 @RequiredArgsConstructor
 public class PluginManager {
 
-    // the users count of a closed instance
-    private static final int CLOSED = Integer.MIN_VALUE;
-
     private final PluginRegistry pluginRegistry;
     private final Vertx vertx;
     private final AsyncTaskExecutor taskExecutor;
     private final Map<String, Origin> origins = new ConcurrentHashMap<>();
-    // every instance created and not closed yet: a replaced one still in use is in no map
-    private final Set<Instance> open = ConcurrentHashMap.newKeySet();
     private volatile boolean closed;
 
     /**
-     * The plugin serving the entry {@code name} of {@code config}. Takes no lock, as it runs on the event loop: two
-     * requests racing on a new declaration may each create a plugin, and the one replaced is closed.
+     * The plugin serving the entry {@code name} of {@code config}. The plugin of a new or changed entry is created under
+     * the map's lock for {@code name}, so requests racing on it share one instance.
      *
      * @throws IllegalStateException when no entry has that name, its provider is not loaded, creating the plugin fails
      *                               or makes one that serves no requests, or Core is shutting down
      */
     public OriginPlugin resolve(Config config, String name) {
-        return instance(config, name).plugin;
-    }
-
-    /**
-     * The plugin serving the entry {@code name} of {@code config}, held for one attempt: it is not closed until the
-     * lease's {@code onDone} runs. A second run of {@code onDone} does nothing.
-     *
-     * @throws IllegalStateException as {@link #resolve} does, or when the plugin closed twice while the attempt started
-     */
-    public Lease acquire(Config config, String name) {
-        Instance instance = instance(config, name);
-        if (!instance.acquire()) {
-            // it closed after the lookup, so the map holds its replacement now
-            instance = instance(config, name);
-            if (!instance.acquire()) {
-                throw new IllegalStateException("Plugin '" + name + "' closed while a request started on it");
-            }
-        }
-        Instance held = instance;
-        AtomicBoolean done = new AtomicBoolean();
-        // a count given back twice would close the instance under another attempt
-        return new Lease(held.plugin, () -> {
-            if (done.compareAndSet(false, true)) {
-                held.release();
-            }
-        });
-    }
-
-    /**
-     * Closes every plugin, those in use included, and fails every later {@link #resolve} and {@link #acquire}. The
-     * future completes once the plugins have closed, those already closing included.
-     */
-    public Future<Void> close() {
-        closed = true;
-        List<Future<Void>> closes = open.stream().map(Instance::closeNow).toList();
-        return Future.join(closes).mapEmpty();
-    }
-
-    private Instance instance(Config config, String name) {
         if (closed) {
             throw new IllegalStateException("Core is shutting down");
         }
@@ -95,26 +48,58 @@ public class PluginManager {
         if (declaration == null) {
             Origin removed = origins.remove(name);
             if (removed != null) {
-                removed.instance().retire();
+                closePlugin(name, removed.plugin());
             }
             throw new IllegalStateException("No plugins entry is named '" + name + "'");
         }
         Origin cached = origins.get(name);
-        if (cached != null && cached.declaration().equals(declaration)) {
-            if (cached.declaration() != declaration) {
-                // a rebuild made a new object for the same declaration: keep it, so the next equals is an identity
-                // check, unless another request has replaced the plugin meanwhile
-                origins.replace(name, cached, new Origin(declaration, cached.instance()));
-            }
-            return cached.instance();
+        if (cached != null && cached.declaration() == declaration) {
+            return cached.plugin();
         }
+        return origins.compute(name, (key, current) -> {
+            if (current != null && current.declaration().equals(declaration)) {
+                // a rebuild made a new object for the same declaration: keep it, so the next lookup is an identity check
+                return new Origin(declaration, current.plugin());
+            }
+            // a failed create throws out of compute and leaves the current instance in place
+            OriginPlugin plugin = create(name, declaration);
+            if (current != null) {
+                closePlugin(name, current.plugin());
+            }
+            return new Origin(declaration, plugin);
+        }).plugin();
+    }
+
+    /**
+     * Closes every plugin, those in use included, and fails every later {@link #resolve}. The future completes once
+     * they have closed.
+     *
+     * <p>ponytail: a plugin that a request creates while this runs stays open; Vert.x, which Core closes next, closes
+     * its clients and timers. Track the creates in flight if a plugin ever holds more than that.
+     */
+    public Future<Void> close() {
+        closed = true;
+        List<Future<Void>> closes = new ArrayList<>();
+        for (String name : origins.keySet()) {
+            Origin origin = origins.remove(name);
+            if (origin != null) {
+                closes.add(closePlugin(name, origin.plugin()));
+            }
+        }
+        return Future.join(closes).mapEmpty();
+    }
+
+    private record Origin(Plugin declaration, OriginPlugin plugin) {
+    }
+
+    private OriginPlugin create(String name, Plugin declaration) {
         PluginProvider provider = pluginRegistry.get(declaration.getType());
         if (provider == null) {
             throw new IllegalStateException("No plugin provider of type '" + declaration.getType() + "' is loaded");
         }
         com.epam.aidial.core.plugin.Plugin created;
         try {
-            created = create(provider, declaration.getSettings());
+            created = createOutsideRequest(provider, declaration.getSettings());
         } catch (RuntimeException | LinkageError e) {
             // plugin code: a jar missing a class throws NoClassDefFoundError on first use
             throw new IllegalStateException("Plugin '" + name + "' cannot be created: " + e.getMessage(), e);
@@ -126,80 +111,7 @@ public class PluginManager {
             closePlugin(name, created);
             throw new IllegalStateException("The plugin of type '" + declaration.getType() + "' serves no requests");
         }
-        Instance instance = new Instance(name, plugin);
-        open.add(instance);
-        if (closed) {
-            // close() may have walked the set before the add
-            instance.closeNow();
-            throw new IllegalStateException("Core is shutting down");
-        }
-        Origin replaced = origins.put(name, new Origin(declaration, instance));
-        if (replaced != null) {
-            replaced.instance().retire();
-        }
-        return instance;
-    }
-
-    /**
-     * A plugin held for one attempt; {@code onDone} gives it back.
-     */
-    public record Lease(OriginPlugin plugin, Runnable onDone) {
-    }
-
-    private record Origin(Plugin declaration, Instance instance) {
-    }
-
-    private final class Instance {
-
-        private final String name;
-        private final OriginPlugin plugin;
-        // the attempts holding it, or CLOSED: one field, so that no acquire slips in between a check and the close
-        private final AtomicInteger users = new AtomicInteger();
-        // replaced or removed: closed once no attempt holds it
-        private volatile boolean retired;
-        // completes once its plugin has closed
-        private final Promise<Void> closing = Promise.promise();
-
-        Instance(String name, OriginPlugin plugin) {
-            this.name = name;
-            this.plugin = plugin;
-        }
-
-        boolean acquire() {
-            return users.getAndUpdate(count -> count == CLOSED ? CLOSED : count + 1) != CLOSED;
-        }
-
-        void release() {
-            // a CLOSED count stays: shutdown closed it under a running attempt
-            if (users.getAndUpdate(count -> count == CLOSED ? CLOSED : count - 1) == 1 && retired) {
-                closeIfIdle();
-            }
-        }
-
-        void retire() {
-            retired = true;
-            closeIfIdle();
-        }
-
-        private void closeIfIdle() {
-            if (users.compareAndSet(0, CLOSED)) {
-                close();
-            }
-        }
-
-        // closes it whatever attempts hold it, unless it is closing already
-        Future<Void> closeNow() {
-            return users.getAndSet(CLOSED) == CLOSED ? closing.future() : close();
-        }
-
-        private Future<Void> close() {
-            // it stays in open until its plugin has closed, so that shutdown waits for a close already running
-            closePlugin(name, plugin).onComplete(ignored -> {
-                open.remove(this);
-                closing.complete();
-            });
-            return closing.future();
-        }
+        return plugin;
     }
 
     /**
@@ -207,7 +119,7 @@ public class PluginManager {
      * at every rebuild. Runs it outside the duplicated context of the request that got here first: a timer the plugin
      * sets up there would keep that request's context, and the request it holds, for the plugin's life.
      */
-    private com.epam.aidial.core.plugin.Plugin create(PluginProvider provider, ObjectNode settings) {
+    private com.epam.aidial.core.plugin.Plugin createOutsideRequest(PluginProvider provider, ObjectNode settings) {
         ObjectNode copy = settings == null ? null : settings.deepCopy();
         ContextInternal current = ContextInternal.current();
         if (current == null) {

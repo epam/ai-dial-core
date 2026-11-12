@@ -588,7 +588,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testBusyInstanceClosedAfterItsAnswer() {
+    void testBusyInstanceClosedAtOnce() {
         plugin("p1", "{\"greeting\": \"hello\"}");
         verify(adminPut("/v1/applications/platform/app", embeddedChat("p1")), 200);
 
@@ -597,13 +597,12 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
                 plugin("p1", "{\"greeting\": \"hi\"}");
                 Response hi = chat("/openai/deployments/app/chat/completions", CHAT_BODY);
                 assertTrue(hi.body().contains("\"content\":\"hi\""), hi.body());
-                Thread.sleep(200);
-                assertEquals(List.of(), TestOriginPluginProvider.CLOSED);
+
+                // the stream of the hello instance is still open
+                awaitCondition(() -> !TestOriginPluginProvider.CLOSED.isEmpty());
+                assertEquals(List.of(new Closed("hello", false)), TestOriginPluginProvider.CLOSED);
             }
         }
-
-        awaitCondition(() -> !TestOriginPluginProvider.CLOSED.isEmpty());
-        assertEquals(List.of(new Closed("hello", false)), TestOriginPluginProvider.CLOSED);
     }
 
     @Test

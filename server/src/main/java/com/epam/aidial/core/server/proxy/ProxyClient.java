@@ -58,7 +58,7 @@ public class ProxyClient {
             pluginManager.resolve(config, plugin);
             String baseUrl = DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin;
             return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context,
-                    () -> pluginManager.acquire(config, plugin), method, baseUrl, absoluteUri));
+                    () -> pluginManager.resolve(config, plugin), method, baseUrl, absoluteUri));
         } catch (RuntimeException e) {
             return vertxContext.failedFuture(e);
         }
@@ -79,7 +79,7 @@ public class ProxyClient {
             pluginManager.resolve(config, plugin);
             String baseUrl = DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin;
             return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context,
-                    () -> pluginManager.acquire(config, plugin), method, baseUrl, absoluteUri,
+                    () -> pluginManager.resolve(config, plugin), method, baseUrl, absoluteUri,
                     new EmbeddedProxyRequest.RouterRequest(callKey, bodyTree)));
         } catch (RuntimeException e) {
             return vertxContext.failedFuture(e);
