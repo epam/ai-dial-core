@@ -139,6 +139,30 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPutKeepsProviderAndLifecycleDates() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "provider": "AWS",
+                  "deprecationDate": "2027-01-15",
+                  "endOfService": "2027-07-01"
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/models/platform/test-model-lifecycle", null, body,
+                "authorization", "admin"), 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-lifecycle", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("\"provider\":\"AWS\""), () -> "Expected provider: " + get.body());
+        assertTrue(get.body().contains("\"deprecationDate\":\"2027-01-15\""),
+                () -> "Expected deprecationDate: " + get.body());
+        assertTrue(get.body().contains("\"endOfService\":\"2027-07-01\""),
+                () -> "Expected endOfService: " + get.body());
+    }
+
+    @Test
     void testPut200HappyPathUpdate() {
         verify(send(HttpMethod.PUT, "/v1/models/platform/test-model-update", null, MODEL_BODY_NO_SECRET,
                 "authorization", "admin", "If-None-Match", "*"), 200);

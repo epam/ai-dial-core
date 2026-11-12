@@ -157,6 +157,9 @@ public class AliasPasses {
             view.setLimits(model.getLimits());
             view.setPricing(model.getPricing());
             view.setEmbeddingDimensions(model.getEmbeddingDimensions());
+            view.setProvider(model.getProvider());
+            view.setDeprecationDate(model.getDeprecationDate());
+            view.setEndOfService(model.getEndOfService());
         } else {
             view.setType(ModelType.CHAT);
         }
