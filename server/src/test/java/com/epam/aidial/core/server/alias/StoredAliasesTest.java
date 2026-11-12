@@ -92,10 +92,12 @@ class StoredAliasesTest {
     }
 
     @Test
-    void targetMustBeConfigDeploymentOrPublicResource() {
+    void targetMustBeConfigDeploymentOrPublicOrPlatformResource() {
         assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"models/gpt-4\"}}").alias());
         assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"applications/public/folder/app\"}}").alias());
         assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"toolsets/public/search\"}}").alias());
+        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"applications/platform/my-app\"}}").alias());
+        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"toolsets/platform/my-tools\"}}").alias());
 
         StoredAliases.Stored userBucket = StoredAliases.parse("{\"target\":{\"path\":\"applications/3R4ac3QT6AZjujjrzHhd8M/app\"}}");
         assertNull(userBucket.alias());

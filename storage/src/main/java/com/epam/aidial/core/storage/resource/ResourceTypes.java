@@ -55,7 +55,7 @@ public enum ResourceTypes implements ResourceType {
     public static final Set<ResourceType> EVENT_TYPES = Set.of(
             FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
             MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, ROUTER, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
-            POLICY, POLICY_ASSIGNMENT, SKILL, PROJECT);
+            POLICY, POLICY_ASSIGNMENT, SKILL, PROJECT, ALIAS);
 
     private final String group;
     private final String urlSegment;
