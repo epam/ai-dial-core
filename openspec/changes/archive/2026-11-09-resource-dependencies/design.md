@@ -1,5 +1,9 @@
 # Design
 
+> Superseded in part: review fixes after this change was archived reworked the write gate (only a section that differs
+> from the stored one is refused), bound the approval to everything but display fields, and refused `write` on
+> `applications` and `toolsets`. `openspec/specs/resource-dependencies/spec.md` describes the current behaviour.
+
 ## Context
 
 See proposal.md for why. Terms: an approval is an application's admin consent (the `ConsentGrant` record); the
@@ -85,7 +89,7 @@ Rejected: a separate `current-user/...` root and a hand-written per-segment pars
 ### 3. Write-time checks: author gate first, then shape
 
 `PUT /v1/applications/...` by a caller without explicit admin access fails with `403` for a non-empty section while
-`applications.allowUserResourceDependencies` is off, before the shape rules run, so the user learns nothing about them;
+`applications.allowUserAuthoredDependencies` is off, before the shape rules run, so the user learns nothing about them;
 a body that does not parse (an unknown `access` value, say) is still `400` from the JSON reader. The gate is the author
 (`hasExplicitAdminAccess`), not the destination bucket. Shape violations are `400` for every author; a section over 100
 entries is reported alone. Messages use the config-file spelling (`resourceDependencies[i]: linkId ...`). The platform

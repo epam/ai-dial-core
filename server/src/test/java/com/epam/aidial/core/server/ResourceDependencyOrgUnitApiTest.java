@@ -121,7 +121,9 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
             "interfaces.anthropicMessages.base_url, false",
             "responses_endpoint, false",
             "display_name, true",
-            "description, true"
+            "description, true",
+            "display_version, true",
+            "intro, true"
     })
     void testUnitEditorKeepsApprovalOnlyWhenChangingDisplayFields(String field, boolean kept) {
         String app = "applications/public/Acme/routed-app-" + field.replace('.', '-').replace('_', '-');
@@ -139,7 +141,7 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
                   ]
                 }
                 """;
-        String value = "display_name".equals(field) || "description".equals(field) ? "Edited" : "http://editor.example";
+        String value = field.contains("base_url") || field.endsWith("endpoint") ? "http://editor.example" : "Edited";
         assertEditorRoundTripKeepsApproval(app, declaring, field, value, kept);
     }
 
@@ -190,6 +192,103 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
                 }
                 """;
         assertEditorRoundTripKeepsApproval("applications/public/Acme/route-secret-app", declaring, "description", "Edited", true);
+    }
+
+    @Test
+    void testUnitEditorDescriptionEditKeepsApprovalOfDeployedFunctionApp() throws InterruptedException {
+        String app = "applications/public/Acme/function-app";
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, """
+                {
+                  "display_name": "Function App",
+                  "function": {
+                    "runtime": "python3.11",
+                    "source_folder": "files/public/Acme/function-app/",
+                    "mapping": {"chat_completion": "/application"}
+                  },
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
+                  ]
+                }
+                """, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(upload(HttpMethod.PUT, "/v1/files/public/Acme/function-app/app.py", null, "some python code", "authorization", "admin"), 200);
+        String functionId = new JsonObject(send(HttpMethod.GET, "/v1/" + app, null, "", "authorization", "admin").body())
+                .getJsonObject("function").getString("id");
+        try (TestWebServer controller = new TestWebServer(17321)) {
+            controller.map(HttpMethod.POST, "/v1/image/" + functionId, 200, "event: result\ndata: {}\n\n");
+            controller.map(HttpMethod.POST, "/v1/deployment/" + functionId, 200,
+                    "event: result\ndata: {\"url\":\"http://localhost:17321\"}\n\n");
+            verify(send(HttpMethod.POST, "/v1/ops/application/deploy", null, new JsonObject().put("url", app).encode(),
+                    "authorization", "admin"), 200);
+            for (long deadline = System.currentTimeMillis() + 10_000;
+                    !send(HttpMethod.GET, "/v1/" + app, null, "", "authorization", "admin").body().contains("\"DEPLOYED\""); ) {
+                assertTrue(System.currentTimeMillis() < deadline, "the application was not deployed");
+                Thread.sleep(32);
+            }
+        }
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
+
+        // the deployed state (endpoint, function id and status) comes back with the GET and must not count as a change
+        Response read = send(HttpMethod.GET, "/v1/" + app, null, "", "authorization", "azp:ed");
+        verify(read, 200);
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, new JsonObject(read.body()).put("description", "Edited").encode(),
+                "authorization", "azp:ed"), 200);
+        assertConsented(app, true);
+    }
+
+    @Test
+    void testUnitEditorWriteOmittingExternalServicesKeepsApproval() {
+        String app = "applications/public/Acme/omitted-services-app";
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, """
+                {
+                  "endpoint": "http://localhost:4850/chat/completions",
+                  "display_name": "Omitted Services App",
+                  "external_services": {
+                    "billing": {"auth_settings": {"authentication_type": "API_KEY", "api_key_header": "X-API-Key"}}
+                  },
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
+                  ]
+                }
+                """, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
+
+        // the stored services are kept when the section is left out
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, """
+                {"endpoint": "http://localhost:4850/chat/completions", "display_name": "Omitted Services App", "description": "Edited"}
+                """, "authorization", "azp:ed"), 200);
+        assertConsented(app, true);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "PUT, azp:ed, false",
+            "DELETE, azp:ed, false",
+            "PUT, admin, true"
+    })
+    void testExternalServiceEndpointWriteKeepsApprovalOnlyForAdmin(String method, String caller, boolean kept) {
+        String app = "applications/public/Acme/ext-mgmt-app-" + method.toLowerCase() + "-" + kept;
+        verify(send(HttpMethod.PUT, "/v1/" + app, null, """
+                {
+                  "endpoint": "http://localhost:4850/chat/completions",
+                  "display_name": "External Service App",
+                  "external_services": {
+                    "billing": {"auth_settings": {"authentication_type": "API_KEY", "api_key_header": "X-API-Key"}}
+                  },
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
+                  ]
+                }
+                """, "authorization", "admin", "If-None-Match", "*"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin-consent/" + app, null, reviewedResources(app), "authorization", "admin"), 200);
+
+        String service = "/v1/" + app + "/external-services/billing";
+        Response write = "PUT".equals(method)
+                ? send(HttpMethod.PUT, service, null, """
+                        {"auth_settings": {"authentication_type": "API_KEY", "api_key_header": "X-Other-Key"}}
+                        """, "authorization", caller)
+                : send(HttpMethod.DELETE, service, null, "", "authorization", caller);
+        verify(write, 200);
+        assertConsented(app, kept);
     }
 
     /** An admin creates and approves the app; the editor GETs it, changes one field and PUTs it back, as a UI does. */
@@ -309,6 +408,13 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
         void testEditorWithDifferentListIsRejected() {
             String differentList = DECLARING_BODY.replace("files/public/", "prompts/public/");
             verify(send(HttpMethod.PUT, "/v1/" + APP, null, differentList, "authorization", "azp:ed"), 403);
+        }
+
+        @Test
+        void testEditorCreatingAppWithEmptyListIsAccepted() {
+            verify(send(HttpMethod.PUT, "/v1/applications/public/Acme/empty-list-app", null, """
+                    {"endpoint": "http://localhost:4850/chat/completions", "display_name": "Empty", "resource_dependencies": []}
+                    """, "authorization", "azp:ed", "If-None-Match", "*"), 200);
         }
 
         @Test

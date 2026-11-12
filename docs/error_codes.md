@@ -20,7 +20,8 @@ User is authenticated by Core but doesn't have insufficient permissions to a res
 - admin can approve publications only
 - access to attached files in chat completion request
 - a required resource dependency of the application is not accessible to the user or not approved by an administrator
-- only administrators can manage an application's admin consent, and only for an application they can read
+- only administrators can manage an application's admin consent, and only for an application they can read in the config, the public or review bucket, or their own bucket
+- a user changes an application's resource dependencies while `applications.allowUserAuthoredDependencies` is off
 
 #### 404 NOT FOUND
 

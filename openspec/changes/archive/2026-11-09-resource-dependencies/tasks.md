@@ -31,7 +31,7 @@ in the code on the branch; each names the tests that verify it.
   `AdminValidateApiTest.testValidateRejectsInvalidResourceDependencies`. (Scenarios: Malformed entries, Platform config
   entity, Apply with precheck, Apply without precheck, Validate, User with the setting off, Admin in their own bucket, User with the setting on, No admin
   rules.)
-- [x] 2.3 Add `applications.allowUserResourceDependencies` (default `false`) to the built-in and sample settings, read in
+- [x] 2.3 Add `applications.allowUserAuthoredDependencies` (default `false`) to the built-in and sample settings, read in
   `AiDial`.
 - [x] 2.4 Run checkstyle and `./gradlew :server:test --tests "*ResourceDependencyValidatorTest" --tests
   "*CustomApplicationApiTest" --tests "*PlatformAppToolsetApiTest" --tests "*AdminApplyApiTest" --tests

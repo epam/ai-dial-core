@@ -101,10 +101,21 @@ encoded resource name.
 ### Requirement: Who may declare resource dependencies
 While the static setting `applications.allowUserAuthoredDependencies` is `false` (the default), a write of an
 application by a caller without explicit admin access that submits a `resource_dependencies` section **different from
-the stored one** SHALL be answered `403` after the shape rules are checked (a body that does not parse is still `400`;
-a malformed section is `400`). A write that omits the section inherits the stored one and is not gated. A write that
-submits the same section as stored is accepted. An admin's write to their own bucket is not gated. With the setting
-`true`, a user's section SHALL pass the same shape rules as an admin's.
+the stored one** SHALL be answered `403` after the shape rules are checked (a malformed section is `400`). An empty
+section equals an absent one. An admin's write is not gated. With the setting `true`, a user's section SHALL pass the
+same shape rules as an admin's.
+
+#### Scenario: User creates an application with an empty section
+- **WHEN** a user sends `PUT /v1/applications/<own bucket>/app` with `"resource_dependencies": []`, the setting off
+- **THEN** Core answers `200`
+
+### Requirement: An omitted or unchanged section is inherited
+With the setting off, a non-admin write that omits `resource_dependencies` SHALL keep the stored list, and a write that
+submits the same list as stored SHALL be accepted.
+
+#### Scenario: Editor leaves the list out
+- **WHEN** an org-unit editor PUTs an approved application without `resource_dependencies`, the setting off
+- **THEN** Core answers `200`, and the stored list and the approval are kept
 
 #### Scenario: User with the setting off — valid section
 - **WHEN** a user sends `PUT /v1/applications/<own bucket>/app` with a valid section and no stored list
@@ -275,11 +286,12 @@ application created again at a deleted one's id SHALL start unapproved.
   list and the same target
 - **THEN** the new review copy and, after approval, the published application are not approved
 
-### Requirement: Non-admin writes keep the approval only when cosmetic fields changed
-An update that removes the list SHALL delete the approval. A write by a non-admin SHALL delete the approval unless
-only `display_name`, `icon_url` or `description` differ from the stored application; fields `GET` adds
-(`author`, `created_at`, `updated_at`, auth statuses) and external service secrets SHALL NOT count. An administrator's
-edit SHALL keep the approval unless the list is removed.
+### Requirement: Non-admin writes keep the approval only when display fields changed
+An update that removes the list SHALL delete the approval. A write by a non-admin SHALL delete the approval unless the
+application as stored differs only in display fields (`display_name`, `display_version`, `icon_url`, `description`,
+`intro`, `description_keywords`) or `reference`; fields `GET` adds, what the write keeps from the stored application,
+and external service secrets SHALL NOT count. An administrator's edit SHALL keep the approval unless the list is
+removed.
 
 #### Scenario: List removed and restored
 - **WHEN** an update removes an approved application's list, and a later update restores it
@@ -302,9 +314,23 @@ edit SHALL keep the approval unless the list is removed.
 - **THEN** the application is approved after the editor's write
 
 #### Scenario: Non-admin read-modify-write of the description — approval kept
-- **WHEN** an administrator approves an application (also one with an external service secret or a route secret), and
-  then an org-unit editor GETs it, changes only `description` and PUTs the response back
+- **WHEN** an administrator approves an application (also one with an external service secret, a route secret, or a
+  deployed function), and then an org-unit editor GETs it, changes only `description` and PUTs the response back
 - **THEN** the application is approved after the editor's write
+
+#### Scenario: Non-admin omits the external services — approval kept
+- **WHEN** an administrator approves an application with an external service, and then an org-unit editor PUTs it
+  without `external_services`, changing only `description`
+- **THEN** the stored services are kept and the application is approved after the editor's write
+
+### Requirement: A non-admin external service write drops the approval
+A `PUT` or `DELETE /v1/applications/{id}/external-services/{service}` by a caller without explicit admin access SHALL
+delete the approval of an application that declares a list.
+
+#### Scenario: Non-admin changes an external service — approval dropped
+- **WHEN** an administrator approves an application with an external service, and then an org-unit editor sends `PUT`
+  or `DELETE /v1/applications/<id>/external-services/<service>`
+- **THEN** the application is not approved after the editor's write; the same `PUT` by an administrator keeps it
 
 ### Requirement: Dependencies resolved into the per-request key
 On every route of the chat completions, Responses and Messages controllers (`/openai/deployments/{id}/chat/completions`,

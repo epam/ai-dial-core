@@ -1,12 +1,16 @@
 # Review: resource-dependencies
 
+> Superseded in part: review fixes after this change was archived reworked the write gate (only a section that differs
+> from the stored one is refused), bound the approval to everything but display fields, and refused `write` on
+> `applications` and `toolsets`. `openspec/specs/resource-dependencies/spec.md` describes the current behaviour.
+
 ## What shipped
 
 The change records the EPIC #1930 series (#1941 to #1948), merged into #1940. The code was written before the spec-driven
 process (#2168, 2026-10-23); this folder states its behaviour against `development`.
 
 - `resource_dependencies` on applications: `ResourceDependency`, `Application.resourceDependencies`, both spellings.
-- Write-time checks in `ResourceDependencyValidator`: author gate (`applications.allowUserResourceDependencies`,
+- Write-time checks in `ResourceDependencyValidator`: author gate (`applications.allowUserAuthoredDependencies`,
   explicit admin access), then shape and one target grammar shared with resolution. Called from
   `ResourceController.validateCustomApplication`, the platform config entity `PUT` (before the bucket locks),
   `ConfigApplyService` and `ConfigValidationService`.

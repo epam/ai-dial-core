@@ -1,5 +1,9 @@
 # Proposal
 
+> Superseded in part: review fixes after this change was archived reworked the write gate (only a section that differs
+> from the stored one is refused), bound the approval to everything but display fields, and refused `write` on
+> `applications` and `toolsets`. `openspec/specs/resource-dependencies/spec.md` describes the current behaviour.
+
 ## Why
 
 An application can read and write only its own `appdata` folder and what the request attaches or shares with it
@@ -18,7 +22,7 @@ application.
 - Write-time validation: a list that breaks these rules is answered `400` on `PUT /v1/applications/...` and on the
   platform config entity `PUT`, and is a `FAILED` entry in `POST /v1/admin/apply` and `POST /v1/admin/validate`. A
   caller without explicit admin access gets `403` for any non-empty list unless the new static setting
-  `applications.allowUserResourceDependencies` (default `false`) is on. Applications from a config file are not
+  `applications.allowUserAuthoredDependencies` (default `false`) is on. Applications from a config file are not
   checked on load; an entry with a wrong `kind`, empty or invalid `access` or an invalid `target.url` never resolves.
 - Admin consent: `GET`, `POST` and `DELETE /v1/admin-consent/{deployment_id}`, for administrators only. `POST` takes
   the list the administrator reviewed and stores the approval only when it equals the application's current list (else
@@ -97,6 +101,6 @@ Out of scope:
   Responses and Messages controllers, `ConfigResourceController`, `ConfigApplyService`, `ConfigValidationService`,
   `ResourceDependencyAuditLog`, `AuditLogSanitizer`, `ResourceTypes.ADMIN_CONSENT`, `RouteTemplate.ADMIN_CONSENT`.
 - API: three new admin endpoints; a new optional field on applications; new `400`, `403` and `409` causes.
-- Settings: `applications.allowUserResourceDependencies` (default `false`).
+- Settings: `applications.allowUserAuthoredDependencies` (default `false`).
 - Docs: `docs/dynamic-settings/applications.md`, `docs/dynamic-settings/admin_consent_api.md`, `docs/error_codes.md`,
   `README.md`, `docs/open_api_core.yaml`.

@@ -127,6 +127,7 @@ Withdraws the approval. Calls started after the withdrawal no longer receive the
 
 | **Status** | **When**                                                                          |
 |------------|-----------------------------------------------------------------------------------|
+| 400        | The deployment id is too long for an approval record.                             |
 | 403        | The caller is not a DIAL administrator, or the administrator cannot read the application. |
 | 404        | `{deployment_id}` does not name an application.                                   |
 
@@ -134,10 +135,9 @@ Withdraws the approval. Calls started after the withdrawal no longer receive the
 
 ## **4. Lifecycle**
 
-* Any change of the application's `resource_dependencies` — an added, removed or reordered entry, or changed rights — requires a new approval. Until then the status is `stale` and the application receives nothing.
+* Any change of the application's `resource_dependencies` — an added, removed or reordered entry, or changed rights — requires a new approval. Until then the status is `stale` (after an administrator's edit; a non-admin's edit deletes the approval, see below) and the application receives nothing.
 * Deleting an application deletes its approval. An application created again at the same path starts unapproved. An update that removes the list deletes the approval too: restoring the list needs a new approval.
-* A non-admin write keeps the approval only when the only fields that changed are `display_name`, `icon_url` and `description`; any other change — including `endpoint`, routing interfaces, the list itself — deletes the approval. Fields returned by `GET` but not stored (`author`, `created_at`, `updated_at`, an external service's auth statuses) and an external service's secret are not compared, so a read-modify-write that changes only a display field keeps it. A non-admin write that omits `resource_dependencies` inherits the stored list (approval preserved if no other field changed). An administrator's edit to other fields keeps it.
-* An administrator who moves an approved application into their own bucket moves its approval too.
+* A non-admin write keeps the approval only when the only fields that changed are display fields — `display_name`, `display_version`, `icon_url`, `description`, `intro`, `description_keywords` — or `reference`; any other change — including `endpoint`, routing interfaces, `function`, the list itself — deletes the approval. A non-admin write of the application's external services (`PUT` or `DELETE /v1/applications/{deployment_id}/external-services/{id}`) deletes it too. The application is compared as it will be stored: fields `GET` adds or computes (`author`, `created_at`, `updated_at`, an external service's auth statuses), what the write keeps from the stored application (a function application's deployment state, omitted `external_services`, omitted secrets) and an external service's secret are not changes, so a read-modify-write that changes only a display field keeps it. A non-admin write that omits `resource_dependencies` inherits the stored list. An administrator's edit to other fields keeps it.
 * Moving an application, publishing it included, takes its approval to the new deployment id. A copy is another application and starts unapproved, also when it overwrites an approved application and when it fails after writing the application. A publication updated to another source application starts its review copy unapproved, even under the same target.
 * An application whose deployment id is too long for an approval record (the record path is the id plus about 20 characters, within the storage path limit) cannot be approved, so its dependencies never resolve; it can still be deleted.
 * An application removed from a config file keeps its approval. While the application is absent, the approval cannot be withdrawn (`404`); an application added back under the same name with the same list is approved again.
@@ -155,7 +155,7 @@ DIAL Core logs resource dependency events to the dedicated logger `DIAL_RESOURCE
 | `resource_dependency_denial`       | Some entries of a call were not granted: not approved, not accessible to the user, or no per request API key to add them to. | same as `resource_dependency_grant`                                                                         |
 | `resource_dependency_runtime_fail` | A `required` entry could not be granted and the call was rejected.                        | `outcome`, `actor`, `user_id`, `application_id`, `source_deployment`, `targets`, `trace_id`, `reason`        |
 
-* `outcome`: `SUCCESS`, `DENIED`, `NOT_FOUND`, `ERROR` (`resource_dependency_runtime_fail` is always `RUNTIME_FAIL`).
+* `outcome`: `SUCCESS`; `DENIED` when the caller is not an administrator; `NOT_FOUND`; `ERROR` for any other refusal (`400`, `403` for an application that cannot be approved, `409`) or failure. `resource_dependency_runtime_fail` is always `RUNTIME_FAIL`.
 * `actor`: Non-secret evidence of the caller: `project:<API key project>` and/or `azp:<JWT authorized party>`, or `unknown`.
 * `admin_user_id`: The administrator's user id, or the project of the API key used — the same value as `grantedBy`.
 * `source_deployment`: The deployment that made the call, or `root` for a call made directly by the user.
