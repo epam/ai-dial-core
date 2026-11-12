@@ -26,6 +26,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -339,6 +340,46 @@ public class ResolveResourceDependenciesFnTest {
 
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
                 proxyApiKeyData.getPerRequestSharedResources().get("files/public/policies/").permissions());
+    }
+
+    @Test
+    void apply_namesRequiredFailuresMalformedFirstThenUnreachable() {
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(List.of(
+                dependency("files/public/unreachable/", true),
+                dependency("files/public/shared/", true).setAccess(Set.of(ResourceAccessType.SHARE))));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+        when(accessService.lookupInitiatorPermissions(any(), eq(context))).thenReturn(Map.of());
+
+        HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
+        assertEquals("Required resource dependencies are not accessible: files/public/shared/, files/public/unreachable/",
+                error.getMessage());
+    }
+
+    @Test
+    void apply_skipsNullRecord() {
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(Arrays.asList(null, dependency("files/public/policies/", true)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(true);
+        ResourceDescriptor target = com.epam.aidial.core.server.util.ResourceDescriptorFactory
+                .fromAnyUrl("files/public/policies/", encryptionService);
+        when(accessService.lookupInitiatorPermissions(any(), eq(context)))
+                .thenReturn(Map.of(target, Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE)));
+
+        assertFalse(fn.apply(request));
+
+        assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE),
+                proxyApiKeyData.getPerRequestSharedResources().get("files/public/policies/").permissions());
+    }
+
+    @Test
+    void apply_skipsNullRecordOfUnconsentedRequiredDeclaration() {
+        when(context.getDeployment()).thenReturn(application);
+        application.setResourceDependencies(Arrays.asList(null, dependency("files/public/policies/", true)));
+        when(consentService.isAdminConsented(eq("app"), any())).thenReturn(false);
+
+        HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
+        assertEquals("Required resource dependencies are not accessible: files/public/policies/", error.getMessage());
     }
 
     @Test

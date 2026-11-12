@@ -20,8 +20,10 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 /**
@@ -64,30 +66,11 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         // null only for an MCP application with forwardPerRequestKey=false
         boolean hasKeyToBakeInto = context.getProxyApiKeyData() != null;
         boolean consented = hasKeyToBakeInto && proxy.getAdminConsentService().isAdminConsented(applicationId, declaration);
-        AuthBucket userBucket = BucketBuilder.buildBucket(context);
+        Resolution resolution = consented ? resolveConsented(declaration) : Resolution.unresolved(declaration);
 
-        List<ResolvedTarget> resolvedTargets = new ArrayList<>();
-        List<ResourceDependency> unresolvedDeps = new ArrayList<>();
-        List<String> requiredFailures = new ArrayList<>();
-
-        if (!consented) {
-            declaration.forEach(dep -> trackUnresolved(dep, unresolvedDeps, requiredFailures));
-        } else {
-            for (ResourceDependency dependency : declaration) {
-                Set<ResourceAccessType> requestedAccess = ResourceDependencyValidator.grantableAccessOf(dependency);
-                ResourceDescriptor target = requestedAccess == null ? null : resolveTarget(dependency, userBucket);
-                if (target == null || !ResourceDependencyValidator.isAllowedAccess(target.getType(), requestedAccess)) {
-                    trackUnresolved(dependency, unresolvedDeps, requiredFailures);
-                } else {
-                    resolvedTargets.add(new ResolvedTarget(dependency, target, requestedAccess));
-                }
-            }
-        }
-
-        List<ResourceDependency> granted = bakeReachableGrants(resolvedTargets, unresolvedDeps, requiredFailures);
-
-        ResourceDependencyAuditLog.grant(context, applicationId, Consent.toResourceEntries(granted));
-        ResourceDependencyAuditLog.denial(context, applicationId, Consent.toResourceEntries(unresolvedDeps));
+        ResourceDependencyAuditLog.grant(context, applicationId, Consent.toResourceEntries(resolution.granted()));
+        ResourceDependencyAuditLog.denial(context, applicationId, Consent.toResourceEntries(resolution.unresolved()));
+        List<String> requiredFailures = requiredUrlsOf(resolution.unresolved());
         if (!requiredFailures.isEmpty()) {
             ResourceDependencyAuditLog.runtimeFail(context, applicationId, requiredFailures,
                     hasKeyToBakeInto ? "required dependencies unresolvable" : UNDELIVERABLE_REASON);
@@ -96,32 +79,66 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         }
     }
 
+    private Resolution resolveConsented(List<ResourceDependency> declaration) {
+        AuthBucket userBucket = BucketBuilder.buildBucket(context);
+        List<ResolvedTarget> resolvedTargets = new ArrayList<>();
+        List<ResourceDependency> malformed = new ArrayList<>();
+        for (ResourceDependency dependency : declaration) {
+            ResolvedTarget resolved = resolveEntry(dependency, userBucket);
+            if (resolved != null) {
+                resolvedTargets.add(resolved);
+            } else if (dependency != null) {
+                malformed.add(dependency);
+            }
+        }
+        Resolution reachable = bakeReachableGrants(resolvedTargets);
+        return new Resolution(reachable.granted(), Stream.concat(malformed.stream(), reachable.unresolved().stream()).toList());
+    }
+
+    @Nullable
+    private ResolvedTarget resolveEntry(@Nullable ResourceDependency dependency, AuthBucket userBucket) {
+        Set<ResourceAccessType> requestedAccess = ResourceDependencyValidator.grantableAccessOf(dependency);
+        if (requestedAccess == null) {
+            return null;
+        }
+        ResourceDescriptor target = resolveTarget(dependency, userBucket);
+        if (target == null || !ResourceDependencyValidator.isAllowedAccess(target.getType(), requestedAccess)) {
+            return null;
+        }
+        return new ResolvedTarget(dependency, target, requestedAccess);
+    }
+
     /**
-     * Bakes the targets the initiator can reach with the declared rights; tracks the rest as unresolved.
+     * Bakes the targets the initiator can reach with the declared rights; the rest are unresolved.
      */
-    private List<ResourceDependency> bakeReachableGrants(List<ResolvedTarget> resolvedTargets,
-                                                         List<ResourceDependency> unresolvedDeps,
-                                                         List<String> requiredFailures) {
-        List<ResourceDependency> granted = new ArrayList<>();
+    private Resolution bakeReachableGrants(List<ResolvedTarget> resolvedTargets) {
         if (resolvedTargets.isEmpty()) {
-            return granted;
+            return new Resolution(List.of(), List.of());
         }
         Set<ResourceDescriptor> targets = resolvedTargets.stream().map(ResolvedTarget::target).collect(Collectors.toSet());
         Map<ResourceDescriptor, Set<ResourceAccessType>> initiatorAccessByTarget =
                 proxy.getAccessService().lookupInitiatorPermissions(targets, context);
+        List<ResourceDependency> granted = new ArrayList<>();
+        List<ResourceDependency> unreachable = new ArrayList<>();
         for (ResolvedTarget resolved : resolvedTargets) {
             Set<ResourceAccessType> initiatorAccess = initiatorAccessByTarget.getOrDefault(resolved.target(), Set.of());
             if (initiatorAccess.containsAll(resolved.access())) {
                 bakeGrant(resolved.target(), resolved.access());
                 granted.add(resolved.dependency());
             } else {
-                trackUnresolved(resolved.dependency(), unresolvedDeps, requiredFailures);
+                unreachable.add(resolved.dependency());
             }
         }
-        return granted;
+        return new Resolution(granted, unreachable);
     }
 
     private record ResolvedTarget(ResourceDependency dependency, ResourceDescriptor target, Set<ResourceAccessType> access) {
+    }
+
+    private record Resolution(List<ResourceDependency> granted, List<ResourceDependency> unresolved) {
+        static Resolution unresolved(List<ResourceDependency> declaration) {
+            return new Resolution(List.of(), declaration.stream().filter(Objects::nonNull).toList());
+        }
     }
 
     private void bakeGrant(ResourceDescriptor target, Set<ResourceAccessType> requestedAccess) {
@@ -135,16 +152,12 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
                 });
     }
 
-    private static void trackUnresolved(@Nullable ResourceDependency dependency,
-                                        List<ResourceDependency> unresolvedDeps, List<String> requiredFailures) {
-        if (dependency == null) {
-            return;
-        }
-        String url = dependency.getTarget() == null ? null : dependency.getTarget().getUrl();
-        if (dependency.isRequired()) {
-            requiredFailures.add(url == null ? "<missing target.url>" : url);
-        }
-        unresolvedDeps.add(dependency);
+    private static List<String> requiredUrlsOf(List<ResourceDependency> unresolved) {
+        return unresolved.stream()
+                .filter(ResourceDependency::isRequired)
+                .map(dependency -> dependency.getTarget() == null || dependency.getTarget().getUrl() == null
+                        ? "<missing target.url>" : dependency.getTarget().getUrl())
+                .toList();
     }
 
     /**
