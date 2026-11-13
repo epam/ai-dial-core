@@ -421,6 +421,10 @@ class AliasApiTest extends ResourceBaseTest {
         assertEquals("http://icons/gpt-4.svg", plain.getString("icon_url"));
         // the alias has a version of its own, so the target's does not show as the alias's
         assertFalse(plain.containsKey("display_version"), plain.encode());
+        // provider and lifecycle dates describe the model itself, so the alias shows the target's
+        assertEquals("Azure", plain.getString("provider"));
+        assertEquals("2027-06-30", plain.getString("deprecation_date"));
+        assertEquals("2027-12-31", plain.getString("end_of_service"));
 
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
