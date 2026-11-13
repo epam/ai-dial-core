@@ -7,6 +7,8 @@ import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -1448,5 +1450,27 @@ public class AdminValidateApiTest extends ResourceBaseTest {
             verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-cache-pricing", null, "",
                     "authorization", "admin"), 404);
         }
+    }
+
+    // deployment-interfaces-config "Plugin url in responsesEndpoint refused by validate and apply"
+    @Test
+    @SneakyThrows
+    void testPluginUrlInResponsesEndpointFails() {
+        String manifests = """
+                "manifests": [{"kind": "Model", "name": "models/platform/validate-plugin-url",
+                               "spec": {"type": "chat", "endpoint": "http://localhost:7001/openai/deployments/m/chat/completions",
+                                        "responsesEndpoint": "plugin://p1"}}]
+                """;
+        Response validate = send(HttpMethod.POST, "/v1/admin/validate", null, "{" + manifests + "}", "authorization", "admin");
+        Response apply = send(HttpMethod.POST, "/v1/admin/apply", null, "{\"precheck\": false, " + manifests + "}",
+                "authorization", "admin");
+
+        verify(validate, 422);
+        for (Response response : List.of(validate, apply)) {
+            JsonNode result = ProxyUtil.MAPPER.readTree(response.body()).get("results").get(0);
+            assertEquals("FAILED", result.get("status").asText(), response.body());
+            assertTrue(result.get("error").asText().contains("A plugin url is only accepted in a base url"), response.body());
+        }
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-plugin-url", null, "", "authorization", "admin"), 404);
     }
 }

@@ -113,7 +113,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         plugin("p2", GREETING_P2);
         verify(adminPut("/v1/models/platform/m-roles", """
                 {"type": "chat", "userRoles": ["nobody-has-this-role"],
-                 "interfaces": {"openaiChatCompletions": {"plugin": "p2"}}}
+                 "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p2"}}}
                 """), 200);
 
         Response response = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
@@ -129,7 +129,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         plugin("p2", GREETING_P2);
         verify(adminPut("/v1/models/platform/m-int", """
                 {"type": "chat", "interceptors": ["interceptor1"],
-                 "interfaces": {"openaiChatCompletions": {"plugin": "p2"}}}
+                 "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p2"}}}
                 """), 200);
         AtomicReference<String> seen = new AtomicReference<>();
 
@@ -386,7 +386,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         verify(adminPut("/v1/models/platform/" + LIMITED_MODEL, """
                 {"type": "chat", "maxRetryAttempts": 2,
                  "upstreams": [{"endpoint": "http://cloud-a", "key": "a"}, {"endpoint": "http://cloud-b", "key": "b"}],
-                 "interfaces": {"openaiChatCompletions": {"plugin": "p1"}}}
+                 "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"}}}
                 """), 200);
 
         try (Socket socket = openRequest("/openai/deployments/" + LIMITED_MODEL + "/chat/completions", CHAT_BODY,
@@ -461,13 +461,13 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     @SneakyThrows
     void testNamedTranslatorWithPlugin() {
         verify(adminPut("/v1/translators/platform/a2c", """
-                {"in": "anthropicMessages", "out": "openaiChatCompletions", "plugin": "p1"}
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "plugin://p1"}
                 """), 200);
         Response read = send(HttpMethod.GET, "/v1/translators/platform/a2c", null, "", "authorization", "admin");
         verify(read, 200);
         JsonNode stored = ProxyUtil.MAPPER.readTree(read.body());
-        assertEquals("p1", stored.path("plugin").asText(), read.body());
-        assertTrue(!stored.has("baseUrl"), read.body());
+        assertEquals("plugin://p1", stored.path("baseUrl").asText(), read.body());
+        assertTrue(!stored.has("plugin"), read.body());
         translatedModel("m-tr", "\"a2c\"");
 
         verify(chat("/anthropic/v1/messages", messages("m-tr")), 200);
@@ -477,7 +477,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
 
     @Test
     void testTranslatorsPluginMissing() {
-        translatedModel("m-tr", "{\"out\": \"openaiChatCompletions\", \"plugin\": \"missing\"}");
+        translatedModel("m-tr", "{\"out\": \"openaiChatCompletions\", \"baseUrl\": \"plugin://missing\"}");
 
         Response response = chat("/anthropic/v1/messages", messages("m-tr"));
 
@@ -554,7 +554,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     void testInterceptorNamingTranslatorWithPlugin() {
         plugin("p1", "{}");
         verify(adminPut("/v1/translators/platform/c2r", """
-                {"in": "openaiChatCompletions", "out": "openaiResponses", "plugin": "p1"}
+                {"in": "openaiChatCompletions", "out": "openaiResponses", "baseUrl": "plugin://p1"}
                 """), 200);
         verify(adminPut("/v1/interceptors/platform/i-tr", """
                 {"interfaces": {"openaiChatCompletions": {"mode": "translator", "translator": "c2r"}}}
@@ -562,7 +562,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         plugin("p2", GREETING_P2);
         verify(adminPut("/v1/models/platform/m-int2", """
                 {"type": "chat", "interceptors": ["i-tr"],
-                 "interfaces": {"openaiChatCompletions": {"plugin": "p2"}}}
+                 "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p2"}}}
                 """), 200);
 
         Response response = chat("/openai/deployments/m-int2/chat/completions", CHAT_BODY);
@@ -609,7 +609,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     private static final String CHAT_BODY = "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String STREAM_BODY = "{\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String GREETING_P2 = "{\"greeting\": \"from-p2\"}";
-    private static final String INLINE_TRANSLATOR = "{\"out\": \"openaiChatCompletions\", \"plugin\": \"p1\"}";
+    private static final String INLINE_TRANSLATOR = "{\"out\": \"openaiChatCompletions\", \"baseUrl\": \"plugin://p1\"}";
     private static final String CHAT_ANSWER = """
             {"id":"chatcmpl-1","object":"chat.completion","created":0,"model":"m3",
              "choices":[{"index":0,"message":{"role":"assistant","content":"from-http"},"finish_reason":"stop"}],
@@ -657,9 +657,9 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     }
 
     private static String interfaces(String plugin, String... more) {
-        StringBuilder entries = new StringBuilder("\"openaiChatCompletions\": {\"plugin\": \"" + plugin + "\"}");
+        StringBuilder entries = new StringBuilder("\"openaiChatCompletions\": {\"base_url\": \"plugin://" + plugin + "\"}");
         for (String type : more) {
-            entries.append(", \"").append(type).append("\": {\"plugin\": \"").append(plugin).append("\"}");
+            entries.append(", \"").append(type).append("\": {\"base_url\": \"plugin://").append(plugin).append("\"}");
         }
         return "{\"interfaces\": {" + entries + "}}";
     }

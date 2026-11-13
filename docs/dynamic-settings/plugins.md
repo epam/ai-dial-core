@@ -2,7 +2,7 @@
 
 A plugin is Java code that DIAL Core runs in process, instead of calling a service over HTTP. The code comes as a jar that Core loads at start; a `plugins` entry declares one instance of that code with its own settings.
 
-> **Preview.** Plugins are in preview. Until they are declared stable, a DIAL Core release may change them in a backward-incompatible way: the `plugins` entries, the `plugin` field of an interface and of a translator, the plugin endpoints of the Configuration API (`x-preview` in the OpenAPI specification), and the `plugin-api` module a plugin jar compiles against. A plugin jar is built for one DIAL Core version; rebuild it when you upgrade.
+> **Preview.** Plugins are in preview. Until they are declared stable, a DIAL Core release may change them in a backward-incompatible way: the `plugins` entries, the `plugin://` base URLs that name them, the plugin endpoints of the Configuration API (`x-preview` in the OpenAPI specification), and the `plugin-api` module a plugin jar compiles against. A plugin jar is built for one DIAL Core version; rebuild it when you upgrade.
 
 > In this version a plugin can answer a deployment interface in place of an HTTP origin: see [Origin plugins](#origin-plugins). Request and response filters come in a later version.
 
@@ -45,25 +45,27 @@ DIAL Core checks each entry against the plugin code of its `type`, on every writ
 
 ## Origin plugins
 
-An origin plugin answers the requests of a deployment interface inside DIAL Core, in place of the HTTP call to the deployment's endpoint. A model or an application names it in an interface entry:
+An origin plugin answers the requests of a deployment interface inside DIAL Core, in place of the HTTP call to the deployment's endpoint. A model or an application names it by a base URL of the form `plugin://<plugin_name>`, in an interface entry's `base_url`:
 
 ```json
 "interfaces": {
-    "openaiChatCompletions": { "plugin": "my-plugin" }
+    "openaiChatCompletions": { "base_url": "plugin://my-plugin" }
 }
 ```
 
-Any interface type can be served by a plugin: chat completions, embeddings, the Responses API with its item operations, and Anthropic Messages. An entry that names a plugin is a pass-through entry: `mode` stays absent or `passthrough`, and a `base_url` next to the `plugin` is rejected. Refer to [models](models.md) and [applications](applications.md) for the interface fields.
+or in the deployment-level `baseUrl`, which serves every interface entry that declares no `base_url` of its own. The name is the text after `plugin://` up to the next `/`; a path may follow it (`plugin://my-plugin/v2`), and DIAL Core keeps it in front of the path it appends, as for an HTTP base URL. The scheme is lowercase. A plugin URL with no name is rejected, and so is one in `endpoint` or `responsesEndpoint`, which no plugin serves.
 
-* **What the plugin receives.** The request DIAL Core would send to an HTTP origin: the method, the path and query it would append to a base URL, the same headers and the body. The headers carry the per-request key in `API-KEY`, `X-DIAL-DEPLOYMENT-FEATURES`, and for a model with upstreams the `X-UPSTREAM-*` headers of the chosen upstream. DIAL Core forwards the client's headers too, as it does to an HTTP origin, so trust `X-UPSTREAM-*` only for a model with upstreams: elsewhere the client may have set them. There is no `traceparent` header.
+Any interface type can be served by a plugin: chat completions, embeddings, the Responses API with its item operations, and Anthropic Messages. An entry served by a plugin URL is a pass-through entry: `mode` stays absent or `passthrough`. Refer to [models](models.md) and [applications](applications.md) for the interface fields.
+
+* **What the plugin receives.** The request DIAL Core would send to an HTTP origin at the plugin URL: the method, the path and query it would append to the base URL (after any path that follows the plugin's name), the same headers and the body. The headers carry the per-request key in `API-KEY`, `X-DIAL-DEPLOYMENT-FEATURES`, and for a model with upstreams the `X-UPSTREAM-*` headers of the chosen upstream. DIAL Core forwards the client's headers too, as it does to an HTTP origin, so trust `X-UPSTREAM-*` only for a model with upstreams: elsewhere the client may have set them. There is no `traceparent` header.
 * **More than an HTTP origin gets.** The body as a parsed JSON object as well (`bodyTree`), so the plugin needs no parse of its own; it is read-only unless the plugin passes it to a call. And the caller (`caller`): the user id of a caller with a JWT, the caller's roles, and its project. A routing plugin needs no `/v1/user/info` call.
-* **What DIAL Core does with the answer.** The same as with an HTTP origin's: a retriable status moves to the next upstream, the body is relayed as it arrives, usage is parsed and charged, and one analytics row is written. The row's `response.upstream_uri` is `plugin://<name>` for a deployment without upstreams.
+* **What DIAL Core does with the answer.** The same as with an HTTP origin's: a retriable status moves to the next upstream, the body is relayed as it arrives, usage is parsed and charged, and one analytics row is written. The row's `response.upstream_uri` is the plugin URL, `plugin://<name>` with any path after the name, for a deployment without upstreams.
 * **When the plugin cannot serve.** DIAL Core answers `502` `Failed to connect to upstream server`, without trying another upstream, when no `plugins` entry has the name, its plugin code is not loaded, or the plugin cannot be created from its settings. A Responses item operation answers `500` `Failed to process response operation` in these cases, as it does when its HTTP origin cannot be reached. A plugin that fails a call counts as an origin that failed to send its response headers.
 * **When the client goes away first.** DIAL Core watches the client while the plugin works, and tells the plugin through `HostDelegate.cancelled()` when the client leaves before the answer, so the plugin can stop its upstream work. A plugin that then fails its answer ends the request quietly: no other upstream is tried, and no analytics row is written. An answer it still gives is handled as an HTTP origin's answer after its client went away: a model's answer is read to the end and charged.
 * **Settings changes.** DIAL Core creates the plugin from the entry's settings on the first request it serves, and again on the first request after the entry changes, handing it DIAL Core's Vert.x instance for the clients and timers it needs. A settings edit applies to the next request, with no restart. DIAL Core calls the plugin's `close()` on a thread that may block, never on an event loop, so that the plugin releases its clients, caches and timers: on the replaced plugin when the first request after the change creates its replacement, on the plugin of a removed entry at the next request that names the entry, and on every plugin when DIAL Core shuts down. DIAL Core does not wait for the requests still in flight on a plugin it closes: a plugin that wants them to end first waits for them in `close()`. Requests racing on a new or changed entry share one plugin.
 * **Log records.** A plugin logs through DIAL Core's SLF4J. The fields it attaches to a record as SLF4J key-value pairs (`log.atInfo().addKeyValue("model", m).log("routed")`) appear in the record's `Attributes` in DIAL Core's JSON log line, after DIAL Core's own attributes, which a field of the same name does not replace. They are not copied to the span.
-* **Platform deployments only.** A plugin runs platform code, so only the platform config (the config files and the `platform` bucket) can name one. A custom application in any other bucket that names a plugin is refused with `422`, and is never served by a plugin.
-* **Rollout.** Deploy the DIAL Core image that carries the plugin before writing config that names it: an older DIAL Core does not serve an interface by a plugin. Roll back by switching the interface back to its `base_url`.
+* **Platform deployments only.** A plugin runs platform code, so only the platform config (the config files and the `platform` bucket) can name one. A custom application in any other bucket with a plugin URL in its `baseUrl`, an interface's `base_url` or an inline translator's `baseUrl` is refused with `422`, and is never served by a plugin.
+* **Rollout.** Deploy the DIAL Core image that carries the plugin before writing config that names it: an older DIAL Core does not serve an interface by a plugin. Roll back by writing the HTTP base URL back in place of the plugin URL.
 
 Plugin code runs on DIAL Core's event loop. It must not block, and must answer and stream its body on the thread it was called on.
 
@@ -83,16 +85,16 @@ A plugin that calls its own deployment calls itself again and again. DIAL Core s
 
 ### Translating for a deployment
 
-A [translator](translators.md#translators-served-by-a-plugin) may name a plugin in place of its `baseUrl`. The interface stays in `translator` mode, and the plugin receives the request DIAL Core would send to the translator service. It converts the request, calls the deployment's `out` interface through its host, and answers with the converted answer.
+A [translator](translators.md#translators-served-by-a-plugin) may name a plugin by its `baseUrl`, `plugin://<plugin_name>`. The interface stays in `translator` mode, and the plugin receives the request DIAL Core would send to the translator service. It converts the request, calls the deployment's `out` interface through its host, and answers with the converted answer.
 
 * **Call `out`, never your own interface.** DIAL Core checks that the deployment serves `out` pass-through; it cannot check what the plugin calls. A plugin that calls the interface it translates is called again and again.
 * **Limits.** The client's request is neither limit-checked nor charged; the plugin's call is. A plugin that answers by itself, without the call, is charged nothing.
 * **Responses.** A plugin translating `openaiResponses` receives the item operations of the responses it created (`GET`, `DELETE`, `cancel`) and answers them itself: a call through the host reaches create operations only, and refuses `"background": true`.
-* **Not for interceptors.** An interceptor is always called over HTTP: one whose translator names a plugin is rejected on write when the translator is inline, and its requests fail as an unreachable interceptor when the translator is named.
+* **Not for interceptors.** An interceptor is always called over HTTP: one with a plugin URL in its `baseUrl`, an interface's `base_url` or an inline translator's `baseUrl` is rejected on write, and the requests of one whose named translator has a plugin URL fail as an unreachable interceptor.
 
 ### Deciding for a router
 
-A [router in decision mode](routers.md#decision-mode) may name a `plugin` on an interface. That plugin then receives the router's decide request in process, `POST /decide` with the headers and body DIAL Core would send to a router service, and answers it with the verdict, `{"candidates": [...]}`, as a router service does. DIAL Core serves the deployment the verdict names in the same pass; the plugin's answer is no deployment's answer.
+A [router in decision mode](routers.md#decision-mode) may name a plugin by a plugin URL in an interface's `base_url` or in its `baseUrl`. That plugin then receives the router's decide request in process, `POST /decide` (after any path that follows the plugin's name) with the headers and body DIAL Core would send to a router service, and answers it with the verdict, `{"candidates": [...]}`, as a router service does. DIAL Core serves the deployment the verdict names in the same pass; the plugin's answer is no deployment's answer.
 
 * **The key.** The decide request's `API-KEY` is the decide request's key, and the plugin's calls through its host carry it, as a router service's calls with that header do. In process the host serves the create operations only: `GET /v1/user/info` and file reads go to DIAL Core over HTTP with that `API-KEY`. The caller is in the request, so a plugin rarely needs them.
 * **When its calls end.** When the decide call ends, once DIAL Core has read the plugin's answer, DIAL Core cancels the plugin's calls still open and answers later ones `401`. A notice request (`X-DIAL-ROUTER-NOTICE: true`) carries no key: every call made while answering it is answered `401`.

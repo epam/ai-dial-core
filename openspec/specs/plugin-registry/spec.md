@@ -126,10 +126,11 @@ and SHALL migrate to the `platform` bucket through `POST /v1/admin/config/file/m
 - **THEN** Core answers `200` with `name: "file-plugin"`, `status: "valid"` and `type: "test-echo"`
 
 ### Requirement: Origin plugins
-A `plugins` entry SHALL be able to serve an interface that names it, directly or through its translator
-(deployment-interfaces-config, deployment-origin): its plugin answers the interface's requests in place of an HTTP
-origin. Core SHALL create the plugin from the entry's `settings` when a request first needs it and again on the first
-request after the entry changes, so a request is never served with settings older than the config it was routed by.
+A `plugins` entry SHALL be able to serve an interface whose base url, or whose translator's `baseUrl`, is a plugin
+url naming it (deployment-interfaces-config, deployment-origin): its plugin answers the interface's requests in place
+of an HTTP origin. Core SHALL create the plugin from the entry's `settings` when a request first needs it and again on
+the first request after the entry changes, so a request is never served with settings older than the config it was
+routed by.
 
 #### Scenario: Settings change takes effect
 - **WHEN** `plugins.p1` of type `test-origin` with `settings.greeting: hello` serves application `app`, a chat

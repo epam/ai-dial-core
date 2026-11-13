@@ -2404,8 +2404,8 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Structural check for a deployment write: an {@code overridePaths} entry Core cannot render, or a plugin
-     * reference its mode contradicts, is rejected before the blob is written, exactly as {@link #checkTranslator}
+     * Structural check for a deployment write: an {@code overridePaths} entry Core cannot render, or a plugin url with
+     * no name, where no plugin serves or on an interceptor, is rejected before the blob is written, exactly as {@link #checkTranslator}
      * rejects a translator the rebuild would refuse. Always enforced, unlike {@link #checkModel}'s soft-mode allowance.
      */
     private void checkInterfaces(Deployment entity) {

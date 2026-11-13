@@ -1102,7 +1102,7 @@ public class ConfigPostProcessorTest {
 
         ConfigPostProcessor.processSemantic(config, null, Map.of(), Map.of(), null);
 
-        assertEquals(Set.of("r1", "rb", "rt", "r9", "r4", "re", "r2", "rf"), config.getRouters().keySet());
+        assertEquals(Set.of("r1", "rb", "rt", "r9", "r4", "re", "r2", "rf", "rp"), config.getRouters().keySet());
     }
 
     @Test
@@ -1308,56 +1308,41 @@ public class ConfigPostProcessorTest {
     @Test
     void testEmbeddedInterfaceIsRead() throws Exception {
         Model model = ProxyUtil.MAPPER.readValue("""
-                {"interfaces": {"openaiChatCompletions": {"plugin": "p1"}}}
+                {"interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"}}}
                 """, Model.class);
 
         DeploymentInterface declared = model.getInterfaces().get("openaiChatCompletions");
         assertNull(declared.getMode());
-        assertEquals("p1", declared.getPlugin());
+        assertEquals("plugin://p1", declared.getBaseUrl());
     }
 
     @Test
     void testEmbeddedIsNotMode() {
         assertThrows(JsonProcessingException.class, () -> ProxyUtil.MAPPER.readValue("""
-                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "plugin": "p1"}}}
+                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "base_url": "plugin://p1"}}}
                 """, Model.class));
-    }
-
-    @Test
-    void testEmbeddedModelNeedsNoBaseUrl() {
-        assertEquals(List.of(), modelWarnings(embedded("p1")));
     }
 
     @Test
     void testBlankPluginRejected() {
         assertWarning(modelWarnings(embedded(" ")), "A plugin name cannot be blank");
         assertWarning(applicationWarnings(embedded("")), "A plugin name cannot be blank");
+        assertWarning(applicationWarnings(embedded("/v1")), "A plugin name cannot be blank");
+    }
+
+    @Test
+    void testBlankPluginInInlineTranslatorRejected() {
+        DeploymentInterface declared = new DeploymentInterface();
+        declared.setMode(InterfaceMode.TRANSLATOR);
+        declared.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_RESPONSES, "plugin://")));
+
+        assertWarning(applicationWarnings(declared), "A plugin name cannot be blank");
     }
 
     // deployment-interfaces-config "Pass-through entry needs a url"
     @Test
     void testEntryWithoutPluginStillNeedsUrl() {
         assertWarning(modelWarnings(new DeploymentInterface()), "declares no base_url and the model declares no baseUrl");
-    }
-
-    @Test
-    void testPluginAndBaseUrlRejected() {
-        DeploymentInterface declared = embedded("p1");
-        declared.setBaseUrl("http://app");
-
-        assertWarning(modelWarnings(declared), "An interface is served either by a plugin or by a base_url, not by both");
-        assertWarning(applicationWarnings(declared), "An interface is served either by a plugin or by a base_url, not by both");
-    }
-
-    // deployment-interfaces-config "Plugin on a translated interface"
-    @Test
-    void testPluginOnTranslatedInterfaceRejected() {
-        DeploymentInterface declared = embedded("p1");
-        declared.setMode(InterfaceMode.TRANSLATOR);
-        declared.setTranslator(TranslatorRef.named("a2c"));
-
-        assertWarning(modelWarnings(declared), "A translated interface is served by its translator, not by a plugin");
-        assertWarning(applicationWarnings(declared), "A translated interface is served by its translator, not by a plugin");
     }
 
     @Test
@@ -1377,7 +1362,7 @@ public class ConfigPostProcessorTest {
     void testInterceptorWithInlineTranslatorPluginRejected() {
         DeploymentInterface declared = new DeploymentInterface();
         declared.setMode(InterfaceMode.TRANSLATOR);
-        declared.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_RESPONSES, null, "p1")));
+        declared.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_RESPONSES, "plugin://p1")));
         Interceptor interceptor = new Interceptor();
         interceptor.setName("interceptor");
         interceptor.setInterfaces(Map.of("openaiChatCompletions", declared));
@@ -1400,21 +1385,6 @@ public class ConfigPostProcessorTest {
     void testUnresolvedPluginNameAccepted() {
         // no plugins map is consulted: a name with no entry leaves the interface unserved, not the deployment invalid
         assertEquals(List.of(), applicationWarnings(embedded("not-registered-yet")));
-    }
-
-    @Test
-    void testFileConfigWithPluginAndBaseUrlRejected() {
-        Config config = newMutableConfig();
-        Application application = new Application();
-        DeploymentInterface declared = embedded("p1");
-        declared.setBaseUrl("http://app");
-        application.setInterfaces(Map.of("openaiChatCompletions", declared));
-        config.getApplications().put("app", application);
-
-        InvalidEntityException error = assertThrows(InvalidEntityException.class,
-                () -> ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY));
-
-        assertWarning(error.getWarnings(), "An interface is served either by a plugin or by a base_url, not by both");
     }
 
     private static List<ValidationWarning> modelWarnings(DeploymentInterface declared) {
@@ -1441,7 +1411,7 @@ public class ConfigPostProcessorTest {
 
     private static DeploymentInterface embedded(String plugin) {
         DeploymentInterface declared = new DeploymentInterface();
-        declared.setPlugin(plugin);
+        declared.setBaseUrl("plugin://" + plugin);
         return declared;
     }
 

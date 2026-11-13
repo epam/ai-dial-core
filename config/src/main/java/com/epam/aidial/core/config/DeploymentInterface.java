@@ -38,12 +38,6 @@ public class DeploymentInterface {
     private TranslatorRef translator;
 
     /**
-     * The {@code plugins} entry serving this pass-through interface in Core's process, in place of a base url. An
-     * interface is served either by a base url or by a plugin, never by both.
-     */
-    private String plugin;
-
-    /**
      * Headers added to a request for this interface that carries none under that name, laid over the
      * deployment-level {@code defaultHeaders}. Resolved by {@link Deployment#resolveDefaultHeaders}.
      */

@@ -81,6 +81,10 @@ import javax.annotation.Nullable;
 @Slf4j
 public final class ConfigPostProcessor {
 
+    private static final String NO_PLUGIN_FOR_INTERCEPTOR = "A plugin is not supported for an interceptor";
+    private static final String NAMELESS_PLUGIN_URL = "A plugin name cannot be blank";
+    private static final String UNSERVED_PLUGIN_URL = "A plugin url is only accepted in a base url";
+
     // Allowed characters for a client-chosen entity short name, applied to the URL-decoded segment.
     // Shared by every write surface that accepts one — the single-entity PUT/DELETE endpoints
     // (ConfigResourceController), the batch apply/validate endpoints (ConfigManifestSupport), and
@@ -696,11 +700,14 @@ public final class ConfigPostProcessor {
         if (translator.getIn() == null) {
             warnings.add(new ValidationWarning("in", messageWithEntityPrefix("Translator", name, "Translator declares no in")));
         }
+        if (namesNoPlugin(translator.getBaseUrl())) {
+            warnings.add(new ValidationWarning("baseUrl", messageWithEntityPrefix("Translator", name, NAMELESS_PLUGIN_URL)));
+        }
     }
 
     /**
-     * Validates a model's {@code interfaces}. An entry is served by a base url, a translator or a plugin, never
-     * by two of them and never by none, and {@code mode} is what says which — routing and limits both
+     * Validates a model's {@code interfaces}. An entry is served by a base url, an HTTP origin's or a plugin's, or by a
+     * translator, never by both and never by none, and {@code mode} is what says which — routing and limits both
      * read it, so a config where it disagrees with the fields around it is rejected rather than resolved.
      * Named translator references are resolved against {@code translators} — the registry of the config the
      * model is entering — exactly as the request path resolves them.
@@ -708,6 +715,7 @@ public final class ConfigPostProcessor {
     private static void validateDeploymentInterfaces(Deployment deployment, Map<String, Translator> translators,
                                                     List<ValidationWarning> warnings) {
         String entityLabel = deployment.getClass().getSimpleName();
+        validateDeploymentPluginUrls(deployment, warnings);
         Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
         if (interfaces == null) {
             return;
@@ -723,7 +731,7 @@ public final class ConfigPostProcessor {
                 validateTranslatedInterface(deployment, entry.getKey(), declared, translators, field, warnings);
             } else if (declared.getTranslator() != null) {
                 warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "A translator requires mode 'translator'")));
-            } else if (declared.getPlugin() == null && declared.getBaseUrl() == null && deployment.getBaseUrl() == null) {
+            } else if (declared.getBaseUrl() == null && deployment.getBaseUrl() == null) {
                 warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "Interface '" + entry.getKey()
                         + "' declares no base_url and the " + entityLabel.toLowerCase(Locale.ROOT) + " declares no baseUrl")));
             }
@@ -733,13 +741,14 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * Validates every interface entry's plugin reference and {@code overridePaths} on a deployment whose interfaces get
+     * Validates the deployment's plugin urls and every interface entry's {@code overridePaths} on a deployment whose interfaces get
      * no other semantic validation — applications, interceptors and toolsets. Models and routers run the same per-entry
      * checks inside {@link #validateDeploymentInterfaces}. Shared by every write surface, each of which turns
      * the warnings into its own layer's failure: a result object for the admin services, a response
      * status for the controllers.
      */
     public static void validateInterfaces(Deployment deployment, List<ValidationWarning> warnings) {
+        validateDeploymentPluginUrls(deployment, warnings);
         Map<String, DeploymentInterface> interfaces = deployment.getInterfaces();
         if (interfaces == null) {
             return;
@@ -759,7 +768,7 @@ public final class ConfigPostProcessor {
      * Validates an interface entry's {@code overridePaths}. A key this Core does not know is tolerated —
      * exactly as an unknown interface type is — but a known key under an interface that does not own it,
      * a template that does not parse, and a variable the operation cannot render are config contradicting
-     * itself. A translated interface routes to its translator, and one that names a plugin to its plugin, so overrides
+     * itself. A translated interface routes to its translator, and one served by a plugin url to its plugin, so overrides
      * on either are dead config.
      */
     private static void validateOverridePaths(Deployment deployment, String type, DeploymentInterface declared, String field,
@@ -774,7 +783,7 @@ public final class ConfigPostProcessor {
                     messageWithEntityPrefix(entityLabel, deployment.getName(), "A translated interface is served by its translator: overridePaths has no effect")));
             return;
         }
-        if (declared.getPlugin() != null) {
+        if (DeploymentEndpointUtil.isPluginUrl(declared.getBaseUrl() != null ? declared.getBaseUrl() : deployment.getBaseUrl())) {
             warnings.add(new ValidationWarning(field,
                     messageWithEntityPrefix(entityLabel, deployment.getName(), "An interface with a plugin is served by its plugin: overridePaths has no effect")));
             return;
@@ -807,41 +816,64 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * An entry that names a plugin is served by it and by nothing else. Interceptor hops are always sent over HTTP, so
-     * an interceptor cannot name one, and a translated entry is served by its translator. A name no {@code plugins}
-     * entry has leaves the interface unserved, not the deployment invalid, as for a translator.
+     * Validates the plugin urls of an interface entry, its own {@code base_url} and its inline translator's. Interceptor
+     * hops are always sent over HTTP, so an interceptor cannot name a plugin. A name no {@code plugins} entry has leaves
+     * the interface unserved, not the deployment invalid, as for a translator; an empty name is a defect.
      */
     private static void validatePluginReference(Deployment deployment, DeploymentInterface declared, String field,
                                                 List<ValidationWarning> warnings) {
         String entityLabel = deployment.getClass().getSimpleName();
-        if (deployment instanceof Interceptor && (declared.getPlugin() != null || hasInlineTranslatorPlugin(declared))) {
-            warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix(entityLabel, deployment.getName(), "A plugin is not supported for an interceptor")));
+        String translatorUrl = inlineTranslatorBaseUrl(declared);
+        if (deployment instanceof Interceptor && (DeploymentEndpointUtil.isPluginUrl(declared.getBaseUrl()) || DeploymentEndpointUtil.isPluginUrl(translatorUrl))) {
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), NO_PLUGIN_FOR_INTERCEPTOR)));
             return;
         }
-        if (declared.getPlugin() == null) {
-            return;
-        }
-        if (declared.getPlugin().isBlank()) {
-            warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), "A plugin name cannot be blank")));
-        }
-        if (declared.getMode() == InterfaceMode.TRANSLATOR) {
-            warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix(entityLabel, deployment.getName(), "A translated interface is served by its translator, not by a plugin")));
-        }
-        if (declared.getBaseUrl() != null) {
-            warnings.add(new ValidationWarning(field,
-                    messageWithEntityPrefix(entityLabel, deployment.getName(), "An interface is served either by a plugin or by a base_url, not by both")));
+        if (namesNoPlugin(declared.getBaseUrl()) || namesNoPlugin(translatorUrl)) {
+            warnings.add(new ValidationWarning(field, messageWithEntityPrefix(entityLabel, deployment.getName(), NAMELESS_PLUGIN_URL)));
         }
     }
 
     /**
-     * Whether the entry's translator is written inline and names a plugin. A named translator is not resolved here: its
-     * entry can change after the deployment is written, so the request path checks it.
+     * Validates the plugin urls a deployment declares outside its interface entries. Its {@code baseUrl} may name a
+     * plugin, which then serves the entries declaring no {@code base_url}, except on an interceptor. {@code endpoint}
+     * and {@code responsesEndpoint} name an origin no plugin serves: a plugin url there would reach the HTTP client and
+     * fail at request time. A router rejects both fields whatever they hold.
+     */
+    private static void validateDeploymentPluginUrls(Deployment deployment, List<ValidationWarning> warnings) {
+        String entityLabel = deployment.getClass().getSimpleName();
+        if (deployment instanceof Interceptor && DeploymentEndpointUtil.isPluginUrl(deployment.getBaseUrl())) {
+            warnings.add(new ValidationWarning("baseUrl", messageWithEntityPrefix(entityLabel, deployment.getName(), NO_PLUGIN_FOR_INTERCEPTOR)));
+        } else if (namesNoPlugin(deployment.getBaseUrl())) {
+            warnings.add(new ValidationWarning("baseUrl", messageWithEntityPrefix(entityLabel, deployment.getName(), NAMELESS_PLUGIN_URL)));
+        }
+        if (deployment instanceof Router) {
+            return;
+        }
+        if (DeploymentEndpointUtil.isPluginUrl(deployment.getEndpoint())) {
+            warnings.add(new ValidationWarning("endpoint", messageWithEntityPrefix(entityLabel, deployment.getName(), UNSERVED_PLUGIN_URL)));
+        }
+        if (DeploymentEndpointUtil.isPluginUrl(deployment.getResponsesEndpoint())) {
+            warnings.add(new ValidationWarning("responsesEndpoint", messageWithEntityPrefix(entityLabel, deployment.getName(), UNSERVED_PLUGIN_URL)));
+        }
+    }
+
+    /**
+     * Whether the entry's translator is written inline and its {@code baseUrl} is a plugin url. A named translator is not
+     * resolved here: its entry can change after the deployment is written, so the request path checks it.
      */
     public static boolean hasInlineTranslatorPlugin(DeploymentInterface declared) {
+        return DeploymentEndpointUtil.isPluginUrl(inlineTranslatorBaseUrl(declared));
+    }
+
+    @Nullable
+    private static String inlineTranslatorBaseUrl(DeploymentInterface declared) {
         TranslatorRef translator = declared.getTranslator();
-        return translator != null && translator.getInline() != null && translator.getInline().getPlugin() != null;
+        return translator == null || translator.getInline() == null ? null : translator.getInline().getBaseUrl();
+    }
+
+    private static boolean namesNoPlugin(@Nullable String url) {
+        String name = DeploymentEndpointUtil.pluginName(url);
+        return name != null && name.isBlank();
     }
 
     private static void validateTranslatedInterface(Deployment deployment, String type, DeploymentInterface declared,

@@ -19420,8 +19420,6 @@ components:
           $ref: "#/components/schemas/Features"
         overridePaths:
           $ref: "#/components/schemas/MapStringString"
-        plugin:
-          type: string
     DeploymentNameData:
       type: object
       properties:
@@ -22071,8 +22069,6 @@ components:
           $ref: "#/components/schemas/InterfaceType"
         out:
           $ref: "#/components/schemas/InterfaceType"
-        plugin:
-          type: string
     TranslatorRef:
       type: object
       properties:

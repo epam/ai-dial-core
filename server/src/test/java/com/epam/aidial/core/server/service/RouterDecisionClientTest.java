@@ -346,7 +346,7 @@ class RouterDecisionClientTest {
     private Router embeddedRouter(Long timeoutMs) {
         Router router = router(timeoutMs);
         DeploymentInterface embedded = new DeploymentInterface();
-        embedded.setPlugin("p1");
+        embedded.setBaseUrl("plugin://p1");
         router.setInterfaces(Map.of("openaiChatCompletions", embedded));
         return router;
     }

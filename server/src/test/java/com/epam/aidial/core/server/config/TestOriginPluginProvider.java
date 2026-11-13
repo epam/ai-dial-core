@@ -175,7 +175,7 @@ public class TestOriginPluginProvider implements PluginProvider {
     }
 
     private static Future<Response> answer(Request request, HostDelegate host, String greeting) {
-        if ("/decide".equals(request.uri())) {
+        if (request.uri().endsWith("/decide")) {
             return decide(request, host);
         }
         CANCELLED_BEFORE.add(CANCELLED.get());

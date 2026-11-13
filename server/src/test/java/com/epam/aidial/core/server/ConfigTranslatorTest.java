@@ -74,4 +74,16 @@ public class ConfigTranslatorTest extends ResourceBaseTest {
         verify(send(HttpMethod.GET, "/v1/translators/public/translator1", null, "",
                 "authorization", "admin"), 404);
     }
+
+    // deployment-interfaces-config "Translator plugin url with a blank name"
+    @Test
+    void testTranslatorPluginUrlWithBlankName() {
+        Response put = send(HttpMethod.PUT, "/v1/translators/platform/a2c", null, """
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "plugin://"}
+                """, "authorization", "admin");
+
+        assertEquals(422, put.status(), put.body());
+        assertTrue(put.body().contains("A plugin name cannot be blank"), put.body());
+        verify(send(HttpMethod.GET, "/v1/translators/platform/a2c", null, "", "authorization", "admin"), 404);
+    }
 }

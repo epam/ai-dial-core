@@ -17,8 +17,8 @@ public interface PluginProvider {
 
     /**
      * The value of {@code type} in the {@code plugins} entries this provider serves, for example {@code forward}. It
-     * names the code; an entry's name, which a deployment interface gives as its {@code plugin}, names one configured
-     * instance of it. Several entries may share a type, each with its own settings.
+     * names the code; an entry's name, which a base url {@code plugin://<name>} gives, names one configured instance of
+     * it. Several entries may share a type, each with its own settings.
      */
     String type();
 

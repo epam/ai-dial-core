@@ -194,8 +194,9 @@ alone still refuses it `429` when the initiator's day, week or month cost limit 
 
 #### Scenario: Translator plugin's call charged once
 - **WHEN** model `m` serves `anthropicMessages` in `translator` mode through a translator with `out:
-  openaiChatCompletions` and `plugin: p1`, `p1` calls `POST /openai/deployments/m/chat/completions` through its host,
-  the origin of `m` answers `200` with `usage.total_tokens: 15`, and `p1` answers the client's request with that usage
+  openaiChatCompletions` and `baseUrl: plugin://p1`, `p1` calls `POST /openai/deployments/m/chat/completions` through
+  its host, the origin of `m` answers `200` with `usage.total_tokens: 15`, and `p1` answers the client's request with
+  that usage
 - **THEN** the `m/tokens` limit record under `Users/u1/` grows by 15, not by 30
 
 #### Scenario: Translator plugin's call refused over the limit

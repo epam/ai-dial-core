@@ -805,10 +805,11 @@ public class ApplicationService {
     }
 
     /**
-     * Interfaces the next config rebuild would drop (an {@code overridePaths} entry Core cannot render, a plugin
-     * reference its mode contradicts) are refused before the application is written to {@code resource}, so the blob
-     * never holds them. So is an interface that names a plugin, itself or in an inline translator, outside the platform bucket: a plugin runs platform code,
-     * possibly with the pod's credentials, so only the platform config may name one.
+     * Interfaces the next config rebuild would drop (an {@code overridePaths} entry Core cannot render, a plugin url
+     * with no name or where no plugin serves) are refused before the application is written to {@code resource}, so the
+     * blob never holds them. So is a plugin url in its {@code baseUrl}, an interface or an inline translator outside the
+     * platform bucket: a plugin runs platform code, possibly with the pod's credentials, so only the platform config may
+     * name one.
      */
     private static void requireValidInterfaces(ResourceDescriptor resource, Application application) {
         List<ValidationWarning> warnings = new ArrayList<>();
@@ -833,10 +834,13 @@ public class ApplicationService {
     }
 
     private static boolean hasEmbeddedInterface(Application application) {
+        if (DeploymentEndpointUtil.isPluginUrl(application.getBaseUrl())) {
+            return true;
+        }
         Map<String, DeploymentInterface> interfaces = application.getInterfaces();
         return interfaces != null && interfaces.values().stream()
-                .anyMatch(declared -> declared != null
-                        && (declared.getPlugin() != null || ConfigPostProcessor.hasInlineTranslatorPlugin(declared)));
+                .anyMatch(declared -> declared != null && (DeploymentEndpointUtil.isPluginUrl(declared.getBaseUrl())
+                        || ConfigPostProcessor.hasInlineTranslatorPlugin(declared)));
     }
 
     private void prepareApplication(ResourceDescriptor resource, Application application, boolean preserveForwardAuthToken) {

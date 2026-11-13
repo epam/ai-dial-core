@@ -105,6 +105,17 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
 
     // router-deployment "Decision by an embedded plugin"
 
+    // router-deployment "Router baseUrl names the plugin"
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testRouterBaseUrlNamesThePlugin() {
+        try (TestWebServer server = server(this::answer)) {
+            verify(chat("rp", CHAT_BODY, "X-Test-Decide", "m1"), 200);
+        }
+        assertEquals("/v1/decide", decided(0).request().uri());
+        assertEquals(1, received.stream().filter(request -> isFor(request, "m1")).count());
+    }
+
     @Test
     @DialConfigLocation(CONFIG)
     @SneakyThrows

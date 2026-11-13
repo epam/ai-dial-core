@@ -49,7 +49,7 @@ stripped. A deployment-level `baseUrl` SHALL serve only the interface types the 
 
 ### Requirement: Legacy endpoint fields
 Core SHALL serve a type that has no `interfaces` entry, or a pass-through entry that resolves to no url, from the
-pre-`interfaces` field (a `translator`-mode entry or one naming a `plugin` never falls back, see Interface mode): `endpoint`
+pre-`interfaces` field (a `translator`-mode entry never falls back, see Interface mode): `endpoint`
 for the whole deployments-POST family (`chat/completions`, `completions`, `embeddings`) and `responsesEndpoint` for the
 Responses API, each used as the complete URL. No legacy field SHALL serve `anthropicMessages`.
 
@@ -79,9 +79,9 @@ included, under its `openaiChatCompletions` interface.
 
 ### Requirement: Interface mode
 Core SHALL read `interfaces.<type>.mode` as `passthrough` (the default when absent) or `translator`, and no other
-value. An entry in `translator` mode SHALL be served by its translator only, and a pass-through entry that names a
-`plugin` by that plugin only (deployment-origin), never by a `base_url`, the deployment-level `baseUrl`, `endpoint`
-or `responsesEndpoint`.
+value. An entry in `translator` mode SHALL be served by its translator only, never by a `base_url`, the
+deployment-level `baseUrl`, `endpoint` or `responsesEndpoint`, and a pass-through entry whose base url is a plugin url
+by that plugin only (deployment-origin), never by `endpoint` or `responsesEndpoint`.
 
 #### Scenario: Translated interface goes to the translator
 - **WHEN** a model declares `baseUrl: http://adapter` and `interfaces.anthropicMessages: {"mode": "translator",
@@ -95,29 +95,30 @@ or `responsesEndpoint`.
 - **THEN** a chat completion for it is answered `503` and nothing is sent to `http://legacy/chat`
 
 #### Scenario: Embedded interface goes to the plugin
-- **WHEN** an application declares `baseUrl: http://app` and `interfaces.openaiChatCompletions: {"plugin": "p1"}`,
-  `plugins.p1` is of type `test-origin`, and a client sends `POST /openai/deployments/<application>/chat/completions`
+- **WHEN** an application declares `baseUrl: http://app` and
+  `interfaces.openaiChatCompletions: {"base_url": "plugin://p1"}`, `plugins.p1` is of type `test-origin`, and a
+  client sends `POST /openai/deployments/<application>/chat/completions`
 - **THEN** the `test-origin` plugin answers the request and nothing is sent to `http://app`
 
 #### Scenario: Embedded interface never falls back
 - **WHEN** a model declares `endpoint: http://legacy/chat` and
-  `interfaces.openaiChatCompletions: {"plugin": "missing"}` and no `plugins.missing`
+  `interfaces.openaiChatCompletions: {"base_url": "plugin://missing"}` and no `plugins.missing`
 - **THEN** a chat completion for it is answered `502` and nothing is sent to `http://legacy/chat`
 
 #### Scenario: Explicit pass-through mode with a plugin
-- **WHEN** an application declares `interfaces.openaiChatCompletions: {"mode": "passthrough", "plugin": "p1"}`
+- **WHEN** an application declares `interfaces.openaiChatCompletions: {"mode": "passthrough", "base_url": "plugin://p1"}`
 - **THEN** the `test-origin` plugin answers a chat completion for it
 
 #### Scenario: Embedded is not a mode
 - **WHEN** an admin sends `PUT /v1/applications/platform/a` with `interfaces.openaiChatCompletions:
-  {"mode": "embedded", "plugin": "p1"}`
+  {"mode": "embedded", "base_url": "plugin://p1"}`
 - **THEN** Core answers `400` and stores nothing
 
 ### Requirement: Translator reference
 Core SHALL read `interfaces.<type>.translator` as either a string naming a `translators` entry or an inline object
-`{"out", "baseUrl"}` or `{"out", "plugin"}` whose `in` is the interface it sits under. A name SHALL be resolved
-against the `translators` of the live config on each request, so an edit to that entry takes effect with no edit to
-the deployment.
+`{"out", "baseUrl"}`, its `baseUrl` an HTTP url or a plugin url, whose `in` is the interface it sits under. A name
+SHALL be resolved against the `translators` of the live config on each request, so an edit to that entry takes
+effect with no edit to the deployment.
 
 #### Scenario: Named translator resolved per request
 - **WHEN** a model's `interfaces.anthropicMessages` is `{"mode": "translator", "translator": "a2c"}` and
@@ -129,11 +130,10 @@ the deployment.
 - **THEN** `interfaces.anthropicMessages.translator` is still the string `"a2c"`
 
 ### Requirement: Translator definition
-Core SHALL read a translator (in `translators.<name>` or inline) with `in`, `out` and exactly one of `baseUrl`
-(alias `base_url`) and `plugin`, the name of a `plugins` entry. Core SHALL reject as the config is read one with no
-`out`, with neither or both of a non-empty `baseUrl` and a non-empty `plugin`, or an `in`/`out` naming an interface
-type Core does not know, and SHALL reject a `translators` entry declaring no `in`. A `plugin` naming no `plugins`
-entry SHALL NOT make the config invalid.
+Core SHALL read a translator (in `translators.<name>` or inline) with `in`, `out` and `baseUrl` (alias `base_url`),
+an HTTP url or a plugin url. Core SHALL reject as the config is read one with no `out`, with no non-empty `baseUrl`, with a field a translator does not have, or with an `in`/`out` naming an interface type
+Core does not know, and SHALL reject a `translators` entry declaring no `in`. A plugin url naming no `plugins` entry
+SHALL NOT make the config invalid.
 
 #### Scenario: Missing baseUrl rejected on read
 - **WHEN** a config declares `translators.a2c: {"in": "anthropicMessages", "out": "openaiChatCompletions"}`
@@ -146,8 +146,8 @@ entry SHALL NOT make the config invalid.
 
 #### Scenario: Translator with a plugin read and written back
 - **WHEN** an admin sends `PUT /v1/translators/platform/a2c` with `{"in": "anthropicMessages",
-  "out": "openaiChatCompletions", "plugin": "later"}` and no `plugins.later` exists
-- **THEN** Core answers `200`, and `GET /v1/translators/platform/a2c` returns `plugin: later` and no `baseUrl`
+  "out": "openaiChatCompletions", "baseUrl": "plugin://later"}` and no `plugins.later` exists
+- **THEN** Core answers `200`, and `GET /v1/translators/platform/a2c` returns `baseUrl: plugin://later`
 
 #### Scenario: Unknown interface type rejected on read
 - **WHEN** a config declares `translators.g2r: {"in": "geminiInteractions", "out": "openaiResponses", "baseUrl": "http://t"}`
@@ -268,7 +268,7 @@ be kept.
 
 ### Requirement: Advertised interface types
 Core SHALL advertise an interface type for a deployment when its `interfaces` entry is in `translator` mode with a
-`translator` reference, or is pass-through with a `plugin` reference or a resolving base url,
+`translator` reference, or is pass-through with a resolving base url, a plugin url included,
 or else when a legacy field serves it: `endpoint` declares `openaiEmbeddings` on a `type: embedding` model and
 `openaiChatCompletions` on anything else; `responsesEndpoint` declares `openaiResponses`.
 
@@ -293,7 +293,7 @@ or else when a legacy field serves it: `endpoint` declares `openaiEmbeddings` on
 - **THEN** its listing has no `interface_configs` field
 
 #### Scenario: Embedded interface advertised
-- **WHEN** an application declares only `interfaces.openaiChatCompletions: {"plugin": "p1"}`
+- **WHEN** an application declares only `interfaces.openaiChatCompletions: {"base_url": "plugin://p1"}`
 - **THEN** its listing in `GET /v1/deployments` carries `interface_configs.openaiChatCompletions`, whether or not a
   `plugins.p1` entry exists
 
@@ -333,9 +333,9 @@ Core SHALL reject a model whose `interfaces.<type>` in `translator` mode also de
 - **THEN** the config is rejected with a message containing `An interface is served either by a translator or by a base_url, not by both`
 
 ### Requirement: Pass-through entry needs a url
-Core SHALL reject a model with a pass-through `interfaces.<type>` entry that names no `plugin` and declares no
-`base_url` while the model declares no `baseUrl` (`Interface '<type>' declares no base_url and the model declares no
-baseUrl`), whether or not a legacy field serves that type.
+Core SHALL reject a model with a pass-through `interfaces.<type>` entry that declares no `base_url` while the model
+declares no `baseUrl` (`Interface '<type>' declares no base_url and the model declares no baseUrl`), whether or not a
+legacy field serves that type.
 
 #### Scenario: Entry with no url anywhere
 - **WHEN** a model declares `endpoint: http://legacy/chat` and `interfaces: {"openaiChatCompletions": {}}` and no `baseUrl`
@@ -375,9 +375,9 @@ translator name SHALL NOT make the model invalid.
 
 ### Requirement: Override path validation
 Core SHALL reject a model, application or interceptor whose `overridePaths` sits under a `translator`-mode entry or
-one naming a `plugin`, names a known key under an interface that does not own it, holds an empty template, or uses
-`{id}` for an operation with no id (`postOpenaiResponses`, `postAnthropicMessages`, `postAnthropicMessagesCountTokens`).
-An unknown key SHALL be ignored.
+one served by a plugin url (its own `base_url`, or the deployment-level `baseUrl` when it declares none), names a known
+key under an interface that does not own it, holds an empty template, or uses `{id}` for an operation with no id
+(`postOpenaiResponses`, `postAnthropicMessages`, `postAnthropicMessagesCountTokens`). An unknown key SHALL be ignored.
 
 #### Scenario: Key under the wrong interface
 - **WHEN** a model declares `interfaces.openaiChatCompletions.overridePaths.postAnthropicMessages: /v1/messages`
@@ -394,15 +394,20 @@ An unknown key SHALL be ignored.
 
 #### Scenario: Override paths under an embedded entry
 - **WHEN** an admin sends `PUT /v1/applications/platform/a` declaring `interfaces.openaiChatCompletions:
-  {"plugin": "p1", "overridePaths": {"postAzureOpenaiChatCompletions": "/x"}}`
+  {"base_url": "plugin://p1", "overridePaths": {"postAzureOpenaiChatCompletions": "/x"}}`
+- **THEN** Core answers `422` with a body containing `An interface with a plugin is served by its plugin: overridePaths has no effect`
+
+#### Scenario: Override paths under the deployment's plugin url
+- **WHEN** an admin sends `PUT /v1/applications/platform/a` declaring `baseUrl: plugin://p1` and
+  `interfaces.openaiChatCompletions: {"overridePaths": {"postAzureOpenaiChatCompletions": "/x"}}`
 - **THEN** Core answers `422` with a body containing `An interface with a plugin is served by its plugin: overridePaths has no effect`
 
 ### Requirement: Rejection outcome
-Core SHALL apply none of a file config holding a model, application, interceptor or translator these rules reject:
-startup fails, and a
-periodic reload keeps the previous config live. A Configuration API write of such a model, application or
-interceptor SHALL be answered `422` and not stored. The base-url and translator rules SHALL apply to models only,
-the plugin rules to models, applications and interceptors.
+Core SHALL apply none of a file config holding a model, application, interceptor, router or translator these rules
+reject: startup fails, and a
+periodic reload keeps the previous config live. A Configuration API write of such a model, application, interceptor or
+router SHALL be answered `422` and not stored. The base-url and translator rules SHALL apply to models only,
+the plugin url rules to models, applications, interceptors and routers.
 
 #### Scenario: Reload with an invalid model
 - **WHEN** a running Core reloads a config file in which a model declares a translator without `mode: translator`
@@ -415,103 +420,133 @@ the plugin rules to models, applications and interceptors.
 
 #### Scenario: Application with a plugin but no embedded mode
 - **WHEN** an admin sends `PUT /v1/applications/platform/a` declaring `interfaces.openaiChatCompletions:
-  {"base_url": "http://app", "plugin": "p1"}`
+  {"base_url": "plugin://"}`
 - **THEN** Core answers `422` and `GET /v1/applications/platform/a` answers `404`
 
-### Requirement: Plugin or base url
-Core SHALL reject a model or application whose `interfaces.<type>` declares a `plugin` that is blank, declares it
-next to a `base_url`, or declares it in `translator` mode. A model with a pass-through entry that names a `plugin`
-SHALL need no `base_url` and no `baseUrl`. A `plugin` naming no `plugins` entry SHALL NOT make the deployment
-invalid.
-
-#### Scenario: Plugin on a translated interface
-- **WHEN** a config file declares a model with `interfaces.anthropicMessages: {"mode": "translator",
-  "translator": "a2c", "plugin": "p1"}`
-- **THEN** the config is rejected with a message containing `A translated interface is served by its translator, not by a plugin`
-
-#### Scenario: Model served by a plugin needs no url
-- **WHEN** an admin sends `PUT /v1/models/platform/m` with `{"type": "chat", "interfaces":
-  {"openaiChatCompletions": {"plugin": "p1"}}}`
-- **THEN** Core answers `200` and stores the model
-
-#### Scenario: Embedded mode without a plugin
-- **WHEN** an admin sends `PUT /v1/models/platform/m` with `{"type": "chat", "interfaces":
-  {"openaiChatCompletions": {"mode": "embedded"}}}`
-- **THEN** Core answers `400`, and `GET /v1/models/platform/m` answers `404`
-
-#### Scenario: Blank plugin name
-- **WHEN** an admin sends `PUT /v1/models/platform/m` with `{"type": "chat", "interfaces":
-  {"openaiChatCompletions": {"plugin": " "}}}`
-- **THEN** Core answers `422` with a body containing `A plugin name cannot be blank`, and
-  `GET /v1/models/platform/m` answers `404`
-
-#### Scenario: Both plugin and base url
-- **WHEN** a config file declares an application with `interfaces.openaiChatCompletions: {"plugin": "p1", "base_url": "http://app"}`
-- **THEN** the config is rejected with a message containing `An interface is served either by a plugin or by a base_url, not by both`
-
-#### Scenario: Plugin not registered yet
-- **WHEN** an admin sends `PUT /v1/applications/platform/a` declaring `interfaces.openaiChatCompletions:
-  {"plugin": "later"}` and no `plugins.later` exists
-- **THEN** Core answers `200` and stores the application
-
 ### Requirement: No embedded interceptors
-Core SHALL reject an interceptor with an `interfaces.<type>` entry that names a `plugin`, or whose inline translator
-names one (`A plugin is not supported for an interceptor`). A request through an interceptor whose named translator
-resolves to one with a `plugin` SHALL be answered as one whose interceptor cannot be reached, and SHALL call no
-plugin.
+Core SHALL reject an interceptor with a plugin url in its `baseUrl`, in an `interfaces.<type>.base_url`, or in an
+inline translator's `baseUrl` (`A plugin is not supported for an interceptor`). A request through an interceptor
+whose named translator resolves to one with a plugin url SHALL be answered as one whose interceptor cannot be
+reached, and SHALL call no plugin.
 
 #### Scenario: Interceptor with an inline translator plugin
 - **WHEN** an admin sends `PUT /v1/interceptors/platform/i` declaring `interfaces.openaiChatCompletions:
-  {"mode": "translator", "translator": {"out": "openaiResponses", "plugin": "p1"}}`
+  {"mode": "translator", "translator": {"out": "openaiResponses", "baseUrl": "plugin://p1"}}`
 - **THEN** Core answers `422` with a body containing `A plugin is not supported for an interceptor`
 
 #### Scenario: Interceptor naming a translator with a plugin
 - **WHEN** interceptor `i` declares `interfaces.openaiChatCompletions: {"mode": "translator", "translator": "t1"}`,
-  `translators.t1` names `plugin: p1` of type `test-origin`, and a client sends a chat completion for a model with
-  interceptor `i`
+  `translators.t1` has `baseUrl: plugin://p1`, `plugins.p1` is of type `test-origin`, and a client sends a chat
+  completion for a model with interceptor `i`
 - **THEN** the client gets the answer of a request whose interceptor cannot be reached, and the plugin is not called
 
 #### Scenario: Embedded interceptor
 - **WHEN** an admin sends `PUT /v1/interceptors/platform/i` declaring `interfaces.openaiChatCompletions:
-  {"plugin": "p1"}`
+  {"base_url": "plugin://p1"}`
+- **THEN** Core answers `422` with a body containing `A plugin is not supported for an interceptor`
+
+#### Scenario: Interceptor with a plugin baseUrl
+- **WHEN** an admin sends `PUT /v1/interceptors/platform/i` with `{"baseUrl": "plugin://p1", "interfaces":
+  {"openaiChatCompletions": {}}}`
 - **THEN** Core answers `422` with a body containing `A plugin is not supported for an interceptor`
 
 ### Requirement: Plugins are for platform deployments
-Core SHALL serve an interface by a plugin, the entry's own or its translator's, only for a deployment of the
-platform config (the config files and the `platform` bucket). A custom application written to any other bucket with
-an entry that names a plugin, or whose inline translator names one, SHALL be answered `422` and not stored. A
-request to a custom application whose interface resolves to a plugin anyway SHALL be answered `502` without calling
-a plugin.
+Core SHALL serve an interface by a plugin, through its own plugin url or its translator's, only for a deployment of
+the platform config (the config files and the `platform` bucket). A custom application written to any other bucket
+with a plugin url in its `baseUrl`, an interface `base_url` or an inline translator's `baseUrl` SHALL be answered
+`422` and not stored. A request to a custom application whose interface resolves to a plugin anyway SHALL
+be answered `502` without calling a plugin.
 
 #### Scenario: Custom application naming a translator with a plugin
 - **WHEN** a custom application in a user bucket declares `interfaces.anthropicMessages: {"mode": "translator",
-  "translator": "a2c"}`, `translators.a2c` names `plugin: p1` of type `test-origin`, and its owner sends
-  `POST /anthropic/v1/messages` for it
+  "translator": "a2c"}`, `translators.a2c` has `baseUrl: plugin://p1`, `plugins.p1` is of type `test-origin`, and
+  its owner sends `POST /anthropic/v1/messages` for it
 - **THEN** Core answers `502` and the plugin is not called
 
 #### Scenario: Custom application refused on write
 - **WHEN** a user sends `PUT /v1/applications/<user bucket>/my-app` declaring `interfaces.openaiChatCompletions:
-  {"plugin": "p1"}`
+  {"base_url": "plugin://p1"}`
 - **THEN** Core answers `422` with a body containing `A plugin is reserved for platform deployments` and
   stores nothing
 
 #### Scenario: Custom application with an inline translator plugin refused on write
 - **WHEN** a user sends `PUT /v1/applications/<user bucket>/my-app` declaring `interfaces.anthropicMessages:
-  {"mode": "translator", "translator": {"out": "openaiChatCompletions", "plugin": "p1"}}`
+  {"mode": "translator", "translator": {"out": "openaiChatCompletions", "baseUrl": "plugin://p1"}}`
+- **THEN** Core answers `422` with a body containing `A plugin is reserved for platform deployments` and
+  stores nothing
+
+#### Scenario: Custom application with a plugin baseUrl refused on write
+- **WHEN** a user sends `PUT /v1/applications/<user bucket>/my-app` declaring `baseUrl: plugin://p1` and
+  `interfaces: {"openaiChatCompletions": {}}`
 - **THEN** Core answers `422` with a body containing `A plugin is reserved for platform deployments` and
   stores nothing
 
 #### Scenario: Stored custom application not served by a plugin
-- **WHEN** a custom application blob in a user bucket declares `interfaces.openaiChatCompletions: {"plugin": "p1"}`,
-  `plugins.p1` is of type `test-origin`, and its owner sends a chat completion for it
+- **WHEN** a custom application blob in a user bucket declares
+  `interfaces.openaiChatCompletions: {"base_url": "plugin://p1"}`, `plugins.p1` is of type `test-origin`, and its
+  owner sends a chat completion for it
 - **THEN** Core answers `502` and the plugin is not called
 
 ### Requirement: Validate reports a plugin outside the platform
-`/v1/admin/validate` SHALL report an `Application` manifest outside the `platform` bucket that names a plugin, the
-entry's own or its inline translator's, `FAILED` with the error a write of it gets, so validate and apply agree.
+`/v1/admin/validate` SHALL report an `Application` manifest outside the `platform` bucket with a plugin url in its
+`baseUrl`, an interface `base_url` or an inline translator's `baseUrl` `FAILED` with the error a write of it gets, so
+validate and apply agree.
 
 #### Scenario: Custom application refused by validate
 - **WHEN** an admin sends `POST /v1/admin/validate` with a manifest of kind `Application` named
-  `applications/public/my-app` declaring `interfaces.openaiChatCompletions: {"plugin": "p1"}`
+  `applications/public/my-app` declaring `interfaces.openaiChatCompletions: {"base_url": "plugin://p1"}`
 - **THEN** Core answers `422`, and the manifest's result has `status: FAILED` and
   `error: A plugin is reserved for platform deployments`
+
+### Requirement: Plugin url in a base url
+Core SHALL read a base url starting with `plugin://` (lowercase) as a plugin url, `plugin://<name>` optionally
+followed by `/<path>`, naming the `plugins` entry `<name>`: the text after `plugin://` up to the next `/` or the end.
+A plugin url SHALL be accepted in `interfaces.<type>.base_url`, in the deployment-level `baseUrl`, where it serves
+the entries that declare no `base_url`, and in a translator's `baseUrl`. A name no `plugins` entry has SHALL NOT
+make the deployment invalid.
+
+#### Scenario: Deployment-level plugin url serves the entries without a base url
+- **WHEN** application `a` declares `baseUrl: plugin://p1` and `interfaces: {"openaiChatCompletions": {},
+  "openaiEmbeddings": {"base_url": "http://app"}}`, `plugins.p1` is of type `test-origin`, and a client sends a chat
+  completion and then an embeddings request for `a`
+- **THEN** the `test-origin` plugin answers the chat completion, and the embeddings request is sent to
+  `http://app/openai/deployments/a/embeddings`
+
+#### Scenario: Plugin url not registered yet
+- **WHEN** an admin sends `PUT /v1/applications/platform/a` declaring `interfaces.openaiChatCompletions:
+  {"base_url": "plugin://later"}` and no `plugins.later` exists
+- **THEN** Core answers `200` and stores the application
+
+### Requirement: Plugin url where no plugin serves
+Core SHALL reject a model, application or interceptor with a plugin url in `endpoint` or `responsesEndpoint`, which
+no plugin serves, with a warning on that field (`A plugin url is only accepted in a base url`), on every write and on
+a reload, as Rejection outcome states.
+
+#### Scenario: Plugin url in endpoint
+- **WHEN** an admin sends `PUT /v1/models/platform/m` with `{"type": "chat", "endpoint": "plugin://p1"}`
+- **THEN** Core answers `422` with a warning whose `field` is `endpoint` and whose `message` contains
+  `A plugin url is only accepted in a base url`, and `GET /v1/models/platform/m` answers `404`
+
+#### Scenario: Plugin url in responsesEndpoint refused by validate and apply
+- **WHEN** an admin sends `POST /v1/admin/validate` with one `Model` manifest `models/platform/m` whose spec has
+  `type: chat`, an HTTP `endpoint` and `responsesEndpoint: plugin://p1`
+- **THEN** Core answers `422` with that result `FAILED` and an `error` containing
+  `A plugin url is only accepted in a base url`, and `POST /v1/admin/apply` with the same body and
+  `"precheck": false` answers the same result and writes nothing
+
+### Requirement: Plugin url with a blank name
+Core SHALL reject a plugin url whose name is blank (`plugin://`, `plugin:///v1`) in an `interfaces.<type>.base_url`,
+a deployment-level `baseUrl` or a translator's `baseUrl` (`A plugin name cannot be blank`), on every write and on a
+reload, as Rejection outcome states.
+
+#### Scenario: Plugin url with a blank name
+- **WHEN** an admin sends `PUT /v1/models/platform/m` with `{"type": "chat", "baseUrl": "plugin:///v1",
+  "interfaces": {"openaiChatCompletions": {}}}`
+- **THEN** Core answers `422` with a body containing `A plugin name cannot be blank`, and
+  `GET /v1/models/platform/m` answers `404`
+
+#### Scenario: Translator plugin url with a blank name
+- **WHEN** an admin sends `PUT /v1/translators/platform/a2c` with `{"in": "anthropicMessages",
+  "out": "openaiChatCompletions", "baseUrl": "plugin://"}`
+- **THEN** Core answers `422` with a body containing `A plugin name cannot be blank`, and
+  `GET /v1/translators/platform/a2c` answers `404`

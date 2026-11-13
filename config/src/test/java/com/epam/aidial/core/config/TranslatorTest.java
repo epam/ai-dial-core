@@ -58,30 +58,19 @@ public class TranslatorTest {
 
     // deployment-interfaces-config "Translator definition"
     @Test
-    void translatorNamesExactlyOneOfBaseUrlAndPlugin() throws Exception {
+    void translatorRequiresBaseUrl() throws Exception {
         Translator translator = MAPPER.readValue("""
-                {"in": "anthropicMessages", "out": "openaiChatCompletions", "plugin": "p1"}
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "plugin://p1"}
                 """, Translator.class);
 
-        assertEquals("p1", translator.getPlugin());
-        assertNull(translator.getBaseUrl());
+        assertEquals("plugin://p1", translator.getBaseUrl());
         String written = MAPPER.writeValueAsString(translator);
-        assertEquals("p1", MAPPER.readTree(written).path("plugin").asText());
-        assertFalse(MAPPER.readTree(written).has("baseUrl"), written);
-        assertThrows(ValueInstantiationException.class, () -> MAPPER.readValue("""
+        assertEquals("plugin://p1", MAPPER.readTree(written).path("baseUrl").asText());
+        assertFalse(MAPPER.readTree(written).has("plugin"), written);
+        // the field this version removed fails the read, as any field a translator does not have
+        assertThrows(MismatchedInputException.class, () -> MAPPER.readValue("""
                 {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "http://t", "plugin": "p1"}
                 """, Translator.class));
-        assertThrows(IllegalArgumentException.class, () -> new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, null, " "));
-    }
-
-    @Test
-    void blankPluginIsReadAsAbsent() throws Exception {
-        Translator translator = MAPPER.readValue("""
-                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "http://t", "plugin": ""}
-                """, Translator.class);
-
-        assertNull(translator.getPlugin());
-        assertEquals("http://t", translator.getBaseUrl());
     }
 
     @Test

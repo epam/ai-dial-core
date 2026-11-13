@@ -122,7 +122,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
 
     private void sendRequest() {
         String uri = buildUri(context);
-        // an interceptor hop is always an HTTP request: a translator that names a plugin cannot serve it
+        // an interceptor hop is always an HTTP request: a translator whose baseUrl is a plugin url cannot serve it
         Future<ProxyRequest> proxyRequest = uri != null && uri.startsWith(DeploymentEndpointUtil.PLUGIN_URL_PREFIX)
                 ? Future.failedFuture("A plugin is not supported for an interceptor: " + context.getDeployment().getName())
                 : createProxyRequest(uri);
