@@ -416,6 +416,15 @@ public class PublicationService {
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
         }
+        boolean ownRequest = !admin && orgUnitApprovals.isRequester(context, publication);
+        // with no second person deciding, the requester must still be allowed to publish what they asked for
+        if (ownRequest) {
+            for (Publication.Resource item : publication.getResources()) {
+                if (item.getAction() != Publication.ResourceAction.DELETE) {
+                    requireCredentialsPublishable(context, item, ResourceDescriptorFactory.fromPrivateUrl(item.getSourceUrl(), encryption));
+                }
+            }
+        }
 
         List<Publication.Resource> resourcesToAdd = publication.getResources().stream()
                 .filter(i -> i.getAction() == Publication.ResourceAction.ADD || i.getAction() == Publication.ResourceAction.ADD_IF_ABSENT)
@@ -455,9 +464,11 @@ public class PublicationService {
         deleteReviewResources(context, resourcesToAdd);
         deletePublicResources(context, resourcesToDelete);
 
-        String notificationMessage = admin ? "Your request has been approved by admin" : "Your request has been approved";
-        Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
-        notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+        if (!ownRequest) {
+            String notificationMessage = admin ? "Your request has been approved by admin" : "Your request has been approved";
+            Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
+            notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+        }
 
         return publication;
     }
@@ -499,11 +510,13 @@ public class PublicationService {
                 .toList();
         deleteReviewResources(context, resourcesToAdd);
 
-        String rejectReason = request.comment();
-        String notificationMessage = admin ? "Your request has been rejected by admin" : "Your request has been rejected";
-        notificationMessage = rejectReason != null ? notificationMessage + ": " + rejectReason : notificationMessage;
-        Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
-        notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+        if (admin || !orgUnitApprovals.isRequester(context, publication)) {
+            String rejectReason = request.comment();
+            String notificationMessage = admin ? "Your request has been rejected by admin" : "Your request has been rejected";
+            notificationMessage = rejectReason != null ? notificationMessage + ": " + rejectReason : notificationMessage;
+            Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
+            notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+        }
 
         return publication;
     }
@@ -629,6 +642,8 @@ public class PublicationService {
             throw new PermissionDeniedException("You don't have permission to access resource " + sourceUrl);
         }
 
+        requireCredentialsPublishable(context, resource, source);
+
         if (source.isFolder()) {
             throw new IllegalArgumentException("Source resource is folder: " + sourceUrl);
         }
@@ -674,6 +689,13 @@ public class PublicationService {
         }
 
         resource.setReviewUrl(reviewUrl);
+    }
+
+    private void requireCredentialsPublishable(ProxyContext context, Publication.Resource resource, ResourceDescriptor source) {
+        if (resource.isPublishCredentials() && source.getType() == ResourceTypes.TOOL_SET
+                && !(accessService.hasWriteAccess(source, context) || accessService.hasAdminAccess(context))) {
+            throw new PermissionDeniedException("You don't have permission to publish credentials of " + resource.getSourceUrl());
+        }
     }
 
     private void validateResourceForDeletion(Publication.Resource resource, String targetFolder, Set<String> urls,
