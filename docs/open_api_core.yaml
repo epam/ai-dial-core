@@ -16975,6 +16975,8 @@ components:
           type: string
         priority:
           type: integer
+        displayName:
+          type: string
     CacheBreakpoint:
       type: object
       properties:
@@ -19691,6 +19693,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PolicySubjectRule"
+        displayName:
+          type: string
     PolicyAmounts:
       type: object
       properties:
