@@ -15,7 +15,8 @@ import java.util.Set;
 /**
  * What the caller's roles at a unit give on the shared-space content that unit owns: {@code read} on a type's
  * namespace reads it, {@code write} changes, creates and deletes it, and {@code read} on {@code org-units} lists the
- * unit's folder with only its child units in it. A resource belongs to the nearest unit above it, so a child unit's
+ * unit's folder with only its child units in it. A person also lists the folder of each unit above one where they hold a
+ * role, with only the child units on the way there. A resource belongs to the nearest unit above it, so a child unit's
  * content needs roles at the child unit. Inside a unit roles are all there is: the read rules decide only what lies
  * under no unit. Callers other than a person read through their roles and get nothing else.
  */
@@ -60,6 +61,7 @@ public class OrgUnitGrants {
         Map<String, Set<String>> heldByUnit = new HashMap<>();
         boolean readOnly = !OrgUnitSubjects.isPerson(context);
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
+        Map<ResourceDescriptor, String> unreadUnitFolders = new HashMap<>();
         for (ResourceDescriptor resource : candidates) {
             String key = OrgUnitService.ownerOf(units, resource);
             if (key.equals(OrgUnitService.SHARED_SPACE_KEY)) {
@@ -76,6 +78,19 @@ public class OrgUnitGrants {
             if (!access.isEmpty()) {
                 result.put(resource, Set.copyOf(access));
             }
+            if (!access.contains(ResourceAccessType.READ) && isUnitFolder(key, resource)) {
+                unreadUnitFolders.put(resource, key);
+            }
+        }
+        if (!unreadUnitFolders.isEmpty()) {
+            Set<String> above = orgUnits.unitsAbovePersonsRoles(context, units, roles);
+            unreadUnitFolders.forEach((folder, key) -> {
+                if (above.contains(key)) {
+                    Set<ResourceAccessType> access = new HashSet<>(result.getOrDefault(folder, Set.of()));
+                    access.add(ResourceAccessType.READ);
+                    result.put(folder, Set.copyOf(access));
+                }
+            });
         }
         return result;
     }
@@ -118,8 +133,8 @@ public class OrgUnitGrants {
 
     /**
      * Of a listed folder's items that units own, those the listing keeps. A child unit's folder stays when the caller
-     * holds a role there, or {@code read} on {@code org-units} at the unit above it; anything else stays when a role
-     * reads it.
+     * holds a role there or in a unit below it, or {@code read} on {@code org-units} at the unit above it; anything else
+     * stays when a role reads it.
      */
     public Set<ResourceDescriptor> visibleInListing(ProxyContext context, Set<ResourceDescriptor> items) {
         List<ResourceDescriptor> candidates = candidates(context, items);
@@ -131,13 +146,15 @@ public class OrgUnitGrants {
         OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
         Map<String, Set<String>> heldByUnit = new HashMap<>();
         Set<ResourceDescriptor> visible = new HashSet<>();
+        Map<ResourceDescriptor, String> hiddenUnitFolders = new HashMap<>();
         for (ResourceDescriptor resource : candidates) {
             String key = OrgUnitService.ownerOf(units, resource);
             if (key.equals(OrgUnitService.SHARED_SPACE_KEY)) {
                 continue;
             }
+            boolean unitFolder = isUnitFolder(key, resource);
             boolean shown;
-            if (isUnitFolder(key, resource)) {
+            if (unitFolder) {
                 shown = showsUnit(roles, held(context, units, heldByUnit, key),
                         held(context, units, heldByUnit, OrgUnitService.parentKey(key)));
             } else {
@@ -145,7 +162,17 @@ public class OrgUnitGrants {
             }
             if (shown) {
                 visible.add(resource);
+            } else if (unitFolder) {
+                hiddenUnitFolders.put(resource, key);
             }
+        }
+        if (!hiddenUnitFolders.isEmpty()) {
+            Set<String> above = orgUnits.unitsAbovePersonsRoles(context, units, roles);
+            hiddenUnitFolders.forEach((folder, key) -> {
+                if (above.contains(key)) {
+                    visible.add(folder);
+                }
+            });
         }
         return visible;
     }

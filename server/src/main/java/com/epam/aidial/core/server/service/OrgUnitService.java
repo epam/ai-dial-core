@@ -189,9 +189,9 @@ public class OrgUnitService {
 
     /**
      * Reads the shared space or a unit with the units directly below it, or every unit below when {@code recursive}.
-     * An admin sees every unit; anyone else sees a unit where they hold a role, and the units directly below one where
-     * they hold {@code read} on {@code org-units}, as long as they see every unit above it too. A unit they can't see
-     * answers as one that doesn't exist.
+     * An admin sees every unit; anyone else sees a unit where they hold a role, every unit above one, and the units
+     * directly below one where they hold {@code read} on {@code org-units}, as long as they see every unit above it too.
+     * A unit they can't see answers as one that doesn't exist.
      *
      * @param path {@code public}, then each unit's name
      */
@@ -206,9 +206,8 @@ public class OrgUnitService {
     }
 
     /**
-     * The units the caller works in, parents before children: the ones the tree shows them, and the ones they hold a
-     * role in but reach only by path, without the units above. A DIAL admin gets every unit, with every permission;
-     * a caller who is not a person gets none.
+     * The units the tree shows the caller, parents before children; a unit shown only on the way to one below has no
+     * roles. A DIAL admin gets every unit, with every permission; a caller who is not a person gets none.
      */
     public List<UserOrgUnits.Unit> unitsOf(ProxyContext context, boolean admin) {
         if (!admin && !OrgUnitSubjects.isPerson(context)) {
@@ -216,11 +215,12 @@ public class OrgUnitService {
         }
         OrgUnitList list = getUnitList();
         OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> held = heldRolesByUnit(context, list);
+        Map<String, Set<String>> held = heldRolesByUnit(context, list.units());
+        Predicate<String> visible = visibleTo(roles, held, list);
         List<UserOrgUnits.Unit> units = new ArrayList<>();
         for (Map.Entry<String, OrgUnit> entry : list.units().entrySet()) {
             String key = entry.getKey();
-            if (key.equals(SHARED_SPACE_KEY) || !admin && !isShown(roles, held, key)) {
+            if (key.equals(SHARED_SPACE_KEY) || !admin && !visible.test(key)) {
                 continue;
             }
             List<String> roleNames = held.getOrDefault(key, Set.of()).stream().filter(roles::exists).sorted().toList();
@@ -988,17 +988,42 @@ public class OrgUnitService {
      */
     private Predicate<String> visibleTo(ProxyContext context, OrgUnitList list) {
         OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> held = heldRolesByUnit(context, list);
-        return key -> list.units().containsKey(key) && isShown(roles, held, key);
+        return visibleTo(roles, heldRolesByUnit(context, list.units()), list);
     }
 
-    private static boolean isShown(OrgUnitRoles roles, Map<String, Set<String>> held, String key) {
-        return OrgUnitGrants.showsUnit(roles, held.getOrDefault(key, Set.of()), held.getOrDefault(parentKey(key), Set.of()));
+    private static Predicate<String> visibleTo(OrgUnitRoles roles, Map<String, Set<String>> held, OrgUnitList list) {
+        Set<String> above = unitsAbove(roles, held);
+        return key -> list.units().containsKey(key) && (above.contains(key)
+                || OrgUnitGrants.showsUnit(roles, held.getOrDefault(key, Set.of()), held.getOrDefault(parentKey(key), Set.of())));
     }
 
-    private Map<String, Set<String>> heldRolesByUnit(ProxyContext context, OrgUnitList list) {
+    /**
+     * The units above those where the caller, a person, holds a role: the tree shows them by name so the caller can
+     * reach their units, with only the child units on the way there. None for anyone else.
+     */
+    public Set<String> unitsAbovePersonsRoles(ProxyContext context, Map<String, OrgUnit> units, OrgUnitRoles roles) {
+        if (!OrgUnitSubjects.isPerson(context)) {
+            return Set.of();
+        }
+        return unitsAbove(roles, heldRolesByUnit(context, units));
+    }
+
+    private static Set<String> unitsAbove(OrgUnitRoles roles, Map<String, Set<String>> held) {
+        Set<String> above = new HashSet<>();
+        held.forEach((key, names) -> {
+            if (names.stream().anyMatch(roles::exists)) {
+                String current = parentKey(key);
+                while (!current.equals(SHARED_SPACE_KEY) && above.add(current)) {
+                    current = parentKey(current);
+                }
+            }
+        });
+        return above;
+    }
+
+    private Map<String, Set<String>> heldRolesByUnit(ProxyContext context, Map<String, OrgUnit> units) {
         Map<String, Set<String>> held = new HashMap<>();
-        roleAssignmentsOfAll(list.units()).forEach((key, assignments) -> held.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
+        roleAssignmentsOfAll(units).forEach((key, assignments) -> held.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
         return held;
     }
 

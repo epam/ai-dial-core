@@ -201,7 +201,7 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         assertEquals("admin user", new JsonObject(created.body()).getString("author"));
         assertTrue(new JsonObject(created.body()).getValue("createdAt") instanceof Number, created.body());
 
-        assertEquals(200, assign(ORG + "/Risk", roleForUsers("member")).status());
+        assertEquals(200, assign(ORG + "/Risk", roleForUsers("viewer")).status());
         Response asUser = send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Risk", null, null, "authorization", "user");
         assertEquals(200, asUser.status(), asUser.body());
         assertEquals("admin user", new JsonObject(asUser.body()).getString("author"));
@@ -480,7 +480,7 @@ public class OrgUnitApiTest extends ResourceBaseTest {
     void testConfiguredRolesSurviveManifestWritesAndAreSystemRoles() {
         addReadRule("public/Acme/", "Manager");
         assertEquals(200, create(ORG, "Acme").status());
-        List<String> expected = List.of("admin", "editor", "viewer", "member", "auditor", "manager");
+        List<String> expected = List.of("admin", "editor", "viewer", "auditor", "manager");
         assertEquals(expected, roleNames(roles(ORG + "/Acme")));
 
         String manifests = """
@@ -514,7 +514,7 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         assertEquals(200, create(ORG, "Acme").status());
 
         JsonArray roles = roles(ORG + "/Acme");
-        assertEquals(4, roles.size(), roles.encode());
+        assertEquals(3, roles.size(), roles.encode());
         JsonObject admin = roles.getJsonObject(0);
         assertEquals("admin", admin.getString("name"));
         assertTrue(admin.getBoolean("system"));
@@ -526,10 +526,6 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         JsonObject viewer = roles.getJsonObject(2);
         assertEquals("viewer", viewer.getString("name"));
         assertEquals(List.of("read"), viewer.getJsonArray("permissions").getJsonObject(0).getJsonArray("actions").getList());
-        JsonObject member = roles.getJsonObject(3);
-        assertEquals("member", member.getString("name"));
-        assertEquals(1, member.getJsonArray("permissions").size(), member.encode());
-        assertEquals("org-units/**", member.getJsonArray("permissions").getJsonObject(0).getString("pathPattern"), member.encode());
 
         assertEquals(403, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Acme/roles", null, null, "authorization", "user").status());
         assertEquals(404, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Beta/roles", null, null, "authorization", "admin").status());
@@ -543,7 +539,7 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         assertEquals(200, create(ORG, "Acme").status());
 
         JsonArray roles = roles(ORG + "/Acme");
-        assertEquals(List.of("admin", "editor", "viewer", "member", "auditor", "manager"), roles.stream().map(role -> ((JsonObject) role).getString("name")).toList());
+        assertEquals(List.of("admin", "editor", "viewer", "auditor", "manager"), roles.stream().map(role -> ((JsonObject) role).getString("name")).toList());
         JsonObject editor = roles.getJsonObject(1);
         assertEquals("Changes files only", editor.getString("description"));
         assertEquals(1, editor.getJsonArray("permissions").size(), editor.encode());
@@ -629,7 +625,7 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         assertEquals(400, assign(ORG + "/Acme", valid.replace("\"admin\"", "\"owner\"")).status());
         Response approver = assign(ORG + "/Acme", valid.replace("\"admin\"", "\"approver\""));
         assertEquals(400, approver.status());
-        assertEquals("roleName is one of admin, editor, viewer, member", approver.body());
+        assertEquals("roleName is one of admin, editor, viewer", approver.body());
         assertEquals(400, assign(ORG + "/Acme", "{\"roleName\": \"admin\", \"subject\": {\"type\": \"user\", \"id\": \"jane\"}}").status());
         assertEquals(400, assign(ORG + "/Acme", "{\"roleName\": \"admin\", \"subject\": {\"type\": \"any\"}}").status());
         assertEquals(400, assign(ORG + "/Acme", "{\"roleName\": \"admin\"}").status());
