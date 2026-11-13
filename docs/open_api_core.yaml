@@ -17595,6 +17595,8 @@ components:
           type: integer
         displayName:
           type: string
+        object:
+          $ref: "#/components/schemas/PolicyObjectSet"
     CacheBreakpoint:
       type: object
       properties:
@@ -21858,6 +21860,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BudgetStats"
+        costObject:
+          type: string
     UserOrgUnits:
       type: object
       properties:
