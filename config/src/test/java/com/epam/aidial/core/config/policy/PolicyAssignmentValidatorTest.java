@@ -150,6 +150,8 @@ class PolicyAssignmentValidatorTest {
 
     @Test
     void testPolicyOnlyFieldsOnAssignment() throws Exception {
+        assertEquals("'displayName' belongs to the policy, not to an assignment",
+                PolicyAssignmentValidator.rejectPolicyFieldsOn(MAPPER.readTree("{\"policy\": \"p\", \"displayName\": \"Team Budget\"}")));
         assertEquals("'priority' belongs to the policy, not to an assignment",
                 PolicyAssignmentValidator.rejectPolicyFieldsOn(MAPPER.readTree("{\"policy\": \"p\", \"priority\": 1}")));
         assertEquals("'cost' belongs to the policy, not to an assignment",
