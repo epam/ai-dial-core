@@ -33,7 +33,7 @@ and self-applying policies on both user stats endpoints.
 - **THEN** both endpoints return each configured name with its corresponding policy and preserve priority order
 
 #### Scenario: Named self-applying budget
-- **WHEN** a caller matches a self-applying file policy with a configured name
+- **WHEN** a caller matches a self-applying policy with a configured name
 - **THEN** both endpoints return that name for the budget
 
 #### Scenario: Missing or blank policy name

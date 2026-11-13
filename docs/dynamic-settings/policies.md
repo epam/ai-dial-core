@@ -3,8 +3,9 @@
 A budget policy can have an optional string `displayName`. Use it for a readable label such as
 "Engineering Pro"; the policy path remains its identifier. The field uses camelCase, as the other policy fields do.
 
-Set the name in a policy under the dynamic configuration's `policies` map, in an admin Policy manifest, or through
-the policy API. For example, an admin can PUT this body to `/v1/policies/platform/engineering-pro`:
+Set the name through the policy API or an admin Policy manifest. Policies are API-managed records; they are
+not loaded from the dynamic configuration JSON files. For example, an admin can PUT this body to
+`/v1/policies/platform/engineering-pro`:
 
 ```json
 {
@@ -53,4 +54,4 @@ resetting spend or changing limits, priority order or enforcement. No locale sel
 
 Existing policies require no migration and use the policy path as their label. Deploy supporting Core versions
 on all instances before configuring names: older versions reject unknown policy fields. Before rolling back,
-remove `displayName` from policy files and stored policy records while the supporting version is still running.
+remove `displayName` from stored policy records while the supporting version is still running.

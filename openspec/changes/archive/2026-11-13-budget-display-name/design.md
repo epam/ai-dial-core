@@ -4,7 +4,8 @@
 
 See proposal.md for motivation. The baseline is Core development at `34f667173f1b81cf9dcde17e3968b3f983e9c2b8`.
 `PolicyRecordCodec.java:parsePolicy/readPolicy/write` maps the same policy for API writes and stored records.
-`Config.java` exposes file policies, and `CostObjectIndex.java:build` keeps the policy on each budget instance.
+`Config.java` holds API-managed policies, and `CostObjectIndex.java:build` keeps the policy on each budget instance.
+Its policy maps are `@JsonIgnore`; dynamic configuration files do not supply policies.
 `BudgetEnforcer.java:collectStats` already has that instance when it builds `BudgetStats` for both user endpoints.
 `BudgetCounterStore.java:describe` keys spend by assignment or self-applying policy path, user and model.
 
@@ -56,6 +57,9 @@ remove configured display names before rolling back. Client changes are tracked 
 The inspected code matches these assumptions: no existing policy/display-name field, no extra policy fetch in
 the stats projection, and no display metadata in counter keys.
 
-During test review, `FileConfigController.java:entitySource` proved that file-policy inspection is not exposed
-on `/v1/admin/config/file`. The file-policy scenario therefore checks the existing admin reload response and
-both user endpoints. This avoids adding an unrelated inspection endpoint.
+CI exposed an incorrect initial assumption about file policies: `Config.java` marks the policy maps
+`@JsonIgnore`, and `MergedConfigStore.java:rebuild` starts them empty before loading API records. Policies are
+not loaded from dynamic configuration files or serialized in the reload response. The spec and documentation
+now describe the existing policy API and manifest surfaces only. The self-applying scenario writes its policy
+through the API, reloads it and verifies its name through policy GET and both user endpoints. Adding file-based
+policy configuration is outside the issue and is not implemented.

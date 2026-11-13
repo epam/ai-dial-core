@@ -52,11 +52,15 @@ class BudgetDisplayNameApiTest extends ResourceBaseTest {
     }
 
     @Test
-    @DialConfigLocation("dial-config/named-user-budget.json")
-    void testNamedFilePolicy() {
-        Response reloaded = admin(HttpMethod.POST, "/v1/ops/config/reload", null);
-        verify(reloaded, 200);
-        JsonNode stored = json(reloaded.body()).get("policies").get("ORG/personal");
+    @DialConfigLocation(CONFIG)
+    void testNamedSelfApplyingPolicy() {
+        ObjectNode policy = policy("Personal Sandbox").put("costObject", "ORG");
+        policy.set("subject", json("""
+                [{ "source": "title", "function": "EQUAL", "targets": ["Manager"] }]
+                """));
+        putPolicy("ORG/personal", policy);
+        verify(admin(HttpMethod.POST, "/v1/ops/config/reload", null), 200);
+        JsonNode stored = adminGet(POLICIES + "ORG/personal");
         assertEquals("Personal Sandbox", stored.get("displayName").asText());
         for (String path : STATS_PATHS) {
             JsonNode budgets = budgets(path);

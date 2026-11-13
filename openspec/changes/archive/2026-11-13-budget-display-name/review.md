@@ -20,9 +20,10 @@ No remaining code findings from this static review. Server integration results a
 - Documentation: configuration and response examples match the implemented fields and test setup. Generated
   OpenAPI remains owned by the existing CI `replaceSpec` job.
 
-Two test assumptions were corrected during review: file-policy inspection uses the admin reload response
-because `/v1/admin/config/file` does not support policies; the full-path fallback test uses `projA/engineering`
-because project policies can only be assigned within their own cost object.
+Review and CI corrected two test assumptions: policies are API-managed and are not loaded from dynamic
+configuration files (`Config` ignores these maps), so the self-applying policy test now uses PUT and GET of the
+policy around a reload. Specs and operator docs were corrected to match this existing API surface. The full-path
+fallback test uses `projA/engineering` because project policies can only be assigned within their own cost object.
 
 ## Verification
 
@@ -39,7 +40,9 @@ because project policies can only be assigned within their own cost object.
   private storage dependencies; it is not a successful standard build.
 - Standard Checkstyle plus the four targeted server test classes: blocked at `:storage:compileJava` by HTTP 401
   for `org.apache.jclouds.api:filesystem:2.7.3` and `org.apache.jclouds:jclouds-allblobstore:2.7.3` from GitHub Packages.
-  The new server tests have not run locally, and server compilation has not been verified locally.
+  Server compilation and tests cannot be verified locally with the available credentials.
 
-Task 1.5 remains explicitly deferred to an environment with package access. The full suite and generated OpenAPI
-will run in the repository PR workflow. Archiving records the implemented contract; it does not waive this check.
+The first PR workflow passed server/test compilation, standard Checkstyle, Docker build and OpenAPI generation.
+Its new API tests passed except for the incorrect file-policy scenario described above. That test has been
+corrected to use the supported API; task 1.5 awaits a passing CI run of the final tests. Archiving records the
+implemented contract; it does not waive this check.
