@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.config;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.validation.ValidationModule;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -31,12 +32,14 @@ public final class FileConfigStore implements ConfigStore {
     private volatile Config config;
     @Nullable
     private final ApiKeyStore apiKeyStore;
+    private final PluginRegistry pluginRegistry;
     private final List<Consumer<Config>> onReloadCallbacks;
 
-    public FileConfigStore(Vertx vertx, JsonObject settings, @Nullable ApiKeyStore apiKeyStore,
+    public FileConfigStore(Vertx vertx, JsonObject settings, @Nullable ApiKeyStore apiKeyStore, PluginRegistry pluginRegistry,
                            List<Consumer<Config>> initialOnReloadCallbacks) {
         this.jsonMapper = buildJsonMapper(settings);
         this.apiKeyStore = apiKeyStore;
+        this.pluginRegistry = pluginRegistry;
         this.onReloadCallbacks = List.copyOf(initialOnReloadCallbacks);
         this.paths = settings.getJsonArray("files")
                 .stream().map(path -> (String) path).toArray(String[]::new);
@@ -62,7 +65,7 @@ public final class FileConfigStore implements ConfigStore {
             log.debug("Config loading is started");
             Config config = loadConfig();
 
-            ConfigPostProcessor.process(config, apiKeyStore);
+            ConfigPostProcessor.process(config, apiKeyStore, pluginRegistry);
 
             this.config = config;
             for (Consumer<Config> callback : onReloadCallbacks) {

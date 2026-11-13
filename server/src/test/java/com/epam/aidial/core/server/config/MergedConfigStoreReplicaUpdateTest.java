@@ -4,11 +4,13 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
@@ -201,6 +203,34 @@ public class MergedConfigStoreReplicaUpdateTest {
         invokeOnResourceEvent(store, event);
 
         verify(taskExecutor).submit(any());
+    }
+
+    @Test
+    public void platformBucketPluginEventIsDispatched() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(taskExecutor, resourceService);
+        when(taskExecutor.submit(any())).thenReturn(Future.succeededFuture());
+
+        ResourceEvent event = new ResourceEvent()
+                .setUrl("plugins/platform/p1")
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("pod-other");
+        invokeOnResourceEvent(store, event);
+
+        verify(taskExecutor).submit(any());
+    }
+
+    @Test
+    public void pluginUpdateFromAnotherPodIsApplied() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("plugins/platform/p1", null);
+        when(resourceService.getResource(descriptor)).thenReturn("{\"type\":\"test-echo\",\"settings\":{\"greeting\":\"hi\"}}");
+
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE, null);
+
+        Plugin applied = store.get().getPlugins().get("p1");
+        assertEquals("test-echo", applied.getType());
+        assertEquals("hi", applied.getSettings().get("greeting").asText());
     }
 
     @Test
@@ -542,7 +572,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, onInvalidEntity, false, POD_ID,
+                secretFieldProcessor, lockService, onInvalidEntity, false, POD_ID, PluginRegistry.EMPTY,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
         return store;

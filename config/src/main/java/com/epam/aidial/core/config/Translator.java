@@ -34,7 +34,9 @@ public class Translator {
     private final InterfaceType out;
 
     /**
-     * Root url the ingress path is appended to at request time, exactly as a deployment's own base url is.
+     * Root url the ingress path is appended to at request time, exactly as a deployment's own base url is. A
+     * {@code plugin://<name>} url names the {@code plugins} entry that translates in Core's process: it gets the request
+     * a service at the url would get and calls the deployment's {@link #out} interface through its host.
      */
     private final String baseUrl;
 

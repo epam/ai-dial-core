@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
@@ -448,6 +449,86 @@ public class ConfigResourceController implements Controller {
                     parameters = {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Translator name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            // Plugins
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/plugins/{bucket}/{path}",
+                    operationId = "getPlugin",
+                    tags = {"Plugins"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Plugin name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Plugin.class, EntityMetadata.class}),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the plugin", required = true)
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/plugins/{bucket}/{path}",
+                    operationId = "savePlugin",
+                    requestBody = @ApiSchema(implementation = Plugin.class),
+                    tags = {"Plugins"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Plugin name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved plugin", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 422),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/plugins/{bucket}/{path}",
+                    operationId = "deletePlugin",
+                    tags = {"Plugins"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Plugin name"),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
@@ -1277,6 +1358,8 @@ public class ConfigResourceController implements Controller {
                     (key, router) -> projectItem(router, key));
             case TRANSLATOR -> handleSingleGetFromBlob(ResourceTypes.TRANSLATOR,
                     (key, translator) -> projectItem(translator, key));
+            case PLUGIN -> handleSingleGetFromBlob(ResourceTypes.PLUGIN,
+                    (key, plugin) -> projectItem(plugin, key));
             case ROLE -> handleSingleGetFromBlob(ResourceTypes.ROLE,
                     (key, role) -> projectItem(role, key));
             case PROJECT_KEY -> handleSingleGet(
@@ -1516,6 +1599,8 @@ public class ConfigResourceController implements Controller {
             case ROUTER -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTER,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case TRANSLATOR -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.TRANSLATOR,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case PLUGIN -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.PLUGIN,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case ROLE -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROLE,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
@@ -1948,11 +2033,13 @@ public class ConfigResourceController implements Controller {
                     if (entity instanceof Model m) {
                         checkModel(m);
                     } else if (entity instanceof Interceptor interceptor) {
-                        checkOverridePaths(interceptor);
+                        checkInterfaces(interceptor);
                     } else if (entity instanceof Router router) {
                         checkRouter(router);
                     } else if (entity instanceof Translator t) {
                         checkTranslator(t);
+                    } else if (entity instanceof Plugin plugin) {
+                        checkPlugin(plugin);
                     } else if (entity instanceof Route route) {
                         checkRoute(route);
                     }
@@ -2204,6 +2291,7 @@ public class ConfigResourceController implements Controller {
             // a router carries no encrypted field: DeploymentInterface declares none and a router has no upstreams
             case ROUTER -> new WriteSpec(descriptor, Router.class, false, false);
             case TRANSLATOR -> new WriteSpec(descriptor, Translator.class, false, false);
+            case PLUGIN -> new WriteSpec(descriptor, Plugin.class, false, false);
             case ROLE -> new WriteSpec(descriptor, Role.class, false, false);
             case PROJECT_KEY -> new WriteSpec(descriptor, Key.class, true, true);
             case ROUTE -> new WriteSpec(descriptor, Route.class, true, false);
@@ -2289,6 +2377,21 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
+     * Check for plugin writes against the provider of the plugin type, the one the rebuild makes
+     * ({@link ConfigPostProcessor#validatePlugin}). Settings the provider rejects are refused whatever the mode; an
+     * unknown type only in strict mode, the allowance {@link #checkModel} makes for a dangling interceptor, so a
+     * declaration can be written before the jar of its type is rolled out.
+     */
+    private void checkPlugin(Plugin entity) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validatePlugin(path, entity, mergedConfigStore.getPluginRegistry(), !softValidation, warnings);
+        if (warnings.isEmpty()) {
+            return;
+        }
+        rejectWithValidationWarnings(warnings);
+    }
+
+    /**
      * The rules the rebuild enforces on a router ({@link ConfigPostProcessor#validateRouterInvariants}), against the
      * merged translators, so a router the rebuild would refuse is rejected before its blob is written.
      */
@@ -2301,13 +2404,13 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Structural check for a deployment write: an {@code overridePaths} entry Core cannot render is
-     * rejected before the blob is written, exactly as {@link #checkTranslator} rejects a translator the
-     * rebuild would refuse. Always enforced, unlike {@link #checkModel}'s soft-mode allowance.
+     * Structural check for a deployment write: an {@code overridePaths} entry Core cannot render, or a plugin url with
+     * no name, where no plugin serves or on an interceptor, is rejected before the blob is written, exactly as {@link #checkTranslator}
+     * rejects a translator the rebuild would refuse. Always enforced, unlike {@link #checkModel}'s soft-mode allowance.
      */
-    private void checkOverridePaths(Deployment entity) {
+    private void checkInterfaces(Deployment entity) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateOverridePaths(entity, warnings);
+        ConfigPostProcessor.validateInterfaces(entity, warnings);
         if (warnings.isEmpty()) {
             return;
         }
@@ -2448,6 +2551,7 @@ public class ConfigResourceController implements Controller {
             case INTERCEPTOR -> Interceptor.class;
             case ROUTER -> Router.class;
             case TRANSLATOR -> Translator.class;
+            case PLUGIN -> Plugin.class;
             case ROLE -> Role.class;
             case PROJECT_KEY -> Key.class;
             case ROUTE -> Route.class;

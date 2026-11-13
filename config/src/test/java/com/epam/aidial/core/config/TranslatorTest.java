@@ -56,6 +56,23 @@ public class TranslatorTest {
         assertThrows(ValueInstantiationException.class, () -> MAPPER.readValue(explicitNull, Config.class));
     }
 
+    // deployment-interfaces-config "Translator definition"
+    @Test
+    void translatorRequiresBaseUrl() throws Exception {
+        Translator translator = MAPPER.readValue("""
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "plugin://p1"}
+                """, Translator.class);
+
+        assertEquals("plugin://p1", translator.getBaseUrl());
+        String written = MAPPER.writeValueAsString(translator);
+        assertEquals("plugin://p1", MAPPER.readTree(written).path("baseUrl").asText());
+        assertFalse(MAPPER.readTree(written).has("plugin"), written);
+        // the field this version removed fails the read, as any field a translator does not have
+        assertThrows(MismatchedInputException.class, () -> MAPPER.readValue("""
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "http://t", "plugin": "p1"}
+                """, Translator.class));
+    }
+
     @Test
     void inlineDefinitionMissingOutIsRejectedOnRead() {
         String json = """

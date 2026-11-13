@@ -75,6 +75,25 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testMigratePlugins() {
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, "{\"types\": [\"plugins\"]}",
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertTrue(idsWithStatus(results, "migrated").contains("plugins/platform/file-plugin"),
+                () -> "Body: " + response.body());
+        assertEquals("Plugin", findByResourceUrl(results, "plugins/platform/file-plugin").get("kind").asText(),
+                () -> "Body: " + response.body());
+
+        Response get = send(HttpMethod.GET, "/v1/plugins/platform/file-plugin", null, "", "authorization", "admin");
+        verify(get, 200);
+        JsonNode plugin = ProxyUtil.MAPPER.readTree(get.body());
+        assertEquals("test-echo", plugin.get("type").asText());
+        assertEquals("hi", plugin.get("settings").get("greeting").asText());
+    }
+
+    @Test
+    @SneakyThrows
     @DialConfigLocation("dial-config/routers.json")
     void testMigrateFileRouters() {
         String body = """

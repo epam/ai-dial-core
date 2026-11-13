@@ -61,6 +61,8 @@ Interceptors support only one interface type:
 
 > The Responses API (`openaiResponses`) and any other interface types are **not** supported for interceptors. If declared, they are dropped on config read with a warning.
 
+> A plugin is **not** supported for interceptors: an interceptor with a plugin URL (`plugin://<name>`) in its `baseUrl`, an interface's `base_url` or an inline translator's `baseUrl` is rejected on config load and on write.
+
 Each value is an object with the following fields:
 
 * `base_url`: The interceptor service root that the matching ingress path is appended to. Optional — the interceptor-level `baseUrl` serves an entry that omits it.

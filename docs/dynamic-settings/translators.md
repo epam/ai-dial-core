@@ -14,7 +14,7 @@ A map of available translators.
 
 * `in`: **Required.** The interface type the translator accepts — the API a client calls DIAL Core on. It has to differ from `out`.
 * `out`: **Required.** The interface type it converts to. The deployment referencing the translator has to serve `out` itself, and serve it pass-through: that is the API the translator calls DIAL Core back on.
-* `baseUrl`: **Required.** The root URL of the translator service. Each request is forwarded to `baseUrl` + **the exact ingress path it was received on**, exactly as a deployment's own base URL is. A trailing slash is normalized.
+* `baseUrl`: **Required.** The root URL of the translator service. Each request is forwarded to `baseUrl` + **the exact ingress path it was received on**, exactly as a deployment's own base URL is. A trailing slash is normalized. A plugin URL, `plugin://<plugin_name>` (preview, may change incompatibly), names the [plugins](plugins.md) entry that translates inside DIAL Core instead: refer to [Translators served by a plugin](#translators-served-by-a-plugin).
 
 Both name an interface type this version of DIAL Core knows. Unlike an `interfaces` key, which is simply inert when it names a type Core does not know, these two are matched — `in` against the interface the translator is referenced from, `out` against the one the deployment serves back — so a name Core cannot resolve is rejected as the config is read, and the previous config stays live.
 
@@ -72,6 +72,22 @@ An interface that needs a translator no other deployment uses can define one in 
 }
 ```
 
+## Translators served by a plugin
+
+A translator whose `baseUrl` is a plugin URL runs inside DIAL Core. The interface stays in `translator` mode and every rule below holds. DIAL Core hands the plugin the request it would send to the translator service, and the plugin calls the deployment's `out` interface in process, in place of the HTTP callback. Refer to [Translating for a deployment](plugins.md#translating-for-a-deployment).
+
+```json
+"translators": {
+    "anthropicMessagesToOpenaiChatCompletions": {
+        "in": "anthropicMessages",
+        "out": "openaiChatCompletions",
+        "baseUrl": "plugin://messages-to-chat"
+    }
+}
+```
+
+A plugin name with no `plugins` entry yet is accepted; requests for the interface answer `502` until the entry exists; a plugin URL with no name is rejected. Only deployments of the platform config are served by a translator plugin: a custom application in any other bucket is rejected with `422` when its inline translator names one, and answered `502` when it names a translator that does.
+
 ## Rules
 
 * An interface is served **either** by a base URL **or** by a translator, never by both. `mode` says which: `translator` requires a `translator` and rejects a `base_url` on the same entry, and `passthrough` (the default) is the other way round. A model breaking this is rejected on config load with a validation error, rather than having one of the two silently win.
@@ -85,7 +101,7 @@ An interface that needs a translator no other deployment uses can define one in 
 
 ## Limits and a translated request
 
-A client call served through a translator reaches DIAL Core twice: once from the client, on the translated interface, and once from the translator, on the interface named by `out`. Only the second call is a real request against the caller's quotas — the first is a routing hop to the translator service. So one client call is counted once and not twice, in tokens, in cost, and in requests alike:
+A client call served through a translator reaches DIAL Core twice: once from the client, on the translated interface, and once from the translator, on the interface named by `out`. Only the second call is a real request against the caller's quotas — the first is a routing hop to the translator service. So one client call is counted once and not twice, in tokens, in cost, and in requests alike. The same holds for a translator served by a plugin: the plugin's call to `out` is the callback, and a plugin that answers without that call is charged nothing:
 
 | [Role limit](roles.md#rolesrole_namelimits) | The client's translated call | The translator's callback |
 |---|---|---|

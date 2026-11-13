@@ -42,6 +42,33 @@ public class DeploymentEndpointUtil {
     private static final String DECIDE_PATH = "/decide";
 
     /**
+     * The scheme of a base url naming a plugin: {@code plugin://<name>}, optionally followed by a path. It names the plugin
+     * wherever Core keeps a url (the synthetic upstream, the analytics row, the logs); no HTTP request is ever sent to it.
+     */
+    public static final String PLUGIN_URL_PREFIX = "plugin://";
+
+    /**
+     * The plugin a {@link #PLUGIN_URL_PREFIX} url names: the text after the scheme up to the next {@code /}, empty when
+     * the url names none. Null for any other url, and for null. Cut from the string: a URI gives no host for a name with
+     * {@code _}.
+     */
+    @Nullable
+    public String pluginName(@Nullable String url) {
+        if (url == null || !url.startsWith(PLUGIN_URL_PREFIX)) {
+            return null;
+        }
+        int slash = url.indexOf('/', PLUGIN_URL_PREFIX.length());
+        return url.substring(PLUGIN_URL_PREFIX.length(), slash < 0 ? url.length() : slash);
+    }
+
+    /**
+     * Whether {@code url} is a {@link #PLUGIN_URL_PREFIX} url, one with a blank name included.
+     */
+    public boolean isPluginUrl(@Nullable String url) {
+        return pluginName(url) != null;
+    }
+
+    /**
      * The endpoint a request for the type is sent to, or null when the deployment has nothing serving it —
      * callers answer 503. Doubles as the synthetic upstream id when a deployment declares no upstreams.
      */
@@ -181,6 +208,17 @@ public class DeploymentEndpointUtil {
     }
 
     /**
+     * The {@code plugins} entry serving the type, or null when an HTTP url or nothing serves it: the name in the plugin
+     * url the entry resolves to, its own {@code base_url}, the deployment-level {@code baseUrl} or its translator's. A
+     * name is returned whether or not an entry by that name exists: the request finds that out when it calls the plugin.
+     */
+    @Nullable
+    public String resolvePlugin(Deployment deployment, InterfaceType type, Map<String, Translator> translators) {
+        DeploymentInterface deploymentInterface = findInterface(deployment, type);
+        return deploymentInterface == null ? null : pluginName(resolveBaseUrl(deployment, deploymentInterface, translators));
+    }
+
+    /**
      * Whether Core asks the router which deployment serves the type: the router is in decision mode and declares it.
      */
     public boolean decides(Router router, InterfaceType type) {
@@ -216,9 +254,9 @@ public class DeploymentEndpointUtil {
     /**
      * The url the entry is served by. A translated interface is served by its translator and by nothing
      * else — {@code mode} decides this, so that what a request is routed to and what it is charged for can
-     * never disagree — while a pass-through one takes its own {@code base_url}, or the deployment-level
-     * {@code baseUrl} when it declares none. The translator reference is resolved against the registry on
-     * each call, never from a copy held by the deployment.
+     * never disagree — while a pass-through one takes its own {@code base_url}, or the deployment-level {@code baseUrl}
+     * when it declares none. Any of these may be a {@link #PLUGIN_URL_PREFIX} url. The translator reference is resolved against the registry on each call, never from a copy
+     * held by the deployment.
      */
     @Nullable
     private String resolveBaseUrl(Deployment deployment, DeploymentInterface deploymentInterface, Map<String, Translator> translators) {
@@ -269,8 +307,8 @@ public class DeploymentEndpointUtil {
 
     /**
      * The {@code overridePaths} template the interface entry declares for the operation, or null when it
-     * declares none. A translated interface routes to its translator's DIAL-contract url, so overrides
-     * never apply to it.
+     * declares none. A translated interface routes to its translator's DIAL-contract url, and one served by a
+     * plugin url to its plugin, so overrides never apply to either.
      */
     @Nullable
     private String findOverridePath(Deployment deployment, InterfaceType type, @Nullable InterfacePathMapping pathMapping) {
@@ -278,7 +316,8 @@ public class DeploymentEndpointUtil {
             return null;
         }
         DeploymentInterface deploymentInterface = findInterface(deployment, type);
-        if (deploymentInterface == null || deploymentInterface.getMode() == InterfaceMode.TRANSLATOR) {
+        if (deploymentInterface == null || deploymentInterface.getMode() == InterfaceMode.TRANSLATOR
+                || pluginName(passthroughBaseUrl(deployment, deploymentInterface)) != null) {
             return null;
         }
         Map<String, String> overridePaths = deploymentInterface.getOverridePaths();

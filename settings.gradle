@@ -10,5 +10,7 @@ include 'openapi-annotations'
 include 'server'
 include 'storage'
 include 'credentials'
+include 'plugin-api'
+include 'plugin-samples'
 include 'openapi-generator'
 

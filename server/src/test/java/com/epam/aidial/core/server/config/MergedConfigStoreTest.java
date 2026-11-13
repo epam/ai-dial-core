@@ -14,6 +14,7 @@ import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
@@ -387,7 +388,7 @@ public class MergedConfigStoreTest {
     private Consumer<ResourceEvent> registerAndCaptureListener(String thisPodId) {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT, false, thisPodId,
+                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT, false, thisPodId, PluginRegistry.EMPTY,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 

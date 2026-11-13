@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Router;
@@ -373,6 +374,43 @@ public class FileConfigController implements Controller {
             ),
             @ApiOperation(
                     method = "GET",
+                    path = "/v1/admin/config/file/plugins",
+                    operationId = "listFileConfigPlugins",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced plugins",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/plugins/{name}",
+                    operationId = "getFileConfigPlugin",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Plugin name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Plugin.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }
+            ),
+            @ApiOperation(
+                    method = "GET",
                     path = "/v1/admin/config/file/roles",
                     operationId = "listFileConfigRoles",
                     tags = {"Admin"},
@@ -695,6 +733,7 @@ public class FileConfigController implements Controller {
             case INTERCEPTOR -> config.getInterceptors();
             case ROUTER -> config.getRouters();
             case TRANSLATOR -> config.getTranslators();
+            case PLUGIN -> config.getPlugins();
             case ROLE -> config.getRoles();
             case PROJECT_KEY -> config.getKeys();
             case ROUTE -> config.getRoutes();

@@ -167,6 +167,8 @@ The base URL serving an interface is resolved in this order:
 3. The `translator` serving the entry, when `mode` is `translator`. A translated interface is served by its translator and by nothing else — it takes neither base URL above nor the legacy field below. Refer to [translators](translators.md).
 4. `endpoint`/`responsesEndpoint`, for interface types the `interfaces` map does not declare at all.
 
+A base URL may be a plugin URL, `plugin://<plugin_name>` (preview, may change incompatibly): the interface is then answered by that [plugin](plugins.md) inside DIAL Core, with no HTTP request, and checked and charged exactly as one sent over HTTP. A path may follow the name; DIAL Core keeps it in front of the path it appends. A plugin URL with no name is rejected, and so is one in `endpoint` or `responsesEndpoint`, which no plugin serves. A name with no `plugins` entry yet is accepted; requests for the interface answer `502` until the entry exists.
+
 `interfaces` is the whitelist of what the model serves: a model-level `baseUrl` on its own declares no interface, and an interface listed with neither base URL is answered with `503`. If both `interfaces` and a legacy field are declared for the same interface type, `interfaces` takes precedence; the legacy field is left untouched in config and ignored for routing.
 
 An interface mapped to `null` reads exactly as an absent one — `"openaiResponses": null` documents that the model does not serve the Responses API.
@@ -183,8 +185,8 @@ The `interfaces` map is strict: chat completions is configured via `openaiChatCo
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the model-level `baseUrl` serves an entry that omits it.
-* `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface **does not touch the caller's [role limits](roles.md#rolesrole_namelimits)** — neither checks nor charges them. The translator calls DIAL Core back to have the completion served, and that second call is the real request: it carries the tokens, the cost and the `requestHour`/`requestDay` slot, so a client call is counted once rather than twice. An exhausted quota is therefore enforced on the callback rather than on the translated call itself. Refer to [Limits and a translated request](translators.md#limits-and-a-translated-request). A third value, `decision`, is accepted on a router only and rejected on a model; refer to [Decision mode](routers.md#decision-mode).
-* `translator`: The translator serving this interface, required by `mode: translator` and rejected without it. Either the name of a [translators](translators.md) entry, or a definition written inline as `{"out": ..., "baseUrl": ...}`. An interface is served either by a base URL or by a translator, never by both — a model declaring both is rejected on config load.
+* `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface **does not touch the caller's [role limits](roles.md#rolesrole_namelimits)** — neither checks nor charges them. The translator calls DIAL Core back to have the completion served, and that second call is the real request: it carries the tokens, the cost and the `requestHour`/`requestDay` slot, so a client call is counted once rather than twice. An exhausted quota is therefore enforced on the callback rather than on the translated call itself. Refer to [Limits and a translated request](translators.md#limits-and-a-translated-request).
+* `translator`: The translator serving this interface, required by `mode: translator` and rejected without it. Either the name of a [translators](translators.md) entry, or a definition written inline as `{"out": ..., "baseUrl": ...}`, where `baseUrl` may be a plugin URL. An interface is served either by a base URL or by a translator, never by both — a model declaring both is rejected on config load.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the model-level `defaultHeaders`. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
 * `features`: Feature fields that override model-level `features` for this interface only. Unspecified fields inherit the model-level value, then Core defaults apply. Refer to [Features per interface](#features-per-interface).
 * `defaults`: Body parameters applied to requests for this interface only, replacing whichever model-level defaults would otherwise serve it. They are injected the same way the model-level ones are — a key the request already carries is never replaced. Refer to [Defaults per interface](#defaults-per-interface).
@@ -212,6 +214,13 @@ Each value is an object with the following fields:
                 "mode": "translator",
                 "translator": "anthropicMessagesToOpenaiChatCompletions"
             }
+        }
+    },
+    "cloud-model-in-core": {
+        "type": "chat",
+        "upstreams": [{ "endpoint": "https://cloud.example.com/v1", "key": "..." }],
+        "interfaces": {
+            "openaiChatCompletions": { "base_url": "plugin://cloud-signer" }
         }
     },
     "text-embedding-3-small": {
@@ -265,8 +274,9 @@ misconfiguration it is.
   is set.
 
 Override paths apply only to the interfaces/base-URL routing: the legacy `endpoint`/
-`responsesEndpoint` fields are still forwarded verbatim, and a `mode: translator` interface is
-served by its translator — declaring `overridePaths` on one is rejected on config load. Query
+`responsesEndpoint` fields are still forwarded verbatim, a `mode: translator` interface is
+served by its translator and one with a plugin URL by its plugin — declaring `overridePaths` on either is
+rejected on config load. Query
 strings are appended to the overridden URL exactly as they are to the default one.
 
 **Example**

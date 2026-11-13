@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPluginManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
@@ -25,7 +26,9 @@ import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
 import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.policy.PolicyAssignmentPrecheck;
@@ -50,13 +53,15 @@ public class ConfigValidationService {
     private final ResourceService resourceService;
     private final boolean softValidation;
     private final CatalogSchemaService catalogSchemaService;
+    private final PluginRegistry pluginRegistry;
     private final ApplicationSchemaService applicationSchemaService;
 
     public ConfigValidationService(ResourceService resourceService, boolean softValidation,
-                                   CatalogSchemaService catalogSchemaService, ApplicationSchemaService applicationSchemaService) {
+                                   CatalogSchemaService catalogSchemaService, PluginRegistry pluginRegistry, ApplicationSchemaService applicationSchemaService) {
         this.resourceService = resourceService;
         this.softValidation = softValidation;
         this.catalogSchemaService = catalogSchemaService;
+        this.pluginRegistry = pluginRegistry;
         this.applicationSchemaService = applicationSchemaService;
     }
 
@@ -105,7 +110,7 @@ public class ConfigValidationService {
                 }
                 case AdminInterceptorManifest interceptorManifest -> {
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateOverridePaths(interceptorManifest.spec(), warnings);
+                    ConfigPostProcessor.validateInterfaces(interceptorManifest.spec(), warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
@@ -135,6 +140,13 @@ public class ConfigValidationService {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                 }
+                case AdminPluginManifest pluginManifest -> {
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validatePlugin(id, pluginManifest.spec(), pluginRegistry, !softValidation, warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                }
                 case AdminRoleManifest roleManifest -> { }
                 case AdminRouteManifest routeManifest -> {
                     List<ValidationWarning> warnings = new ArrayList<>();
@@ -159,9 +171,13 @@ public class ConfigValidationService {
                 }
                 case AdminApplicationManifest applicationManifest -> {
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateOverridePaths(applicationManifest.spec(), warnings);
+                    ConfigPostProcessor.validateInterfaces(applicationManifest.spec(), warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                    String pluginError = ApplicationService.pluginOutsidePlatformError(parsed.name().bucket(), applicationManifest.spec());
+                    if (pluginError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, pluginError);
                     }
                     String dependencyError = ResourceDependencyValidator.findShapeError(applicationManifest.spec());
                     if (dependencyError != null) {

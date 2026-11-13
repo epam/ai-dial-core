@@ -38,6 +38,8 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
@@ -56,8 +58,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
@@ -217,7 +217,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                         return handleInterceptor(0);
                     }
                     return decisions.decideIfRouter(InterfaceType.OPENAI_RESPONSES, Future.succeededFuture(context.getOriginalRequestBody()),
-                                    this::reenterWithCandidate)
+                                    request.getTree(), this::reenterWithCandidate)
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));
@@ -306,7 +306,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     /**
      * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
      */
-    private void putLimitHeaders(HttpServerResponse response, HttpClientResponse proxyResponse) {
+    private void putLimitHeaders(HttpServerResponse response, ProxyResponse proxyResponse) {
         CodexLimitResponses.stripUpstreamCodexHeaders(response.headers());
         if (proxyResponse.statusCode() == 200 && spendCaps != null) {
             CodexLimitResponses.putSpendHeaders(response.headers(), spendCaps);
@@ -316,9 +316,8 @@ public class ResponsesController extends BaseDeploymentPostController {
     private ResponsesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
-            context.setRequestBodyWithTimestamp(body);
             context.setOriginalRequestBody(body);
-            ObjectNode tree = ProxyUtil.parseObject(body);
+            ObjectNode tree = ProxyUtil.parseRequestBody(context, body);
             if (tree.has("previous_response_id")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "previous_response_id is not supported");
             }
@@ -371,7 +370,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
         }
 
-        context.setRequestBody(Buffer.buffer(request.serialize()));
+        setProcessedRequestBody(request, true, InterfaceType.OPENAI_RESPONSES);
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
@@ -402,10 +401,10 @@ public class ResponsesController extends BaseDeploymentPostController {
         }
     }
 
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
+    private void handleProxyRequest(ProxyRequest proxyRequest) {
         log.info("Connected to origin. Deployment: {}. Address: {}",
                 context.getDeployment().getName(),
-                proxyRequest.connection().remoteAddress());
+                proxyRequest.remoteAddress());
 
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
@@ -415,7 +414,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .onFailure(this::handleProxyResponseError);
     }
 
-    private void handleProxyResponse(HttpClientResponse proxyResponse) {
+    private void handleProxyResponse(ProxyResponse proxyResponse) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         Upstream currentUpstream = upstreamRoute.get();
         log.info("Received header from origin. Deployment: {}. Endpoint: {}. Upstream: {}. Status: {}. Headers: {}. Upstream.extraData: {}",
@@ -427,6 +426,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         int responseStatusCode = proxyResponse.statusCode();
         if (isRetriableError(responseStatusCode)) {
             upstreamRoute.fail(proxyResponse);
+            proxyResponse.discard();
             sendRequest(); // try next
             return;
         }
@@ -472,7 +472,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Void> handleNonStreamingResponse(ProxyResponse proxyResponse, Buffer body) {
         return rewriteResponseId(proxyResponse, body)
                 .compose(pair -> {
                     String dialId = pair.getKey();
@@ -513,7 +513,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 });
     }
 
-    private Future<Pair<String, Buffer>> rewriteResponseId(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Pair<String, Buffer>> rewriteResponseId(ProxyResponse proxyResponse, Buffer body) {
         if (proxyResponse.statusCode() != 200) {
             return Future.succeededFuture(Pair.of(null, body));
         }
@@ -619,7 +619,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         upstreamRoute.fail(HttpStatus.BAD_GATEWAY);
         log.warn("Proxy failed to receive response header from origin. Deployment: {}. Address: {}. Error:",
                 context.getDeployment().getName(),
-                context.getProxyRequest().connection().remoteAddress(),
+                context.getProxyRequest().remoteAddress(),
                 error);
 
         sendRequest(); // try next

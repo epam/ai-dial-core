@@ -4,8 +4,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import lombok.Getter;
 
 /**
- * How a deployment serves one {@link InterfaceType}: the request is forwarded in the shape it arrived in,
- * or handed to a translator that converts it to an API the deployment does speak.
+ * How a deployment serves one {@link InterfaceType}: the request is forwarded in the shape it arrived in, or
+ * handed to a translator that converts it to an API the deployment does speak. Whether the request goes over HTTP or
+ * to a plugin in Core is not a mode: a {@code plugin://<name>} base url names the plugin.
  */
 @Getter
 public enum InterfaceMode {

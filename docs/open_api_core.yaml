@@ -90,6 +90,7 @@ tags:
 - name: Models
 - name: Notifications
 - name: Org units
+- name: Plugins
 - name: Policies
 - name: Policy Assignments
 - name: Projects
@@ -2790,6 +2791,83 @@ paths:
               schema:
                 allOf:
                 - $ref: "#/components/schemas/Model"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/plugins:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/plugins
+      operationId: listFileConfigPlugins
+      responses:
+        "200":
+          description: List of file-sourced plugins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/plugins/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/plugins/{name}"
+      operationId: getFileConfigPlugin
+      parameters:
+      - name: name
+        in: path
+        description: Plugin name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Plugin"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -7832,6 +7910,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/plugins/{bucket}/{path}:
+    get:
+      tags:
+      - Plugins
+      summary: "/v1/metadata/plugins/{bucket}/{path}"
+      operationId: getPluginMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/metadata/policies/{bucket}/{path}:
     get:
       tags:
@@ -12108,6 +12255,217 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/plugins/{bucket}/{path}:
+    get:
+      tags:
+      - Plugins
+      summary: "/v1/plugins/{bucket}/{path}"
+      operationId: getPlugin
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Plugin name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the plugin
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Plugin"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Plugins
+      summary: "/v1/plugins/{bucket}/{path}"
+      operationId: savePlugin
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Plugin name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Plugin"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved plugin
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Plugins
+      summary: "/v1/plugins/{bucket}/{path}"
+      operationId: deletePlugin
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Plugin name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
         "500":
           description: The server had an error while processing your request.
           content:
@@ -17022,6 +17380,7 @@ components:
           Application: "#/components/schemas/AdminApplicationManifest"
           Policy: "#/components/schemas/AdminPolicyManifest"
           PolicyAssignment: "#/components/schemas/AdminPolicyAssignmentManifest"
+          Plugin: "#/components/schemas/AdminPluginManifest"
           Router: "#/components/schemas/AdminRouterManifest"
       oneOf:
       - $ref: "#/components/schemas/AdminSettingsManifest"
@@ -17030,6 +17389,7 @@ components:
       - $ref: "#/components/schemas/AdminInterceptorManifest"
       - $ref: "#/components/schemas/AdminRouterManifest"
       - $ref: "#/components/schemas/AdminTranslatorManifest"
+      - $ref: "#/components/schemas/AdminPluginManifest"
       - $ref: "#/components/schemas/AdminRoleManifest"
       - $ref: "#/components/schemas/AdminKeyManifest"
       - $ref: "#/components/schemas/AdminRouteManifest"
@@ -17047,6 +17407,15 @@ components:
           type: string
         spec:
           $ref: "#/components/schemas/Model"
+    AdminPluginManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Plugin"
     AdminPolicyAssignmentManifest:
       type: object
       properties:
@@ -18685,6 +19054,8 @@ components:
           $ref: "#/components/schemas/MapStringOrgUnitRole"
         spendingLimits:
           $ref: "#/components/schemas/SpendingLimits"
+        plugins:
+          $ref: "#/components/schemas/MapStringPlugin"
         aliases:
           $ref: "#/components/schemas/MapStringAlias"
         routers:
@@ -19876,6 +20247,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/OrgUnitRole"
+    MapStringPlugin:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Plugin"
     MapStringRole:
       type: object
       additionalProperties:
@@ -20176,6 +20551,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Notification"
+    ObjectNode:
+      type: object
     OboCredentialsRequest:
       type: object
       properties:
@@ -20319,6 +20696,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PerRequestReceiver"
+    Plugin:
+      type: object
+      properties:
+        settings:
+          $ref: "#/components/schemas/ObjectNode"
+        type:
+          type: string
     Policy:
       type: object
       properties:
@@ -20903,6 +21287,7 @@ components:
       - INTERCEPTOR
       - ROUTER
       - TRANSLATOR
+      - PLUGIN
       - ROLE
       - PROJECT_KEY
       - POLICY
