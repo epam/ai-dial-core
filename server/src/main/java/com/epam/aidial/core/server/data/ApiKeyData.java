@@ -81,6 +81,13 @@ public class ApiKeyData {
     public ApiKeyData() {
     }
 
+    public static ApiKeyData createProxyApiKeyData(ProxyContext context) {
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        initFromContext(proxyApiKeyData, context);
+        return proxyApiKeyData;
+    }
+
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> currentPath;
@@ -98,6 +105,10 @@ public class ApiKeyData {
             currentPath = new ArrayList<>(context.getApiKeyData().getExecutionPath());
         }
         String receiver = null;
+        if (context.getDecision() != null) {
+            // the deployment the client called, so the router is the parent of the one it chose
+            currentPath.add(context.getDecision().getRouterName());
+        }
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();
             if (context.getDeployment() instanceof AliasPass pass) {

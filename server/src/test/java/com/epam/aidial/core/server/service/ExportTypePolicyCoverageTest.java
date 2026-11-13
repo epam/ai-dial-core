@@ -62,7 +62,8 @@ public class ExportTypePolicyCoverageTest {
                 ResourceTypes.CODE_INTERPRETER_SESSION, ResourceTypes.USER_CONSENT, ResourceTypes.CREDENTIALS, ResourceTypes.EXTERNAL_SERVICE,
                 ResourceTypes.ENCRYPTION_KEYS, ResourceTypes.CLIENT_CHANNEL, ResourceTypes.TRANSLATOR, ResourceTypes.ROLE, ResourceTypes.PROJECT_KEY,
                 ResourceTypes.POLICY, ResourceTypes.POLICY_ASSIGNMENT, ResourceTypes.ROUTE, ResourceTypes.GLOBAL_SETTINGS,
-                ResourceTypes.RESPONSE_MAPPING, ResourceTypes.BACKGROUND_JOB, ResourceTypes.ORG_UNITS, ResourceTypes.ALIAS)) {
+                ResourceTypes.RESPONSE_MAPPING, ResourceTypes.BACKGROUND_JOB, ResourceTypes.ORG_UNITS, ResourceTypes.ALIAS, ResourceTypes.ROUTER,
+                ResourceTypes.ADMIN_CONSENT)) {
             expect(type, Disposition.UNSUPPORTED, Disposition.UNSUPPORTED);
         }
     }

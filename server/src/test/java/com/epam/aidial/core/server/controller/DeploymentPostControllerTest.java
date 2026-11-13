@@ -92,11 +92,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -430,7 +430,7 @@ public class DeploymentPostControllerTest {
     @ParameterizedTest
     @NullSource
     @EnumSource(value = InterfaceMode.class, names = {"PASSTHROUGH", "TRANSLATOR"})
-    public void testHandleProxyRequest_NamesTheDeploymentForTranslators(InterfaceMode mode) {
+    public void testHandleProxyRequest_NamesTheDeploymentInEveryMode(InterfaceMode mode) {
         when(context.getRequest()).thenReturn(request);
 
         Model model = new Model();
@@ -453,10 +453,8 @@ public class DeploymentPostControllerTest {
 
         controller.handleProxyRequest(proxyRequest);
 
-        // the deployment id, not overrideName: it is what the translator calls Core back with
-        String expected = mode == InterfaceMode.TRANSLATOR ? "openai-gpt-5.4-mini" : null;
-        verify(proxyRequest, expected == null ? never() : times(1))
-                .putHeader(eq(Proxy.HEADER_DEPLOYMENT_ID), eq("openai-gpt-5.4-mini"));
+        // the deployment id, not overrideName: the path and the body's model carry overrideName
+        verify(proxyRequest).putHeader(eq(Proxy.HEADER_DEPLOYMENT_ID), eq("openai-gpt-5.4-mini"));
     }
 
     @Test
@@ -740,6 +738,70 @@ public class DeploymentPostControllerTest {
         controller.handleRequestBody(requestBody);
 
         verify(proxy.getClient()).request(any());
+    }
+
+    @Test
+    public void testHandleRequestBody_RejectsInvalidJson() {
+        when(context.getDeployment()).thenReturn(chainModel());
+
+        controller.handleRequestBody(Buffer.buffer("{not json"));
+
+        verify(context).respond(BAD_REQUEST);
+    }
+
+    @Test
+    public void testHandleRequestBody_KeepsTheChainRejectionStatus() {
+        stubChatCompletionRequest();
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        doThrow(new HttpException(FORBIDDEN, "Required resource dependencies are not accessible"))
+                .when(apiKeyStore).assignPerRequestApiKey(any());
+        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(true));
+
+        controller.handleRequestBody(Buffer.buffer(CHAIN_BODY));
+
+        verify(context).respond(FORBIDDEN, "Required resource dependencies are not accessible");
+        verify(proxy, never()).getClient();
+    }
+
+    @Test
+    public void testHandleRequestBody_RespondsBadRequestWhenTheChainThrowsAnyOtherException() {
+        // development's behaviour, unchanged: only an HttpException carries its own status
+        stubChatCompletionRequest();
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        doThrow(new IllegalStateException("unexpected")).when(apiKeyStore).assignPerRequestApiKey(any());
+        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(true));
+
+        controller.handleRequestBody(Buffer.buffer(CHAIN_BODY));
+
+        verify(context).respond(BAD_REQUEST);
+        verify(proxy, never()).getClient();
+    }
+
+    private static final String CHAIN_BODY = """
+            {
+                "model": "name",
+                "messages": [],
+                "stream": false
+            }
+            """;
+
+    private static Model chainModel() {
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://host/model");
+        return model;
+    }
+
+    private void stubChatCompletionRequest() {
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        when(context.getRequest()).thenReturn(request);
+        when(context.getDeployment()).thenReturn(chainModel());
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
     }
 
     @Test

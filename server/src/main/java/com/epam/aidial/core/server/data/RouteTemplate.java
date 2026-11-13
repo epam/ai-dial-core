@@ -74,6 +74,15 @@ public enum RouteTemplate {
             "^/+openai/models$",
             "/openai/models"
     ),
+    // one segment: /v1/routers/platform/{path} is the Configuration API (CONFIG_RESOURCE)
+    ROUTER(
+            "^/+v1/routers/(?<id>[^/]+)$",
+            "/v1/routers/{id}"
+    ),
+    ROUTERS(
+            "^/+v1/routers$",
+            "/v1/routers"
+    ),
 
     APPLICATION(
             "^/+openai/applications/(?<id>.+?)$",
@@ -161,13 +170,13 @@ public enum RouteTemplate {
     ),
 
     CONFIG_RESOURCE(
-            "^/v1/(models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
+            "^/v1/(models|interceptors|translators|routers|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
                     + "/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
 
     CONFIG_RESOURCE_METADATA(
-            "^/v1/metadata/(models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
+            "^/v1/metadata/(models|interceptors|translators|routers|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
                     + "/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
@@ -178,7 +187,8 @@ public enum RouteTemplate {
     ),
 
     ADMIN_FILE_CONFIG(
-            "^/v1/admin/config/file/(?<type>models|interceptors|translators|roles|keys|routes|schemas|catalog_schemas|settings|applications|toolsets|aliases)(?:/(?<name>.+))?$",
+            "^/v1/admin/config/file/(?<type>models|interceptors|translators|routers|roles|keys|routes|schemas|catalog_schemas|settings"
+                    + "|applications|toolsets|aliases)(?:/(?<name>.+))?$",
             "/v1/admin/config/file/{type}/{name}"
     ),
 
@@ -205,6 +215,11 @@ public enum RouteTemplate {
     ADMIN_EXPORT(
             "^/v1/admin/export$",
             "/v1/admin/export"
+    ),
+
+    ADMIN_SYSTEM_IMPORT(
+            "^/v1/admin/system-import$",
+            "/v1/admin/system-import"
     ),
 
     BUCKET(
@@ -350,6 +365,10 @@ public enum RouteTemplate {
     CONFIG(
             "^/v1/ops/config/reload$",
             "/v1/ops/config/reload"
+    ),
+    ADMIN_CONSENT(
+            "^/v1/admin-consent/(?<id>.+)$",
+            "/v1/admin-consent/{id}"
     ),
     USER_CONSENT(
             "^/v1/consent/(?<id>.+?)$",

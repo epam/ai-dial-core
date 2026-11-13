@@ -20,6 +20,8 @@ public enum ResourceTypes implements ResourceType {
     APPLICATION("applications", true, TimeUnit.DAYS.toMillis(30)),
     CODE_INTERPRETER_SESSION("code_interpreter_session", true, TimeUnit.MINUTES.toMillis(5)),
     USER_CONSENT("user_consent", true, TimeUnit.MINUTES.toMillis(5)),
+    // not mapped in of(): no Resource API path can address an admin-consent record
+    ADMIN_CONSENT("admin_consent", true, TimeUnit.DAYS.toMillis(30)),
     TOOL_SET("toolsets", true, TimeUnit.DAYS.toMillis(30)),
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
     EXTERNAL_SERVICE("external_services", true, TimeUnit.MINUTES.toMillis(5)),
@@ -29,6 +31,7 @@ public enum ResourceTypes implements ResourceType {
     APP_TYPE_SCHEMA("app_type_schemas", "schemas", true, TimeUnit.DAYS.toMillis(30)),
     CATALOG_SCHEMA("catalog_schemas", true, TimeUnit.DAYS.toMillis(30)),
     INTERCEPTOR("interceptors", true, TimeUnit.DAYS.toMillis(30)),
+    ROUTER("routers", true, TimeUnit.DAYS.toMillis(30)),
     TRANSLATOR("translators", true, TimeUnit.DAYS.toMillis(30)),
     ROLE("roles", true, TimeUnit.DAYS.toMillis(30)),
     PROJECT_KEY("project_keys", "keys", true, TimeUnit.DAYS.toMillis(30)),
@@ -51,8 +54,8 @@ public enum ResourceTypes implements ResourceType {
      */
     public static final Set<ResourceType> EVENT_TYPES = Set.of(
             FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
-            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
-            POLICY, POLICY_ASSIGNMENT, SKILL, PROJECT);
+            MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, ROUTER, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
+            POLICY, POLICY_ASSIGNMENT, SKILL, PROJECT, ALIAS);
 
     private final String group;
     private final String urlSegment;
@@ -86,6 +89,7 @@ public enum ResourceTypes implements ResourceType {
             case "app_type_schemas", "schemas" -> APP_TYPE_SCHEMA;
             case "catalog_schemas" -> CATALOG_SCHEMA;
             case "interceptors" -> INTERCEPTOR;
+            case "routers" -> ROUTER;
             case "translators" -> TRANSLATOR;
             case "roles" -> ROLE;
             case "project_keys", "keys" -> PROJECT_KEY;

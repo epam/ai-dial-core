@@ -4,9 +4,12 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.metaschemas.CopyAppBucketOptions;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
+import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
@@ -21,6 +24,7 @@ import com.epam.aidial.core.server.validation.DialResourceKeyKeyword;
 import com.epam.aidial.core.server.validation.ListCollector;
 import com.epam.aidial.core.server.validation.MarkerCollection;
 import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -135,11 +139,15 @@ public class ApplicationSchemaService {
     private final HttpClient httpClient;
 
     private static final class CachedSchema {
+        // the schema text in the config this entry was built from, before any download: the entry is current
+        // while the config still holds the same text
+        private final String source;
         private final String raw;
         private final JsonNode parsed;
         private volatile JsonSchema compiled;
 
-        CachedSchema(String raw, JsonNode parsed) {
+        CachedSchema(String source, String raw, JsonNode parsed) {
+            this.source = source;
             this.raw = raw;
             this.parsed = parsed;
         }
@@ -194,20 +202,29 @@ public class ApplicationSchemaService {
         return cached == null ? null : cached.raw;
     }
 
-    @SneakyThrows
+    /**
+     * Whether the schema the config holds for {@code schemaId} is cached and compiled, so reading it neither downloads
+     * nor compiles anything.
+     */
+    public boolean isSchemaReady(URI schemaId) {
+        CachedSchema cached = schemaCache.get(schemaId);
+        return cached != null && cached.compiled != null && cached.source.equals(configStore.get().getCustomApplicationSchema(schemaId));
+    }
+
     @Nullable
     private CachedSchema resolveSchema(URI schemaId, boolean forceReload) {
-        if (!forceReload) {
-            CachedSchema cached = schemaCache.get(schemaId);
-            if (cached != null) {
-                return cached;
-            }
-        }
-        CachedSchema result = buildSchema(configStore.get().getCustomApplicationSchema(schemaId), false);
-        if (result == null) {
+        String source = configStore.get().getCustomApplicationSchema(schemaId);
+        if (source == null) {
             schemaCache.remove(schemaId);
             return null;
         }
+        if (!forceReload) {
+            CachedSchema cached = schemaCache.get(schemaId);
+            if (cached != null && cached.source.equals(source)) {
+                return cached;
+            }
+        }
+        CachedSchema result = build(source, false);
         schemaCache.put(schemaId, result);
         return result;
     }
@@ -220,33 +237,72 @@ public class ApplicationSchemaService {
      *              and an interrupt is rethrown. Request processing passes false
      */
     @SneakyThrows
-    @Nullable
-    private CachedSchema buildSchema(@Nullable String customApplicationSchema, boolean quiet) {
-        if (customApplicationSchema == null) {
-            return null;
+    private CachedSchema build(String source, boolean quiet) {
+        JsonNode schema = ProxyUtil.MAPPER.readTree(source);
+        if (!schema.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
+            return new CachedSchema(source, source, schema);
         }
-        JsonNode schema = ProxyUtil.MAPPER.readTree(customApplicationSchema);
-        if (schema.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
-            String url = schema.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT).textValue();
-            try {
-                ObjectNode appSchema = downloadAppSchema(url, quiet);
-                merge(appSchema, schema);
-                return new CachedSchema(appSchema.toString(), appSchema);
-            } catch (Exception e) {
-                if (quiet) {
-                    if (e instanceof InterruptedException) {
-                        // an interrupt is neither a failure of the runner nor a reason to go on
-                        Thread.currentThread().interrupt();
-                        throw e;
-                    }
-                    log.warn("Failed to download application schema");
-                    throw new ApplicationTypeSchemaProcessingException("Failed to download application schema");
+        String url = schema.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT).textValue();
+        try {
+            ObjectNode appSchema = downloadAppSchema(url, quiet);
+            merge(appSchema, schema);
+            return new CachedSchema(source, appSchema.toString(), appSchema);
+        } catch (Exception e) {
+            if (quiet) {
+                if (e instanceof InterruptedException) {
+                    // an interrupt is neither a failure of the runner nor a reason to go on
+                    Thread.currentThread().interrupt();
+                    throw e;
                 }
-                log.warn("Failed to download application schema: {}", url, e);
-                throw new ApplicationTypeSchemaProcessingException("Failed to download application schema: " + url, e);
+                log.warn("Failed to download application schema");
+                throw new ApplicationTypeSchemaProcessingException("Failed to download application schema");
             }
+            log.warn("Failed to download application schema: {}", url, e);
+            throw new ApplicationTypeSchemaProcessingException("Failed to download application schema: " + url, e);
         }
-        return new CachedSchema(customApplicationSchema, schema);
+    }
+
+    /**
+     * The rules a router write must pass before its blob is written: the invariants the rebuild enforces, against
+     * {@code config}'s translators, then its properties against the schema {@code config} holds.
+     */
+    public List<ValidationWarning> validateRouter(Config config, String name, Router router) {
+        List<ValidationWarning> warnings = new ArrayList<>();
+        ConfigPostProcessor.validateRouterInvariants(name, router, config.getTranslators(), warnings);
+        if (warnings.isEmpty() && router.getApplicationTypeSchemaId() != null) {
+            validateProperties(config, router.getApplicationTypeSchemaId(), router.getApplicationProperties(), warnings);
+        }
+        return warnings;
+    }
+
+    /**
+     * Validates a router's properties against the schema {@code config} holds for {@code schemaId}. The cached schema
+     * is used only when it was built from the same text; otherwise the schema is built afresh and not cached:
+     * {@code config} may be a batch's scratch, whose schemas must not reach the cache that live requests read.
+     */
+    public void validateProperties(@Nullable Config config, URI schemaId, Map<String, Object> properties,
+                                   List<ValidationWarning> warnings) {
+        String source = config == null ? null : config.getCustomApplicationSchema(schemaId);
+        if (source == null) {
+            warnings.add(new ValidationWarning("applicationTypeSchemaId", "Unknown application type schema: " + schemaId));
+            return;
+        }
+        Set<ValidationMessage> messages;
+        try {
+            String json = ProxyUtil.MAPPER.writeValueAsString(properties);
+            CollectorContext collectorContext = new CollectorContext();
+            // the live entry serves when it was built from the same text; a scratch schema is built but never cached
+            CachedSchema cached = schemaCache.get(schemaId);
+            CachedSchema schema = cached != null && cached.source.equals(source) ? cached : build(source, false);
+            messages = schema.compiled().validate(json, InputFormat.JSON, e -> e.setCollectorContext(collectorContext));
+        } catch (Exception e) {
+            warnings.add(new ValidationWarning("applicationTypeSchemaId", e.getMessage()));
+            return;
+        }
+        if (!messages.isEmpty()) {
+            warnings.add(new ValidationWarning("applicationProperties",
+                    String.join(", ", messages.stream().map(ValidationMessage::getMessage).toList())));
+        }
     }
 
     @SneakyThrows
@@ -338,21 +394,59 @@ public class ApplicationSchemaService {
         if (application.getApplicationProperties() == null) {
             throw new ApplicationTypeSchemaValidationException("Typed application's properties not set");
         }
-        CachedSchema cached = getCachedSchemaOrThrow(application, false);
+        consumeMetadataProperties(application.getApplicationTypeSchemaId(), application.getApplicationProperties(), consumer);
+    }
+
+    /**
+     * The properties the schema declares, validated, and whether the schema lets Core send them in
+     * {@code X-DIAL-APPLICATION-PROPERTIES}. With no schema id, the properties as they are.
+     */
+    public void consumeMetadataProperties(@Nullable URI schemaId, Map<String, Object> properties,
+                                          MetadataPropertiesConsumer consumer) {
+        CachedSchema cached = null;
+        if (schemaId != null) {
+            cached = resolveSchema(schemaId, false);
+            if (cached == null) {
+                throw new ApplicationTypeSchemaValidationException("Custom application schema not found: " + schemaId);
+            }
+        }
         try {
             if (cached == null) {
-                consumer.accept(application.getApplicationProperties(), true);
+                consumer.accept(properties, true);
                 return;
             }
             JsonNode schemaNode = cached.parsed;
             boolean appendApplicationPropertiesHeader = !schemaNode.has(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES)
                                                         || schemaNode.get(MetaSchemaHolder.APPLICATION_TYPE_APPEND_APPLICATION_PROPERTIES).asBoolean();
-            Map<String, Object> serverProperties = filterProperties(application.getApplicationProperties(),
-                    cached.compiled(), ListCollector.MetaDataCollectorType.ALL);
+            Map<String, Object> serverProperties = filterProperties(properties, cached.compiled(), ListCollector.MetaDataCollectorType.ALL);
             consumer.accept(serverProperties, appendApplicationPropertiesHeader);
         } catch (JsonProcessingException e) {
             throw new ApplicationTypeSchemaProcessingException("Failed to parse custom application schema", e);
         }
+    }
+
+    /**
+     * The {@code X-DIAL-APPLICATION-PROPERTIES} value for a typed router, or null when it has no schema or its schema
+     * turns the header off. Fails with a 502 when the schema is gone or the properties no longer match it: the
+     * router's own configuration is broken, not the client's request.
+     */
+    @Nullable
+    public String routerPropertiesHeader(Router router) {
+        if (router.getApplicationTypeSchemaId() == null) {
+            return null;
+        }
+        String[] header = {null};
+        try {
+            consumeMetadataProperties(router.getApplicationTypeSchemaId(), router.getApplicationProperties(), (properties, append) -> {
+                if (append) {
+                    header[0] = ProxyUtil.MAPPER.writeValueAsString(properties);
+                }
+            });
+        } catch (Exception e) {
+            log.warn("Router {} properties do not match schema {}: {}", router.getName(), router.getApplicationTypeSchemaId(), e.getMessage());
+            throw new HttpException(HttpStatus.BAD_GATEWAY, "Router %s properties do not match its schema".formatted(router.getName()));
+        }
+        return header[0];
     }
 
     @FunctionalInterface
@@ -501,14 +595,15 @@ public class ApplicationSchemaService {
      * any other failure propagates.
      */
     public ExportSchema buildExportSchema(URI schemaId, Config config) {
+        String source = config.getCustomApplicationSchema(schemaId);
+        if (source == null) {
+            return new ExportSchema(null, CollectionIssueKind.SCHEMA_NOT_FOUND);
+        }
         CachedSchema cached;
         try {
-            cached = buildSchema(config.getCustomApplicationSchema(schemaId), true);
+            cached = build(source, true);
         } catch (ApplicationTypeSchemaProcessingException e) {
             return new ExportSchema(null, CollectionIssueKind.SCHEMA_UNAVAILABLE);
-        }
-        if (cached == null) {
-            return new ExportSchema(null, CollectionIssueKind.SCHEMA_NOT_FOUND);
         }
         try {
             return new ExportSchema(EXPORT_SCHEMA_FACTORY.getSchema(cached.raw), null);

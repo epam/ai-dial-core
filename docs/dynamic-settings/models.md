@@ -29,6 +29,9 @@ An object containing parameters for each [model](#models).
 * `intro`: A string with a short introductory/onboarding text for the model, shown to end users separately from `description`.
 * `displayName`: A string with the models's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the model.
 * `displayVersion`: A string with the model's version. Use it to distinguish between "latest," "beta," or date-stamped builds.
+* `provider`: A string with the hosting provider that supplies the model's API endpoint, e.g. `AWS`, `Google`, `Azure`. Free-form and informational only: DIAL Core does not interpret it.
+* `deprecationDate`: A date in ISO-8601 format (`YYYY-MM-DD`) after which the model is considered deprecated, even though existing deployments continue to function. Informational only: DIAL Core neither validates nor enforces it.
+* `endOfService`: A date in ISO-8601 format (`YYYY-MM-DD`) when the provider terminates access to the model, making it unavailable. Informational only: DIAL Core neither validates nor enforces it.
 * `endpoint`: Model API for chat completions or embeddings.
 * `overrideName`: If set, the model is called under this name: the outgoing request body's `model` field (and the `X-DIAL-OVERRIDE-NAME` header) are rewritten to this value before the request reaches the model adapter. Doesn't change routing — only the value the adapter receives.
 * `embeddingDimensions`: The size of the embedding vector returned by an embedding model (e.g. `1536` for `text-embedding-ada-002`). Omit for chat/completion models.
@@ -86,6 +89,9 @@ An object containing parameters for each [model](#models).
             "overrideName": "/some[!exotic?]/model/name",
             "displayName": "GPT-3.5",
             "displayVersion": "Turbo",
+            "provider": "Azure",
+            "deprecationDate": "2027-06-30",
+            "endOfService": "2027-12-31",
             "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
             "upstreams": [
                 {
@@ -177,7 +183,7 @@ The `interfaces` map is strict: chat completions is configured via `openaiChatCo
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the model-level `baseUrl` serves an entry that omits it.
-* `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface **does not touch the caller's [role limits](roles.md#rolesrole_namelimits)** — neither checks nor charges them. The translator calls DIAL Core back to have the completion served, and that second call is the real request: it carries the tokens, the cost and the `requestHour`/`requestDay` slot, so a client call is counted once rather than twice. An exhausted quota is therefore enforced on the callback rather than on the translated call itself. Refer to [Limits and a translated request](translators.md#limits-and-a-translated-request).
+* `mode`: `passthrough` (default) or `translator`. It declares whether the request is forwarded in the shape it arrived in, or handed to a service that translates it into an API the model does speak. A `translator` interface **does not touch the caller's [role limits](roles.md#rolesrole_namelimits)** — neither checks nor charges them. The translator calls DIAL Core back to have the completion served, and that second call is the real request: it carries the tokens, the cost and the `requestHour`/`requestDay` slot, so a client call is counted once rather than twice. An exhausted quota is therefore enforced on the callback rather than on the translated call itself. Refer to [Limits and a translated request](translators.md#limits-and-a-translated-request). A third value, `decision`, is accepted on a router only and rejected on a model; refer to [Decision mode](routers.md#decision-mode).
 * `translator`: The translator serving this interface, required by `mode: translator` and rejected without it. Either the name of a [translators](translators.md) entry, or a definition written inline as `{"out": ..., "baseUrl": ...}`. An interface is served either by a base URL or by a translator, never by both — a model declaring both is rejected on config load.
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the model-level `defaultHeaders`. Refer to [models.<model_name>.defaultHeaders](#modelsmodel_namedefaultheaders).
 * `features`: Feature fields that override model-level `features` for this interface only. Unspecified fields inherit the model-level value, then Core defaults apply. Refer to [Features per interface](#features-per-interface).
@@ -506,7 +512,7 @@ Some models adapters expose specialized HTTP endpoints for tokenization, rate es
 * `maxCompletionTokensSupported`: A boolean parameter that indicates whether the upstream accepts `max_completion_tokens` parameter in chat completions requests. Default is `false`.
 * `customTemperatureSupported`: A boolean parameter that indicates whether arbitrary `temperature` values are accepted. If `false`, only the API default (usually `1`) should be used and the client is recommended not to send the `temperature` parameter. Default is `true`.
 * `cacheSupported`: A boolean parameter that indicates whether the deployment supports [LLM caching](https://docs.dialx.ai/tutorials/developers/prompt-caching). Default is `false`.
-* `autoCachingSupported`: A boolean parameter that indicates whether the deployment supports [automatic caching](https://docs.dialx.ai/tutorials/developers/prompt-caching), where it's possible. Default is `false`.
+* `autoCachingSupported`: A boolean parameter that indicates whether the deployment supports [automatic caching](https://docs.dialx.ai/tutorials/developers/prompt-caching), where it's possible. Automatically cached prefixes are scoped to the request initiator (the user id, or the API key project when there is no user), so requests that share a prompt prefix but come from different initiators are balanced across upstreams instead of being pinned to one. Prefixes marked by explicit cache breakpoints are shared across initiators. Default is `false`.
 * `parallelToolCallsSupported`: A boolean parameter that indicates whether the deployment supports `parallel_tool_calls` parameter in a chat completion request. Default is `true`.
 * `assistantAttachmentsInRequestSupported`: A boolean parameter that indicates whether the deployment supports DIAL attachments in the assistant messages. Default is `false`. When set to `true`, DIAL Chat must preserve attachments in the assistant messages, instead of removing them. The feature is especially useful for models that can generate attachments as well as take attachments in its input. A typical example of such a model is an image-editing model.
 * `supportCommentInRateResponse`: A boolean parameters that indicates whether the application supports the field `comment` in rate response payload.

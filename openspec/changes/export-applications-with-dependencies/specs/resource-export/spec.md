@@ -308,7 +308,7 @@ A File, a Skill and a Prompt SHALL be supported as dependencies in `public/` onl
 - **THEN** the reference is logged as unsupported and nothing is read
 
 ### Requirement: Other types are not exported and not read
-Project, Conversation, Role, Route and Upstream resources, and `ProjectKey`, SHALL NOT be exported or read: a reference to a Project or a Conversation is unsupported. The fields `user_roles`, `interfaces.*.translator` and inline `routes` of an Application SHALL NOT be examined, so they give no reference.
+Project, Conversation, Role, Route, Router and Upstream resources, `ProjectKey` and admin consent, SHALL NOT be exported or read: a reference to a Project, a Conversation or a Router is not followed. The fields `user_roles`, `interfaces.*.translator` and inline `routes` of an Application SHALL NOT be examined, so they give no reference.
 
 #### Scenario: Unsupported conversation
 - **WHEN** an Application names `conversations/public/c`

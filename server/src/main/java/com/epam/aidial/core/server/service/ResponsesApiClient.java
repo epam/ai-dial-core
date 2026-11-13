@@ -24,7 +24,7 @@ public class ResponsesApiClient {
     private final HttpClient httpClient;
     private final HttpClientOptions clientOptions;
 
-    public Future<HttpClientResponse> send(String url, HttpMethod method, Upstream upstream, String apiKey) {
+    public Future<HttpClientResponse> send(String url, HttpMethod method, String deploymentId, Upstream upstream, String apiKey) {
         RequestOptions options = new RequestOptions()
                 .setAbsoluteURI(url)
                 .setMethod(method)
@@ -32,13 +32,14 @@ public class ResponsesApiClient {
                 .setIdleTimeout(clientOptions.getIdleTimeout());
         return httpClient.request(options)
                 .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey)
-                            .putHeader(Proxy.HEADER_UPSTREAM_KEY,
-                                    UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
-                            .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
-                                    UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
-                            .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
-                                    UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
-                            .send());
+                        .putHeader(Proxy.HEADER_DEPLOYMENT_ID, deploymentId)
+                        .putHeader(Proxy.HEADER_UPSTREAM_KEY,
+                                UpstreamInterfaceUtil.resolveKey(upstream, InterfaceType.OPENAI_RESPONSES))
+                        .putHeader(Proxy.HEADER_UPSTREAM_ENDPOINT,
+                                UpstreamInterfaceUtil.resolveEndpoint(upstream, InterfaceType.OPENAI_RESPONSES))
+                        .putHeader(Proxy.HEADER_UPSTREAM_EXTRA_DATA,
+                                UpstreamExtraDataMerger.merge(upstream, InterfaceType.OPENAI_RESPONSES))
+                        .send());
     }
 
     private static boolean isTerminal(String status) {

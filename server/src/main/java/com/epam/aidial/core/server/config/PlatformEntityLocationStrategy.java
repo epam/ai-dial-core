@@ -14,8 +14,8 @@ public class PlatformEntityLocationStrategy implements EntityLocationStrategy {
             throw new IllegalArgumentException("Unsupported scope for platform strategy: " + scope);
         }
         return switch (entityType) {
-            case INTERCEPTOR, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS, MODEL, APP_TYPE_SCHEMA,
-                 CATALOG_SCHEMA, APPLICATION, TOOL_SET, POLICY, POLICY_ASSIGNMENT -> ResourceDescriptor.PLATFORM_BUCKET;
+            case INTERCEPTOR, ROUTER, TRANSLATOR, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS, MODEL, APP_TYPE_SCHEMA,
+                 CATALOG_SCHEMA, APPLICATION, TOOL_SET, POLICY, POLICY_ASSIGNMENT, ALIAS -> ResourceDescriptor.PLATFORM_BUCKET;
             default -> throw new IllegalArgumentException("Unsupported entity type for platform strategy: " + entityType);
         };
     }

@@ -161,8 +161,8 @@ class AdminSystemExportServiceTest {
 
         Map<String, byte[]> entries = readEntries(export(service));
 
-        assertEquals(AdminSystemExportService.MANIFEST_ENTRY, entries.keySet().iterator().next());
-        JsonNode manifest = json(entries.get(AdminSystemExportService.MANIFEST_ENTRY));
+        assertEquals(SystemArchiveManifest.ENTRY, entries.keySet().iterator().next());
+        JsonNode manifest = json(entries.get(SystemArchiveManifest.ENTRY));
         assertEquals(1, manifest.get("formatVersion").asInt());
         assertEquals(CORE_VERSION, manifest.get("coreVersion").asText());
         assertEquals("2026-01-02T03:04:05Z", manifest.get("createdAt").asText());
@@ -179,14 +179,14 @@ class AdminSystemExportServiceTest {
         assertArrayEquals("hello".getBytes(StandardCharsets.UTF_8), entries.get("public/files/user1/a.txt"));
         assertArrayEquals("bytes".getBytes(StandardCharsets.UTF_8), entries.get("platform/misc/b.bin"));
 
-        JsonNode metadata = json(entries.get(AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/files/user1/a.txt"));
+        JsonNode metadata = json(entries.get(SystemArchiveBlobMetadata.ENTRY_PREFIX + "public/files/user1/a.txt"));
         assertEquals("text/plain", metadata.get("contentType").asText());
         assertFalse(metadata.has("contentEncoding"));
         assertEquals(userMetadata, ProxyUtil.MAPPER.convertValue(metadata.get("userMetadata"), Map.class));
 
         List<String> names = new ArrayList<>(entries.keySet());
         for (String path : List.of("public/files/user1/a.txt", "platform/misc/b.bin")) {
-            assertEquals(names.indexOf(path) - 1, names.indexOf(AdminSystemExportService.METADATA_ENTRY_PREFIX + path));
+            assertEquals(names.indexOf(path) - 1, names.indexOf(SystemArchiveBlobMetadata.ENTRY_PREFIX + path));
         }
     }
 
@@ -199,7 +199,7 @@ class AdminSystemExportServiceTest {
 
         Map<String, byte[]> entries = readEntries(export(service));
 
-        JsonNode metadata = json(entries.get(AdminSystemExportService.METADATA_ENTRY_PREFIX + path));
+        JsonNode metadata = json(entries.get(SystemArchiveBlobMetadata.ENTRY_PREFIX + path));
         assertEquals("gzip", metadata.get("contentEncoding").asText());
         assertEquals("application/json", metadata.get("contentType").asText());
         assertEquals("abc", metadata.get("userMetadata").get("etag").asText());
@@ -221,7 +221,7 @@ class AdminSystemExportServiceTest {
 
         Map<String, byte[]> entries = readEntries(export(newService(storage)));
 
-        JsonNode metadata = json(entries.get(AdminSystemExportService.METADATA_ENTRY_PREFIX + path));
+        JsonNode metadata = json(entries.get(SystemArchiveBlobMetadata.ENTRY_PREFIX + path));
         assertEquals("2025-03-04T05:06:07.123Z", metadata.get("creationDate").asText());
         assertEquals("2025-04-05T06:07:08.456Z", metadata.get("lastModified").asText());
         assertEquals("attachment; filename=a.txt", metadata.get("contentDisposition").asText());
@@ -260,7 +260,7 @@ class AdminSystemExportServiceTest {
         Map<String, byte[]> entries = readEntries(export(service));
 
         assertTrue(entries.containsKey(path), entries.keySet()::toString);
-        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + path));
+        assertTrue(entries.containsKey(SystemArchiveBlobMetadata.ENTRY_PREFIX + path));
     }
 
     @Test
@@ -358,8 +358,8 @@ class AdminSystemExportServiceTest {
         assertEquals(List.of("public/encryption_keys/cek", "public/files/owner/encryption_keys/notes.txt", "platform/encryption_keys/cek"),
                 contentEntries(archive));
         assertArrayEquals(WRAPPED_KEY.getBytes(StandardCharsets.UTF_8), entries.get("platform/encryption_keys/cek"));
-        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/encryption_keys/cek"));
-        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "platform/encryption_keys/cek"));
+        assertTrue(entries.containsKey(SystemArchiveBlobMetadata.ENTRY_PREFIX + "public/encryption_keys/cek"));
+        assertTrue(entries.containsKey(SystemArchiveBlobMetadata.ENTRY_PREFIX + "platform/encryption_keys/cek"));
         assertFalse(entries.keySet().stream().anyMatch(name -> name.contains("cred1") || name.contains("cred2")));
     }
 
@@ -404,7 +404,7 @@ class AdminSystemExportServiceTest {
         Map<String, byte[]> entries = readEntries(export(service));
 
         assertEquals(0, entries.get("public/models/m1").length);
-        assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/models/m1"));
+        assertTrue(entries.containsKey(SystemArchiveBlobMetadata.ENTRY_PREFIX + "public/models/m1"));
     }
 
     @Test
@@ -416,7 +416,7 @@ class AdminSystemExportServiceTest {
 
         for (String path : List.of("public/skills/folder/.dial-folder", "public/skills/folder/skill/.dial-resource")) {
             assertTrue(entries.containsKey(path), entries.keySet()::toString);
-            assertTrue(entries.containsKey(AdminSystemExportService.METADATA_ENTRY_PREFIX + path));
+            assertTrue(entries.containsKey(SystemArchiveBlobMetadata.ENTRY_PREFIX + path));
         }
     }
 
@@ -474,8 +474,8 @@ class AdminSystemExportServiceTest {
 
         assertEquals(
                 List.of(
-                        AdminSystemExportService.MANIFEST_ENTRY,
-                        AdminSystemExportService.METADATA_ENTRY_PREFIX + "public/files/user1/kept.txt",
+                        SystemArchiveManifest.ENTRY,
+                        SystemArchiveBlobMetadata.ENTRY_PREFIX + "public/files/user1/kept.txt",
                         "public/files/user1/kept.txt"
                 ), new ArrayList<>(entries.keySet()));
         verify(storage, never()).loadWithoutTranscoding("public/files/user1/dir");

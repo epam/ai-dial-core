@@ -1,0 +1,46 @@
+{
+  "routers": {
+    "r1": {
+      "baseUrl": "http://localhost:4848",
+      "userRoles": ["analysts"],
+      "displayName": "Cost-aware router",
+      "description": "Picks the cheapest model that can answer",
+      "interfaces": {
+        "openaiChatCompletions": {},
+        "openaiEmbeddings": {},
+        "anthropicMessages": {}
+      }
+    },
+    "r2": {
+      "baseUrl": "http://localhost:4848",
+      "features": {"rateEndpoint": "http://localhost:4848/rate"},
+      "interfaces": {
+        "openaiChatCompletions": {},
+        "openaiResponses": {}
+      }
+    }
+  },
+  "models": {
+    "gpt-4": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/gpt-4/chat/completions"
+    }
+  },
+  "applications": {
+    "app": {
+      "endpoint": "http://localhost:4848/openai/deployments/app/chat/completions"
+    }
+  },
+  "roles": {
+    "analysts": {
+      "limits": {
+        "r1": {"requestHour": 1, "requestDay": 1},
+        "gpt-4": {"minute": 100000, "day": 1000000}
+      }
+    }
+  },
+  "keys": {
+    "proxyKey1": {"project": "p1", "role": "analysts"},
+    "proxyKey2": {"project": "p2", "role": "default"}
+  }
+}

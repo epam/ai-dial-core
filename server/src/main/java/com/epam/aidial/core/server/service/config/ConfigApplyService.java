@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
@@ -27,14 +28,17 @@ import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentMan
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRouterManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigManifestSupport.ParsedName;
 import com.epam.aidial.core.server.service.policy.PolicyService;
@@ -73,6 +77,7 @@ public class ConfigApplyService {
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
     private final CatalogSchemaService catalogSchemaService;
+    private final ApplicationSchemaService applicationSchemaService;
     private final PolicyService policyService;
 
     public ConfigApplyService(MergedConfigStore mergedConfigStore,
@@ -82,7 +87,8 @@ public class ConfigApplyService {
                               ApiKeyStore apiKeyStore,
                               ApplicationService applicationService,
                               ToolSetService toolSetService,
-                              CatalogSchemaService catalogSchemaService) {
+                              CatalogSchemaService catalogSchemaService,
+                              ApplicationSchemaService applicationSchemaService) {
         this.mergedConfigStore = mergedConfigStore;
         this.resourceService = resourceService;
         this.secretFieldProcessor = secretFieldProcessor;
@@ -91,6 +97,7 @@ public class ConfigApplyService {
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
         this.catalogSchemaService = catalogSchemaService;
+        this.applicationSchemaService = applicationSchemaService;
         this.policyService = new PolicyService(resourceService);
     }
 
@@ -157,6 +164,8 @@ public class ConfigApplyService {
                     applySchema(catalogSchema.spec(), id, parsed.name(), pending, ResourceTypes.CATALOG_SCHEMA, scratch);
             case AdminInterceptorManifest interceptor ->
                     applyManagedEntity(interceptor.spec(), id, parsed.name(), ResourceTypes.INTERCEPTOR, scratch, pending);
+            case AdminRouterManifest router ->
+                    applyManagedEntity(router.spec(), id, parsed.name(), ResourceTypes.ROUTER, scratch, pending);
             case AdminTranslatorManifest translator ->
                     applyTranslator(translator.spec(), id, parsed.name(), pending);
             case AdminRoleManifest role ->
@@ -223,11 +232,21 @@ public class ConfigApplyService {
                                                 ResourceTypes type, Config scratch, List<EntityChange> pending) {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 type, parsed.bucket(), parsed.location(), parsed.name());
-        /// Deployment-id uniqueness only applies to INTERCEPTOR here — ROLE/ROUTE aren't deployments
+        /// Deployment-id uniqueness only applies to INTERCEPTOR and ROUTER here — ROLE/ROUTE aren't deployments
         // resolved through Config.selectDeployment, so they don't share the short-name namespace.
         if (type == ResourceTypes.INTERCEPTOR) {
             List<ValidationWarning> warnings = new ArrayList<>();
             ConfigPostProcessor.validateOverridePaths((Interceptor) entity, warnings);
+            if (!warnings.isEmpty()) {
+                return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+            }
+            String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, type, parsed);
+            if (dupError != null) {
+                return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
+            }
+        }
+        if (type == ResourceTypes.ROUTER) {
+            List<ValidationWarning> warnings = applicationSchemaService.validateRouter(scratch, parsed.name(), (Router) entity);
             if (!warnings.isEmpty()) {
                 return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
             }
@@ -326,6 +345,10 @@ public class ConfigApplyService {
 
     private EntityResult applyApplication(Application application, String id, ParsedName parsed,
                                           Config scratch, List<EntityChange> pending) {
+        String dependencyError = ResourceDependencyValidator.findShapeError(application);
+        if (dependencyError != null) {
+            return new EntityResult(id, AdminApplyStatus.FAILED, dependencyError);
+        }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.APPLICATION, parsed.bucket(), parsed.location(), parsed.name());
         // Only the platform bucket is materialized into MergedConfigStore (see EntityLocationStrategy) —

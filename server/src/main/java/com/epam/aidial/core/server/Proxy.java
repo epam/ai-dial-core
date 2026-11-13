@@ -23,8 +23,10 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.security.IdpNotFoundException;
+import com.epam.aidial.core.server.service.AdminConsentService;
 import com.epam.aidial.core.server.service.AdminExportSettings;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
+import com.epam.aidial.core.server.service.AdminSystemImportService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.BackgroundJobService;
@@ -145,6 +147,10 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_CLIENT_CHANNEL_ID = "X-DIAL-CLIENT-CHANNEL-ID";
     public static final String HEADER_DEPLOYMENT_ID = "X-DIAL-DEPLOYMENT-ID";
     public static final String HEADER_DEPLOYMENT_FEATURES = "X-DIAL-DEPLOYMENT-FEATURES";
+    public static final String HEADER_ROUTER = "X-DIAL-ROUTER";
+    public static final String HEADER_API = "X-DIAL-API";
+    public static final String HEADER_ROUTER_ATTEMPTS = "X-DIAL-ROUTER-ATTEMPTS";
+    public static final String HEADER_ROUTER_NOTICE = "X-DIAL-ROUTER-NOTICE";
 
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);
@@ -179,6 +185,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final HeartbeatService heartbeatService;
     private final UpstreamCacheService upstreamCacheService;
     private final ConsentService consentService;
+    private final AdminConsentService adminConsentService;
     private final DeploymentService deploymentService;
     private final HealthCheckController healthCheckController;
     private final WellKnownResourceMetadataService resourceMetadataService;
@@ -214,6 +221,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AdminSystemExportService adminSystemExportService;
     private final AdminSystemExportService.Settings adminSystemExportSettings;
     private final OrgUnitService orgUnitService;
+    private final AdminSystemImportService adminSystemImportService;
+    private final AdminSystemImportService.Settings adminSystemImportSettings;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -285,7 +294,7 @@ public class Proxy implements Handler<HttpServerRequest> {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
                 return;
             }
-        } else {
+        } else if (!isSystemImport(request)) {
             // not only the case, Content-Length can be missing when Transfer-Encoding: chunked
             if (contentLength > resourceService.getMaxSize()) {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
@@ -508,5 +517,10 @@ public class Proxy implements Handler<HttpServerRequest> {
     private static boolean isMcpResourceMetadataPath(String path) {
         return TOOLSET_PROXY_METADATA_PATTERN.matcher(path).matches()
                 || APPLICATION_MCP_PROXY_METADATA_PATTERN.matcher(path).matches();
+    }
+
+    private static boolean isSystemImport(HttpServerRequest request) {
+        String path = request.path();
+        return request.method() == HttpMethod.POST && path != null && RouteTemplate.ADMIN_SYSTEM_IMPORT.matches(path);
     }
 }

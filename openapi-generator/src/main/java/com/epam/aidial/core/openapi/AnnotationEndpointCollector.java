@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.controller.AdminApplyController;
 import com.epam.aidial.core.server.controller.AdminExportController;
 import com.epam.aidial.core.server.controller.AdminHealthConfigController;
 import com.epam.aidial.core.server.controller.AdminSystemExportController;
+import com.epam.aidial.core.server.controller.AdminSystemImportController;
 import com.epam.aidial.core.server.controller.AdminValidateController;
 import com.epam.aidial.core.server.controller.ApplicationController;
 import com.epam.aidial.core.server.controller.ApplicationMcpProxyController;
@@ -48,6 +49,7 @@ import com.epam.aidial.core.server.controller.ResourceCredentialsController;
 import com.epam.aidial.core.server.controller.ResourceOperationController;
 import com.epam.aidial.core.server.controller.ResponseItemController;
 import com.epam.aidial.core.server.controller.ResponsesController;
+import com.epam.aidial.core.server.controller.RouterController;
 import com.epam.aidial.core.server.controller.ShareController;
 import com.epam.aidial.core.server.controller.ToolSetController;
 import com.epam.aidial.core.server.controller.ToolSetMcpProxyController;
@@ -74,6 +76,7 @@ public final class AnnotationEndpointCollector {
             AdminApplyController.class,
             AdminExportController.class,
             AdminSystemExportController.class,
+            AdminSystemImportController.class,
             AdminHealthConfigController.class,
             AdminValidateController.class,
             AnthropicModelController.class,
@@ -119,6 +122,7 @@ public final class AnnotationEndpointCollector {
             ResourceOperationController.class,
             ResponseItemController.class,
             ResponsesController.class,
+            RouterController.class,
             ShareController.class,
             ToolSetController.class,
             ToolSetMcpProxyController.class,

@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
+import com.epam.aidial.core.server.function.ResolveResourceDependenciesFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
@@ -50,30 +51,21 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
 
     protected final List<BaseRequestFunction<RequestObject>> enhancementFunctions;
 
-    /**
-     * The {@code model} value as it arrived in the request body, i.e. the DIAL deployment id. Captured before
-     * {@link EnhanceDeploymentRequestFn} rewrites the body model to the deployment's {@code overrideName}, and
-     * forwarded upstream as {@link Proxy#HEADER_DEPLOYMENT_ID}.
-     */
-    private String deploymentId;
-
     protected MessagesBaseController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
         this.enhancementFunctions = buildEnhancementFunctions();
     }
 
     /**
-     * The shared chain. {@link MessagesController} overrides this to append {@link
-     * com.epam.aidial.core.server.function.BuildUpstreamCacheFn} — {@code count_tokens} does not
-     * generate, so it must not build a cache breakpoint context.
+     * The chain of {@code count_tokens}; {@link MessagesController} declares its own.
      */
     protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
-        return List.of(
-                new CollectRequestStandardAttachmentsFn(proxy, context),
+        return List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
                 new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES),
                 new EnhanceDeploymentRequestFn(proxy, context),
                 new CollectRequestApplicationFilesFn(proxy, context),
-                new CollectDeploymentsFn(proxy, context));
+                new CollectDeploymentsFn(proxy, context),
+                new ResolveResourceDependenciesFn<>(proxy, context));
     }
 
     public Future<?> handle() {
@@ -85,16 +77,45 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 .map(this::parseBody)
                 .compose(request -> {
                     String model = request.getModel();
-                    deploymentId = model;
                     return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
-                            .compose(ignore -> verifyLimit())
-                            .compose(ignore -> proxy.getTokenStatsTracker().startSpan(context)
-                                    .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request))))
+                            .compose(ignore -> decisions.decideIfRouter(InterfaceType.ANTHROPIC_MESSAGES,
+                                    Future.succeededFuture(context.getOriginalRequestBody()), this::reenterWithCandidate))
+                            .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request))
                             .otherwise(error -> handleRequestError(model, error));
                 })
                 .onFailure(this::handleRequestBodyError);
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * Serves the decision's current candidate as if the client had called it, with the body {@code model} set to
+     * its name so the chain applies its override name.
+     */
+    private Future<Void> serveCandidate(MessagesApiRequest request) {
+        String candidate = context.getDecision().current();
+        return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(candidate)))
+                .compose(ignore -> {
+                    request.setModel(candidate);
+                    return proceedToDeployment(request);
+                })
+                .otherwise(error -> handleRequestError(candidate, error));
+    }
+
+    private void reenterWithCandidate() {
+        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
+        serveCandidate(parseBody(context.getOriginalRequestBody()));
+    }
+
+    private Future<Void> proceedToDeployment(MessagesApiRequest request) {
+        return verifyLimit()
+                .compose(ignore -> {
+                    if (context.getDecision() != null) {
+                        context.getDecision().setResolving(false);
+                    }
+                    return proxy.getTokenStatsTracker().startSpan(context);
+                })
+                .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request)));
     }
 
     /**
@@ -118,6 +139,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         log.info("Received body from client. Length: {}", body.length());
         try {
             context.setRequestBodyWithTimestamp(body);
+            context.setOriginalRequestBody(body);
             ObjectNode tree = ProxyUtil.parseObject(body);
             return new MessagesApiRequest(tree);
         } catch (IOException e) {
@@ -203,15 +225,6 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 .onFailure(this::handleProxyResponseError);
     }
 
-    /**
-     * The body's {@code model} may have been replaced by {@code overrideName}, so the deployment id is
-     * carried to the adapter out of band.
-     */
-    @Override
-    protected void enrichProxyRequestHeaders(HttpClientRequest proxyRequest) {
-        proxyRequest.putHeader(Proxy.HEADER_DEPLOYMENT_ID, deploymentId);
-    }
-
     private void handleProxyResponse(HttpClientResponse proxyResponse) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         int responseStatusCode = proxyResponse.statusCode();
@@ -251,6 +264,10 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected abstract void processResponse(HttpClientResponse proxyResponse);
 
     protected Void handleRequestError(String deploymentId, Throwable error) {
+        error = decisions.nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));
+        if (error == null) {
+            return null;
+        }
         if (error instanceof PermissionDeniedException) {
             respond(HttpStatus.FORBIDDEN, error.getMessage());
             log.warn("Forbidden deployment {}", deploymentId);

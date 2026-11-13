@@ -40,12 +40,18 @@ Core SHALL answer `405` with an empty body and no `Allow` header to a request wh
 Core SHALL answer `413` with body `Request body is too large`, before the health, version and metadata checks and
 without credentials, to a request whose `Content-Length` exceeds `storage.maxUploadedFileSize` (default 536870912)
 when its `Content-Type` starts with `multipart/form-data`, or exceeds `resources.maxSize` (default 67108864)
-otherwise. A request without a parsable `Content-Length` SHALL be checked as 1024 bytes long.
+otherwise, except a `POST /v1/admin/system-import` body. A request without a parsable `Content-Length` SHALL be checked
+as 1024 bytes long.
 
 #### Scenario: Oversized JSON body
 - **WHEN** `resources.maxSize` is `1024` and a client sends `PUT /v1/conversations/<bucket>/c` with
   `Content-Length: 2048` and `Content-Type: application/json`
 - **THEN** Core answers `413` with body `Request body is too large`
+
+#### Scenario: Large system import archive
+- **WHEN** a client sends `POST /v1/admin/system-import` with `Content-Type: application/zip` and a `Content-Length`
+  larger than `resources.maxSize`
+- **THEN** Core does not answer `413` and passes the request on to authentication
 
 ### Requirement: Malformed percent-escape
 Core SHALL answer `500` with an empty body, after the size check and before authentication, to a request whose path
@@ -148,9 +154,9 @@ and `/v1/deployments/{id}/route/...` patterns, and exactly one on every other bu
 
 ### Requirement: Path variable decoding
 Core SHALL percent-decode (`+` stays `+`) the identifier variables it extracts: deployment, model, application,
-toolset, response, consent, invitation and external-service ids, config entity `{path}`, admin file `{name}` and the
-v2 `{filePath}`. File, resource and v2 resource paths and the app-route `{routePath}` SHALL be passed on still encoded.
-An identifier that is not a valid URI path (an unencoded `[`, say) SHALL get `500` with an empty body.
+toolset, response, consent, admin-consent, invitation and external-service ids, config entity `{path}`, admin file
+`{name}` and the v2 `{filePath}`. File, resource and v2 resource paths and the app-route `{routePath}` SHALL be passed on
+still encoded. An identifier that is not a valid URI path (an unencoded `[`, say) SHALL get `500` with an empty body.
 
 #### Scenario: Encoded deployment id
 - **WHEN** an authenticated client sends `GET /openai/deployments/deployment_x-y%2B%2F`
@@ -161,12 +167,17 @@ An identifier that is not a valid URI path (an unencoded `[`, say) SHALL get `50
 - **THEN** the file download handler receives `files/bucket/fol%2Fder%201/file1%23.txt` (see resource-access-control)
 
 ### Requirement: Multi-segment ids
-Core SHALL let a deployment, model, application, toolset or consent `{id}` span `/`, so a custom application addressed
-by its url (`applications/{bucket}/{name}`) is a valid id; the id is the shortest match before the pattern's fixed suffix.
+Core SHALL let a deployment, model, application, toolset, consent or admin-consent `{id}` span `/`, so a custom
+application addressed by its url (`applications/{bucket}/{name}`) is a valid id; the id is the shortest match before the
+pattern's fixed suffix.
 
 #### Scenario: Custom application in a chat completions path
 - **WHEN** an authenticated client sends `POST /openai/deployments/applications/bucket/my-application/chat/completions`
 - **THEN** the deployment request handler receives deployment id `applications/bucket/my-application`
+
+#### Scenario: Custom application in an admin-consent path
+- **WHEN** an admin sends `GET /v1/admin-consent/applications/public/dependency-consent-app`
+- **THEN** the admin consent handler receives id `applications/public/dependency-consent-app`
 
 ### Requirement: Deployment interfaces
 Core SHALL route `POST /openai/deployments/{id}/(completions|chat/completions|embeddings)` to the deployment request
@@ -282,13 +293,19 @@ the resource routes.
 
 ### Requirement: Config entity routes
 Core SHALL route `GET`, `POST`, `PUT` and `DELETE` on `/v1/{type}/{bucket}/{path}` and `/v1/metadata/{type}/{bucket}/{path}`,
-`{type}` one of `models`, `interceptors`, `translators`, `roles`, `keys`, `routes`, `schemas`, `catalog_schemas`,
-`settings`, `policies`, `policy_assignments` and `{bucket}` `[a-zA-Z0-9_-]+`, to the config entity API, methods it does
-not serve included, so these four never fall through to the config routes; the `405` answers are config-store's.
+`{type}` one of `models`, `interceptors`, `translators`, `routers`, `roles`, `keys`, `routes`, `schemas`,
+`catalog_schemas`, `settings`, `policies`, `policy_assignments` and `{bucket}` `[a-zA-Z0-9_-]+`, to the config entity
+API, methods it does not serve included, so these four never fall through to the config routes; the `405` answers are
+config-store's.
 
 #### Scenario: Model entity
 - **WHEN** an authenticated client sends `PUT /v1/models/platform/new%20model`
 - **THEN** the config entity API receives type `models`, bucket `platform`, path `new model`
+
+#### Scenario: Router entity
+- **WHEN** an authenticated client sends `GET /v1/routers/platform/r1`
+- **THEN** the config entity API receives type `routers`, bucket `platform`, path `r1`, while `GET /v1/routers/r1`
+  (one segment) still reaches the single-router lookup
 
 ### Requirement: HEAD and PATCH on config entity URLs
 Core SHALL NOT route `HEAD` or `PATCH` on the config entity URLs to the config entity API: no built-in route serves
@@ -315,22 +332,35 @@ handler, and `GET /v2/metadata/{group}/{bucket}/{path}[/files[/{filePath}]]` to 
 Core SHALL route `GET /v1/admin/health/config`, `POST /v1/admin/validate`, `POST /v1/admin/apply`,
 `POST /v1/admin/config/file/migrate`, `POST /v1/ops/config/reload` and `GET`, `POST`, `PUT` and `DELETE` on
 `/v1/admin/config/file/{type}[/{name}]` (`{type}` a config entity type other than `policies` and
-`policy_assignments`, or `applications`, `toolsets`) to the admin config API (config-store), and
+`policy_assignments`, or `applications`, `toolsets`; `routers` included) to the admin config API (config-store), and
 `POST /v1/admin/system-export` to the admin system export handler.
 
 #### Scenario: File config entry
 - **WHEN** an admin sends `GET /v1/admin/config/file/models/test-model-v1`
 - **THEN** the admin file config API receives type `models` and name `test-model-v1`
 
+#### Scenario: File router entry
+- **WHEN** an admin sends `GET /v1/admin/config/file/routers/r1`
+- **THEN** the admin file config API receives type `routers` and name `r1`
+
 ### Requirement: Bucket, user and schema routes
 Core SHALL route `GET /v1/bucket`, `GET /v1/user/info`, `GET /v1/user/limits`, `GET /v1/user/usage`,
 `GET /v1/user/offline-credentials`, `POST /v1/user/offline-credentials/(signin|signout)`, `GET` and
-`POST /v1/consent/{id}`, and `GET /v1/application_type_schemas/(schemas|schema|meta_schema)` and
+`POST /v1/consent/{id}`, `GET`, `POST` and `DELETE /v1/admin-consent/{id}`, and
+`GET /v1/application_type_schemas/(schemas|schema|meta_schema)` and
 `GET /v1/catalog_schemas/(schemas|schema|meta_schema)` to their handlers.
 
 #### Scenario: Bucket
 - **WHEN** an authenticated client sends `GET /v1/bucket`
 - **THEN** the bucket handler answers
+
+#### Scenario: Admin consent
+- **WHEN** an admin sends `GET /v1/admin-consent/applications/public/dependency-consent-app`
+- **THEN** the admin consent handler answers
+
+#### Scenario: Admin-consent suffix on a user consent path
+- **WHEN** an admin sends `POST /v1/consent/applications/public/dependency-consent-app/admin-consent` with no body
+- **THEN** the user consent handler answers `400` (it demands a body), and no admin consent is stored
 
 ### Requirement: Share and invitation routes
 Core SHALL route `POST /v1/ops/resource/share/(create|list|discard|revoke|copy)` to sharing, `GET /v1/invitations` to
@@ -450,3 +480,15 @@ Core SHALL stop at the first config route matching method and path: when the cal
 - **WHEN** route `forbidden` has `"paths": ["/v1/forbidden"]`, `"methods": ["GET"]`, `"userRoles": []` and an
   authenticated client sends `GET /v1/forbidden`
 - **THEN** Core answers `403` with body `Forbidden route`
+
+### Requirement: Router listing routes
+Core SHALL route `GET /v1/routers` to the router listing and `GET /v1/routers/{id}`, where `{id}` is one segment, to
+the single router lookup (see router-deployment). Both are tried before the resource routes.
+
+#### Scenario: Router listing
+- **WHEN** an authenticated client sends `GET /v1/routers`
+- **THEN** the router listing answers
+
+#### Scenario: Single router
+- **WHEN** an authenticated client sends `GET /v1/routers/my%20router`
+- **THEN** the router lookup receives id `my router`

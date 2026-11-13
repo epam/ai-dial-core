@@ -326,7 +326,7 @@ would leave a Model's or ToolSet's own `dependencies`, `interceptors` and icon o
   `public/deployments/<id>/` folders that a published code app points at.
 - **Interceptor lists.** An `interceptors` entry of any Deployment is a short name of an interceptor and is followed, although Core does not
   evaluate the stored `interceptors` list of an Interceptor at request time: the export carries what the body declares, not what Core runs.
-- **Not examined:** Roles (`user_roles`), translators (`interfaces.*.translator`), inline `routes`, schema documents, and the content of
+- **Not examined:** Roles (`user_roles`), translators (`interfaces.*.translator`), inline `routes`, Routers (a name that only a Router holds is not found), schema documents, and the content of
   Files, Skills and Prompts. Unmarked references in properties are not detected.
 - **Value classification.** A value is classified first (`ShortNameResolver.classify`): an absolute URL (`UrlUtil.isAbsoluteUrl`, any
   `scheme://`) is external; a value that parses as a resource URL carries a descriptor and is classified by the scope table without the

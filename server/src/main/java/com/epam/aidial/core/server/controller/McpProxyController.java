@@ -166,6 +166,10 @@ public class McpProxyController implements Controller {
 
     private void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
+        boolean keyEnrichedByChain = isPerRequestKeyEnrichedByChain();
+        if (keyEnrichedByChain) {
+            ApiKeyData.createProxyApiKeyData(context);
+        }
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
 
@@ -190,6 +194,9 @@ public class McpProxyController implements Controller {
                 log.warn("Can't process JSON request body. Error:", e);
                 return;
             }
+        }
+        if (keyEnrichedByChain) {
+            apiKeyStore.assignPerRequestApiKey(context.getProxyApiKeyData());
         }
         sendRequest();
     }
@@ -229,12 +236,8 @@ public class McpProxyController implements Controller {
     protected void injectProxyRequestHeaders(HttpClientRequest proxyRequest, MultiMap excludeHeaders) {
     }
 
-    protected String assignPerRequestKey() {
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        context.setProxyApiKeyData(proxyApiKeyData);
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-        apiKeyStore.assignPerRequestApiKey(proxyApiKeyData);
-        return proxyApiKeyData.getPerRequestKey();
+    protected boolean isPerRequestKeyEnrichedByChain() {
+        return false;
     }
 
     /**
@@ -448,7 +451,10 @@ public class McpProxyController implements Controller {
             context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
             context.getRequest().body()
                     .onFailure(this::handleRequestBodyError)
-                    .onSuccess(this::handleRequestBody);
+                    .onSuccess(body -> taskExecutor.submit(() -> {
+                        handleRequestBody(body);
+                        return null;
+                    }).onFailure(this::handleError));
             return null;
         });
     }

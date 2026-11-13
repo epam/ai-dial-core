@@ -34,14 +34,15 @@ public class EntityBucketBinding {
             Map.entry(ResourceTypes.CONVERSATION.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, USER_BUCKET_WILDCARD)),
             Map.entry("interceptors", Set.of(PLATFORM_BUCKET)),
             Map.entry("translators", Set.of(PLATFORM_BUCKET)),
+            Map.entry("routers", Set.of(PLATFORM_BUCKET)),
             Map.entry("roles", Set.of(PLATFORM_BUCKET)),
             Map.entry("keys", Set.of(PLATFORM_BUCKET)),
             Map.entry("routes", Set.of(PLATFORM_BUCKET)),
             Map.entry(ResourceTypes.POLICY.group(), Set.of(PLATFORM_BUCKET)),
             Map.entry(ResourceTypes.POLICY_ASSIGNMENT.group(), Set.of(PLATFORM_BUCKET)),
             Map.entry("settings", Set.of(PLATFORM_BUCKET)),
-            // admin-managed aliases live in public storage only; aliases in user buckets are not supported
-            Map.entry(ResourceTypes.ALIAS.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET)));
+            // admin-managed aliases live in public or platform storage; aliases in user buckets are not supported
+            Map.entry(ResourceTypes.ALIAS.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, PLATFORM_BUCKET)));
 
     public static boolean isAllowed(String entityType, String bucket) {
         Set<String> allowed = ALLOWED_BUCKETS.get(entityType);
