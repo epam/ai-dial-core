@@ -181,7 +181,7 @@ public class OrgUnitApprovals {
     public boolean isRequester(ProxyContext context, Publication publication) {
         String bucket = encryption.encrypt(BucketBuilder.buildInitiatorBucket(context));
         String url = publication.getUrl();
-        return url != null && url.startsWith(PUBLICATIONS + ResourceDescriptor.PATH_SEPARATOR + bucket + ResourceDescriptor.PATH_SEPARATOR);
+        return url == null || url.startsWith(PUBLICATIONS + ResourceDescriptor.PATH_SEPARATOR + bucket + ResourceDescriptor.PATH_SEPARATOR);
     }
 
     private static boolean isPerson(ProxyContext context) {

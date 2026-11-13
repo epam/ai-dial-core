@@ -241,7 +241,7 @@ A holder of `read` and `write publications/**` at a unit — by default its `adm
 into it through the usual `/v1/ops/publication/approve` and `/reject`, without being a DIAL admin. A request touches
 the unit of its `targetFolder` and of every resource's `targetUrl`, unpublish (`DELETE`) items included; the approver
 must hold the grant in every one of those units, and none of them may be the shared space. An approver decides their
-own requests too.
+own requests too, and gets no notification of their own decision.
 
 Rules sent with a request into a unit are dropped when it is created or updated, since roles decide who reads there:
 Chat's empty list, the rules the admin panel copies onto a moved folder and a cleared rules list all pass. A request

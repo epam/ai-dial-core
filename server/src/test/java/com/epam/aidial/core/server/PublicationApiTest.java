@@ -3,7 +3,6 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
-import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.data.Publications;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -106,21 +105,12 @@ class PublicationApiTest extends ResourceBaseTest {
             verify(send(HttpMethod.PUT, "/v1/toolsets/%s/%s".formatted(owner, name), null, TOOLSET_CREATE_REQEUST_BODY,
                     "authorization", "admin"), 200);
         }
-        acceptShare("toolsets/%s/read-toolset".formatted(owner), "[\"READ\"]");
-        acceptShare("toolsets/%s/write-toolset".formatted(owner), "[\"READ\", \"WRITE\"]");
+        shareWithUser("toolsets/%s/read-toolset".formatted(owner), "[\"READ\"]");
+        shareWithUser("toolsets/%s/write-toolset".formatted(owner), "[\"READ\", \"WRITE\"]");
 
         assertEquals(403, publishToolset(owner, "read-toolset", true).status());
         verify(publishToolset(owner, "read-toolset", false), 200);
         verify(publishToolset(owner, "write-toolset", true), 200);
-    }
-
-    private void acceptShare(String url, String permissions) {
-        Response response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
-                {"invitationType": "link", "resources": [{"url": "%s", "permissions": %s}]}
-                """.formatted(url, permissions), "authorization", "admin");
-        verify(response, 200);
-        InvitationLink link = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
-        verify(send(HttpMethod.GET, link.invitationLink(), "accept=true", null, "authorization", "user"), 200);
     }
 
     private Response publishToolset(String owner, String name, boolean publishCredentials) {

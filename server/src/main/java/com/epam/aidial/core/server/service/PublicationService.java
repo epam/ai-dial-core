@@ -416,8 +416,9 @@ public class PublicationService {
         if (publication.getStatus() != Publication.Status.PENDING) {
             throw new ResourceNotFoundException("Publication is already finalized: " + resource.getUrl());
         }
+        boolean ownRequest = !admin && orgUnitApprovals.isRequester(context, publication);
         // with no second person deciding, the requester must still be allowed to publish what they asked for
-        if (!admin && orgUnitApprovals.isRequester(context, publication)) {
+        if (ownRequest) {
             for (Publication.Resource item : publication.getResources()) {
                 if (item.getAction() != Publication.ResourceAction.DELETE) {
                     requireCredentialsPublishable(context, item, ResourceDescriptorFactory.fromPrivateUrl(item.getSourceUrl(), encryption));
@@ -463,9 +464,11 @@ public class PublicationService {
         deleteReviewResources(context, resourcesToAdd);
         deletePublicResources(context, resourcesToDelete);
 
-        String notificationMessage = admin ? "Your request has been approved by admin" : "Your request has been approved";
-        Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
-        notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+        if (!ownRequest) {
+            String notificationMessage = admin ? "Your request has been approved by admin" : "Your request has been approved";
+            Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
+            notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+        }
 
         return publication;
     }
@@ -507,11 +510,13 @@ public class PublicationService {
                 .toList();
         deleteReviewResources(context, resourcesToAdd);
 
-        String rejectReason = request.comment();
-        String notificationMessage = admin ? "Your request has been rejected by admin" : "Your request has been rejected";
-        notificationMessage = rejectReason != null ? notificationMessage + ": " + rejectReason : notificationMessage;
-        Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
-        notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+        if (admin || !orgUnitApprovals.isRequester(context, publication)) {
+            String rejectReason = request.comment();
+            String notificationMessage = admin ? "Your request has been rejected by admin" : "Your request has been rejected";
+            notificationMessage = rejectReason != null ? notificationMessage + ": " + rejectReason : notificationMessage;
+            Notification notification = Notification.getPublicationNotification(resource.getUrl(), notificationMessage);
+            notificationService.createNotification(resource.getBucketName(), resource.getBucketLocation(), notification);
+        }
 
         return publication;
     }

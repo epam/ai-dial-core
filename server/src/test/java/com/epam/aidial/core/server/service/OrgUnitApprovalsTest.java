@@ -153,6 +153,7 @@ class OrgUnitApprovalsTest {
         assertTrue(approvals.mayReview(bob, publication("public/Acme/", "files/public/Acme/a.txt").setRules(List.of())));
         assertTrue(approvals.mayDecide(bob, publication("public/Acme/", "files/public/Acme/a.txt")
                 .setUrl("publications/enc-Users_bob@acme.com_/7")));
+        assertTrue(approvals.isRequester(bob, publication("public/Acme/", "files/public/Acme/a.txt").setUrl(null)), "no url counts as own");
     }
 
     @Test
