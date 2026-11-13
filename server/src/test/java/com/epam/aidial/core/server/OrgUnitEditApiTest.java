@@ -229,6 +229,125 @@ public class OrgUnitEditApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testUnitWritesKeepInterceptors() {
+        putApp("app", "[\"interceptor1\"]");
+
+        for (String caller : List.of(EDITOR, ADMIN)) {
+            Response kept = send(HttpMethod.PUT, "/v1/applications/public/Acme/app", null, """
+                    {"endpoint": "http://example.com/v2/completions", "display_name": "%s", "interceptors": ["interceptor1"]}
+                    """.formatted(caller), "authorization", caller);
+            assertEquals(200, kept.status(), kept.body());
+        }
+        JsonObject stored = new JsonObject(send(HttpMethod.GET, "/v1/applications/public/Acme/app", null, null, "authorization", "admin").body());
+        assertEquals("http://example.com/v2/completions", stored.getString("endpoint"));
+        assertEquals(List.of("interceptor1"), stored.getJsonArray("interceptors").getList());
+    }
+
+    @Test
+    void testUnitWritesDontChangeInterceptors() {
+        assertEquals(200, send(HttpMethod.PUT, "/v1/interceptors/platform/interceptor2", null,
+                "{\"endpoint\": \"http://localhost:4088/api/v1/interceptor/handle\"}", "authorization", "admin", "If-None-Match", "*").status());
+        putApp("app", "[\"interceptor1\", \"interceptor2\"]");
+        putApp("plain", null);
+
+        for (String caller : List.of(EDITOR, ADMIN)) {
+            for (String interceptors : List.of("[]", "null", "[\"interceptor2\", \"interceptor1\"]", "[\"interceptor1\"]", "[\"unknown\"]")) {
+                assertEquals(403, putApp("app", interceptors, caller).status(), caller + " " + interceptors);
+            }
+            assertEquals(403, putApp("plain", "[\"interceptor1\"]", caller).status(), caller);
+            assertEquals(403, putApp("fresh", "[\"interceptor1\"]", caller).status(), caller);
+        }
+        assertEquals(List.of("interceptor1", "interceptor2"), interceptors("public/Acme/app"));
+    }
+
+    @Test
+    void testInterceptorDroppedFromConfigStaysEditable() {
+        assertEquals(200, send(HttpMethod.PUT, "/v1/interceptors/platform/retired", null,
+                "{\"endpoint\": \"http://localhost:4088/api/v1/interceptor/handle\"}", "authorization", "admin", "If-None-Match", "*").status());
+        putApp("app", "[\"retired\"]");
+        assertEquals(204, send(HttpMethod.DELETE, "/v1/interceptors/platform/retired", null, "", "authorization", "admin").status());
+
+        Response kept = putApp("app", "[\"retired\"]", EDITOR);
+        assertEquals(200, kept.status(), kept.body());
+        assertEquals(400, putApp("app", "[\"retired\"]", "admin").status(), "an admin sets only interceptors the config defines");
+    }
+
+    @Test
+    void testCopiesAndMovesKeepInterceptors() {
+        putApp("app", "[\"interceptor1\"]");
+        putApp("plain", null);
+
+        assertEquals(200, copy("app", "copied", false).status(), "a copy keeps interceptors set in the shared space");
+        assertEquals(200, copy("plain", "plain-copy", false).status());
+        assertEquals(200, copy("plain-copy", "plain", true).status(), "replacing an app is as open as deleting it");
+        assertEquals(200, copy("app", "copied", true).status(), "the replaced app had the same interceptors");
+        assertEquals(List.of("interceptor1"), interceptors("public/Acme/copied"));
+        Response renamed = operation("move", "applications/public/Acme/copied", "applications/public/Acme/renamed", EDITOR);
+        assertEquals(200, renamed.status(), renamed.body());
+        assertEquals(List.of("interceptor1"), interceptors("public/Acme/renamed"));
+
+        assertEquals(403, copy("plain", "app", true).status(), "replacing would drop the interceptors");
+        assertEquals(403, send(HttpMethod.POST, "/v1/ops/resource/move", null, new JsonObject()
+                .put("sourceUrl", "applications/public/Acme/plain-copy").put("destinationUrl", "applications/public/Acme/app")
+                .put("overwrite", true).encode(), "authorization", EDITOR).status());
+        assertEquals(403, copy("app", "plain", true).status(), "replacing would add interceptors");
+        assertEquals(List.of("interceptor1"), interceptors("public/Acme/app"));
+        assertEquals(List.of(), interceptors("public/Acme/plain"));
+    }
+
+    @Test
+    void testInterceptorsComeOnlyFromTheSharedSpace() {
+        putApp("app", "[\"interceptor1\"]");
+        String own = "applications/" + new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, null, "authorization", EDITOR).body())
+                .getString("bucket") + "/app";
+
+        // a private copy keeps them; as before, only an admin saves an app with interceptors outside a unit
+        Response copied = operation("copy", "applications/public/Acme/app", own, EDITOR);
+        assertEquals(200, copied.status(), copied.body());
+        assertEquals(List.of("interceptor1"), interceptors(own.substring("applications/".length()), EDITOR));
+        assertEquals(403, send(HttpMethod.PUT, "/v1/" + own, null, """
+                {"endpoint": "http://example.com/v1/completions", "display_name": "App", "interceptors": ["interceptor1"]}
+                """, "authorization", EDITOR).status());
+
+        for (String operation : List.of("copy", "move")) {
+            Response back = operation(operation, own, "applications/public/Acme/back", EDITOR);
+            assertEquals(403, back.status(), operation + " brings interceptors from outside the shared space");
+        }
+        Response replaced = send(HttpMethod.POST, "/v1/ops/resource/copy", null, new JsonObject()
+                .put("sourceUrl", own).put("destinationUrl", "applications/public/Acme/app").put("overwrite", true).encode(),
+                "authorization", EDITOR);
+        assertEquals(200, replaced.status(), "the replaced app keeps the interceptors it had");
+    }
+
+    private void putApp(String name, String interceptors) {
+        Response response = putApp(name, interceptors, "admin");
+        assertEquals(200, response.status(), response.body());
+    }
+
+    private Response putApp(String name, String interceptors, String caller) {
+        JsonObject body = new JsonObject().put("endpoint", "http://example.com/v1/completions").put("display_name", name);
+        String json = interceptors == null ? body.encode()
+                : body.encode().replaceFirst("}$", ", \"interceptors\": " + interceptors + "}");
+        return send(HttpMethod.PUT, "/v1/applications/public/Acme/" + name, null, json, "authorization", caller);
+    }
+
+    private List<Object> interceptors(String path) {
+        return interceptors(path, "admin");
+    }
+
+    private List<Object> interceptors(String path, String caller) {
+        Response response = send(HttpMethod.GET, "/v1/applications/" + path, null, null, "authorization", caller);
+        assertEquals(200, response.status(), response.body());
+        return new JsonObject(response.body()).getJsonArray("interceptors", new JsonArray()).getList();
+    }
+
+    private Response copy(String from, String to, boolean overwrite) {
+        return send(HttpMethod.POST, "/v1/ops/resource/copy", null, new JsonObject()
+                .put("sourceUrl", "applications/public/Acme/" + from).put("destinationUrl", "applications/public/Acme/" + to)
+                .put("overwrite", overwrite).encode(), "authorization", EDITOR);
+    }
+
+    @Test
     void testCopiesAndMovesDontForwardTokens() {
         assertEquals(200, send(HttpMethod.PUT, "/v1/applications/public/Acme/app", null, """
                 {"endpoint": "http://example.com/v1/completions", "display_name": "App", "forward_auth_token": true}

@@ -5,6 +5,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.AnalyticsSettings;
 import com.epam.aidial.core.server.log.LogStore;
@@ -371,6 +372,18 @@ public class ResourceBaseTest {
      */
     protected JsonObject additionalSettingsOverrides() {
         return new JsonObject();
+    }
+
+    /**
+     * Shares {@code url}, which "admin" owns, with "user" through an accepted invitation link.
+     */
+    protected void shareWithUser(String url, String permissions) {
+        Response response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                {"invitationType": "link", "resources": [{"url": "%s", "permissions": %s}]}
+                """.formatted(url, permissions), "authorization", "admin");
+        verify(response, 200);
+        InvitationLink link = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        verify(send(HttpMethod.GET, link.invitationLink(), "accept=true", null, "authorization", "user"), 200);
     }
 
     static void verify(Response response, int status) {

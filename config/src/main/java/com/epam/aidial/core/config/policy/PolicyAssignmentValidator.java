@@ -35,7 +35,7 @@ public class PolicyAssignmentValidator {
      * "unrecognized field".
      */
     private static final List<String> POLICY_ONLY_FIELDS = List.of(
-            "priority", "kind", "quantity", "object", "per", "cost", "attachedTo", "harness", "broker", "packages");
+            "displayName", "priority", "kind", "quantity", "object", "per", "cost", "attachedTo", "harness", "broker", "packages");
 
     public static String rejectPolicyFieldsOn(JsonNode assignment) {
         for (String field : POLICY_ONLY_FIELDS) {
