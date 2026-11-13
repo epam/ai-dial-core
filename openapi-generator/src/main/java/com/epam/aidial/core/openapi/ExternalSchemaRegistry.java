@@ -45,9 +45,9 @@ public class ExternalSchemaRegistry {
         // Paths starting with these patterns are truly external (outside project)
         // Examples: "../external/Schema.yaml", "/absolute/path/Schema.yaml", "http://..."
         return schemaRef.startsWith("../")
-            || schemaRef.startsWith("/")
-            || schemaRef.startsWith("http://")
-            || schemaRef.startsWith("https://");
+                || schemaRef.startsWith("/")
+                || schemaRef.startsWith("http://")
+                || schemaRef.startsWith("https://");
     }
 
     private ObjectNode loadSchema(String schemaName) {

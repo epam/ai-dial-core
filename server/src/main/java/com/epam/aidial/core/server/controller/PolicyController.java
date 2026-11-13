@@ -106,8 +106,7 @@ public class PolicyController implements Controller {
                             @ApiResponse(code = 412),
                             @ApiResponse(code = 500)
                     },
-                    extensions = {@ApiExtension(name = "x-preview", value = "true")}
-            ),
+                    extensions = {@ApiExtension(name = "x-preview", value = "true")}),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/policies/{bucket}/{path}",
@@ -132,8 +131,7 @@ public class PolicyController implements Controller {
                             @ApiResponse(code = 422, description = "The policy breaks a validation rule"),
                             @ApiResponse(code = 500)
                     },
-                    extensions = {@ApiExtension(name = "x-preview", value = "true")}
-            ),
+                    extensions = {@ApiExtension(name = "x-preview", value = "true")}),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/policies/{bucket}/{path}",
@@ -154,8 +152,7 @@ public class PolicyController implements Controller {
                             @ApiResponse(code = 412),
                             @ApiResponse(code = 500)
                     },
-                    extensions = {@ApiExtension(name = "x-preview", value = "true")}
-            ),
+                    extensions = {@ApiExtension(name = "x-preview", value = "true")}),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/policy_assignments/{bucket}/{path}",
@@ -176,8 +173,7 @@ public class PolicyController implements Controller {
                             @ApiResponse(code = 412),
                             @ApiResponse(code = 500)
                     },
-                    extensions = {@ApiExtension(name = "x-preview", value = "true")}
-            ),
+                    extensions = {@ApiExtension(name = "x-preview", value = "true")}),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/policy_assignments/{bucket}/{path}",
@@ -201,8 +197,7 @@ public class PolicyController implements Controller {
                             @ApiResponse(code = 422, description = "The assignment breaks a validation rule"),
                             @ApiResponse(code = 500)
                     },
-                    extensions = {@ApiExtension(name = "x-preview", value = "true")}
-            ),
+                    extensions = {@ApiExtension(name = "x-preview", value = "true")}),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/policy_assignments/{bucket}/{path}",
@@ -221,8 +216,7 @@ public class PolicyController implements Controller {
                             @ApiResponse(code = 412),
                             @ApiResponse(code = 500)
                     },
-                    extensions = {@ApiExtension(name = "x-preview", value = "true")}
-            )
+                    extensions = {@ApiExtension(name = "x-preview", value = "true")})
     })
     public Future<?> handle() {
         if (!EntityBucketBinding.isAllowed(type.group(), bucket)) {

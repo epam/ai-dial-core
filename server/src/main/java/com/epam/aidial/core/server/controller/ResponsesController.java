@@ -139,8 +139,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                             @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
                                     description = OpenApiDescriptions.CACHE_POLICY,
                                     allowableValues = {"availability-priority", "cache-priority"})
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "POST",
                     path = "/openai/responses",
@@ -153,8 +152,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                             @ApiParameter(name = HEADER_CACHE_POLICY, in = ParameterIn.HEADER,
                                     description = OpenApiDescriptions.CACHE_POLICY,
                                     allowableValues = {"availability-priority", "cache-priority"})
-                    }
-            )
+                    })
     })
     @ApiResponse(code = 200, description = "Success",
             headers = {

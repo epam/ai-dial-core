@@ -19,21 +19,17 @@ import java.util.Map;
         discriminatorProperty = "object",
         value = {
             @ApiSubType(
-                discriminatorValue = "model",
-                type = ModelData.class
-                ),
+                    discriminatorValue = "model",
+                    type = ModelData.class),
             @ApiSubType(
-                discriminatorValue = "application",
-                type = ApplicationData.class
-                ),
+                    discriminatorValue = "application",
+                    type = ApplicationData.class),
             @ApiSubType(
-                discriminatorValue = "toolset",
-                type = ToolSetData.class
-                ),
+                    discriminatorValue = "toolset",
+                    type = ToolSetData.class),
             @ApiSubType(
-                discriminatorValue = "router",
-                type = RouterData.class
-                )
+                    discriminatorValue = "router",
+                    type = RouterData.class)
         }
 )
 public class DeploymentData {
