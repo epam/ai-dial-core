@@ -14,8 +14,6 @@ public @interface ApiOperation {
     String path();
     String operationId();
     ApiSchema requestBody() default @ApiSchema;
-    /** The description of the operation; empty for none. */
-    String description() default "";
     String[] tags() default {};
     String contentType() default "application/json";
     ApiParameter[] parameters() default {};

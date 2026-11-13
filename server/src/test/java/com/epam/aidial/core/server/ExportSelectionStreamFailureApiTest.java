@@ -43,7 +43,7 @@ public class ExportSelectionStreamFailureApiTest extends ResourceBaseTest {
 
     @Override
     protected JsonObject additionalSettingsOverrides() {
-        return new JsonObject().put("adminExport", new JsonObject().put("stallTimeout", 2000).put("maxResourceMiB", 8));
+        return new JsonObject().put("adminExport", new JsonObject().put("stallTimeout", 2000));
     }
 
     @BeforeEach
@@ -117,6 +117,16 @@ public class ExportSelectionStreamFailureApiTest extends ResourceBaseTest {
         Reply next = ExportApiSupport.post(serverPort, SMALL_REQUEST);
         assertEquals(200, next.status());
         ExportApiSupport.awaitLocksReleased(lockService());
+    }
+
+    @Test
+    void testRootThatDoesNotExistIsNotFoundBeforeAnyByteAndTheLocksAreReleased() throws Exception {
+        Reply missing = ExportApiSupport.post(serverPort, "{\"roots\":[{\"type\":\"application\",\"url\":\"applications/platform/no-such-root\"}]}");
+
+        assertEquals(404, missing.status());
+        assertFalse(new String(missing.body(), StandardCharsets.ISO_8859_1).contains("PK"), "no archive byte was sent");
+        ExportApiSupport.awaitLocksReleased(lockService());
+        assertEquals(200, ExportApiSupport.post(serverPort, SMALL_REQUEST).status());
     }
 
     @Test

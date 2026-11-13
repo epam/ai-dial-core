@@ -98,18 +98,6 @@ public class ExportTypePolicyCoverageTest {
     }
 
     @Test
-    public void testSupportedDependencyIsAlsoBoundToItsBucket() {
-        EXPECTED.forEach((type, byLocation) -> {
-            if (byLocation.get(PLATFORM) != Disposition.UNSUPPORTED) {
-                assertTrue(ExportTypePolicy.isBound(type, "platform"), type + " is not bound to platform");
-            }
-            if (byLocation.get(PUBLIC) != Disposition.UNSUPPORTED) {
-                assertTrue(ExportTypePolicy.isBound(type, "public"), type + " is not bound to public");
-            }
-        });
-    }
-
-    @Test
     public void testEveryExaminedTypeHasItsEntityAndRedactionRule() {
         List<ResourceTypes> examined = Arrays.stream(ResourceTypes.values())
                 .filter(type -> ExportTypePolicy.resolveContent(type) == ExportTypePolicy.Content.EXAMINED).toList();

@@ -41,14 +41,11 @@ public final class ExportArchive {
     private final DiscardableZipOutputStream zip;
     private final ResourceService resourceService;
     private final ComplexResourceService complexResourceService;
-    private final ExportLimits.Deadline deadline;
 
-    public ExportArchive(OutputStream out, ResourceService resourceService, ComplexResourceService complexResourceService,
-                         ExportLimits.Deadline deadline) {
+    public ExportArchive(OutputStream out, ResourceService resourceService, ComplexResourceService complexResourceService) {
         this.zip = new DiscardableZipOutputStream(out);
         this.resourceService = resourceService;
         this.complexResourceService = complexResourceService;
-        this.deadline = deadline;
     }
 
     public void writeManifest(String coreVersion, Instant createdAt) throws IOException {
@@ -98,7 +95,6 @@ public final class ExportArchive {
         // every stored path is checked before the first file of the Skill is written
         files.keySet().forEach(relativePath -> ExportResourceNames.requireSafeRelativePath(relativePath, key));
         for (Map.Entry<String, FolderResourceMarker.ResourceFileMetadata> file : files.entrySet()) {
-            deadline.check();
             try (ResourceService.ResourceStream stored = complexResourceService.getVersionFileStream(descriptor, marker.getCurrentVersion(), file.getKey())) {
                 if (stored == null) {
                     throw new IllegalStateException("A resource of the export no longer exists (resource=" + key + ")");
@@ -139,7 +135,6 @@ public final class ExportArchive {
         byte[] buffer = new byte[COPY_BUFFER_SIZE];
         long copied = 0;
         for (int read = stored.inputStream().read(buffer); read != -1; read = stored.inputStream().read(buffer)) {
-            deadline.check();
             zip.write(buffer, 0, read);
             copied += read;
         }

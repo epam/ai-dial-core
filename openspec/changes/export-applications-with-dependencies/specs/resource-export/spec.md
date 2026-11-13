@@ -26,7 +26,7 @@ The request body SHALL be a JSON object that holds `roots` only: a non-empty lis
 - **THEN** it is exported once, with one entry in the archive
 
 ### Requirement: An invalid request is refused with 400 before any byte
-Core SHALL answer `400`, before it writes any archive byte, for an empty or whitespace-only body, a body that is not valid JSON, a field other than `roots`, a missing or empty `roots`, more roots than `maxRoots`, a `type` other than `application`, a URL that does not parse, a URL of another resource type, a folder, or a bucket other than `public` and `platform`. The message MAY name `roots` or the index of a root and SHALL hold no submitted value.
+Core SHALL answer `400`, before it writes any archive byte, for an empty or whitespace-only body, a body that is not valid JSON, a field other than `roots`, a missing or empty `roots`, a `type` other than `application`, a URL that does not parse, a URL of another resource type, a folder, or a bucket other than `public` and `platform`. The message MAY name `roots` or the index of a root and SHALL hold no submitted value.
 
 #### Scenario: Body that is not a selection
 - **WHEN** an explicit admin sends no body, a body of only whitespace, a body that is not valid JSON, or `{"roots":[]}`
@@ -43,10 +43,6 @@ Core SHALL answer `400`, before it writes any archive byte, for an empty or whit
 #### Scenario: Root that is rejected
 - **WHEN** a root has a URL that is rejected, for example one that holds a token in its path
 - **THEN** the message may name the index of the root and does not contain the URL or any part of it
-
-#### Scenario: Too many roots
-- **WHEN** `roots` holds more Applications than `adminExport.maxRoots` (default 100)
-- **THEN** the response is `400` and none of the roots is looked at
 
 ### Requirement: Only an explicit admin may export
 Core SHALL allow the export only to a caller with explicit admin access (`access.admin.rules`), and SHALL answer every other caller with `403` before it reads the body, validates it or looks at any root. A caller that holds a per-request key (an application), a caller authenticated only by an API key, and every caller of a Core that has no admin rules SHALL get `403`.
@@ -175,7 +171,7 @@ Before the response head Core SHALL take the bucket locks of `public/` and `plat
 - **THEN** the write waits for the lock, as an admin write does
 
 ### Requirement: Statuses are decided in a fixed order before the head
-Core SHALL decide the status in this order: `403` for a caller that is not an explicit admin, `400` for an invalid request, `409` when a bucket lock is held, `403` for a public root that the caller may not read, `404` for a missing root, and `500` (`Failed to prepare the export`) for any other failure of these checks. The head is sent with the first bytes of the archive: a failure before them is `500` (`Failed to export the Applications`), after them no status is sent.
+Core SHALL decide the status in this order: `403` for a caller that is not an explicit admin, `400` for an invalid request, `409` when a bucket lock is held, `403` for a public root that the caller may not read, `404` for a missing root, and `500` (`Failed to export the Applications`) for any other failure before the first bytes of the archive. The head is sent with those bytes, after them no status is sent.
 
 #### Scenario: Lock held and root missing
 - **WHEN** a bucket lock is held and a request names a root that does not exist
@@ -190,10 +186,10 @@ Core SHALL decide the status in this order: `403` for a caller that is not an ex
 - **THEN** the response is `500` with the message `Failed to export the Applications`
 
 ### Requirement: A failure after the head cuts the stream
-A failure after the response head SHALL end the connection without the central directory of the ZIP, so that the bytes received are not a valid archive, and SHALL be logged at WARN with the kind of the failure, the duration, the key of the resource in hand (`-` when none) and, for a bound, its name, never a value. A client SHALL treat a transport error as a failed export.
+A failure after the response head SHALL end the connection without the central directory of the ZIP, so that the bytes received are not a valid archive, and SHALL be logged at WARN with the kind of the failure, the duration, the key of the resource in hand (`-` when none), never a value. A client SHALL treat a transport error as a failed export.
 
 #### Scenario: Failures that cut the stream
-- **WHEN** after the head a limit or the deadline is exceeded, a stored body cannot be bound or is not a JSON object, a root or File is gone, a File is not copied completely, a path is unsafe, a public dependency is unreadable, or a read or write fails
+- **WHEN** after the head the deadline is exceeded, a stored body cannot be bound or is not a JSON object, a root or File is gone, a File is not copied completely, a path is unsafe, a public dependency is unreadable, or a read or write fails
 - **THEN** the connection is reset and the bytes received are not a valid ZIP
 
 #### Scenario: Failure after the first entry
@@ -231,34 +227,8 @@ As the system export does, the export SHALL write an INFO record when a request 
 - **WHEN** an export of two roots is streamed to the last byte
 - **THEN** the log holds an INFO record `Export started` with `roots=2` and an INFO record `Export completed` with a duration and a number of resources, and neither holds a root, a URL or a body
 
-### Requirement: The graph is bounded in resources, depth and references
-The export SHALL write at most `maxNodes` (500) resources, follow at most `maxDepth` (10) references from a root, and count at most `maxEdges` (10000) references in one body and in all bodies together. A bound that is exceeded SHALL cut the stream with a log record that names the bound. A body whose marker references of both property sets together exceed `maxEdges` SHALL be refused before any is classified.
-
-#### Scenario: Too many resources
-- **WHEN** the export would write more than `maxNodes` resources, Models, Interceptors and ToolSets included
-- **THEN** the stream is cut and the log names the bound and no value
-
-#### Scenario: Too deep
-- **WHEN** a chain of references from a root, through an Application, a ToolSet and an Interceptor for example, is longer than `maxDepth`
-- **THEN** the stream is cut
-
-#### Scenario: Too many references
-- **WHEN** one body, or all bodies together, hold more than `maxEdges` references
-- **THEN** the stream is cut
-
-#### Scenario: Too many catalog markers
-- **WHEN** the application and catalog properties of one body together hold more marker references than `maxEdges`
-- **THEN** the stream is cut before any of them is classified, so no storage is probed for them
-
-### Requirement: One body is bounded in size
-`maxResourceMiB` (4) SHALL bound the string length of one stored body, in MiB; a longer body SHALL cut the stream. A stored body is read in full before this check, so the limit does not bound the memory of one read.
-
-#### Scenario: Body too large
-- **WHEN** one stored body is longer than `maxResourceMiB`
-- **THEN** the stream is cut and the log names the bound
-
 ### Requirement: The export has a deadline
-The export SHALL end within `deadline` (180000 ms) from the start to the last byte: a deadline that passes after the head SHALL cut the stream. Core SHALL refuse to start when `deadline` plus `stallTimeout` (default 60000 ms) is not below the 300000 ms lease of the bucket locks, which is not renewed, or when `stallTimeout` alone is not.
+The export SHALL end within `deadline` (180000 ms) from the start to the last byte: a deadline that passes SHALL abort the stream, so the next write fails: after the head the stream is cut, before it the answer is `500`. Core SHALL refuse to start when `deadline` plus `stallTimeout` (default 60000 ms) is not below the 300000 ms lease of the bucket locks, which is not renewed, or when `stallTimeout` alone is not.
 
 #### Scenario: Deadline passes after the head
 - **WHEN** the deadline passes while the archive is written

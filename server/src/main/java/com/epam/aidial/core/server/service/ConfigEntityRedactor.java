@@ -11,13 +11,13 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * The one projection of a config entity into the JSON that leaves the system, shared by the config API and the export.
+ * Turns a config entity into the JSON that leaves the system, without its secrets: the one way, shared by the config API and the export.
  *
- * <p>{@link #project} drops every {@code @EncryptedField} value ({@code WRITE_ONLY}). The {@code auth_settings} secrets are not annotated,
+ * <p>{@link #toJsonWithoutEncrypted} drops every {@code @EncryptedField} value ({@code WRITE_ONLY}). The {@code auth_settings} secrets are not annotated,
  * because the services persist through the plain mapper and {@code WRITE_ONLY} would drop them from the blob as well; they are removed
  * from the projected tree, a fresh copy, instead.
  */
-public final class EntityProjection {
+public final class ConfigEntityRedactor {
 
     /**
      * The place of a schema document that holds a secret: {@code dial:applicationTypeRoutes[*].dial:upstreams[*]}. {@code Route} and
@@ -29,13 +29,13 @@ public final class EntityProjection {
     private static final String AUTH_SETTINGS = "auth_settings";
     private static final String EXTERNAL_SERVICES = "external_services";
 
-    private EntityProjection() {
+    private ConfigEntityRedactor() {
     }
 
     /**
      * @return a fresh tree of the entity, without any {@code @EncryptedField} value
      */
-    public static ObjectNode project(Object entity) {
+    public static ObjectNode toJsonWithoutEncrypted(Object entity) {
         return ProxyUtil.MAPPER.valueToTree(entity);
     }
 
@@ -82,7 +82,7 @@ public final class EntityProjection {
                 forEachChild(route.get(upstreams), upstream -> {
                     removeUpstreamSecrets(upstream);
                     for (String interfaces : SCHEMA_UPSTREAM_INTERFACES) {
-                        forEachChild(upstream.get(interfaces), EntityProjection::removeUpstreamSecrets);
+                        forEachChild(upstream.get(interfaces), ConfigEntityRedactor::removeUpstreamSecrets);
                     }
                 });
             }

@@ -7,7 +7,7 @@ not written or not green yet is `[ ]`. Class names are in `server/src/main/java/
 ## 1. Endpoint, request and authorization
 
 - [x] 1.1 `POST /v1/admin/export` selects Applications: `AdminExportController.exportSelection`, body parsed by `ExportRequestParser` (only `roots`; each root an Application URL in `public/` or `platform/`).
-- [x] 1.2 Bad input is `400` and never echoes a submitted value: empty or blank body, empty `roots`, more than `adminExport.maxRoots`, unknown field, non-Application root, user bucket, malformed URL.
+- [x] 1.2 Bad input is `400` and never echoes a submitted value: empty or blank body, empty `roots`, unknown field, non-Application root, user bucket, malformed URL.
 - [x] 1.3 Only an explicit admin may export; a per-request key, or no `access.admin.rules`, is `403` before the body is read.
 - [x] 1.4 Platform roots and dependencies pass the explicit-admin gate alone; a public root and every public dependency are authorized through `AccessService` before they are read.
 - [x] 1.5 The export of whole buckets stays `POST /v1/admin/system-export`; its output is unchanged.
@@ -24,16 +24,16 @@ not written or not green yet is `[ ]`. Class names are in `server/src/main/java/
 - [ ] 2.7 API test: a platform ToolSet that names an Interceptor and an icon File, and a Model that names an Interceptor, are exported with those dependencies.
 - [ ] 2.8 API test: a resource that changes between two reads is exported as it was read, and the export does not fail.
 
-## 3. Statuses, locks and limits
+## 3. Statuses, locks and the deadline
 
-- [x] 3.1 Before the head: `403` (not admin), `400` (body), `409` (a bucket lock is held), `403` (public root not readable), `404` (root does not exist), `500` (`Failed to prepare the export`); `ExportStreamer.checkRoots` checks the roots on a worker thread.
-- [x] 3.2 `lockService.tryLockBuckets(MergedConfigStore.ADMIN_BUCKET_LOCATIONS)` before the head, held to the last byte; `ExportSlot` holds the `LockService.Lock` and releases it once on every ending (writer end, failed check, failed handler, executor refusal, stream failing before the head, client lost).
-- [x] 3.3 After the head a limit (`maxNodes`, `maxDepth`, `maxEdges`, `maxResourceMiB`), the deadline, a body that cannot be bound, a gone root or File, an unsafe path, an unreadable public dependency or a failed read or write cuts the stream (`ZipResponseStreamer` resets the connection) and is logged at WARN without a value.
-- [x] 3.4 `adminExport` settings with code defaults: `stallTimeout`, `maxRoots` 100, `maxNodes` 500, `maxDepth` 10, `maxEdges` 10000, `maxResourceMiB` 4, `deadline` 180000; `AdminExportSettings.validate` requires `stallTimeout`, and `deadline` plus `stallTimeout`, to be below the 300 s lock period, and positive limits.
-- [x] 3.5 The deadline is checked before each resource, reference, schema read and chunk of a copy; `DeadlineInterrupt` interrupts the working thread and a timer aborts the pipe.
-- [ ] 3.6 Tests: a held bucket lock (system export, another export, an admin write) is `409` before any byte; the locks are released after a success, a missing root, a failure after the head and a client disconnect (`AdminExportSlotLifecycleTest`, `AdminExportSlotTimeoutTest` for the bucket locks); a user resource write is not blocked.
-- [ ] 3.7 Tests: roots `404` and `403` before the head; each limit and the deadline after the head cut the stream (the client sees a transport error and no central directory); a body that cannot be bound and a File that vanished cut it.
-- [x] 3.8 `AdminExportSettingsTest`: the defaults, `validate` (stall timeout and deadline against the lock period, positive limits) and the mapping to `ExportLimits`.
+- [x] 3.1 Before the head: `403` (not admin), `400` (body), `409` (a bucket lock is held), `403` (public root not readable), `404` (root does not exist), `500` (`Failed to export the Applications`); `ExportStreamer.checkRoots` checks the roots on the task thread, after the locks are taken.
+- [x] 3.2 `lockService.tryLockBuckets(MergedConfigStore.ADMIN_BUCKET_LOCATIONS)` is the first step of the one task that checks the roots and writes the archive, held to its end in a try-with-resources: released after the writer ends, a failed check, a failure of the stream and a lost client.
+- [x] 3.3 After the head the deadline, a client that does not take the data within `stallTimeout`, a body that cannot be bound, a gone root or File, an unsafe path, an unreadable public dependency or a failed read or write cuts the stream (`ZipResponseStreamer` resets the connection) and is logged at WARN without a value.
+- [x] 3.4 `adminExport` settings with code defaults: `stallTimeout` 60000 and `deadline` 180000; `AdminExportSettings.validate` requires `stallTimeout`, and `deadline` plus `stallTimeout`, to be positive and below the 300 s lock period.
+- [x] 3.5 A timer aborts the pipe when the deadline passes, so the next write fails and the export ends.
+- [ ] 3.6 Tests: a held bucket lock (system export, another export, an admin write) is `409` before any byte; the locks are released after a success, a missing root, a failure after the head and a client disconnect (`ExportSelectionStreamFailureApiTest`); a user resource write is not blocked.
+- [ ] 3.7 Tests: roots `404` and `403` before the head; the deadline cuts the stream and releases the locks (`ExportDeadlineApiTest`; the client sees a transport error and no central directory); a body that cannot be bound and a File that vanished cut it.
+- [x] 3.8 `AdminExportSettingsTest`: the defaults, `validate` (stall timeout and deadline against the lock period, positive values).
 
 ## 4. Discovery
 
@@ -50,7 +50,7 @@ not written or not green yet is `[ ]`. Class names are in `server/src/main/java/
 - [x] 5.1 A short name resolves to one effective entity with its origin (`file`, `platform`, skipped, not found); three read-only signals (merged config, file config, platform blob via `ResourceService.hasResource`) and `ORIGIN_UNKNOWN` when they do not establish one (`ShortNameResolver`).
 - [x] 5.2 Candidates of a short name come from the effective holders only; a name held by two types, or a skipped entity, is never guessed.
 - [x] 5.3 A schema named by a fixed field is found by its body `$id` with a per-export scan of the platform schema blobs (`SchemaReferenceResolver`).
-- [x] 5.4 Remote application type schemas are fetched live through the existing Runner download (`ApplicationSchemaService.buildSchema(..., quiet)`), bypassing the shared schema cache; any Runner failure is a `schema-unavailable` reference.
+- [x] 5.4 Remote application type schemas are fetched live through the existing Runner download (`ApplicationSchemaService.build(..., quiet)`), bypassing the shared schema cache; any Runner failure is a `schema-unavailable` reference.
 - [x] 5.5 The export evaluates schemas with its own factory that refuses every non-local `$ref`; the schema download of an export logs no endpoint, body, headers or exception message.
 - [x] 5.6 A valid platform blob wins over a file entity of the same type and name (for a schema, the `$id`): the blob is exported as a platform resource and followed, the file entity is neither read nor exported; a file entity that no valid blob replaces is still exported with origin `file`.
 - [ ] 5.7 Tests: `ShortNameResolverTest`, `ShortNameResolverClassificationTest`, `MergedConfigStoreOriginSignalsTest`, `MergedConfigStoreReplicaUpdateTest`, `SchemaReferenceResolverTest`, `ApplicationSchemaServiceTest` (including log capture and the `$ref` table), `ExportRunnerFailureApiTest`.
@@ -68,12 +68,12 @@ not written or not green yet is `[ ]`. Class names are in `server/src/main/java/
 
 ## 7. Projection and secrets
 
-- [x] 7.1 `EntityProjection` holds the projection (`valueToTree`) and the removal of `auth_settings` secrets; `ConfigResourceController` and `ExportResourceProjector` call it.
+- [x] 7.1 `ConfigEntityRedactor` holds the projection (`valueToTree`) and the removal of `auth_settings` secrets; `ConfigResourceController` and `ExportResourceProjector` call it.
 - [x] 7.2 `ExportResourceProjector`: bind to the entity, decrypt (Application external services and ToolSet `auth_settings`, lenient), project, remove `client_secret` and `code_verifier`, keep the masked `client_secret_hint`; Model and Interceptor are projected as they are; an entity of the file configuration is not decrypted.
 - [x] 7.3 The upstream keys of an application type schema (`dial:key`, `key`, `dial:secretExtraData`, `secretExtraData` at `dial:applicationTypeRoutes[*].dial:upstreams[*]` and their interfaces) are removed; a catalog schema is written from its parse; a Prompt is written as stored.
-- [x] 7.4 Tests: `ExportResourceProjectorTest` per type (encrypted fields gone, hint present, `client_secret` and `code_verifier` gone, route and upstream keys gone, schema upstream keys gone), `ExportStreamerTest` (a Prompt is written exactly as stored; the projector does not touch a Prompt) and `EntityProjectionTest`, which pins the controller's answers.
+- [x] 7.4 Tests: `ExportResourceProjectorTest` per type (encrypted fields gone, hint present, `client_secret` and `code_verifier` gone, route and upstream keys gone, schema upstream keys gone), `ExportStreamerTest` (a Prompt is written exactly as stored; the projector does not touch a Prompt) and `ConfigEntityRedactorTest`, which pins the controller's answers.
 - [ ] 7.5 API tests: an entry equals the admin GET of the same entity without `name` and `status`; no `ENC[` and no plaintext secret in any entry, for stored entities and for entities of the file configuration; a secret that cannot be decrypted has no hint.
-- [x] 7.6 `EntityProjectionCoverageTest` walks the types of Application, Model, Interceptor and ToolSet as the default mapper serializes them and fails, with the path of the property and what to do, for an `@EncryptedField` that the mapper would write, for a `ResourceAuthSettings` anywhere but the two places that `EntityProjection` cleans, and for a text property with a secret-looking name that is neither removed nor in its short list of reviewed names.
+- [x] 7.6 `ConfigEntityRedactorCoverageTest` walks the types of Application, Model, Interceptor and ToolSet as the default mapper serializes them and fails, with the path of the property and what to do, for an `@EncryptedField` that the mapper would write, for a `ResourceAuthSettings` anywhere but the two places that `ConfigEntityRedactor` cleans, and for a text property with a secret-looking name that is neither removed nor in its short list of reviewed names.
 
 ## 8. Findings in the log
 
@@ -101,7 +101,7 @@ not written or not green yet is `[ ]`. Class names are in `server/src/main/java/
 ## 10. Documentation and OpenAPI
 
 - [x] 10.1 `@ApiOperation` of `AdminExportController` describes the roots-only request, the archive in the order it is written (the manifest at `.dial-export/manifest.json`, then each resource at its storage path, with no metadata or verification entry), the form of each resource, the bucket locks, the statuses and the cut stream. The `description` and `summary` of an operation in `docs/open_api_core.yaml` are hand-written: `SpecMerger` keeps them and never regenerates them, so `checkOpenApiDiff` does not compare them, and they are kept equal to the annotation by hand.
-- [x] 10.2 `docs/admin-export.md` describes request, authorization, flow, what is exported, findings in the log, the package, secrets, statuses, locks, limits and known limitations; `README.md` lists the `adminExport` settings; `docs/error_codes.md` lists the export statuses.
+- [x] 10.2 `docs/admin-export.md` describes request, authorization, flow, what is exported, findings in the log, the package, secrets, statuses, locks, settings and known limitations; `README.md` lists the `adminExport` settings; `docs/error_codes.md` lists the export statuses.
 - [ ] 10.3 The `description` and the `400` text of the operation in `docs/open_api_core.yaml` equal the annotation (checked by reading both after the last edit), and `replaceSpec` followed by `checkOpenApiDiff` passes.
 - [ ] 10.4 Final documentation pass: `docs/admin-export.md` matches every spec scenario and states the Security limitations of the secret policy.
 
@@ -113,11 +113,11 @@ not written or not green yet is `[ ]`. Class names are in `server/src/main/java/
 - [ ] 11.4 Confirm the classification of every resource type that the policy table leaves `unsupported` or unverified, and the ToolSet-as-root question (roots stay Application only).
 - [ ] 11.5 Release check: `./gradlew checkstyleMain checkstyleTest`, every `Export*` and `AdminExport*` test class, `AdminSystemExportApiTest`, `AdminSystemExportServiceTest`, `ConfigResourceController` tests, `checkOpenApiDiff`, and `npx -y @fission-ai/openspec@1.14.3 validate export-applications-with-dependencies --strict`. The gates above are decisions and are not closed by a test.
 - [ ] 11.6 Run on Linux CI the suites that do not run on Windows (`ComplexResourceServiceTest`, `SkillResourceApiTest`, the large-File test) and record the result.
-- [ ] 11.7 Measure the peak heap and the time of one Application with a large resource and of a graph of about 100 resources, and record the result in design "Limits".
+- [ ] 11.7 Measure the peak heap and the time of one Application with a large resource and of a graph of about 100 resources, and record the result in design "Settings".
 
 ## 12. Deferred (not v1; each ships as its own change)
 
-- Production readiness (capacity workstream): approved limit values, a size-bounded read of one body in `ResourceService`, lease renewal, capacity benchmarking.
+- Production readiness (capacity workstream): a size-bounded read of one body in `ResourceService`, lease renewal, capacity benchmarking.
 - Platform-level outbound HTTP for the Runner schema download: allow-list, address checks, body deadline, size bound, proxy decision.
 - Project as a dependency type.
 - Origin index in `MergedConfigStore` (task 5.8).

@@ -49,7 +49,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 public class SchemaReferenceResolverTest {
 
-    private static final ExportLimits.Deadline UNBOUNDED = TestDeadlines.NEVER;
 
     private static final String ID = "https://dial.example/schemas/quickapps";
     private static final String OTHER_ID = "https://dial.example/schemas/other";
@@ -85,7 +84,7 @@ public class SchemaReferenceResolverTest {
     }
 
     private SchemaReferenceResolver resolver() {
-        return new SchemaReferenceResolver(merged, invalid, file, resourceService, UNBOUNDED);
+        return new SchemaReferenceResolver(merged, invalid, file, resourceService);
     }
 
     private static String body(String id) {
@@ -318,17 +317,5 @@ public class SchemaReferenceResolverTest {
 
         assertEquals(Outcome.FOUND, resolution.outcome());
         assertEquals(Origin.PLATFORM, resolution.origin());
-    }
-
-    @Test
-    public void testScanFailsWithGatewayTimeoutWhenTheDeadlineHasPassed() {
-        givenMerged(SCHEMA, ID, body(ID));
-        givenBlob(SCHEMA, "b", body(ID));
-        SchemaReferenceResolver expired = new SchemaReferenceResolver(merged, invalid, file, resourceService,
-                new ExportLimits.Deadline(System.nanoTime() - 1));
-
-        HttpException failure = assertThrows(HttpException.class, () -> expired.resolve(SCHEMA, ID));
-
-        assertEquals(HttpStatus.GATEWAY_TIMEOUT, failure.getStatus());
     }
 }

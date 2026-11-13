@@ -95,7 +95,7 @@ With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these sp
 
 The status code indicates that the server encountered an unexpected condition that prevented it from fulfilling the request. This error is a generic "catch-all" response to server issues, indicating that the server cannot find a more appropriate 5XX error to respond with.
 
-- `POST /v1/admin/export` failed before the archive started (`Failed to prepare the export`), for example when the roots could not be checked. `Failed to export the Applications` is the answer when the writer fails before the first bytes of the archive reach the response. After the response has started no status is sent: a limit, the deadline, a body that cannot be bound or a failed read cut the stream, see [Admin export](admin-export.md#responses)
+- `POST /v1/admin/export` failed before the archive started (`Failed to export the Applications`), for example when the roots could not be checked or the writer fails before the first bytes of the archive reach the response. After the response has started no status is sent: the deadline, a body that cannot be bound or a failed read cut the stream, see [Admin export](admin-export.md#responses)
 
 #### 502 BAD GATEWAY
 The status code indicates that a server was acting as a gateway or proxy and that it received an invalid response from the upstream server.

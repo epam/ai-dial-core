@@ -26,20 +26,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Guards {@link EntityProjection}: the entities that it projects are walked as the default mapper serializes them (so a {@code WRITE_ONLY}
+ * Guards {@link ConfigEntityRedactor}: the entities that it projects are walked as the default mapper serializes them (so a {@code WRITE_ONLY}
  * property is not in the walk), and a secret that the projection would let out fails here, with its path.
  *
  * <p>A failure means a field that the projection does not cover: mark it {@code @EncryptedField} and
- * {@code @JsonProperty(access = WRITE_ONLY)}, or extend {@link EntityProjection}, and then update the lists below.
+ * {@code @JsonProperty(access = WRITE_ONLY)}, or extend {@link ConfigEntityRedactor}, and then update the lists below.
  */
-public class EntityProjectionCoverageTest {
+public class ConfigEntityRedactorCoverageTest {
 
     private static final String CONFIG_PACKAGE = "com.epam.aidial.core.config.";
 
     private static final List<Class<?>> ENTITIES = List.of(Application.class, Model.class, Interceptor.class, ToolSet.class);
 
     /**
-     * The only places that hold a {@link ResourceAuthSettings}, which the redact methods of {@link EntityProjection} clean; {@code *} is a map
+     * The only places that hold a {@link ResourceAuthSettings}, which the redact methods of {@link ConfigEntityRedactor} clean; {@code *} is a map
      * value or a list element.
      */
     private static final Set<String> REDACTED_AUTH_SETTINGS = Set.of("ToolSet/auth_settings", "Application/external_services/*/auth_settings");
@@ -128,7 +128,7 @@ public class EntityProjectionCoverageTest {
                 found.add(reached.path());
                 if (!REDACTED_AUTH_SETTINGS.contains(reached.path())) {
                     failures.add(reached.path() + " holds ResourceAuthSettings, whose client_secret and code_verifier the projection does not"
-                            + " remove there: extend EntityProjection to redact it, then add the path to REDACTED_AUTH_SETTINGS");
+                            + " remove there: extend ConfigEntityRedactor to redact it, then add the path to REDACTED_AUTH_SETTINGS");
                 }
             }
         }
@@ -148,7 +148,7 @@ public class EntityProjectionCoverageTest {
             boolean isKnown = NOT_SECRETS.containsKey(reached.owner().getSimpleName() + "." + property.getInternalName());
             if (!isRemoved && !isKnown) {
                 failures.add(reached.path() + " looks like a secret and the default mapper writes it: mark the field @EncryptedField and"
-                        + " @JsonProperty(access = WRITE_ONLY), or extend EntityProjection to remove it, or, if it holds no secret, add"
+                        + " @JsonProperty(access = WRITE_ONLY), or extend ConfigEntityRedactor to remove it, or, if it holds no secret, add"
                         + " " + reached.owner().getSimpleName() + "." + property.getInternalName() + " to NOT_SECRETS with the reason");
             }
         }

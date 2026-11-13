@@ -100,10 +100,10 @@ public final class ExportStreamer {
      * Writes the archive of the roots that {@link #checkRoots} accepted. It blocks until the last entry is written and does not close
      * {@code out}. If it throws, the archive is unfinished, so the consumer must treat what it received as truncated.
      *
-     * @throws HttpException 413 if the export exceeds a limit, 403 if a public dependency is not readable, 504 if the deadline passes
+     * @throws HttpException 403 if a public dependency is not readable
      */
-    public void stream(OutputStream out, ExportRequest request, Predicate<ResourceDescriptor> canReadPublic, ExportLimits limits,
-                       ExportLimits.Deadline deadline, String coreVersion, Instant start) throws IOException {
+    public void stream(OutputStream out, ExportRequest request, Predicate<ResourceDescriptor> canReadPublic,
+                       String coreVersion, Instant start) throws IOException {
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalidEntities;
         Config merged;
         publicationLock.lock();
@@ -115,9 +115,9 @@ public final class ExportStreamer {
         }
         Config fileConfig = fileConfigSource.get();
         DeploymentEdgeDiscovery discovery = new DeploymentEdgeDiscovery(merged, invalidEntities, fileConfig, resourceService,
-                applicationSchemaService, catalogSchemaService, encryptionService, limits, deadline);
-        ExportArchive archive = new ExportArchive(out, resourceService, complexResourceService, deadline);
-        Run run = new Run(archive, discovery, fileConfig, canReadPublic, limits, deadline);
+                applicationSchemaService, catalogSchemaService, encryptionService);
+        ExportArchive archive = new ExportArchive(out, resourceService, complexResourceService);
+        Run run = new Run(archive, discovery, fileConfig, canReadPublic);
         long begun = System.nanoTime();
         log.info("Export started: roots={}", request.roots().size());
         try {
@@ -125,20 +125,17 @@ public final class ExportStreamer {
             archive.finish();
             log.info("Export completed: duration={}ms, resources={}", computeElapsedMillis(begun), run.written);
         } catch (Exception e) {
-            // not dead code: the schema retrieval rethrows an InterruptedException that the run does not declare (sneaky throw)
-            Exception failure = e instanceof InterruptedException
-                    ? new HttpException(HttpStatus.GATEWAY_TIMEOUT, "The export took too long") : e;
             // the message of our own exceptions names a resource or a bound, never a value; any other message is left out
             log.warn("Export aborted after the response started: resource={}, duration={}ms, {}{}", run.currentKey == null ? "-" : run.currentKey,
-                    computeElapsedMillis(begun), failure.getClass().getSimpleName(),
-                    failure instanceof HttpException || failure instanceof IllegalStateException ? ": " + failure.getMessage() : "");
-            if (failure instanceof IOException io) {
+                    computeElapsedMillis(begun), e.getClass().getSimpleName(),
+                    e instanceof HttpException || e instanceof IllegalStateException ? ": " + e.getMessage() : "");
+            if (e instanceof IOException io) {
                 throw io;
             }
-            if (failure instanceof RuntimeException runtime) {
+            if (e instanceof RuntimeException runtime) {
                 throw runtime;
             }
-            throw new IllegalStateException("The export failed", failure);
+            throw new IllegalStateException("The export failed", e);
         } finally {
             archive.discard();
         }
@@ -153,7 +150,7 @@ public final class ExportStreamer {
      *
      * @param referrer the key of the resource that holds the reference; {@code null} for a root
      */
-    private record Queued(ResourceDescriptor descriptor, int depth, @Nullable String referrer, @Nullable String pointer) {
+    private record Queued(ResourceDescriptor descriptor, @Nullable String referrer, @Nullable String pointer) {
     }
 
     private final class Run {
@@ -162,35 +159,29 @@ public final class ExportStreamer {
         @Nullable
         private final Config fileConfig;
         private final Predicate<ResourceDescriptor> canReadPublic;
-        private final ExportLimits limits;
-        private final ExportLimits.Deadline deadline;
         private final Deque<Queued> queue = new ArrayDeque<>();
         private final Set<ResourceDescriptor> met = new HashSet<>();
         private int written;
-        private long edges;
         /** The key of the resource in hand, for the log of a failure; {@code null} before the first one and while its key is computed. */
         @Nullable
         private String currentKey;
 
         private Run(ExportArchive archive, DeploymentEdgeDiscovery discovery, @Nullable Config fileConfig,
-                    Predicate<ResourceDescriptor> canReadPublic, ExportLimits limits, ExportLimits.Deadline deadline) {
+                    Predicate<ResourceDescriptor> canReadPublic) {
             this.archive = archive;
             this.discovery = discovery;
             this.fileConfig = fileConfig;
             this.canReadPublic = canReadPublic;
-            this.limits = limits;
-            this.deadline = deadline;
         }
 
         private void run(Iterable<ResourceDescriptor> roots, String coreVersion, Instant start) throws IOException {
             archive.writeManifest(coreVersion, start);
             for (ResourceDescriptor root : roots) {
                 if (met.add(root)) {
-                    queue.add(new Queued(root, 0, null, null));
+                    queue.add(new Queued(root, null, null));
                 }
             }
             for (Queued next = queue.poll(); next != null; next = queue.poll()) {
-                deadline.check();
                 write(next);
             }
         }
@@ -231,14 +222,14 @@ public final class ExportStreamer {
                 }
                 entity = projector.bind(descriptor, text);
             }
-            admit();
+            written++;
             ExportDiscovery found = discovery.discover(entity);
             for (DiscoveryIssue issue : found.listReportedIssues()) {
                 log.warn("Export: the references of {} may be incomplete: {} at {}", key, ExportResourceNames.toWireName(issue.kind()),
                         issue.pointer());
             }
             for (DiscoveredEdge edge : found.edges()) {
-                follow(item, key, edge);
+                follow(key, edge);
             }
             archive.writeJson(entryName, projector.projectDeployment(descriptor, entity));
         }
@@ -253,14 +244,13 @@ public final class ExportStreamer {
                     onMissing(item);
                     return;
                 }
-                checkSize(text);
             } else {
                 text = read(item);
                 if (text == null) {
                     return;
                 }
             }
-            admit();
+            written++;
             archive.writeJson(entryName, isSchema ? projector.projectSchema(descriptor, text) : text.getBytes(StandardCharsets.UTF_8));
             log.debug("Export: wrote {}", key);
         }
@@ -271,7 +261,7 @@ public final class ExportStreamer {
                 onMissing(item);
                 return;
             }
-            admit();
+            written++;
             archive.copyFile(item.descriptor(), entryName, metadata.getEtag());
             log.debug("Export: copied {}", key);
         }
@@ -282,7 +272,7 @@ public final class ExportStreamer {
                 onMissing(item);
                 return;
             }
-            admit();
+            written++;
             archive.copySkill(item.descriptor(), entryName, marker);
             log.debug("Export: copied {}", key);
         }
@@ -298,21 +288,7 @@ public final class ExportStreamer {
                 onMissing(item);
                 return null;
             }
-            checkSize(text);
             return text;
-        }
-
-        private void checkSize(String text) {
-            if (text.length() > limits.maxResourceChars()) {
-                throw ExportLimits.newExceededException("size of one resource");
-            }
-        }
-
-        private void admit() {
-            if (written >= limits.maxNodes()) {
-                throw ExportLimits.newExceededException("resources");
-            }
-            written++;
         }
 
         /** A root that is gone ends the export; a dependency that is gone is recorded and the export goes on. */
@@ -328,10 +304,7 @@ public final class ExportStreamer {
          * Queues a reference once if its type and bucket are supported; a public dependency must be readable by the caller; anything else is
          * recorded in the log.
          */
-        private void follow(Queued from, String fromKey, DiscoveredEdge edge) {
-            if (++edges > limits.maxEdges()) {
-                throw ExportLimits.newExceededException("references");
-            }
+        private void follow(String fromKey, DiscoveredEdge edge) {
             if (edge.status() != null) {
                 recordNotFollowed(fromKey, edge.pointer(), edge.status());
                 return;
@@ -353,13 +326,8 @@ public final class ExportStreamer {
                 log.warn("Export: a public dependency is not readable by the caller: resource={} pointer={}", fromKey, edge.pointer());
                 throw new HttpException(HttpStatus.FORBIDDEN, "Forbidden");
             }
-            int depth = from.depth() + 1;
-            if (depth > limits.maxDepth()) {
-                throw ExportLimits.newExceededException("depth");
-            }
-            deadline.check();
             met.add(target);
-            queue.add(new Queued(target, depth, fromKey, edge.pointer()));
+            queue.add(new Queued(target, fromKey, edge.pointer()));
         }
 
         private void recordNotFollowed(String fromKey, String pointer, EdgeStatus status) {

@@ -81,11 +81,6 @@
   },
   "adminExport": {
     "stallTimeout": 60000,
-    "maxRoots": 100,
-    "maxNodes": 500,
-    "maxDepth": 10,
-    "maxEdges": 10000,
-    "maxResourceMiB": 4,
     "deadline": 180000
   },
   "budgetCounterSweep": {

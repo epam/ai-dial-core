@@ -55,7 +55,6 @@ import static org.mockito.Mockito.when;
 public class ExportArchiveTest {
 
     private static final Instant NOW = Instant.parse("2026-11-02T10:15:30Z");
-    private static final ExportLimits.Deadline UNBOUNDED = TestDeadlines.NEVER;
     private static final String CENTRAL_DIRECTORY_SIGNATURE = "PK\u0001\u0002";
 
     private static final byte[] ROOT_BYTES = "{\"endpoint\":\"root\"}".getBytes(StandardCharsets.UTF_8);
@@ -92,13 +91,8 @@ public class ExportArchiveTest {
         void write(ExportArchive archive) throws IOException;
     }
 
-    private static ExportArchive newArchive(OutputStream out, ResourceService resourceService, ComplexResourceService complexResourceService,
-                                            ExportLimits.Deadline deadline) {
-        return new ExportArchive(out, resourceService, complexResourceService, deadline);
-    }
-
     private static ExportArchive newArchive(OutputStream out, ResourceService resourceService, ComplexResourceService complexResourceService) {
-        return newArchive(out, resourceService, complexResourceService, UNBOUNDED);
+        return new ExportArchive(out, resourceService, complexResourceService);
     }
 
     private static ExportArchive newArchive(OutputStream out) {
@@ -458,17 +452,5 @@ public class ExportArchiveTest {
         String written = connection.writtenAsText();
         assertTrue(written.startsWith("PK"), "the stream is a ZIP that has begun");
         assertFalse(written.contains(CENTRAL_DIRECTORY_SIGNATURE), "the archive did not reach its end");
-    }
-
-    @Test
-    public void testExpiredDeadlineStopsTheCopyOfFileAndLeavesNoCentralDirectory() throws Exception {
-        ExportLimits.Deadline expired = new ExportLimits.Deadline(System.nanoTime() - 1);
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ExportArchive archive = newArchive(out, OneFile.stable(fileBytes(10)).resourceService(), mock(ComplexResourceService.class), expired);
-        archive.writeManifest("1.2.3", NOW);
-
-        assertThrows(HttpException.class, () -> archive.copyFile(FILE, FILE_ENTRY, "e1"));
-
-        assertFalse(new String(out.toByteArray(), StandardCharsets.ISO_8859_1).contains(CENTRAL_DIRECTORY_SIGNATURE));
     }
 }

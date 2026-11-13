@@ -31,7 +31,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -63,8 +62,6 @@ import static org.mockito.Mockito.when;
 public class ExportStreamerTest {
 
     private static final Predicate<ResourceDescriptor> READS_PUBLIC = descriptor -> true;
-    private static final ExportLimits LIMITS = new ExportLimits(100, 500, 10, 10_000, 4 << 20, Duration.ofMinutes(1));
-    private static final ExportLimits.Deadline UNBOUNDED = TestDeadlines.NEVER;
 
     @Mock
     private ResourceService resourceService;
@@ -154,12 +151,12 @@ public class ExportStreamerTest {
         return new ExportRequest(descriptors);
     }
 
-    private void stream(ExportStreamer streamer, ExportRequest request, ExportLimits limits, ExportLimits.Deadline deadline) throws IOException {
-        streamer.stream(out, request, READS_PUBLIC, limits, deadline, "1.2.3", Instant.parse("2026-11-02T10:15:30Z"));
+    private void stream(ExportStreamer streamer, ExportRequest request) throws IOException {
+        streamer.stream(out, request, READS_PUBLIC, "1.2.3", Instant.parse("2026-11-02T10:15:30Z"));
     }
 
     private void stream(String... roots) throws IOException {
-        stream(streamer(), request(roots), LIMITS, UNBOUNDED);
+        stream(streamer(), request(roots));
     }
 
     private Map<String, byte[]> entries() throws IOException {
@@ -239,7 +236,7 @@ public class ExportStreamerTest {
         config.setModels(Map.of("file-model", model));
         stored.put("applications/platform/a", "{\"endpoint\":\"http://a.invalid\",\"dependencies\":[\"file-model\"]}");
 
-        stream(streamer(() -> config, () -> config), request("a"), LIMITS, UNBOUNDED);
+        stream(streamer(() -> config, () -> config), request("a"));
 
         Map<String, byte[]> entries = entries();
         assertEquals(List.of(ExportArchive.MANIFEST_ENTRY, "platform/applications/a", ".dial-export/config/model/file-model.json"),
@@ -258,7 +255,7 @@ public class ExportStreamerTest {
         stored.put("applications/platform/a", "{\"endpoint\":\"http://a.invalid\",\"dependencies\":[\"shared\",\"shared\"]}");
         stored.put("models/platform/shared", "{\"type\":\"chat\",\"endpoint\":\"http://platform.invalid/chat\"}");
 
-        stream(streamer(() -> config, () -> config), request("a"), LIMITS, UNBOUNDED);
+        stream(streamer(() -> config, () -> config), request("a"));
 
         Map<String, byte[]> entries = entries();
         assertEquals(List.of(ExportArchive.MANIFEST_ENTRY, "platform/applications/a", "platform/models/shared"), new ArrayList<>(entries.keySet()),
@@ -313,7 +310,7 @@ public class ExportStreamerTest {
         ExportStreamer streamer = streamer();
 
         HttpException failure = assertThrows(HttpException.class,
-                () -> streamer.stream(out, request("a"), descriptor -> false, LIMITS, UNBOUNDED, "1.2.3", Instant.now()));
+                () -> streamer.stream(out, request("a"), descriptor -> false, "1.2.3", Instant.now()));
 
         assertEquals(HttpStatus.FORBIDDEN, failure.getStatus());
         assertEquals(List.of(ExportArchive.MANIFEST_ENTRY), new ArrayList<>(entries().keySet()), "the Application is not written");
@@ -324,67 +321,6 @@ public class ExportStreamerTest {
         assertEquals(status, failure.getStatus());
         assertEquals(entriesBefore, completeEntries(out.toByteArray()), "what was written before the limit stays");
         assertFalse(new String(out.toByteArray(), StandardCharsets.ISO_8859_1).contains("PK\u0001\u0002"), "the archive has no central directory");
-    }
-
-    @Test
-    void testTooManyResourcesCutTheStream() throws IOException {
-        app("a", "b", "c");
-        app("b");
-        app("c");
-        ExportLimits two = new ExportLimits(100, 2, 10, 10_000, 4 << 20, Duration.ofMinutes(1));
-
-        HttpException failure = assertThrows(HttpException.class, () -> stream(streamer(), request("a"), two, UNBOUNDED));
-
-        assertCut(failure, HttpStatus.REQUEST_ENTITY_TOO_LARGE, 1 + 2);
-    }
-
-    @Test
-    void testTooDeepChainCutsTheStream() throws IOException {
-        app("a", "b");
-        app("b", "c");
-        app("c", "d");
-        app("d");
-        ExportLimits shallow = new ExportLimits(100, 500, 2, 10_000, 4 << 20, Duration.ofMinutes(1));
-
-        HttpException failure = assertThrows(HttpException.class, () -> stream(streamer(), request("a"), shallow, UNBOUNDED));
-
-        assertEquals(HttpStatus.REQUEST_ENTITY_TOO_LARGE, failure.getStatus());
-        assertEquals(List.of("platform/applications/a", "platform/applications/b"), resourceEntries(), "d is deeper than the limit, so c, which names it, is not written");
-    }
-
-    @Test
-    void testTooManyReferencesCutTheStreamBeforeTheResourceIsWritten() throws IOException {
-        app("a", "b", "c", "d");
-        app("b");
-        app("c");
-        app("d");
-        ExportLimits fewEdges = new ExportLimits(100, 500, 10, 2, 4 << 20, Duration.ofMinutes(1));
-
-        HttpException failure = assertThrows(HttpException.class, () -> stream(streamer(), request("a"), fewEdges, UNBOUNDED));
-
-        assertCut(failure, HttpStatus.REQUEST_ENTITY_TOO_LARGE, 1);
-    }
-
-    @Test
-    void testBodyLargerThanTheLimitCutsTheStream() throws IOException {
-        stored.put("applications/platform/a", "{\"endpoint\":\"http://a.invalid\",\"description\":\"" + "x".repeat(100) + "\"}");
-        ExportLimits tiny = new ExportLimits(100, 500, 10, 10_000, 50, Duration.ofMinutes(1));
-
-        HttpException failure = assertThrows(HttpException.class, () -> stream(streamer(), request("a"), tiny, UNBOUNDED));
-
-        assertCut(failure, HttpStatus.REQUEST_ENTITY_TOO_LARGE, 1);
-    }
-
-    @Test
-    void testExpiredDeadlineCutsTheStream() throws IOException {
-        app("a", "b");
-        app("b");
-
-        HttpException failure = assertThrows(HttpException.class,
-                () -> stream(streamer(), request("a"), LIMITS, new ExportLimits.Deadline(System.nanoTime() - 1)));
-
-        assertCut(failure, HttpStatus.GATEWAY_TIMEOUT, 1);
-        assertEquals(List.of(), reads, "nothing is read after the deadline");
     }
 
     @Test
@@ -444,7 +380,7 @@ public class ExportStreamerTest {
         lenient().when(resourceService.getResourceMetadata(any())).thenAnswer(invocation ->
                 new ResourceItemMetadata(invocation.getArgument(0)).setEtag("e1"));
 
-        stream(streamer(), request("a"), LIMITS, UNBOUNDED);
+        stream(streamer(), request("a"));
 
         Map<String, byte[]> entries = entries();
         assertEquals(List.of("platform/applications/a", "public/prompts/p", "public/files/icons/a.png"), resourceEntries());
@@ -464,7 +400,7 @@ public class ExportStreamerTest {
         when(complexResourceService.getVersionFileStream(any(), eq("v1"), eq("SKILL.md")))
                 .thenReturn(new ResourceService.ResourceStream(new ByteArrayInputStream(new byte[] {1, 2, 3, 4}), "f1", "text/markdown", 4));
 
-        stream(streamer(), request("a"), LIMITS, UNBOUNDED);
+        stream(streamer(), request("a"));
 
         assertEquals(List.of("platform/applications/a", "public/skills/s/SKILL.md"), resourceEntries());
         assertEquals(List.of("applications/platform/a"), reads);

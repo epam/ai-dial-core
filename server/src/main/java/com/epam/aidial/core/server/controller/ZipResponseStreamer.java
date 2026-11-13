@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.service.ExportLimits;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.server.vertx.stream.BoundedPipe;
 import com.epam.aidial.core.server.vertx.stream.InputStreamReader;
@@ -45,13 +44,12 @@ final class ZipResponseStreamer {
     }
 
     /**
-     * {@code writer} does not close the stream; {@code locks} are released when it ends or cannot start. The pipe is aborted when the
-     * {@code deadline} passes.
+     * {@code writer} does not close the stream. The pipe is aborted when the {@code deadline} passes.
      *
      * @param fileNamePrefix   the file name is {@code <prefix>-<start>.zip}
-     * @param failureResponder answers a failure before the head is written; the locks are released by then
+     * @param failureResponder answers a failure before the head is written
      */
-    void stream(ProxyContext context, String fileNamePrefix, Instant start, @Nullable ExportLimits.Deadline deadline, ExportSlot locks,
+    void stream(ProxyContext context, String fileNamePrefix, Instant start, @Nullable Duration deadline,
                 Consumer<OutputStream> writer, Consumer<Throwable> failureResponder) {
         HttpServerResponse response = context.getResponse().setChunked(true);
         // set only when the archive starts, so that a status response sent before it does not carry them
@@ -74,7 +72,7 @@ final class ZipResponseStreamer {
         });
 
         long abortTimer = deadline == null ? -1
-                : vertx.setTimer(deadline.computeRemainingMillis(), id -> pipe.closeExceptionally(new IOException("The export took too long")));
+                : vertx.setTimer(deadline.toMillis(), id -> pipe.closeExceptionally(new IOException("The export took too long")));
         Future<Object> writing;
         try {
             writing = taskExecutor.submit(() -> {
@@ -86,7 +84,6 @@ final class ZipResponseStreamer {
                     throw e;
                 } finally {
                     cancelTimer(abortTimer);
-                    locks.release();
                 }
                 pipe.getOutput().close();
                 return null;
@@ -96,11 +93,10 @@ final class ZipResponseStreamer {
             cancelTimer(abortTimer);
             responsePipe.close();
             reader.close();
-            locks.releaseThen(taskExecutor, () -> failureResponder.accept(e));
+            failureResponder.accept(e);
             return;
         }
-        // a writer that ran has released the locks already; one that was dropped before it ran has not
-        writing.onFailure(error -> locks.releaseThen(taskExecutor, () -> {
+        writing.onFailure(error -> {
             cancelTimer(abortTimer);
             // the writer has already logged the failure; stop feeding the response before it is ended
             responsePipe.close();
@@ -110,7 +106,7 @@ final class ZipResponseStreamer {
                 failureResponder.accept(error);
             }
             reader.close();
-        }));
+        });
     }
 
     private void cancelTimer(long timer) {

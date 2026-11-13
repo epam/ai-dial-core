@@ -32,7 +32,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.URI;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -58,7 +57,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 public class DeploymentEdgeDiscoveryTest {
 
-    private static final ExportLimits.Deadline UNBOUNDED = TestDeadlines.NEVER;
 
     @Mock
     private ApplicationSchemaService schemaService;
@@ -140,8 +138,7 @@ public class DeploymentEdgeDiscoveryTest {
     }
 
     private DeploymentEdgeDiscovery newDiscovery() {
-        return new DeploymentEdgeDiscovery(merged, invalid, file, resourceService, schemaService, catalogSchemaService, encryptionService,
-                new ExportLimits(100, 500, 10, 10_000, 4 << 20, Duration.ofMinutes(3)), UNBOUNDED);
+        return new DeploymentEdgeDiscovery(merged, invalid, file, resourceService, schemaService, catalogSchemaService, encryptionService);
     }
 
     private ExportDiscovery discover(Application application, MarkerReference... markers) {
@@ -713,21 +710,6 @@ public class DeploymentEdgeDiscoveryTest {
     }
 
     @Test
-    public void testEdgeLimitCountsApplicationMarkersPlusCatalogMarkers() {
-        Application application = applicationWithSchema(SCHEMA_ID);
-        application.setApplicationProperties(Map.of("a", "1"));
-        when(schemaService.collectMarkerReferences(application, exportSchema))
-                .thenReturn(new MarkerCollection(List.of(shortNameMarkers(2)), List.of()));
-        when(catalogSchemaService.collectMarkerReferences(application, merged))
-                .thenReturn(new MarkerCollection(List.of(shortNameMarkers(2)), List.of()));
-
-        HttpException failure = assertThrows(HttpException.class,
-                () -> limitedDiscovery(3, UNBOUNDED).discover(application));
-
-        assertEquals(HttpStatus.REQUEST_ENTITY_TOO_LARGE, failure.getStatus());
-    }
-
-    @Test
     public void testSchemaIssueIsAtTheSchemaIdAndCatalogIssuesAreKeptWithPointersIntoTheBody() {
         Application application = applicationWithSchema(SCHEMA_ID);
         when(schemaService.buildExportSchema(URI.create(SCHEMA_ID), merged))
@@ -781,42 +763,5 @@ public class DeploymentEdgeDiscoveryTest {
             assertEquals(ResourceTypes.FILE, typeOf(edges.get(4)), type.name());
             assertEquals(ResourceTypes.TOOL_SET, typeOf(edges.get(5)), type.name());
         }
-    }
-
-    private DeploymentEdgeDiscovery limitedDiscovery(int maxEdges, ExportLimits.Deadline deadline) {
-        ExportLimits limits = new ExportLimits(100, 500, 10, maxEdges, 4 * 1024 * 1024, Duration.ofMinutes(1));
-        return new DeploymentEdgeDiscovery(merged, invalid, file, resourceService, schemaService, catalogSchemaService,
-                encryptionService, limits, deadline);
-    }
-
-    private static MarkerReference[] shortNameMarkers(int count) {
-        return java.util.stream.IntStream.range(0, count).mapToObj(i -> resourceMarker("/p" + i, "name" + i))
-                .toArray(MarkerReference[]::new);
-    }
-
-    @Test
-    public void testFixedFieldsCountAgainstTheEdgeLimitToo() {
-        Application application = new Application();
-        application.setDependencies(List.of("a", "b", "c"));
-
-        assertThrows(HttpException.class, () -> limitedDiscovery(2, UNBOUNDED).discover(application));
-        assertEquals(3, limitedDiscovery(3, UNBOUNDED).discover(application).edges().size());
-
-        Application marked = new Application();
-        when(catalogSchemaService.collectMarkerReferences(marked, merged))
-                .thenReturn(new MarkerCollection(List.of(shortNameMarkers(3)), List.of()));
-
-        assertEquals(3, limitedDiscovery(3, UNBOUNDED).discover(marked).edges().size(), "nothing is dropped at the limit");
-    }
-
-    @Test
-    public void testExpiredDeadlineStopsTheEdges() {
-        Application application = new Application();
-        application.setDependencies(List.of("a", "b"));
-
-        HttpException failure = assertThrows(HttpException.class,
-                () -> limitedDiscovery(10, new ExportLimits.Deadline(System.nanoTime() - 1)).discover(application));
-
-        assertEquals(HttpStatus.GATEWAY_TIMEOUT, failure.getStatus());
     }
 }

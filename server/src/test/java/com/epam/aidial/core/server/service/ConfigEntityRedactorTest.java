@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The projection that the config API and the export share: what leaves the system for an entity. */
-public class EntityProjectionTest {
+public class ConfigEntityRedactorTest {
 
     private static ResourceAuthSettings authSettings(String clientSecret) {
         ResourceAuthSettings settings = new ResourceAuthSettings();
@@ -46,7 +46,7 @@ public class EntityProjectionTest {
         model.setEndpoint("http://m.invalid");
         model.setUpstreams(List.of(upstream));
 
-        ObjectNode tree = EntityProjection.project(model);
+        ObjectNode tree = ConfigEntityRedactor.toJsonWithoutEncrypted(model);
 
         assertFalse(tree.toString().contains("UPSTREAM-KEY") || tree.toString().contains("EXTRA"), tree.toString());
         assertEquals("http://u.invalid", tree.at("/upstreams/0/endpoint").asText());
@@ -59,7 +59,7 @@ public class EntityProjectionTest {
         ToolSet toolSet = new ToolSet();
         toolSet.setAuthSettings(authSettings("0123456789abcdef"));
 
-        ObjectNode tree = EntityProjection.redactAuthSettingsSecrets(EntityProjection.project(toolSet), true);
+        ObjectNode tree = ConfigEntityRedactor.redactAuthSettingsSecrets(ConfigEntityRedactor.toJsonWithoutEncrypted(toolSet), true);
 
         JsonNode auth = tree.get("auth_settings");
         assertFalse(auth.has("client_secret") || auth.has("code_verifier"));
@@ -77,12 +77,12 @@ public class EntityProjectionTest {
         ToolSet long12 = new ToolSet();
         long12.setAuthSettings(authSettings("123456789012"));
 
-        assertEquals("78", EntityProjection.redactAuthSettingsSecrets(EntityProjection.project(medium), true)
+        assertEquals("78", ConfigEntityRedactor.redactAuthSettingsSecrets(ConfigEntityRedactor.toJsonWithoutEncrypted(medium), true)
                 .at("/auth_settings/client_secret_hint").asText());
-        assertNull(EntityProjection.redactAuthSettingsSecrets(EntityProjection.project(tiny), true).at("/auth_settings/client_secret_hint").textValue());
-        assertEquals("9012", EntityProjection.redactAuthSettingsSecrets(EntityProjection.project(long12), true)
+        assertNull(ConfigEntityRedactor.redactAuthSettingsSecrets(ConfigEntityRedactor.toJsonWithoutEncrypted(tiny), true).at("/auth_settings/client_secret_hint").textValue());
+        assertEquals("9012", ConfigEntityRedactor.redactAuthSettingsSecrets(ConfigEntityRedactor.toJsonWithoutEncrypted(long12), true)
                 .at("/auth_settings/client_secret_hint").asText());
-        ObjectNode forOthers = EntityProjection.redactAuthSettingsSecrets(EntityProjection.project(long12), false);
+        ObjectNode forOthers = ConfigEntityRedactor.redactAuthSettingsSecrets(ConfigEntityRedactor.toJsonWithoutEncrypted(long12), false);
         assertFalse(forOthers.at("/auth_settings").has("client_secret_hint"));
         assertFalse(forOthers.at("/auth_settings").has("client_secret"));
     }
@@ -91,7 +91,7 @@ public class EntityProjectionTest {
     void testHintOfTheProjectedNodeIsNeverCopiedThrough() throws IOException {
         ObjectNode tree = parse("{\"auth_settings\": {\"client_secret_hint\": \"fake\", \"client_id\": \"c\"}}");
 
-        EntityProjection.redactAuthSettingsSecrets(tree, true);
+        ConfigEntityRedactor.redactAuthSettingsSecrets(tree, true);
 
         assertFalse(tree.get("auth_settings").has("client_secret_hint"), "the hint is derived from the secret or absent");
     }
@@ -106,7 +106,7 @@ public class EntityProjectionTest {
         two.setAuthSettings(authSettings("secret-two-value-2222"));
         application.setExternalServices(new LinkedHashMap<>(Map.of("one", one, "two", two)));
 
-        ObjectNode tree = EntityProjection.redactExternalServiceSecrets(EntityProjection.project(application), true);
+        ObjectNode tree = ConfigEntityRedactor.redactExternalServiceSecrets(ConfigEntityRedactor.toJsonWithoutEncrypted(application), true);
 
         assertEquals("1111", tree.at("/external_services/one/auth_settings/client_secret_hint").asText());
         assertEquals("2222", tree.at("/external_services/two/auth_settings/client_secret_hint").asText());
@@ -118,10 +118,10 @@ public class EntityProjectionTest {
         ObjectNode none = parse("{\"endpoint\": \"e\"}");
         ObjectNode scalar = parse("{\"auth_settings\": \"x\", \"external_services\": [1]}");
 
-        assertEquals(parse("{\"endpoint\": \"e\"}"), EntityProjection.redactAuthSettingsSecrets(none, true));
-        assertEquals(parse("{\"endpoint\": \"e\"}"), EntityProjection.redactExternalServiceSecrets(none, true));
-        EntityProjection.redactAuthSettingsSecrets(scalar, true);
-        EntityProjection.redactExternalServiceSecrets(scalar, true);
+        assertEquals(parse("{\"endpoint\": \"e\"}"), ConfigEntityRedactor.redactAuthSettingsSecrets(none, true));
+        assertEquals(parse("{\"endpoint\": \"e\"}"), ConfigEntityRedactor.redactExternalServiceSecrets(none, true));
+        ConfigEntityRedactor.redactAuthSettingsSecrets(scalar, true);
+        ConfigEntityRedactor.redactExternalServiceSecrets(scalar, true);
         assertEquals(parse("{\"auth_settings\": \"x\", \"external_services\": [1]}"), scalar);
     }
 
@@ -133,7 +133,7 @@ public class EntityProjectionTest {
                     "dial:endpoint": "http://u"}], "key": "route-level-stays"}]}
                 """);
 
-        EntityProjection.removeSchemaUpstreamKeys(schema);
+        ConfigEntityRedactor.removeSchemaUpstreamKeys(schema);
 
         assertTrue(schema.toString().contains("top-level-stays") && schema.toString().contains("top-stays") && schema.toString().contains("route-level-stays"));
         assertEquals(parse("{\"dial:endpoint\": \"http://u\"}"), schema.at("/dial:applicationTypeRoutes/0/dial:upstreams/0"));

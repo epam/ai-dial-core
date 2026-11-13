@@ -15,7 +15,7 @@ import java.util.function.UnaryOperator;
 
 /**
  * Turns one resource of an export into the bytes of its archive entry, the way {@code ConfigResourceController} answers a single admin
- * GET: bind the stored text, decrypt the external service secrets, serialize with {@link EntityProjection} and remove the secrets from
+ * GET: bind the stored text, decrypt the external service secrets, serialize with {@link ConfigEntityRedactor} and remove the secrets from
  * that tree. No secret leaves: {@code @EncryptedField} values are not serialized, and {@code client_secret} and {@code code_verifier}
  * are removed, leaving the masked {@code client_secret_hint}.
  *
@@ -74,7 +74,7 @@ public final class ExportResourceProjector {
                 toolSetService.decryptAuthSettingsForResponse(descriptor, toolSet);
             }
         }
-        return toBytes(descriptor, redaction.apply(EntityProjection.project(entity)));
+        return toBytes(descriptor, redaction.apply(ConfigEntityRedactor.toJsonWithoutEncrypted(entity)));
     }
 
     /**
@@ -91,7 +91,7 @@ public final class ExportResourceProjector {
             throw newRefusalException(descriptor, "A stored body is not a JSON object");
         }
         if (ExportTypePolicy.resolveType(descriptor) == ResourceTypes.APP_TYPE_SCHEMA) {
-            EntityProjection.removeSchemaUpstreamKeys(schema);
+            ConfigEntityRedactor.removeSchemaUpstreamKeys(schema);
         }
         return toBytes(descriptor, schema);
     }

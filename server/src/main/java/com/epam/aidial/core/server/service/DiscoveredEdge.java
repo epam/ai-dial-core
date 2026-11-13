@@ -15,8 +15,7 @@ import javax.annotation.Nullable;
 public record DiscoveredEdge(String pointer, @Nullable EdgeStatus status, @Nullable ResourceDescriptor target) {
 
     /**
-     * What discovery and traversal found out about an edge; the export logs every outcome but the candidate. A limit of
-     * {@link ExportLimits} fails the export and is not an outcome.
+     * What discovery and traversal found out about an edge; the export logs every outcome but the candidate.
      */
     public enum EdgeStatus {
         MISSING, UNSUPPORTED, EXTERNAL, UNRESOLVED_SHORT_NAME, ORIGIN_UNKNOWN, SCHEMA_UNAVAILABLE

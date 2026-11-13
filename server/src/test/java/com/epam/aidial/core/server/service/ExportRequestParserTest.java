@@ -19,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ExportRequestParserTest {
 
     private static final String MARKER = "SUBMITTED-VALUE-MARKER";
-    private static final int MAX_ROOTS = new AdminExportSettings().getMaxRoots();
     private static final String PLATFORM_ROOT = "{\"type\":\"application\",\"url\":\"applications/platform/a\"}";
 
     private static String request(String rootsJson) {
@@ -27,7 +26,7 @@ public class ExportRequestParserTest {
     }
 
     private static HttpException assertRejected(String body) {
-        HttpException error = assertThrows(HttpException.class, () -> ExportRequestParser.parse(body, MAX_ROOTS), body);
+        HttpException error = assertThrows(HttpException.class, () -> ExportRequestParser.parse(body), body);
         assertEquals(HttpStatus.BAD_REQUEST, error.getStatus(), body);
         assertFalse(error.getMessage().contains(MARKER), "the message echoes a submitted value: " + error.getMessage());
         return error;
@@ -35,7 +34,7 @@ public class ExportRequestParserTest {
 
     @Test
     public void testRootOnlyRequestIsAccepted() {
-        ExportRequest result = ExportRequestParser.parse(request("[" + PLATFORM_ROOT + "]"), MAX_ROOTS);
+        ExportRequest result = ExportRequestParser.parse(request("[" + PLATFORM_ROOT + "]"));
 
         assertEquals(1, result.roots().size());
         assertEquals(ResourceTypes.APPLICATION, result.roots().get(0).getType());
@@ -46,7 +45,7 @@ public class ExportRequestParserTest {
     @Test
     public void testPublicRootWithVersionAndFolderIsAccepted() {
         ExportRequest result = ExportRequestParser.parse(request(
-                "[{\"type\":\"application\",\"url\":\"applications/public/folder/name__1.0.0\"}]"), MAX_ROOTS);
+                "[{\"type\":\"application\",\"url\":\"applications/public/folder/name__1.0.0\"}]"));
 
         assertEquals("public/", result.roots().get(0).getBucketLocation());
         assertEquals("name__1.0.0", result.roots().get(0).getName());
@@ -55,7 +54,7 @@ public class ExportRequestParserTest {
     @Test
     public void testRootsKeepTheirOrderAndDuplicates() {
         ExportRequest result = ExportRequestParser.parse(request("["
-                + PLATFORM_ROOT + ",{\"type\":\"application\",\"url\":\"applications/platform/b\"}," + PLATFORM_ROOT + "]"), MAX_ROOTS);
+                + PLATFORM_ROOT + ",{\"type\":\"application\",\"url\":\"applications/platform/b\"}," + PLATFORM_ROOT + "]"));
 
         assertEquals(List.of("a", "b", "a"), result.roots().stream().map(root -> root.getName()).toList());
     }
@@ -113,25 +112,5 @@ public class ExportRequestParserTest {
     @MethodSource("badRoots")
     public void testBadRootIsRejectedAndNothingSubmittedIsEchoed(String root) {
         assertRejected(request("[" + root + "]"));
-    }
-
-    @Test
-    public void testMoreRootsThanTheLimitAreRefusedBeforeAnyIsConverted() {
-        // the second and third roots are malformed: converting them would give another message
-        String body = "{\"roots\":[{\"type\":\"application\",\"url\":\"applications/platform/a\"},"
-                + "{\"type\":\"application\",\"url\":\"not a url\"},{\"type\":\"model\",\"url\":\"x\"}]}";
-
-        HttpException failure = assertThrows(HttpException.class, () -> ExportRequestParser.parse(body, 2));
-
-        assertEquals(HttpStatus.BAD_REQUEST, failure.getStatus());
-        assertEquals("roots accepts at most 2 Applications", failure.getMessage());
-    }
-
-    @Test
-    public void testRootsAtTheLimitAreConvertedAsBefore() {
-        String body = "{\"roots\":[{\"type\":\"application\",\"url\":\"applications/platform/a\"},"
-                + "{\"type\":\"application\",\"url\":\"applications/platform/b\"}]}";
-
-        assertEquals(2, ExportRequestParser.parse(body, 2).roots().size());
     }
 }

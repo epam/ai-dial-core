@@ -38,14 +38,13 @@ way the admin config API shows it, one resource at a time, so that its memory do
 - The export takes the bucket locks of `public/` and `platform/` before the response head and holds them to the last byte, as the
   system export does. A held lock is `409`. A public root that the caller cannot read is `403` and a missing root is `404`, both before
   the head.
-- After the head a limit (resources, depth, references, size of one body), the deadline, a body that cannot be bound, a File that
+- After the head the deadline, a client that does not take the data within `stallTimeout`, a body that cannot be bound, a File that
   vanished or any other failure cuts the stream: the client sees a transport error and a ZIP without its central directory, and must
   treat the export as failed.
 - Secrets: an Application or ToolSet is written as the projection of its entity, which holds no encrypted field; `client_secret` and
   `code_verifier` of every `auth_settings` are removed and the masked `client_secret_hint` is kept, as the admin GET shows it. In an
   application type schema the upstream keys are removed. A Prompt and the bytes of a File and of a Skill are written as stored.
-- Limits are enforced with code defaults (`adminExport` settings): roots, resources, depth, references, size of one body and a
-  deadline that fits in the lease of the bucket locks.
+- The `adminExport` settings have code defaults: a `deadline` and a `stallTimeout` that together fit in the lease of the bucket locks.
 
 ## Out of Scope
 
@@ -66,7 +65,7 @@ way the admin config API shows it, one resource at a time, so that its memory do
 
 - `resource-export`: export of selected Applications with their available dependencies as a ZIP: request and response contract, the
   streaming flow, the archive layout, dependency discovery, identity and origin, findings in the server log, secret exclusion,
-  authorization, bucket locks, limits, failure behaviour.
+  authorization, bucket locks, the deadline, failure behaviour.
 
 ### Modified Capabilities
 
@@ -79,19 +78,19 @@ are resolved against), `resource-access-control` (the check that authorizes a pu
 
 - API: `POST /v1/admin/export` is added (marked `x-preview`); `docs/open_api_core.yaml` is generated from the annotations. No
   existing route changes its meaning.
-- Code that only this feature uses: `AdminExportController`, `ExportSlot` (the holder of the bucket locks), `DeadlineInterrupt`,
-  `ZipResponseStreamer` and the `ExportStreamer`, `ExportResourceProjector`, `ExportArchive`, `ExportLimits`, `ExportTypePolicy`,
+- Code that only this feature uses: `AdminExportController`,
+  `ZipResponseStreamer` and the `ExportStreamer`, `ExportResourceProjector`, `ExportArchive`, `ExportTypePolicy`,
   `ExportFileEntities`, `ExportRequestParser`, `DeploymentEdgeDiscovery`, `ShortNameResolver` and `SchemaReferenceResolver` services in
   `server`; the `validation` marker classes (`MarkerCollection`, `MarkerRecorder` and the issue types); the `adminExport` settings.
 - Shared code that changes:
-  - `EntityProjection` holds the projection and the removal of `auth_settings` secrets that `ConfigResourceController` and the export
+  - `ConfigEntityRedactor` holds the projection and the removal of `auth_settings` secrets that `ConfigResourceController` and the export
     share; the controller's answers are the same as without the export.
   - `DiscardableZipOutputStream` is a class of its own instead of a nested class of `AdminSystemExportService`, and the streaming of the
     response moves from `AdminSystemExportController` into `ZipResponseStreamer`, so that the system export and the export share both.
     The archive and the status codes of the system export are unchanged; when the executor refuses its task it answers `500` instead of
     throwing out of the handler.
   - `ComplexResourceService.getVersionFileStream` is added; no existing method changes.
-  - `ApplicationSchemaService`: the shared `resolveSchema` is split around a private `buildSchema`, and the export gets
+  - `ApplicationSchemaService`: the shared `resolveSchema` is split around a private `build`, and the export gets
     `buildExportSchema`, `collectMarkerReferences` and its own schema factory. Request-time behavior is unchanged: the download takes a
     `quiet` flag that only the export sets, so request processing keeps its log text, its exception, its wrapping of an interrupt and
     the status of the inner `HttpException`.
@@ -107,5 +106,5 @@ are resolved against), `resource-access-control` (the check that authorizes a pu
 - Settings: the `adminExport` group, all with code defaults.
 - Release: blocked by the Security and Maintainer approvals listed under the release gates in tasks.md (secret policy,
   File, Skill and Prompt content as stored, scope).
-- Separate changes, not started: import of the package; production readiness of the endpoint (approved limit values, a size-bounded
+- Separate changes, not started: import of the package; production readiness of the endpoint (a size-bounded
   read of one body, capacity benchmarking); platform-level outbound HTTP for Runner schemas.

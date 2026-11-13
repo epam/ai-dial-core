@@ -26,7 +26,7 @@ import javax.annotation.Nullable;
 /**
  * Resolves an application type schema or a catalog schema by its {@code $id}, with the same three signals as {@link ShortNameResolver}.
  * The blob name of a schema is arbitrary, so the platform-blob signal is a scan of the platform schema blobs, once per schema type, one
- * body at a time under the deadline, keeping only the {@code $id}; the scan is outside the snapshot. Not thread-safe; serves one export.
+ * body at a time, keeping only the {@code $id}; the scan is outside the snapshot. Not thread-safe; serves one export.
  */
 public final class SchemaReferenceResolver {
 
@@ -46,12 +46,10 @@ public final class SchemaReferenceResolver {
     @Nullable
     private final Config fileConfig;
     private final ResourceService resourceService;
-    private final ExportLimits.Deadline deadline;
     private final Map<ResourceTypes, Map<String, List<String>>> blobNamesBySchemaId = new EnumMap<>(ResourceTypes.class);
 
     public SchemaReferenceResolver(Config merged, Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalidEntities,
-                                   @Nullable Config fileConfig, ResourceService resourceService, ExportLimits.Deadline deadline) {
-        this.deadline = deadline;
+                                   @Nullable Config fileConfig, ResourceService resourceService) {
         this.merged = merged;
         this.invalidEntities = invalidEntities;
         this.fileConfig = fileConfig;
@@ -110,7 +108,6 @@ public final class SchemaReferenceResolver {
         Map<String, List<String>> blobNamesBySchemaIdOfType = new HashMap<>();
         String nextToken = null;
         do {
-            deadline.check();
             ResourceFolderMetadata page = resourceService.getFolderMetadata(folder, nextToken, SCAN_PAGE_SIZE, true);
             if (page == null) {
                 break;
@@ -127,7 +124,6 @@ public final class SchemaReferenceResolver {
 
     /** Reads one body at a time and keeps its {@code $id}, so that the platform schemas are never all in memory together. */
     private void indexBlob(ResourceTypes type, ResourceItemMetadata item, Map<String, List<String>> blobNamesBySchemaIdOfType) {
-        deadline.check();
         String blobName = item.getParentPath() == null ? item.getName()
                 : item.getParentPath() + ResourceDescriptor.PATH_SEPARATOR + item.getName();
         String body = resourceService.getResource(ResourceDescriptorFactory.fromDecoded(type, ResourceDescriptor.PLATFORM_BUCKET,

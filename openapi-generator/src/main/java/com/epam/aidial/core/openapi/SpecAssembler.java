@@ -147,9 +147,6 @@ public class SpecAssembler {
         Operation operation = new Operation();
         operation.setOperationId(endpoint.operationId());
         operation.setSummary(endpoint.path());
-        if (!endpoint.description().isEmpty()) {
-            operation.setDescription(endpoint.description());
-        }
         if (endpoint.tags().length > 0) {
             operation.setTags(List.of(endpoint.tags()));
         }

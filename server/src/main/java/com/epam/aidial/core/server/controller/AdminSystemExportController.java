@@ -78,7 +78,7 @@ public class AdminSystemExportController implements Controller {
         }
 
         Instant start = Instant.now();
-        streamer.stream(context, "dial-system-export", start, null, ExportSlot.newReleasedSlot(), out -> exportService.export(out, start, bucketLocations), error -> {
+        streamer.stream(context, "dial-system-export", start, null, out -> exportService.export(out, start, bucketLocations), error -> {
             if (error instanceof AdminSystemExportBusyException) {
                 context.respond(HttpStatus.CONFLICT, error.getMessage());
             } else {

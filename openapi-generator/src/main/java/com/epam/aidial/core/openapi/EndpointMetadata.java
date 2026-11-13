@@ -20,14 +20,8 @@ public final class EndpointMetadata {
             String contentType,
             ApiParameter[] parameters,
             ApiResponse[] responses,
-            ApiExtension[] extensions,
-            String description
+            ApiExtension[] extensions
     ) {
-
-        public Endpoint(String method, String path, String operationId, ApiSchema requestBody, String[] tags, String contentType,
-                        ApiParameter[] parameters, ApiResponse[] responses, ApiExtension[] extensions) {
-            this(method, path, operationId, requestBody, tags, contentType, parameters, responses, extensions, "");
-        }
 
         public Endpoint {
             // Null-checks for mandatory fields
@@ -40,7 +34,6 @@ public final class EndpointMetadata {
             parameters = parameters != null ? parameters.clone() : new ApiParameter[0];
             responses = responses != null ? responses.clone() : new ApiResponse[0];
             extensions = extensions != null ? extensions.clone() : new ApiExtension[0];
-            description = description != null ? description : "";
         }
 
         // FIX I4: Override accessors to return cloned arrays, preventing post-creation modification

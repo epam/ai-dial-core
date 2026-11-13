@@ -49,25 +49,19 @@ public final class DeploymentEdgeDiscovery {
     private final ApplicationSchemaService schemaService;
     private final CatalogSchemaService catalogSchemaService;
     private final EncryptionService encryptionService;
-    private final ExportLimits limits;
-    private final ExportLimits.Deadline deadline;
     // one build per schema id: it can download the document of the runner, and many Applications share one schema
     private final Map<URI, ApplicationSchemaService.ExportSchema> builtSchemas = new HashMap<>();
 
     /**
      * @param merged     the merged {@code Config} that all lookups read, so that one export sees one generation
      * @param fileConfig the file-sourced {@code Config}, or {@code null} when the file store has none
-     * @param limits     {@code maxEdges} bounds the references of one body: more fails the export
      */
     public DeploymentEdgeDiscovery(Config merged, Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalidEntities,
                                     @Nullable Config fileConfig, ResourceService resourceService, ApplicationSchemaService schemaService,
-                                    CatalogSchemaService catalogSchemaService, EncryptionService encryptionService,
-                                    ExportLimits limits, ExportLimits.Deadline deadline) {
-        this.limits = limits;
-        this.deadline = deadline;
+                                    CatalogSchemaService catalogSchemaService, EncryptionService encryptionService) {
         this.snapshotConfig = merged;
         this.resolver = new ShortNameResolver(merged, invalidEntities, fileConfig, resourceService);
-        this.schemaResolver = new SchemaReferenceResolver(merged, invalidEntities, fileConfig, resourceService, deadline);
+        this.schemaResolver = new SchemaReferenceResolver(merged, invalidEntities, fileConfig, resourceService);
         this.schemaService = schemaService;
         this.catalogSchemaService = catalogSchemaService;
         this.encryptionService = encryptionService;
@@ -81,10 +75,6 @@ public final class DeploymentEdgeDiscovery {
         MarkerCollection markers = application == null ? NO_MARKERS : collectApplicationMarkers(application);
         MarkerCollection catalogMarkers = catalogSchemaService.collectMarkerReferences(deployment, snapshotConfig);
 
-        if (markers.references().size() + catalogMarkers.references().size() > limits.maxEdges()) {
-            // before any is classified, so that a body of this kind costs no storage probe
-            throw ExportLimits.newExceededException("references");
-        }
         List<DiscoveredEdge> edges = new ArrayList<>();
         if (application != null && application.getApplicationTypeSchemaId() != null) {
             edges.add(classifySchema("/application_type_schema_id", ResourceTypes.APP_TYPE_SCHEMA,
@@ -92,12 +82,10 @@ public final class DeploymentEdgeDiscovery {
         }
         List<String> interceptors = deployment.getInterceptors();
         for (int i = 0; interceptors != null && i < interceptors.size(); i++) {
-            checkRoom(edges);
             edges.add(classifyInterceptor("/interceptors/" + i, interceptors.get(i)));
         }
         List<String> dependencies = deployment.getDependencies();
         for (int i = 0; dependencies != null && i < dependencies.size(); i++) {
-            checkRoom(edges);
             edges.add(classifyValue("/dependencies/" + i, dependencies.get(i), false));
         }
         if (deployment.getCatalogSchemaId() != null) {
@@ -157,16 +145,7 @@ public final class DeploymentEdgeDiscovery {
 
     private void addMarkerEdges(List<DiscoveredEdge> edges, MarkerCollection collection, String basePointer) {
         for (MarkerReference reference : collection.references()) {
-            checkRoom(edges);
             edges.add(classifyValue(basePointer + reference.pointer(), reference.value(), true));
-        }
-    }
-
-    /** Called before each reference is classified, which can cost storage probes: the body may not end the export late or heavy. */
-    private void checkRoom(List<DiscoveredEdge> edges) {
-        deadline.check();
-        if (edges.size() >= limits.maxEdges()) {
-            throw ExportLimits.newExceededException("references");
         }
     }
 
@@ -228,8 +207,7 @@ public final class DeploymentEdgeDiscovery {
             return false;
         }
         ResourceTypes type = (ResourceTypes) descriptor.getType();
-        return ExportTypePolicy.isBound(type, descriptor.getBucketName())
-                && ExportTypePolicy.isSupportedDependency(type, descriptor.getBucketLocation());
+        return ExportTypePolicy.isSupportedDependency(type, descriptor.getBucketLocation());
     }
 
     private DiscoveredEdge classifyResolution(String pointer, ShortNameResolution resolution, EdgeStatus statusWhenNothingHoldsTheName) {

@@ -37,10 +37,7 @@ public final class ExportRequestParser {
     private ExportRequestParser() {
     }
 
-    /**
-     * @param maxRoots more is refused before any root is looked at
-     */
-    public static ExportRequest parse(String body, int maxRoots) {
+    public static ExportRequest parse(String body) {
         ExportRequestBody raw;
         try {
             raw = ProxyUtil.MAPPER.readValue(body, ExportRequestBody.class);
@@ -49,9 +46,6 @@ public final class ExportRequestParser {
         }
         if (raw == null || raw.roots() == null || raw.roots().isEmpty()) {
             throw newBadRequestException("roots must hold at least one Application");
-        }
-        if (raw.roots().size() > maxRoots) {
-            throw newBadRequestException("roots accepts at most " + maxRoots + " Applications");
         }
 
         List<ResourceDescriptor> roots = new ArrayList<>();
@@ -72,11 +66,9 @@ public final class ExportRequestParser {
         } catch (RuntimeException e) {
             throw newBadRequestException(message);
         }
-        boolean isEligibleLocation = ResourceDescriptor.PUBLIC_LOCATION.equals(descriptor.getBucketLocation())
-                || ResourceDescriptor.PLATFORM_LOCATION.equals(descriptor.getBucketLocation());
         ResourceTypes type = (ResourceTypes) descriptor.getType();
         if (!root.type().equals(ExportResourceNames.resolveTypeName(type)) || !ExportTypePolicy.isRoot(type) || descriptor.isFolder()
-                || !isEligibleLocation || !ExportTypePolicy.isBound(type, descriptor.getBucketName())) {
+                || !ExportTypePolicy.isSupportedDependency(type, descriptor.getBucketLocation())) {
             throw newBadRequestException(message);
         }
         return descriptor;

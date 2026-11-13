@@ -70,7 +70,7 @@ marked value of `catalog_properties`. An Application without a schema, or with e
 in a property that no marker names is not detected. If the schema cannot be found or built, its reference is logged as `schema-unavailable`
 and the export does not fail. If the properties violate the schema, the log holds an `instance-invalid` record at `/application_properties`
 and its path. An `interceptors` entry is followed for every Deployment, although Core does not evaluate the stored `interceptors` of an
-Interceptor at request time. A longer chain (Application, ToolSet, Interceptor, File) reaches `maxNodes` and `maxDepth` sooner.
+Interceptor at request time.
 
 `icon_url` is a fixed field: a `files/...` URL is a file reference (the file is exported when it is a public file that exists), an
 absolute URL is external, and any other value is malformed. Nothing is fetched. A reference that has an empty, `.` or `..` path segment,
@@ -178,7 +178,7 @@ Before the response starts the export answers with a status:
 | `403` | The caller is not an explicit admin, or a `public/` root is not readable by the caller. |
 | `404` | A selected Application does not exist. |
 | `409` | A bucket lock is held by another export, by a system export or by an admin write; retry later. |
-| `500` | The export failed before the archive started: `Failed to prepare the export`, or `Failed to export the Applications` when the writer fails before the first bytes reach the response. |
+| `500` | The export failed before the archive started: `Failed to export the Applications`, for example when the roots could not be checked or the writer fails before the first bytes reach the response. |
 
 The status is decided in this order: `403` for a caller that is not an explicit admin (before the body is read), `400` for an invalid
 body, `409` when a bucket lock is held (the locks are taken before the roots are checked, so a held lock answers `409` before a `404` or
@@ -188,9 +188,8 @@ a `403` for a public root), then `403` for a public root that the caller cannot 
 longer be sent. The connection is reset: the client sees a transport error (for `curl`, for example, an incomplete transfer) and a ZIP
 without its central directory, which no ZIP reader accepts as a complete archive. **A client must treat any export that ends in a transport
 error as failed and must not use the partial file.** The reason is in the server log, at WARN, with the kind of the failure, the key of the resource that was in
-hand, the duration and the name of the limit, never a value (see [Log records](#log-records)). These failures cut the stream:
+hand, the duration, never a value (see [Log records](#log-records)). These failures cut the stream:
 
-- a limit: `maxNodes`, `maxDepth`, `maxEdges` or `maxResourceMiB` (see Limits);
 - the deadline, and a client that does not take the data within `stallTimeout`;
 - a stored body that is not valid JSON, not a JSON object, or cannot be bound to its type (a root or a dependency);
 - a root that existed when it was checked and is gone;
@@ -198,7 +197,7 @@ hand, the duration and the name of the limit, never a value (see [Log records](#
 - a path that has an empty, `.` or `..` segment;
 - a `public/` dependency that the caller cannot read (an explicit admin can read all of `public/`, so this is a guard).
 
-Only the roots are checked before the response starts: whether a dependency exists, how large the graph is and whether a body can be bound
+Only the roots are checked before the response starts: whether a dependency exists and whether a body can be bound
 are known only while the export walks it.
 
 ### Log records
@@ -210,7 +209,7 @@ The export writes these records to the server log, none of which holds a root, a
 | `Admin export rejected: a bucket lock is held ...` | INFO | The request is answered `409`. |
 | `Export started: roots=<n>` | INFO | The archive starts. |
 | `Export completed: duration=<ms>, resources=<n>` | INFO | The last byte of the archive is written. |
-| `Export aborted after the response started: resource=<key>, duration=<ms>, <kind>[: <message>]` | WARN | A failure cuts the stream. `<key>` is the resource in hand, or `-`; the message is given only for an exception of Core (a bound, a resource that is gone or cannot be bound), and an exception of Core about a resource names it by its key, never by a body or a value. |
+| `Export aborted after the response started: resource=<key>, duration=<ms>, <kind>[: <message>]` | WARN | A failure cuts the stream. `<key>` is the resource in hand, or `-`; the message is given only for an exception of Core (the deadline, a resource that is gone or cannot be bound), and an exception of Core about a resource names it by its key, never by a body or a value. |
 | `Export: a resource changed while it was copied and was written whole: resource=<key> etagBefore=<etag> etagAfter=<etag>` | WARN | A File or a Skill changed during the copy and was written whole; the export goes on (see [Package](#package)). |
 
 For the records of the references that are not followed see [References that are not followed](#references-that-are-not-followed).
@@ -231,35 +230,25 @@ The locks are a lease of 300 s that is not renewed, and they are released when t
 loses its client. `adminExport.deadline` and one `stallTimeout` together must stay below the lease, which Core checks at startup, so that the
 locks do not expire while the export still works.
 
-### Limits
+### Settings
 
-The size of the export is bounded by the `adminExport` settings. A limit that is exceeded fails the whole export, so a package never
-silently omits a resource: `maxRoots` is a `400`, and every other limit cuts the stream (see Responses):
+The `adminExport` settings (see the README) are:
 
-| Setting | Default | Limit |
+| Setting | Default | Meaning |
 |---|---|---|
-| `maxRoots` | 100 | Applications named in `roots` (`400`) |
-| `maxNodes` | 500 | resources that the export writes |
-| `maxDepth` | 10 | longest chain of references from a root |
-| `maxEdges` | 10000 | references found in one body and in all bodies together; the marker references of `application_properties` and `catalog_properties` together are checked as a whole before any is classified, the other references are counted one by one, so the export fails at the first one past the limit |
-| `maxResourceMiB` | 4 | string length of one stored body |
 | `deadline` | 180000 | milliseconds from the start to the last byte; with `stallTimeout` it must be below the lock period of 300000 |
 | `stallTimeout` | 60000 | milliseconds the export waits for a slow client to take the buffered data |
 
 Memory does not depend on the number of resources: the export holds the queue, the set of resources met and one resource, and a File goes
-through a 32 KiB buffer. A stored body is read in full before `maxResourceMiB` can reject it, so this limit does not bound the memory of one
-read: the largest stored body (`resources.maxSize`, 64 MiB by default) is the bound of what one read can allocate, and reading allocates about
-five times the stored size for a moment (an estimate, not measured). Provision the heap for that, for the parse and projection of a body that
-passed the limit, and for the 1 MiB pipe; only one export runs at a time.
+through a 32 KiB buffer. A stored body is read in full: the largest stored body (`resources.maxSize`, 64 MiB by default) is the bound of what
+one read can allocate, and reading allocates about five times the stored size for a moment (an estimate, not measured). Provision the heap for
+that, for the parse and projection of a body, and for the 1 MiB pipe; only one export runs at a time.
 
 The platform schemas are looked up by `$id`, which only their bodies hold, so a schema reference makes the export read the platform schema
 blobs once per schema type, one body at a time and under the deadline; no more than one body is held.
 
-The deadline is enforced by a check before each resource, each reference, each schema read and each chunk of a copy, and by two timers: one
-interrupts the thread that works when the deadline passes, so a read that blocks is ended if it can be interrupted, and one aborts the
-stream, which ends a write that waits for a slow client. An operation that ignores an interrupt (a read of a resource or of a Runner schema
-that does not return) is not stopped; the export then fails at the next check and the locks are released when the operation returns. The
-lease cannot be renewed, so an operation that outlasts it lets another export start while it still runs.
+The deadline is enforced by a timer that aborts the stream when it passes: the next write fails and the export ends, as it does for a client
+that does not take the data within `stallTimeout`.
 
 ### Release status and scope
 
@@ -282,9 +271,8 @@ lease cannot be renewed, so an operation that outlasts it lets another export st
   of different versions. The bucket locks keep admin writes out, not user writes of Prompts, Files and Skills.
 - The merged configuration and the configuration file are separate stores that are read one after the other, so an entity of the file can be
   seen in a state that the merged configuration does not yet show; no view that is atomic across them is promised.
-- The limits are configuration defaults, not benchmarked capacity: speed on large graphs is not characterized. The 5-second timeout of the Runner
-  schema download covers the wait for the response head, not the body; the deadline interrupts the thread that waits for it, but no hard
-  cancellation of a read exists beyond that.
+- Speed on large graphs is not characterized. The 5-second timeout of the Runner
+  schema download covers the wait for the response head, not the body.
 - An application type schema that declares `dial:applicationTypeSchemaEndpoint` is fetched live from the Runner, once per schema id and export (the
   built schema is reused by every Application that names it; it is also used to scan `application_properties`), through Core's existing schema
   download with its existing 5-second timeout (which bounds the wait for the response head, not the body). The endpoint comes only from a stored

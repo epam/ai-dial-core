@@ -88,7 +88,7 @@ whole-bucket export is a different endpoint, `POST /v1/admin/system-export`; thi
 | Origin | Where the effective entity comes from: `file` (the loaded `aidial.config.json`), `platform` (the `platform/` bucket) or `public` (the `public/` bucket). Type and origin are independent. |
 | Head | The `200` status line and headers of the response, sent with the first bytes of the archive. Before it a failure is a status; after it the stream is cut. |
 | Deployment | Application, Model, Interceptor and ToolSet: the four types that extend `Deployment` and share its reference fields (`interceptors`, `dependencies`, `icon_url`, `catalog_schema_id`, `catalog_properties`). |
-| Projection | The JSON that `EntityProjection.project` makes of an entity: the form of the admin GET, without `name` and `status`, and without any encrypted field. |
+| Projection | The JSON that `ConfigEntityRedactor.toJsonWithoutEncrypted` makes of an entity: the form of the admin GET, without `name` and `status`, and without any encrypted field. |
 | Manifest | `.dial-export/manifest.json`, the first entry: `formatVersion` (2), `coreVersion`, `createdAt`, `mode` (`selective`). |
 | Fragment | The archive entry of a resource of origin `file`; it has no blob, so it is not written at a storage path. |
 | Reason | Why a reference is not followed: `missing`, `unsupported`, `external`, `unresolved-short-name`, `origin-unknown`, `schema-unavailable` (`DiscoveredEdge.EdgeStatus`). |
@@ -96,12 +96,12 @@ whole-bucket export is a different endpoint, `POST /v1/admin/system-export`; thi
 
 ## The flow
 
-`AdminExportController` parses the request, takes the bucket locks, and has `ExportStreamer.checkRoots` check the roots on a worker
-thread. Then `ZipResponseStreamer` starts the response and runs `ExportStreamer.stream` on a task thread, which writes the archive into a
-1 MiB bounded pipe that feeds the response, so a slow client slows the writer instead of growing memory.
+`AdminExportController` parses the request, and `ZipResponseStreamer` runs one task on a task thread. The task takes the bucket locks,
+has `ExportStreamer.checkRoots` check the roots, and then `ExportStreamer.stream` writes the archive into a 1 MiB bounded pipe that feeds
+the response, so a slow client slows the writer instead of growing memory. The task releases the locks when it ends.
 
 `ExportStreamer.stream` writes the manifest and then runs a loop over a queue. The roots are marked as met and queued in the
-order of the request. For each queued resource the loop checks the deadline and writes it, by content:
+order of the request. For each queued resource the loop writes it, by content:
 
 1. **A Deployment** (`EXAMINED`): read from storage with `resourceService.getResource` (Redis first, blob as the fallback;
    the stored text), or taken from the file-sourced `Config` for an entity of origin `file`; bind to the entity
@@ -117,10 +117,10 @@ order of the request. For each queued resource the loop checks the deadline and 
 
 After the loop `ExportArchive.finish` writes the end of the ZIP. `ExportStreamer.stream` does not close the
 output; on a failure it logs one WARN line (the kind of the failure and, for the exceptions of the export, its message, which names a
-resource or a bound and never a value), rethrows, and discards the archive so that nothing more is written to the stream.
+resource and never a value), rethrows, and discards the archive so that nothing more is written to the stream.
 
-**Memory.** The run holds the queue (`ArrayDeque` of resource, depth, referrer and pointer), the met set (`HashSet` of descriptors),
-two counters and the resource in hand. The archive keeps nothing of an entry once it is written. A File or a file of a Skill goes through
+**Memory.** The run holds the queue (`ArrayDeque` of resource, referrer and pointer), the met set (`HashSet` of descriptors),
+the count of resources written and the resource in hand. The archive keeps nothing of an entry once it is written. A File or a file of a Skill goes through
 one 32 KiB buffer whatever its size.
 
 **Exactly once.** A resource is added to the met set before it is queued (`follow`, and the loop for the roots), so a resource reached
@@ -158,16 +158,15 @@ the bucket export has the specific one.
 
 Everything that can be decided without writing is a status: `403` for a caller that is not an explicit admin (before the body is
 read), `400` for an invalid body, `409` when a bucket lock is held, `403` for a public root that the caller may not read, `404` for a
-root that does not exist (`ExportStreamer.checkRoots`, on a worker thread, with the public roots checked before the existence of any),
-and `500` (`Failed to prepare the export`) for any other failure of these steps. Then the response starts.
+root that does not exist (`ExportStreamer.checkRoots`, with the public roots checked before the existence of any),
+and `500` (`Failed to export the Applications`) for any other failure of these steps. The head is written with the first byte of the archive.
 
 The head is written with the first bytes that reach the response. A failure before it, in the first bytes of the archive, is answered by
 `ZipResponseStreamer` with `500` (`Failed to export the Applications`). A failure after it cannot change the status, so
 `ZipResponseStreamer` resets the connection: the client sees a transport error and a ZIP without its central directory. These
 failures are:
 
-- a limit (`maxNodes`, `maxDepth`, `maxEdges`, `maxResourceMiB`), which throws a `HttpException` with status 413 that is never sent;
-- the deadline (`HttpException` 504 that is never sent) and a client that does not take the data within `stallTimeout`;
+- the deadline and a client that does not take the data within `stallTimeout`: the pipe is aborted and the next write fails;
 - a stored body that is not valid JSON or not a JSON object, or that cannot be bound to its type (`ExportResourceProjector.bind`
   throws an `IllegalStateException` that names the resource by its key and never the parser's message);
 - a root that existed when it was checked and is gone;
@@ -183,10 +182,9 @@ system export's counterparts: `Admin export rejected` where `AdminExportControll
 `Export completed: duration=<ms>, resources=<n>` in `ExportStreamer.stream`; none holds a root, a URL or a body. A structured audit event and
 metrics stay deferred.
 
-The accepted consequence is that a limit is not a clean answer: a client that sets `maxNodes` too low learns it from a truncated stream
-and from the server log, not from a `413` body. A client must treat any export that ends in a transport error as failed and must not
-read the partial ZIP. Only the roots are checked before the head: the existence of a dependency, a limit and the size of a body are not
-known before the walk.
+A failure after the head is not a clean answer: a client learns it from a truncated stream and from the server log, not from a status. A
+client must treat any export that ends in a transport error as failed and must not read the partial ZIP. Only the roots are checked before
+the head: the existence of a dependency, the deadline and whether a body can be bound are not known before the walk.
 
 *Rejected:* a trailer or a final entry that says the export failed (a consumer that stops reading at the first error would not see it, and
 a cut ZIP is already unambiguous).
@@ -194,10 +192,10 @@ a cut ZIP is already unambiguous).
 ### Bucket locks are held from before the head to the last byte
 
 `AdminExportController.lockBuckets` calls `lockService.tryLockBuckets(MergedConfigStore.ADMIN_BUCKET_LOCATIONS)` (`public/` and
-`platform/`) on a worker thread before the roots are checked, as `AdminSystemExportService.export` does. A lock held by another export,
-by the system export or by an admin write is `409` before any byte, whatever the roots. `ExportSlot` holds the one `LockService.Lock`
-and releases it once, whichever of the endings reaches it first: the end of the writer, a failure of the check, a failure of the success
-handler, the executor refusing the task, and the stream failing before the head. `ZipResponseStreamer` releases it when the writer ends.
+`platform/`) as the first step of the task, before the roots are checked, as `AdminSystemExportService.export` does. A lock held by
+another export, by the system export or by an admin write is `409` before any byte, whatever the roots. The task holds the lock in a
+try-with-resources and releases it when it ends: after the last byte, after a failure of the check or of the writer, or when the client
+is lost. A task that the executor refuses or drops before it runs has taken no lock.
 
 Effects, by reading the code that takes the same locks (`underBucketLocks(ADMIN_BUCKET_LOCATIONS)` in `ConfigResourceController` PUT and
 DELETE, `AdminApplyController`, `ConfigFileMigrateController`, `PolicyController`, and the debounced rebuild and the reload of
@@ -209,22 +207,21 @@ a Prompt or a File through `ResourceController` or `UploadFileController` takes 
 has no snapshot of those. The export also excludes the system export and another export. A long export delays admin configuration writes for up to `adminExport.deadline`.
 
 The lease is `LockService.LOCK_PERIOD` (300 s) and is not renewed, so `adminExport.deadline` (default 180 s) plus one `stallTimeout`
-(default 60 s) must stay below it; `AdminExportSettings.validate` refuses to start otherwise. An operation that ignores the interrupt of the
-deadline (`DeadlineInterrupt`) and outlasts the lease lets another export start while it still runs.
+(default 60 s) must stay below it; `AdminExportSettings.validate` refuses to start otherwise.
 
 *Rejected:* renewing the lease (the system export does not, and a stalled holder could keep the locks).
 
 ### The projection of the entity is the entry
 
-A Deployment is exported the way the admin GET of the same entity answers, in `ExportResourceProjector` and `EntityProjection`, which the
+A Deployment is exported the way the admin GET of the same entity answers, in `ExportResourceProjector` and `ConfigEntityRedactor`, which the
 controller and the export share:
 
 1. `bind`: `ConfigEntityCodec.BLOB_MAPPER.readTree` of the stored text, then `ConfigEntityCodec.treeToEntity` to Application, Model,
    Interceptor or ToolSet. Encrypted fields are still ciphertext in the entity.
 2. `projectDeployment` for an Application: `applicationService.decryptExternalServiceSecretsForResponse` (lenient: a secret that cannot
-   be decrypted is dropped, so it has no hint), then `EntityProjection.project(entity)` (`ProxyUtil.MAPPER.valueToTree`, the last
+   be decrypted is dropped, so it has no hint), then `ConfigEntityRedactor.toJsonWithoutEncrypted(entity)` (`ProxyUtil.MAPPER.valueToTree`, the last
    serialization of the entity before the archive; it drops every `@EncryptedField`, which are `WRITE_ONLY`: the keys of a Model, an
-   Interceptor, a route and an upstream), then `EntityProjection.redactExternalServiceSecrets(tree, true)`.
+   Interceptor, a route and an upstream), then `ConfigEntityRedactor.redactExternalServiceSecrets(tree, true)`.
 3. For a ToolSet the same with `toolSetService.decryptAuthSettingsForResponse` and `redactAuthSettingsSecrets(tree, true)`.
 4. A Model and an Interceptor need no decrypt: their secrets are `WRITE_ONLY` and are not in the projection.
 5. `redactSecretFields` removes `client_secret` and `code_verifier` of an `auth_settings` (`ResourceAuthSettings.removeSecretFields`) and
@@ -236,7 +233,7 @@ controller and the export share:
 An entity of the file configuration passes steps 2 to 6 without the decrypt, because it holds plaintext and is the live instance of the
 `Config`: it is projected into a fresh tree and never changed. It is read once when it is queued.
 
-An application type schema is a plain JSON document without an entity class. `EntityProjection.removeSchemaUpstreamKeys` removes
+An application type schema is a plain JSON document without an entity class. `ConfigEntityRedactor.removeSchemaUpstreamKeys` removes
 `dial:key`, `key`, `dial:secretExtraData` and `secretExtraData` at `dial:applicationTypeRoutes[*].dial:upstreams[*]` and in
 `dial:interfaces[*]` of such an upstream, under the spellings that `Route` and `Upstream` accept (`dial:upstreams` and `upstreams`,
 `dial:interfaces` and `interfaces`); the routes may be an object or an array. A catalog schema is written from its parse. A Prompt is
@@ -345,15 +342,12 @@ child, silent nulling of references, and no report of dangling references.
 
 `ExportStreamer.Run.follow` classifies each reference of a Deployment that `discover` returns:
 
-1. The reference counter is raised and, above `maxEdges`, the stream is cut. (`DeploymentEdgeDiscovery` also stops one body at `maxEdges`
-   before it classifies any marker reference, so a body of this kind costs no storage probe.)
-2. A reference with a reason is logged (`recordNotFollowed`) and not followed.
-3. A reference with no target is logged as `unsupported`.
-4. A target that is already met adds nothing.
-5. A target whose type is not allowed in its bucket (`ExportTypePolicy.resolveContent`, `isBound`) is logged as `unsupported`; nothing is read.
-6. A target in `public/` must be readable by the caller (`AccessService`), otherwise the stream is cut with `403` (never sent).
-7. The depth (the holder's depth plus one) must not exceed `maxDepth`, otherwise the stream is cut.
-8. The target is marked met and queued with its depth, the key of its holder and the pointer.
+1. A reference with a reason is logged (`recordNotFollowed`) and not followed.
+2. A reference with no target is logged as `unsupported`.
+3. A target that is already met adds nothing.
+4. A target whose type is not allowed in its bucket (`ExportTypePolicy.resolveContent`, `isBound`) is logged as `unsupported`; nothing is read.
+5. A target in `public/` must be readable by the caller (`AccessService`), otherwise the stream is cut with `403` (never sent).
+6. The target is marked met and queued with the key of its holder and the pointer.
 
 A queued resource that turns out not to exist is logged with the key of its holder and the pointer (a root is different: it ends the
 export, because the request checked it). The record is one line: `Export: a reference is not exported: resource=<key> pointer=<ptr>
@@ -515,7 +509,7 @@ live request to that endpoint at export time through the download it already has
 5-second request timeout, the optional proxy selector, status 200 and a JSON object required). No TTL cache is added. If the runner is down, times
 out or answers with something unusable, the schema reference is logged as `schema-unavailable`.
 
-- **Mechanism.** `resolveSchema` is split: a private `buildSchema(String storedSchema, boolean quiet)` builds the schema from its stored document
+- **Mechanism.** `resolveSchema` is split: a private `build(String source, boolean quiet)` builds the schema from its stored document
   and, when it declares the endpoint, from `downloadAppSchema` and `merge`, without reading or writing the shared cache. `resolveSchema` calls it
   with `quiet` false and keeps its cache read, `put`, `remove` and exceptions. `buildExportSchema(URI, Config)` takes the stored schema from the
   snapshot `Config` and calls it with `quiet` true, so a failed download raises an exception that carries no endpoint and no cause. A failure is
@@ -565,7 +559,7 @@ therefore not a statement that the package is complete: the log is the only plac
 - **Why not in the archive.** A list inside the archive would need every reference of every resource kept until the end, or a second pass. The
   stream keeps nothing of a written resource, and the operator who runs the export reads the log of that server.
 - **What fails the export instead** is a condition that prevents a safe archive: an invalid request, a forbidden caller, a missing root, a held lock
-  (statuses before the head), and after the head a limit, the deadline, an unbindable body, an unsafe path, a gone File or a failed read or write.
+  (statuses before the head), and after the head the deadline, an unbindable body, an unsafe path, a gone File or a failed read or write.
 
 ### Files and Skills are streamed as stored, with length and ETag checks
 
@@ -583,7 +577,7 @@ copy buffer and the 1 MiB pipe, whatever the file size.
   `public/skills/s/scripts/run.py`, without the marker and the version folder. A file that is gone or has another length cuts the stream. The marker is
   read again after the last file; a different aggregate ETag, or a Skill that is gone, is one WARN record and does not fail the export, because the
   version copied is whole. A Skill with no current version, no files or no marker is `missing`. `ComplexResourceService.downloadArchive` buffers a whole
-  archive and is not used. The Skill counts as one resource for `maxNodes`; the number of its files is bounded by the existing `ComplexResourceService` limits.
+  archive and is not used. The number of its files is bounded by the existing `ComplexResourceService` limits.
 - **ETag evidence.** For a File, the ETag in Redis write-behind and the `etag` user metadata of the synced blob must be the same value, or an ETag change
   between the reads would be an artifact of the sync. An integration test against a real embedded Redis and a filesystem blob store showed the same value
   before the sync, with Redis ahead of the blob, after the sync, for a file above `maxSizeToCache` and for a JSON resource read after eviction. That test
@@ -601,7 +595,7 @@ copy buffer and the 1 MiB pipe, whatever the file size.
 An entity that exists only in the file configuration (Model, Interceptor, ToolSet, Application and both schemas) has no blob. Leaving it out would make an
 Application that depends on a configured model unusable as a unit, and the source of an entity is not a reason to leave content out.
 
-- **Representation.** The projection of the live entity (`ExportFileEntities.findDeployment` and `EntityProjection.project`): the tree of the entity with the
+- **Representation.** The projection of the live entity (`ExportFileEntities.findDeployment` and `ConfigEntityRedactor.toJsonWithoutEncrypted`): the tree of the entity with the
   spelling of its own annotations (camel case for a Model and Interceptor, snake case for a ToolSet and Application). It drops the `@EncryptedField` values
   (`WRITE_ONLY`), so an annotated secret never enters the tree, and the `auth_settings` secrets are removed from it as for a stored entity. No decrypt is
   made, because the configuration holds plaintext. A schema is held by `Config` as the text of its document (`ExportFileEntities.findSchemaText`); that text is
@@ -622,33 +616,21 @@ Application that depends on a configured model unusable as a unit, and the sourc
   *Not provided:* the merged and the file-sourced configuration are updated independently and read one after the other, so they can disagree; no atomic
   cross-store view is claimed, and a name whose signals disagree stays `origin-unknown` and is not exported.
 
-### Limits
+### Settings
 
-The `adminExport` settings (`AdminExportSettings`, mapped by `ExportLimits`) bound the walk:
+The `adminExport` settings (`AdminExportSettings`) are:
 
-| Setting | Default | What it bounds | When exceeded |
+| Setting | Default | What it sets | When exceeded |
 |---|---|---|---|
-| `maxRoots` | 100 | the Applications that one request names | `400` |
-| `maxNodes` | 500 | the resources that one export writes (`admit`) | the stream is cut |
-| `maxDepth` | 10 | the longest chain of references from a root (`follow`) | the stream is cut |
-| `maxEdges` | 10000 | the references found in one body and in all bodies together | the stream is cut |
-| `maxResourceMiB` | 4 | the string length of one stored body (`checkSize`) | the stream is cut |
 | `deadline` | 180000 ms | the time from the start to the last byte | the stream is cut |
 | `stallTimeout` | 60000 ms | the wait for a slow client | the stream is cut |
 
-The deadline is enforced by a check before each resource, each reference, each schema read and each chunk of a copy, and by two timers: one
-(`DeadlineInterrupt`) interrupts the thread that works when the deadline passes, so a read that blocks is ended if it can be interrupted, and one
-aborts the pipe, which ends a write that waits for a slow client. An operation that ignores an interrupt (a read of a resource or of a Runner schema
-that does not return) is not stopped; the export then fails at the next check and the locks are released when the operation returns. The lease cannot
-be renewed, so an operation that outlasts it lets another export start while it still runs.
+The deadline is enforced by a timer that aborts the pipe when it passes: the next write fails and the export ends, as it does for a client
+that does not take the data within `stallTimeout`.
 
-Following more types makes graphs larger, so the limits are reached sooner than with Applications alone. The values are unapproved defaults.
-
-**Heap.** The export holds the queue, the met set and one resource. A stored body is read in full before `maxResourceMiB`
-can reject it, so the limit does not bound one read; the largest read is bounded by `resources.maxSize` (64 MiB by default). By reading the code,
-reading allocates about five times the stored size (compressed bytes, decompressed bytes with buffer growth, the string) before the size check, so one
-refused body of 64 MiB can need about 320 MiB for a moment (an estimate), and parsing and projecting a body that passed needs several times its
-length more. Jackson limits one JSON string value to 20,000,000 characters by default, which Core does not change, so a body with a longer string cannot
+**Heap.** The export holds the queue, the met set and one resource. A stored body is read in full; the largest read is bounded by `resources.maxSize` (64 MiB by default). By reading the code,
+reading allocates about five times the stored size (compressed bytes, decompressed bytes with buffer growth, the string), so a body of 64 MiB can need
+about 320 MiB for a moment (an estimate), and parsing and projecting a body needs several times its length more. Jackson limits one JSON string value to 20,000,000 characters by default, which Core does not change, so a body with a longer string cannot
 be bound and cuts the stream. These figures are not measured and are not performance guarantees.
 
 ## Per-request cost
@@ -690,7 +672,7 @@ the latency of the schema scan (only its call count, one listing per schema type
 - **A 200 can be an incomplete package.** A reference that is not followed does not change the response, and only the server log says what is missing. A
   short name in a marked field that nothing holds is expected to be common (Quick Apps hold short names in marked deployment fields). Whether a mode that
   fails on findings is wanted later is a product decision.
-- **A limit or a late failure is a truncated ZIP, not a status.** After the head `maxNodes`, `maxDepth`, `maxEdges`, `maxResourceMiB`, the deadline, a body that
+- **A late failure is a truncated ZIP, not a status.** After the head the deadline, a body that
   cannot be bound, a gone File and a failed read cut the stream. A client must treat a transport error as failure; the reason is in the server log only.
 - **A long export delays admin writes.** The bucket locks are held up to `adminExport.deadline`, so config writes, `/v1/admin/apply`, file migration and
   the config rebuild wait. The system export and another export get `409`. After a pod failure the locks stay until the lease ends (300 s).
@@ -740,19 +722,18 @@ own, so a reader of the system export does not accept it.
 | 5 | List `user_roles`, `interfaces.*.translator` and inline `routes` as unsupported references, so the log shows what the package lacks? | API owner | Not now; today they are not examined |
 | 6 | Report the request-time exposure of the shared schema factory (remote `$ref`, no loader timeout, `classpath:` and `file:` loading) | Maintainers, Security | Report it as its own issue; this change does not touch it |
 | 7 | Is a structured audit event required before release? | Security | The INFO records of the log (rejected, started, completed) exist; a structured event is out of scope unless Security requires it, in which case a gate is added |
-| 8 | Measure the peak heap of one large resource and of a graph of about 100 resources | Maintainers | Measure before the limit values are approved |
+| 8 | Measure the peak heap of one large resource and of a graph of about 100 resources | Maintainers | Record the measurement in "Settings" |
 
 ## Deferred workstreams
 
 Not part of this change's requirements. Nothing here is an accepted architectural decision.
 
-### Capacity, limits and operational readiness
+### Capacity and operational readiness
 
-A separate production-readiness workstream: the values of every limit and timeout, supported by measurements or a documented capacity analysis, a
+A separate production-readiness workstream: the values of the timeouts, supported by measurements or a documented capacity analysis, a
 size-limited read of one body (it needs a shared path in `ResourceService`), cancellation through `response.closeHandler` (a client that disconnects
 fails the writer at its next write), and lease renewal. The limits that Core already had stay in force and are not part of the deferral: `resources.maxSize`,
-the Jackson string limit, `adminExport.stallTimeout` of the bounded pipe, and the bounded-memory streaming. Code for the limits exists with the unapproved
-defaults of "Limits".
+the Jackson string limit, `adminExport.stallTimeout` of the bounded pipe, and the bounded-memory streaming.
 
 ### Approvals for binary and Prompt content
 
@@ -781,8 +762,8 @@ followed in the archive; reconciliation with `origin/rd/*`; and a secret rule fo
 
 | Area | Change | Effect on other callers |
 |---|---|---|
-| `EntityProjection` | new; the projection (`valueToTree`) and the removal of `auth_settings` secrets, shared by `ConfigResourceController` and the export | the controller calls it for the Application and ToolSet GET; its answers are unchanged |
-| `ApplicationSchemaService` | `resolveSchema` split into `resolveSchema` and a private `buildSchema(String, boolean quiet)`; new `buildExportSchema`, `collectMarkerReferences`, `EXPORT_SCHEMA_FACTORY`; the schema download takes a `quiet` flag, true only for the export: it then logs no endpoint, body, header or exception message, raises an exception without endpoint and cause, and restores and rethrows an interrupt | request processing passes `quiet` false and behaves exactly as before: its log text, its exception (message and cause), its wrapping of an interrupt and the status of the inner `HttpException` are unchanged and pinned by `ApplicationSchemaServiceTest` |
+| `ConfigEntityRedactor` | new; the projection (`valueToTree`) and the removal of `auth_settings` secrets, shared by `ConfigResourceController` and the export | the controller calls it for the Application and ToolSet GET; its answers are unchanged |
+| `ApplicationSchemaService` | `resolveSchema` split into `resolveSchema` and a private `build(String, boolean quiet)`; new `buildExportSchema`, `collectMarkerReferences`, `EXPORT_SCHEMA_FACTORY`; the schema download takes a `quiet` flag, true only for the export: it then logs no endpoint, body, header or exception message, raises an exception without endpoint and cause, and restores and rethrows an interrupt | request processing passes `quiet` false and behaves exactly as before: its log text, its exception (message and cause), its wrapping of an interrupt and the status of the inner `HttpException` are unchanged and pinned by `ApplicationSchemaServiceTest` |
 | `CatalogSchemaService` | new `collectMarkerReferences`, `EXPORT_SCHEMA_FACTORY` | none |
 | `DialFileKeyword`, `DialResourceKeyKeyword`, `CatalogFileKeyword` | one `MarkerRecorder.record` call each | a map lookup and a type test per marked value; nothing when no recorder is registered |
 | `ComplexResourceService` | new `getVersionFileStream` | none |

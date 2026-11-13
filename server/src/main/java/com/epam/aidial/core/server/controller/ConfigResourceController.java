@@ -43,7 +43,7 @@ import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
-import com.epam.aidial.core.server.service.EntityProjection;
+import com.epam.aidial.core.server.service.ConfigEntityRedactor;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -1301,7 +1301,7 @@ public class ConfigResourceController implements Controller {
                             applicationService.decryptExternalServiceSecretsForResponse(
                                     descriptorFor(ResourceTypes.APPLICATION), entity);
                         }
-                        return EntityProjection.redactExternalServiceSecrets(projectItem(entity, key), admin);
+                        return ConfigEntityRedactor.redactExternalServiceSecrets(projectItem(entity, key), admin);
                     });
             case TOOL_SET -> handleSingleGetFromBlob(ResourceTypes.TOOL_SET,
                     (key, toolSet) -> {
@@ -1311,7 +1311,7 @@ public class ConfigResourceController implements Controller {
                             toolSetService.decryptAuthSettingsForResponse(
                                     descriptorFor(ResourceTypes.TOOL_SET), entity);
                         }
-                        return EntityProjection.redactAuthSettingsSecrets(projectItem(entity, key), admin);
+                        return ConfigEntityRedactor.redactAuthSettingsSecrets(projectItem(entity, key), admin);
                     });
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             // the definition, target included: admin only, see AdminRoleAuthorizationService
@@ -1430,8 +1430,8 @@ public class ConfigResourceController implements Controller {
      * Deserializes a blob body for {@link #handleSingleGetFromBlob}. No decryption is performed:
      * secret fields on entity types are {@code @JsonProperty(WRITE_ONLY)} and are therefore
      * suppressed by Jackson on serialization regardless of their content; APPLICATION and TOOL_SET
-     * secrets are additionally redacted by the projector ({@link EntityProjection#redactExternalServiceSecrets}/
-     * {@link EntityProjection#redactAuthSettingsSecrets}).
+     * secrets are additionally redacted by the projector ({@link ConfigEntityRedactor#redactExternalServiceSecrets}/
+     * {@link ConfigEntityRedactor#redactAuthSettingsSecrets}).
      */
     private Object deserializeBlob(ResourceTypes type, String body) {
         return switch (type) {
@@ -2354,7 +2354,7 @@ public class ConfigResourceController implements Controller {
         // The shared projection respects @JsonProperty(WRITE_ONLY) on @EncryptedField fields, so secrets
         // simply drop from the response. There is no plaintext-reveal path (slice U.4 retired
         // the ?reveal_secrets=true / security-admin reveal flow).
-        ObjectNode node = EntityProjection.project(item);
+        ObjectNode node = ConfigEntityRedactor.toJsonWithoutEncrypted(item);
         node.put("name", name);
         node.put("status", "valid");
         return node;
@@ -2385,9 +2385,9 @@ public class ConfigResourceController implements Controller {
         }
         ResourceTypes type = resourceType();
         if (type == ResourceTypes.TOOL_SET) {
-            EntityProjection.redactAuthSettingsSecrets(node, false);
+            ConfigEntityRedactor.redactAuthSettingsSecrets(node, false);
         } else if (type == ResourceTypes.APPLICATION) {
-            EntityProjection.redactExternalServiceSecrets(node, false);
+            ConfigEntityRedactor.redactExternalServiceSecrets(node, false);
         }
         node.put("name", record.getSimpleName());
         node.put("status", "invalid");
