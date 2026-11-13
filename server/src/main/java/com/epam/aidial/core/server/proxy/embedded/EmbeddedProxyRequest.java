@@ -161,7 +161,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
         if (failure == null) {
             try {
                 answer = toProxyResponse(result.result());
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | LinkageError e) {
                 // thrown here, on a context the plugin completed, it would be swallowed and the request left hanging
                 failure = e;
             }

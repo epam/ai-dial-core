@@ -12,8 +12,9 @@ import io.vertx.core.http.HttpMethod;
  * plugin.
  *
  * @param method   the client's method
- * @param uri      the path and query Core would append to the deployment's base url, for example
- *                 {@code /openai/deployments/app/chat/completions?api-version=1}, or {@code /decide}
+ * @param uri      the path and query Core would append to the deployment's base url, behind any path that follows the
+ *                 plugin's name in it, for example {@code /openai/deployments/app/chat/completions?api-version=1}, or
+ *                 {@code /decide}; {@code /v2/decide} for a base url {@code plugin://<name>/v2}
  * @param headers  the headers Core would send, the per-request key in {@code API-KEY} and, for a model with upstreams,
  *                 the {@code X-UPSTREAM-*} headers of the chosen upstream included. Core forwards the client's headers
  *                 too, so {@code X-UPSTREAM-*} comes from Core only for a model with upstreams; elsewhere the client

@@ -345,12 +345,11 @@ public class DeploymentEndpointUtil {
      * <p>A translated interface never falls back here: routing it to the deployment itself would send the
      * request pass-through while {@code mode} still exempted it from limits. That is the whole of the rule
      * that a translated interface is served by its translator or by nothing — one with no translator linked
-     * resolves to no url here either, so it is neither served nor advertised. An interface that names a
-     * plugin never reaches this method: it resolves to its plugin first.
+     * resolves to no url here either, so it is neither served nor advertised.
      */
     @Nullable
     private String resolveLegacyEndpoint(Deployment deployment, InterfaceType type) {
-        if (resolveMode(deployment, type) != InterfaceMode.PASSTHROUGH) {
+        if (resolveMode(deployment, type) == InterfaceMode.TRANSLATOR) {
             return null;
         }
         return switch (type) {
