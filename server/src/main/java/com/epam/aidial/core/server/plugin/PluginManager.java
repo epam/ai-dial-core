@@ -121,7 +121,7 @@ public class PluginManager {
      * sets up there would keep that request's context, and the request it holds, for the plugin's life.
      */
     private Plugin createOutsideRequest(PluginProvider provider, ObjectNode settings) {
-        ObjectNode copy = settings == null ? null : settings.deepCopy();
+        ObjectNode copy = settings.deepCopy();
         ContextInternal current = ContextInternal.current();
         if (current == null) {
             return provider.create(copy, vertx);

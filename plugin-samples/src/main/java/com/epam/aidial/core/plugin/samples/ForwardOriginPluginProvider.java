@@ -21,6 +21,8 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>A deployments-POST action goes to the same action of that deployment.</li>
  *   <li>Chat completions, Responses and Messages keep their path, with {@code model} set to that deployment.</li>
+ *   <li>Anything else fails, a call reaching the create operations only: the item operations of Responses and
+ *   Messages {@code count_tokens}.</li>
  * </ul>
  * The call's answer is the plugin's answer, so a cancel of it reaches the call.
  */

@@ -263,10 +263,7 @@ public class DeploymentEndpointUtil {
         if (deploymentInterface.getMode() == InterfaceMode.TRANSLATOR) {
             TranslatorRef translator = deploymentInterface.getTranslator();
             Translator definition = translator == null ? null : translator.resolve(translators);
-            if (definition == null) {
-                return null;
-            }
-            return definition.getBaseUrl();
+            return definition == null ? null : definition.getBaseUrl();
         }
         return passthroughBaseUrl(deployment, deploymentInterface);
     }

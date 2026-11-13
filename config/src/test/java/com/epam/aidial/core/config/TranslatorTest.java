@@ -48,8 +48,8 @@ public class TranslatorTest {
                 }
                 """;
 
-        // absent, and no plugin either, so the constructor refuses it
-        assertThrows(ValueInstantiationException.class, () -> MAPPER.readValue(json, Config.class));
+        // absent, so Jackson refuses the creator property
+        assertThrows(MismatchedInputException.class, () -> MAPPER.readValue(json, Config.class));
 
         // present but null, so the constructor refuses it
         String explicitNull = json.replace("\"out\": \"openaiResponses\"", "\"out\": \"openaiResponses\", \"baseUrl\": null");

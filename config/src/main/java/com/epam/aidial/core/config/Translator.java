@@ -11,8 +11,8 @@ import lombok.Data;
  * does not speak itself. Registered under {@link Config#getTranslators()}, or written inline in the
  * {@code interfaces} entry that uses it.
  *
- * <p>{@link #out} and {@link #baseUrl} are what make it a translator at all — one missing either converts nothing, or
- * converts it nowhere — so it cannot be built without them.
+ * <p>{@link #out} and {@link #baseUrl} are what make it a translator at all — one missing either converts
+ * nothing, or converts it nowhere — so it cannot be built without them.
  */
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -44,13 +44,13 @@ public class Translator {
     public Translator(
             @JsonProperty("in") InterfaceType in,
             @JsonProperty(value = "out", required = true) InterfaceType out,
-            @JsonProperty("baseUrl") @JsonAlias({"baseUrl", "base_url"}) String baseUrl
+            @JsonProperty(value = "baseUrl", required = true) @JsonAlias({"baseUrl", "base_url"}) String baseUrl
     ) {
         if (out == null) {
             throw new IllegalArgumentException("Translator out cannot be null");
         }
         if (baseUrl == null || baseUrl.isEmpty()) {
-            throw new IllegalArgumentException("Translator baseUrl cannot be empty");
+            throw new IllegalArgumentException("Translator baseUrl cannot be null or empty");
         }
         this.in = in;
         this.out = out;
