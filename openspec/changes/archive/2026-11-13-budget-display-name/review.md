@@ -3,7 +3,8 @@
 ## Scope and findings
 
 Reviewed the implementation against the config-store and user-limits deltas and the development baseline.
-No remaining code findings from this static review. Server integration results are still required before merge.
+No remaining code findings from this review. The touched server test classes pass as detailed below; the full
+latest CI suite is still running and must be green before merge.
 
 - Correctness: `Policy` retains the configured string through the existing JSON mapping. Both stats endpoints
   use `BudgetEnforcer.collectStats`, which applies the same full-path fallback after selecting matching budgets.
@@ -42,7 +43,17 @@ fallback test uses `projA/engineering` because project policies can only be assi
   for `org.apache.jclouds.api:filesystem:2.7.3` and `org.apache.jclouds:jclouds-allblobstore:2.7.3` from GitHub Packages.
   Server compilation and tests cannot be verified locally with the available credentials.
 
-The first PR workflow passed server/test compilation, standard Checkstyle, Docker build and OpenAPI generation.
-Its new API tests passed except for the incorrect file-policy scenario described above. That test has been
-corrected to use the supported API; task 1.5 awaits a passing CI run of the final tests. Archiving records the
-implemented contract; it does not waive this check.
+### CI evidence
+
+- [First workflow](https://github.com/epam/ai-dial-core/actions/runs/43403567200), source commit `872b66cb`:
+  server/test compilation, standard Checkstyle, Docker build and OpenAPI generation passed. The server suite
+  reported 3843 tests, one failure and two skipped. The sole failure was the incorrect file-policy test described
+  above. All `UserBudgetsApiTest` (6), `PolicyApiTest` (38) and `PolicyRecordCodecTest` (12) cases passed.
+- [Corrected API test run](https://github.com/epam/ai-dial-core/actions/runs/43404911091/job/131816784526),
+  source commit `f5a773a0`: all nine `BudgetDisplayNameApiTest` cases passed, including the self-applying policy,
+  rename-after-charge and missing/null/blank fallback cases. Standard Checkstyle and OpenAPI generation passed
+  again. Production code and the three regression/codec classes are unchanged from the first run.
+
+This verifies the touched classes across those two runs. The latest full suite was still running when this
+record was written; no successful full-suite result is claimed. The final follow-up changes only verification
+notes and task status.

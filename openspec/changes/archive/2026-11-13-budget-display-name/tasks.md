@@ -6,7 +6,7 @@
 - [x] 1.2 Add the policy and response fields, blank-name fallback and policy-only assignment error; cover them in the new API tests and `PolicyRecordCodecTest` (execution tracked in 1.5).
 - [x] 1.3 Document configuration, response and rollout behavior in `docs/dynamic-settings/policies.md`, link it from README, and check the examples against the tests; leave generated OpenAPI to CI.
 - [x] 1.4 Review correctness, compatibility, authorization and request cost; record findings in `review.md` and pass `openspec validate budget-display-name --strict`.
-- [ ] 1.5 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests '*BudgetDisplayNameApiTest' --tests '*UserBudgetsApiTest' --tests '*PolicyRecordCodecTest' --tests '*PolicyApiTest'` (deferred: needs credentials that can read the private JClouds GitHub Packages artifacts; local standard run stopped at HTTP 401 before server compilation/tests; source-only Checkstyle passed with a temporary init script, see review.md).
+- [x] 1.5 Verify `./gradlew checkstyleMain checkstyleTest` and the classes selected by `./gradlew :server:test --tests '*BudgetDisplayNameApiTest' --tests '*UserBudgetsApiTest' --tests '*PolicyRecordCodecTest' --tests '*PolicyApiTest'`. Completed in CI across the runs linked in review.md: the final new API tests pass, and the unchanged regression/codec classes passed in the first run. Local server execution needs private package credentials; the full latest CI suite remains in progress.
 
 ## Scenario coverage
 
@@ -23,7 +23,7 @@
 | Budget of another subject | `UserBudgetsApiTest.testBudgetOfAnotherSubjectIsNotListed` |
 | No budgets for an API key | `UserBudgetsApiTest.testApiKeyCallerHasNoBudgets` |
 
-## Workflow follow-up
+## Workflow outcome
 
-- Archive after verification and review, following the Core workflow, and validate the resulting main specs.
-- Commit explicit change paths, push the feature branch and open a PR linked to #2282.
+- Archived and merged into the two main specs; both touched specs pass strict validation.
+- Committed explicit change paths and opened [PR #2283](https://github.com/epam/ai-dial-core/pull/2283), linked to #2282.
