@@ -20,7 +20,7 @@ jobs:
     with:
       promote: ${{ github.event_name == 'workflow_dispatch' && inputs.promote }}
       platforms: "linux/amd64,linux/arm64"
-      java-version: 21
+      java-version: 25
       trivy-severity: "CRITICAL,HIGH,MEDIUM,LOW"
       trivy-severity-for-sarif: "CRITICAL,HIGH,MEDIUM,LOW"
     secrets: inherit
