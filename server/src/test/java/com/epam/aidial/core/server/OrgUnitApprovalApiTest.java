@@ -8,10 +8,13 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -205,13 +208,75 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testNoSelfApproval() {
-        assign("public/Acme", "{\"type\": \"claimsPredicate\", \"source\": \"roles\", \"function\": \"EQUAL\", \"targets\": [\"user\"]}");
+    void testApproverDecidesOwnRequest() {
+        assign("public/Acme", USERS);
         String own = request("public/Acme/", "Acme/a.txt", null);
+        String rejected = request("public/Acme/", "Acme/b.txt", null);
+        String decided = request("public/Acme/", "Acme/c.txt", null);
 
-        assertEquals(List.of(own), urls(list("user")));
-        assertEquals(403, decide("approve", own, "user").status());
-        assertEquals(200, decide("approve", own, APPROVER).status());
+        assertEquals(Set.of(own, rejected, decided), Set.copyOf(urls(list("user"))));
+        assertEquals(200, decide("approve", own, "user").status());
+        assertEquals(200, decide("reject", rejected, "user").status());
+        assertEquals(200, send(HttpMethod.GET, "/v1/files/public/Acme/a.txt", null, null, "authorization", "user").status());
+        assertEquals(List.of(), notifications("user"), "no notice of their own decision");
+
+        assertEquals(200, decide("approve", decided, APPROVER).status());
+        assertEquals(List.of(decided), notifications("user"));
+    }
+
+    @Test
+    void testApproverDeletesThroughOwnRequest() {
+        assign("public/Acme", USERS);
+        assertEquals(200, decide("approve", request("public/Acme/", "Acme/a.txt", null), APPROVER).status());
+
+        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                {"name": "d", "targetFolder": "public/Acme/", "resources": [{"action": "DELETE", "targetUrl": "files/public/Acme/a.txt"}]}
+                """, "authorization", "user");
+        assertEquals(200, created.status(), created.body());
+
+        Response approved = decide("approve", new JsonObject(created.body()).getString("url"), "user");
+        assertEquals(200, approved.status(), approved.body());
+        assertEquals(404, send(HttpMethod.GET, "/v1/files/public/Acme/a.txt", null, null, "authorization", "user").status());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ADD", "ADD_IF_ABSENT"})
+    void testOwnApprovalRechecksPublishingCredentials(String action) {
+        assign("public/Acme", USERS);
+        String toolset = "toolsets/4X25dj1mja51jykqxsXnCH/creds";
+        assertEquals(200, send(HttpMethod.PUT, "/v1/" + toolset, null, TOOLSET_CREATE_REQEUST_BODY, "authorization", "admin").status());
+        shareWithUser(toolset, "[\"READ\", \"WRITE\"]");
+        String file = "files/" + userBucket + "/b.txt";
+        assertEquals(200, upload(HttpMethod.PUT, "/v1/" + file, null, "b", "authorization", "user").status());
+
+        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                {"name": "t", "targetFolder": "public/Acme/", "resources": [
+                 {"action": "ADD", "sourceUrl": "%s", "targetUrl": "files/public/Acme/b.txt"},
+                 {"action": "%s", "sourceUrl": "%s", "targetUrl": "toolsets/public/Acme/creds", "publishCredentials": true}]}
+                """.formatted(file, action, toolset), "authorization", "user");
+        assertEquals(200, created.status(), created.body());
+        String url = new JsonObject(created.body()).getString("url");
+        assertEquals(200, send(HttpMethod.POST, "/v1/ops/resource/share/revoke", null, """
+                {"resources": [{"url": "%s", "permissions": ["WRITE"]}]}
+                """.formatted(toolset), "authorization", "admin").status());
+
+        assertEquals(403, decide("approve", url, "user").status());
+        assertEquals(404, send(HttpMethod.GET, "/v1/files/public/Acme/b.txt", null, null, "authorization", "user").status(),
+                "nothing in the request is published");
+        assertEquals(200, decide("approve", url, APPROVER).status(), "another approver decides as before");
+    }
+
+    @Test
+    void testAdminApprovesOwnRequestWithCredentials() {
+        String toolset = "toolsets/4X25dj1mja51jykqxsXnCH/creds";
+        assertEquals(200, send(HttpMethod.PUT, "/v1/" + toolset, null, TOOLSET_CREATE_REQEUST_BODY, "authorization", "admin").status());
+        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                {"name": "t", "targetFolder": "public/Acme/", "resources": [{"action": "ADD", "sourceUrl": "%s",
+                 "targetUrl": "toolsets/public/Acme/creds", "publishCredentials": true}]}
+                """.formatted(toolset), "authorization", "admin");
+        assertEquals(200, created.status(), created.body());
+
+        assertEquals(200, decide("approve", new JsonObject(created.body()).getString("url"), "admin").status());
     }
 
     @Test
@@ -257,6 +322,17 @@ public class OrgUnitApprovalApiTest extends ResourceBaseTest {
     private Response decide(String operation, String url, String caller) {
         return send(HttpMethod.POST, "/v1/ops/publication/" + operation, null, new JsonObject().put("url", url).encode(),
                 "authorization", caller);
+    }
+
+    private List<String> notifications(String caller) {
+        Response response = send(HttpMethod.POST, "/v1/ops/notification/list", null, "", "authorization", caller);
+        assertEquals(200, response.status(), response.body());
+        JsonArray notifications = new JsonObject(response.body()).getJsonArray("notifications");
+        List<String> urls = new ArrayList<>();
+        for (int i = 0; i < notifications.size(); i++) {
+            urls.add(notifications.getJsonObject(i).getString("url"));
+        }
+        return urls;
     }
 
     private JsonArray list(String caller) {

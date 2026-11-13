@@ -194,6 +194,8 @@ public class BudgetEnforcer {
             BudgetStats budget = new BudgetStats();
             budget.setCostObject(costObject);
             budget.setPolicy(instance.policyPath());
+            String displayName = instance.policy().getDisplayName();
+            budget.setDisplayName(displayName == null || displayName.isBlank() ? instance.policyPath() : displayName);
             budget.setPriority(instance.policy().getPriority());
             budget.setDay(toStats(instance.policy().getCost().getDay(), usage.day(), usage.dayResetsAt(), schedule));
             budget.setMonth(toStats(instance.policy().getCost().getMonth(), usage.month(), usage.monthResetsAt(), schedule));
