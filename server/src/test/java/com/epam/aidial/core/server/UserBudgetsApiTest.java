@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.config.RateLimitSchedule;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.CalendarPeriod;
 import com.epam.aidial.core.server.limiter.CalendarWindowCalculator;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -119,7 +121,105 @@ class UserBudgetsApiTest extends ResourceBaseTest {
         Response response = send(HttpMethod.GET, "/v1/user/limits", null, null);
         verify(response, 200);
 
-        assertTrue(readJson(response).get("budgets").isEmpty());
+        JsonNode stats = readJson(response);
+        assertTrue(stats.get("budgets").isEmpty());
+        assertFalse(stats.has("costObject"));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/user-budgets.json")
+    void testCostObjectIsTheTokenProject() {
+        putPolicy("project", 10, 200);
+        putPolicy("personal", 5, 50);
+        putAssignment("projA/m1", "project", MANAGER);
+        putAssignment("projB/m1", "project", MANAGER);
+        putAssignment("ORG/m1", "personal", MANAGER);
+
+        JsonNode stats = userStats("/v1/user/limits", "user@projA");
+
+        assertEquals("projA", stats.get("costObject").asText());
+        assertEquals(List.of("ORG", "projA", "projB"), costObjects(stats.get("budgets")));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/user-budgets-default.json")
+    void testCostObjectIsTheConfiguredDefault() {
+        JsonNode stats = userStats("/v1/user/limits");
+
+        assertEquals("PERSONAL", stats.get("costObject").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/user-budgets.json")
+    void testCostObjectWithoutMatchingBudget() {
+        putPolicy("project", 10, 200);
+        putAssignment("projC/d1", "project", DIRECTOR);
+
+        JsonNode stats = userStats("/v1/user/limits", "user@projA");
+
+        assertEquals("projA", stats.get("costObject").asText());
+        assertTrue(stats.get("budgets").isEmpty());
+    }
+
+    @Test
+    void testNoCostObjectWhenSpendingLimitsOff() {
+        JsonNode stats = userStats("/v1/user/limits", "user@projA");
+
+        assertFalse(stats.has("costObject"));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/user-budgets.json")
+    void testPerRequestKeyHasRootCallerCostObject() {
+        putPolicy("project", 10, 200);
+        putAssignment("projA/m1", "project", MANAGER);
+        ApiKeyData perRequestKey = new ApiKeyData();
+        perRequestKey.setExtractedClaims(createClaims("user", "projA"));
+        perRequestKey.setSourceDeployment("testapp");
+        perRequestKey.setTraceId("trace-id");
+        apiKeyStore.assignPerRequestApiKey(perRequestKey);
+
+        JsonNode stats = perRequestStats(perRequestKey);
+
+        assertEquals("projA", stats.get("costObject").asText());
+        assertEquals(List.of("projA"), costObjects(stats.get("budgets")));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/user-budgets.json")
+    void testPerRequestKeyOfApiKeyHasNoCostObject() {
+        ApiKeyData perRequestKey = new ApiKeyData();
+        perRequestKey.setOriginalKey(apiKeyStore.getApiKeyData("proxyKey1", null).result().getOriginalKey());
+        perRequestKey.setSourceDeployment("testapp");
+        apiKeyStore.assignPerRequestApiKey(perRequestKey);
+
+        JsonNode stats = perRequestStats(perRequestKey);
+
+        assertFalse(stats.has("costObject"));
+        assertTrue(stats.get("budgets").isEmpty());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/user-budgets.json")
+    void testBudgetForEveryModelHasObjectStar() {
+        putPolicy("project", 10, 200);
+        putAssignment("projA/m1", "project", MANAGER);
+
+        JsonNode budget = userStats("/v1/user/limits").get("budgets").get(0);
+
+        assertEquals("*", budget.get("object").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/user-budgets.json")
+    void testBudgetForListedModelsHasSortedObject() {
+        putPolicy("listed", 10, 200, 10, """
+                ["gpt-4o", "claude-opus"]""");
+        putAssignment("projA/m1", "listed", MANAGER);
+
+        JsonNode budget = userStats("/v1/user/limits").get("budgets").get(0);
+
+        assertEquals("[\"claude-opus\",\"gpt-4o\"]", budget.get("object").toString());
     }
 
     private void putPolicy(String name, int day, int month) {
@@ -127,10 +227,14 @@ class UserBudgetsApiTest extends ResourceBaseTest {
     }
 
     private void putPolicy(String name, int day, int month, int priority) {
+        putPolicy(name, day, month, priority, "\"*\"");
+    }
+
+    private void putPolicy(String name, int day, int month, int priority, String object) {
         verify(send(HttpMethod.PUT, POLICIES + name, null, """
-                { "priority": %d, "kind": "budget", "quantity": "cost", "object": "*", "per": ["subject"],
+                { "priority": %d, "kind": "budget", "quantity": "cost", "object": %s, "per": ["subject"],
                   "cost": { "day": %d, "month": %d } }
-                """.formatted(priority, day, month), "authorization", "admin"), 200);
+                """.formatted(priority, object, day, month), "authorization", "admin"), 200);
     }
 
     private void putAssignment(String path, String policy, String subject) {
@@ -140,7 +244,17 @@ class UserBudgetsApiTest extends ResourceBaseTest {
     }
 
     private JsonNode userStats(String path) {
-        Response response = send(HttpMethod.GET, path, null, null, "authorization", "user");
+        return userStats(path, "user");
+    }
+
+    private JsonNode userStats(String path, String authorization) {
+        Response response = send(HttpMethod.GET, path, null, null, "authorization", authorization);
+        verify(response, 200);
+        return readJson(response);
+    }
+
+    private JsonNode perRequestStats(ApiKeyData perRequestKey) {
+        Response response = send(HttpMethod.GET, "/v1/user/limits", null, null, "api-key", perRequestKey.getPerRequestKey());
         verify(response, 200);
         return readJson(response);
     }

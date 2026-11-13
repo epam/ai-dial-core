@@ -69,6 +69,8 @@ usage endpoint on `/anthropic/*` then describe a budget.
   that cost object, whatever models it covers. With several, or none, a 200 answer carries no
   `anthropic-ratelimit-unified-*` header and the usage endpoint returns `{"limits":[]}`, because no single budget
   says what the user can still spend. `GET /v1/user/usage` still lists every budget in `budgets[]`.
+  It names the user's cost object in `costObject` and the models each budget covers in `object`; which budget of
+  that cost object pays depends on the model and the priority.
 - **Windows.** The budget's `day` and `month` amounts are its caps; a budget has no week window. The cap to report
   and the header values follow the rules above, and an amount of 2^53 or more is not reported.
 - **Used up.** When no budget that covers the model has room in every window it sets, the request is rejected before

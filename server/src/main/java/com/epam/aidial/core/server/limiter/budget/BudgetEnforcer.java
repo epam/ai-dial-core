@@ -178,13 +178,14 @@ public class BudgetEnforcer {
     }
 
     /**
-     * The budgets to report to the caller, every matching one, with the spend so far. Blocks, so it is for a
-     * caller that is already on the task executor.
+     * The budgets to report to the caller, every matching one, with the spend so far, and the cost object the
+     * caller's model calls are charged to. Blocks, so it is for a caller that is already on the task executor.
      */
-    public List<BudgetStats> collectStats(ProxyContext context, long timestamp, RateLimitSchedule schedule) {
+    public BudgetReport collectStats(ProxyContext context, long timestamp, RateLimitSchedule schedule) {
         ExtractedClaims claims = context.getExtractedClaims();
-        if (context.getConfig().getSpendingLimits().getMode() == SpendingLimitMode.OFF || claims == null) {
-            return List.of();
+        SpendingLimits settings = context.getConfig().getSpendingLimits();
+        if (settings.getMode() == SpendingLimitMode.OFF || claims == null) {
+            return new BudgetReport(null, List.of());
         }
         List<BudgetStats> stats = new ArrayList<>();
         for (BudgetInstance instance : EffectiveBudgets
@@ -197,11 +198,18 @@ public class BudgetEnforcer {
             String displayName = instance.policy().getDisplayName();
             budget.setDisplayName(displayName == null || displayName.isBlank() ? instance.policyPath() : displayName);
             budget.setPriority(instance.policy().getPriority());
+            budget.setObject(instance.policy().getObject());
             budget.setDay(toStats(instance.policy().getCost().getDay(), usage.day(), usage.dayResetsAt(), schedule));
             budget.setMonth(toStats(instance.policy().getCost().getMonth(), usage.month(), usage.monthResetsAt(), schedule));
             stats.add(budget);
         }
-        return stats;
+        return new BudgetReport(resolveCostObject(context, settings), stats);
+    }
+
+    /**
+     * @param costObject the caller's cost object, {@code null} when budgets do not apply to the caller
+     */
+    public record BudgetReport(@Nullable String costObject, List<BudgetStats> budgets) {
     }
 
     private static CostItemLimitStats toStats(@Nullable BigDecimal limit, BigDecimal used, long resetsAt, RateLimitSchedule schedule) {
