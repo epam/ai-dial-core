@@ -15,6 +15,7 @@ import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -65,7 +66,8 @@ public class ApiKeyData {
     private List<String> interceptors;
     // Index to track which interceptor is called next
     private int interceptorIndex = -1;
-    // the deployment an alias pass lends its target pass the right to call
+    // Legacy: the deployment an alias pass lent its target — decoded for backward compat but no longer written.
+    // Alias-target grants are now represented as lent=true entries in perRequestSharedResources.
     private String lentDeployment;
     // deployment triggers interceptors
     private String initialDeployment;
@@ -113,19 +115,16 @@ public class ApiKeyData {
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();
             if (context.getDeployment() instanceof AliasPass pass) {
-                proxyApiKeyData.setLentDeployment(pass.getTargetName());
-                if (pass.isResourceTarget()) {
-                    // lets the target pass read the target resource, as access checks of resources expect
-                    proxyApiKeyData.getAttachedDeployments().put(pass.getTargetName(), new AutoSharedData(ResourceAccessType.READ_ONLY));
-                }
-            } else if (isLentTo(apiKeyData, receiver, context.getInitialDeployment())) {
-                // an interceptor in front of the target, and the target's own callback such as a translator's, call
-                // Core back for the same target; the lending goes with them and covers that target only
-                String lent = apiKeyData.getLentDeployment();
-                proxyApiKeyData.setLentDeployment(lent);
-                AutoSharedData attached = apiKeyData.getAttachedDeployments().get(lent);
-                if (attached != null) {
-                    proxyApiKeyData.getAttachedDeployments().put(lent, attached);
+                // Grant the target pass the right to call the target: READ in perRequestSharedResources, lent=true so
+                // that only this alias-authorized path bypasses accessibleByPerRequestKey and rate-limit role matching.
+                bakeLentGrant(proxyApiKeyData.getPerRequestSharedResources(), pass.getTargetName());
+            } else {
+                // An interceptor in front of the target, or the target's own callback (e.g. a translator's), calls
+                // Core back for the same target: carry the lent grant forward so the target remains reachable.
+                String lentKey = findLentGrantKey(apiKeyData, receiver, context.getInitialDeployment());
+                if (lentKey != null) {
+                    proxyApiKeyData.getPerRequestSharedResources().put(lentKey,
+                            apiKeyData.getPerRequestSharedResources().get(lentKey));
                 }
             }
             currentPath.add(receiver);
@@ -149,13 +148,44 @@ public class ApiKeyData {
         proxyApiKeyData.setSpanId(context.getSpanId());
     }
 
-    private static boolean isLentTo(ApiKeyData apiKeyData, String receiver, String initialDeployment) {
-        String lent = apiKeyData.getLentDeployment();
-        if (apiKeyData.getPerRequestKey() == null || lent == null) {
-            return false;
+    /**
+     * Writes a lent grant for {@code targetName} into {@code grants}, merging into any existing entry so that
+     * copy-on-write semantics are preserved: the entry returned is always a fresh object when it carries {@code lent=true}.
+     */
+    public static void bakeLentGrant(Map<String, PerRequestSharedData> grants, String targetName) {
+        grants.merge(targetName,
+                new PerRequestSharedData(new HashSet<>(ResourceAccessType.READ_ONLY), true),
+                PerRequestSharedData::merge);
+    }
+
+    /**
+     * The key of a lent grant in {@code apiKeyData.perRequestSharedResources} that covers {@code receiver} or
+     * {@code initialDeployment} (by exact name or encoded path), or {@code null} when there is none. Only a PRK
+     * carries lent grants; a project-key context returns {@code null}.
+     */
+    private static String findLentGrantKey(ApiKeyData apiKeyData, String receiver, String initialDeployment) {
+        if (apiKeyData.getPerRequestKey() == null) {
+            return null;
         }
-        return lent.equals(receiver) || initialDeployment != null
-                && (lent.equals(initialDeployment) || lent.equals(UrlUtil.encodePath(initialDeployment)));
+        Map<String, PerRequestSharedData> grants = apiKeyData.getPerRequestSharedResources();
+        if (hasLentGrant(grants, receiver)) {
+            return receiver;
+        }
+        if (initialDeployment != null) {
+            if (hasLentGrant(grants, initialDeployment)) {
+                return initialDeployment;
+            }
+            String encoded = UrlUtil.encodePath(initialDeployment);
+            if (hasLentGrant(grants, encoded)) {
+                return encoded;
+            }
+        }
+        return null;
+    }
+
+    public static boolean hasLentGrant(Map<String, PerRequestSharedData> grants, String key) {
+        PerRequestSharedData data = key == null ? null : grants.get(key);
+        return data != null && data.lent();
     }
 
     private static void sharePerRequestPermissions(ApiKeyData proxyApiKeyData, Map<String, Map<String, PerRequestSharedData>> receivers,

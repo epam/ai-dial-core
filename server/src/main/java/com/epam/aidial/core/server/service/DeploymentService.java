@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.alias.AliasService;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
 import com.epam.aidial.core.server.security.AccessService;
@@ -127,13 +128,24 @@ public class DeploymentService {
     }
 
     /**
-     * Whether the request is the target pass of an alias call for {@code deployment}: its per-request key was made by
-     * the alias pass, which lends the right to call the target. The key is kept by Core and sent only to Core itself.
+     * Whether the request is the target pass of an alias call for {@code deployment}: its per-request key carries a
+     * lent grant for the deployment's name. The key is kept by Core and sent only to Core itself.
+     * <p>
+     * Also checks the legacy {@code lentDeployment} field for PRKs written before the migration (rolling-upgrade compat).
      */
     public static boolean isLent(ProxyContext context, RoleBasedEntity deployment) {
         ApiKeyData apiKeyData = context.getApiKeyData();
-        String lentDeployment = apiKeyData.getLentDeployment();
-        return apiKeyData.getPerRequestKey() != null && lentDeployment != null && lentDeployment.equals(deployment.getName());
+        if (apiKeyData.getPerRequestKey() == null) {
+            return false;
+        }
+        String name = deployment.getName();
+        PerRequestSharedData data = apiKeyData.getPerRequestSharedResources().get(name);
+        if (data != null && data.lent()) {
+            return true;
+        }
+        // legacy compat: PRKs written by older Core nodes carry lentDeployment but no lent=true entry
+        String legacy = apiKeyData.getLentDeployment();
+        return legacy != null && legacy.equals(name);
     }
 
     /**

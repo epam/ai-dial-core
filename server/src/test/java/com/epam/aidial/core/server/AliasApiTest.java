@@ -129,7 +129,9 @@ class AliasApiTest extends ResourceBaseTest {
         }
         assertEquals(List.of("assistant", "gpt-4-internal"), targetKey.get().getExecutionPath());
         // the key the target pass hands on lends the target itself only, for its own callbacks such as a translator's
-        assertEquals("gpt-4-internal", targetKey.get().getLentDeployment());
+        ApiKeyData key = targetKey.get();
+        assertTrue(ApiKeyData.hasLentGrant(key.getPerRequestSharedResources(), "gpt-4-internal"),
+                "target pass must carry a lent grant for the target deployment");
     }
 
     @Test

@@ -145,11 +145,7 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
         // copy-on-write: the entry may be shared with the calling key's receivers
         context.getProxyApiKeyData().getPerRequestSharedResources().merge(target.getUrl(),
                 new PerRequestSharedData(new HashSet<>(requestedAccess)),
-                (existing, added) -> {
-                    Set<ResourceAccessType> union = new HashSet<>(existing.permissions());
-                    union.addAll(added.permissions());
-                    return new PerRequestSharedData(union);
-                });
+                PerRequestSharedData::merge);
     }
 
     private static List<String> requiredUrlsOf(List<ResourceDependency> unresolved) {
