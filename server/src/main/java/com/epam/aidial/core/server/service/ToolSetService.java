@@ -189,12 +189,11 @@ public class ToolSetService {
             if (inheritForwardAuthToken) {
                 toolSet.setForwardAuthToken(existing != null && existing.isForwardAuthToken());
             }
-            if (existing != null) {
-                resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
-                        new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
-                        existing.getAuthSettings());
-            }
-            resourceAuthSettingsService.processResourceAuthSettings(toolSet, existing);
+            boolean existingSecretUnreadable = existing != null
+                    && resourceAuthSettingsEncryptionService.decryptLenient(resource.getUrl(),
+                            new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
+                            existing.getAuthSettings());
+            resourceAuthSettingsService.processResourceAuthSettings(toolSet, existing, existingSecretUnreadable);
             resourceAuthSettingsEncryptionService.encrypt(resource.getUrl(),
                     new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
                     toolSet.getAuthSettings());

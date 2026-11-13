@@ -79,6 +79,8 @@ This API allows the creation of a new ToolSet with customizable properties. The 
 
 > **Note:** `redirect_uri` is optional and pins the toolset to a single callback URL. When omitted, the client must provide `redirect_uri` in the sign-in request; it is accepted only if listed in `toolsets.security.allowedRedirectUris` or equal to the toolset's own `redirect_uri`. Deployments with more than one sign-in client (e.g. Chat and Admin panel) must therefore configure `allowedRedirectUris`.
 
+> **Note:** An update that omits `client_secret` keeps the stored secret. If the stored secret can no longer be decrypted (for example, the encryption key was replaced), such an update is refused with `400`. Send `client_secret` to replace it; a new PKCE `code_challenge` is issued at the same time. A dynamically registered toolset (section 2) has no secret you could send: call `POST /v1/ops/toolset/{bucket}/{path}/repair` instead, which registers a new client and clears the stored credentials.
+
 ---
 
 ##### **2. OAUTH (Dynamic Client Registration)**

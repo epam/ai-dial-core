@@ -12,6 +12,10 @@ import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.security.IdpNotFoundException;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -49,6 +53,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -324,6 +329,43 @@ public class ResourceBaseTest {
 
     protected String generate() {
         return "0" + id++;
+    }
+
+    // Structurally valid Base64 that no key decrypts, standing in for a secret whose key is lost.
+    protected static final String CORRUPTED_CIPHERTEXT = Base64.getEncoder().encodeToString(new byte[64]);
+
+    protected String readStoredBlob(String url) {
+        return dial.getProxy().getResourceService().getResource(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService));
+    }
+
+    // Overwrites a stored toolset's secrets, bypassing the API's encrypt path, as a lost key or a copied blob would.
+    protected void corruptStoredToolSetSecrets(String url, boolean markDynamicallyRegistered) {
+        corruptStoredAuthSettings(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService), "/auth_settings", markDynamicallyRegistered);
+    }
+
+    // Replaces an encrypted field of a stored config entity (model, key, route) with an envelope no key decrypts.
+    @SneakyThrows
+    protected void corruptStoredEnvelope(ResourceDescriptor descriptor, String parentPointer, String fieldName) {
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        JsonNode blob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ((ObjectNode) blob.at(parentPointer)).put(fieldName, "ENC[" + CORRUPTED_CIPHERTEXT + "]");
+        resourceService.putResource(descriptor, blob.toString(), EtagHeader.ANY, null, false);
+    }
+
+    // The same for the auth_settings object found at authSettingsPointer (a JSON pointer) in the stored blob.
+    @SneakyThrows
+    protected void corruptStoredAuthSettings(ResourceDescriptor descriptor, String authSettingsPointer, boolean markDynamicallyRegistered) {
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        JsonNode blob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ObjectNode authSettings = (ObjectNode) blob.at(authSettingsPointer);
+        authSettings.put("client_secret", CORRUPTED_CIPHERTEXT);
+        if (authSettings.has("code_verifier")) {
+            authSettings.put("code_verifier", CORRUPTED_CIPHERTEXT);
+        }
+        if (markDynamicallyRegistered) {
+            authSettings.put("dynamically_registered", true);
+        }
+        resourceService.putResource(descriptor, blob.toString(), EtagHeader.ANY, null, false);
     }
 
     /**

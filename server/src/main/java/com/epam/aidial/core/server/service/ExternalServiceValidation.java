@@ -62,4 +62,10 @@ public class ExternalServiceValidation {
     private static String storedClientSecret(ExternalService stored) {
         return stored == null || stored.getAuthSettings() == null ? null : stored.getAuthSettings().getClientSecret();
     }
+
+    /** A write that would have kept the stored {@code client_secret} cannot, because it no longer decrypts. */
+    public static HttpException unreadableStoredSecret(String serviceId) {
+        return new HttpException(HttpStatus.BAD_REQUEST,
+                "External service '%s': stored client_secret can't be decrypted; send client_secret".formatted(serviceId));
+    }
 }
