@@ -59,8 +59,6 @@ public class ToolSetRepairService {
                     "ToolSet " + resourceUrl + " is not eligible for repair (dynamicallyRegistered != true)");
         }
 
-        encryptionService.decrypt(resourceUrl, bucketInfo, authSettings);
-
         log.info("Repair: discovering AS metadata for toolset={}", resourceUrl);
         if (registrationService.discoverMetadata(resourceUrl, toolSet.getEndpoint()) == null) {
             throw new HttpException(HttpStatus.FAILED_DEPENDENCY,
@@ -81,9 +79,14 @@ public class ToolSetRepairService {
             // Decrypt before applying registration: applyRegistration only replaces fields present
             // in the new ClientRegistration (e.g. codeVerifier is skipped when PKCE is absent).
             // Any field left untouched would still carry its encrypted value and be double-encrypted.
-            encryptionService.decrypt(resourceUrl, bucketInfo, storedSettings);
+            // An unreadable secret is lost either way: the registration replaces it.
+            boolean secretUnreadable = encryptionService.decryptLenient(resourceUrl, bucketInfo, storedSettings);
             authSettingsService.applyRegistration(storedSettings, registration);
             storedSettings.setDynamicallyRegistered(true);
+            if (secretUnreadable && storedSettings.getCodeVerifier() == null) {
+                storedSettings.setCodeChallenge(null);
+                storedSettings.setCodeChallengeMethod(null);
+            }
             encryptionService.encrypt(resourceUrl, bucketInfo, storedSettings);
             return ProxyUtil.convertToString(stored);
         });

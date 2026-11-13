@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -33,6 +34,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -3751,6 +3754,147 @@ public class ToolSetApiTest extends ResourceBaseTest {
             verify(response, 200, "true");
             assertTrue(bodyRef.get().contains("client_secret=my-client-secret"),
                     "round-tripped PUT must preserve the original secret, token request was: " + bodyRef.get());
+        }
+    }
+
+    @Test
+    @SneakyThrows
+    void testToolsetUpdateReplacesUnreadableClientSecret() {
+        String toolSetPath = "toolsets/4X25dj1mja51jykqxsXnCH/toolset-unreadable";
+        String authServerMetadata = """
+                {
+                    "issuer": "http://localhost:9876",
+                    "authorization_endpoint": "http://localhost:9876/authorize",
+                    "token_endpoint": "http://localhost:9876/token",
+                    "code_challenge_methods_supported": ["S256"]
+                }
+                """;
+        String body = """
+                {
+                    "endpoint": "http://localhost:9876/mcp",
+                    "transport": "HTTP",
+                    "allowedTools": [],
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "my-client-id",
+                        %s
+                        "redirect_uri": "http://admin/callback",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token",
+                        "token_endpoint_auth_method": "client_secret_post"
+                    }
+                }
+                """;
+        AtomicReference<String> tokenBody = new AtomicReference<>();
+
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+            server.map(HttpMethod.GET, "/.well-known/oauth-authorization-server",
+                    200, authServerMetadata, "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/token", request -> {
+                tokenBody.set(request.getBody().readUtf8());
+                return new MockResponse().setHeader("Content-Type", "application/json")
+                        .setBody("{\"access_token\": \"test-access-token\", \"refresh_token\": \"r\", \"expires_in\": 3600}");
+            });
+
+            Response response = send(HttpMethod.PUT, "/v1/" + toolSetPath, null,
+                    body.formatted("\"client_secret\": \"my-client-secret\","), "authorization", "admin");
+            assertEquals(200, response.status());
+            response = send(HttpMethod.GET, "/v1/" + toolSetPath, null, null, "authorization", "admin");
+            String initialChallenge = ProxyUtil.MAPPER.readTree(response.body()).at("/auth_settings/code_challenge").asText();
+            assertFalse(initialChallenge.isEmpty());
+
+            corruptStoredToolSetSecrets(toolSetPath, false);
+            String storedBefore = readStoredBlob(toolSetPath);
+
+            response = send(HttpMethod.PUT, "/v1/" + toolSetPath, null, body.formatted(""), "authorization", "admin");
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("can't be decrypted") && response.body().contains("toolset-unreadable"), response.body());
+            assertFalse(response.body().contains(CORRUPTED_CIPHERTEXT), response.body());
+            assertEquals(storedBefore, readStoredBlob(toolSetPath));
+
+            response = send(HttpMethod.PUT, "/v1/" + toolSetPath, null,
+                    body.formatted("\"client_secret\": \"my-new-client-secret\","), "authorization", "admin");
+            assertEquals(200, response.status());
+
+            response = send(HttpMethod.GET, "/v1/" + toolSetPath, null, null, "authorization", "admin");
+            JsonNode authSettings = ProxyUtil.MAPPER.readTree(response.body()).get("auth_settings");
+            assertEquals("cret", authSettings.get("client_secret_hint").asText());
+            String newChallenge = authSettings.get("code_challenge").asText();
+            assertNotEquals(initialChallenge, newChallenge);
+
+            response = send(HttpMethod.POST, "/v1/ops/toolset/signin", null, """
+                    {
+                        "url": "%s",
+                        "credentialsLevel": "GLOBAL",
+                        "authenticationType": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """.formatted(toolSetPath), "authorization", "admin");
+            verify(response, 200, "true");
+            assertTrue(tokenBody.get().contains("client_secret=my-new-client-secret"), tokenBody.get());
+            Matcher verifier = Pattern.compile("code_verifier=([^&]+)").matcher(tokenBody.get());
+            assertTrue(verifier.find(), tokenBody.get());
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.group(1).getBytes(StandardCharsets.US_ASCII));
+            assertEquals(newChallenge, Base64.getUrlEncoder().withoutPadding().encodeToString(digest));
+        }
+    }
+
+    @Test
+    @SneakyThrows
+    void testToolsetUpdateWithUnreadableSecretPointsDynamicallyRegisteredToRepairAndAllowsAuthTypeChange() {
+        String toolSetPath = "toolsets/4X25dj1mja51jykqxsXnCH/toolset-unreadable-dcr";
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            Response response = send(HttpMethod.PUT, "/v1/" + toolSetPath, null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "client_secret": "my-client-secret",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
+            corruptStoredToolSetSecrets(toolSetPath, true);
+
+            String oauthWithoutSecret = """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "my-client-id",
+                            "redirect_uri": "http://admin/callback",
+                            "authorization_endpoint": "http://localhost:9876/authorize",
+                            "token_endpoint": "http://localhost:9876/token"
+                        }
+                    }
+                    """;
+            response = send(HttpMethod.PUT, "/v1/" + toolSetPath, null, oauthWithoutSecret, "authorization", "admin");
+            assertEquals(400, response.status());
+            assertTrue(response.body().contains("repair"), response.body());
+
+            response = send(HttpMethod.PUT, "/v1/" + toolSetPath, null, """
+                    {
+                        "endpoint": "http://localhost:9876/mcp",
+                        "transport": "HTTP",
+                        "allowedTools": [],
+                        "auth_settings": {
+                            "authentication_type": "API_KEY",
+                            "api_key_header": "Authorization"
+                        }
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, response.status());
         }
     }
 

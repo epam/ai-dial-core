@@ -13,8 +13,6 @@ import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
-import com.epam.aidial.core.storage.http.HttpException;
-import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -27,9 +25,11 @@ import org.apache.commons.lang3.mutable.MutableBoolean;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Manages an application's inline {@code external_services}: validation, encryption-at-rest of
@@ -61,12 +61,11 @@ public class ExternalServiceService {
             return List.of();
         }
         // Decrypt first: validation exempts a secret handed back unchanged, which it can only see in plaintext.
-        if (existing != null) {
-            decryptSecrets(resource, existing);
-        }
+        // A stored secret that no longer decrypts is only a problem for a service whose body would have kept it.
+        Set<String> unreadableServices = existing == null ? Set.of() : decryptSecretsLenient(resource, existing);
         validate(application, existing);
         clearAuthStatuses(application);
-        preserveOmittedSecrets(application, existing);
+        preserveOmittedSecrets(application, existing, unreadableServices);
         encryptSecrets(resource, application);
         return findPurgeableServiceIds(application, existing);
     }
@@ -138,22 +137,28 @@ public class ExternalServiceService {
                 throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
             }
             declaresDependencies.setValue(declaresDependencies(app));
-            decryptSecrets(resource, app);
             if (app.getExternalServices() == null) {
                 app.setExternalServices(new LinkedHashMap<>());
             }
+            // Only this service is decrypted and encrypted: the others keep the ciphertext they were stored with,
+            // so a secret that no longer decrypts in one of them neither blocks nor is rewritten by this write.
             ExternalService existing = app.getExternalServices().get(serviceId);
+            boolean existingSecretUnreadable = decryptSecretLenient(resource, serviceId, existing);
             ExternalServiceValidation.validate(serviceId, service, existing == null, existing);
             clearAuthStatuses(service);
             typeChanged.setValue(authTypeChanged(existing, service));
             if (existing != null && !typeChanged.booleanValue() && existing.getAuthSettings() != null
-                    && service.getAuthSettings() != null && service.getAuthSettings().getClientSecret() == null
-                    && existing.getAuthSettings().getClientSecret() != null) {
-                service.getAuthSettings().setClientSecret(existing.getAuthSettings().getClientSecret());
+                    && service.getAuthSettings() != null && service.getAuthSettings().getClientSecret() == null) {
+                if (existingSecretUnreadable) {
+                    throw ExternalServiceValidation.unreadableStoredSecret(serviceId);
+                }
+                if (existing.getAuthSettings().getClientSecret() != null) {
+                    service.getAuthSettings().setClientSecret(existing.getAuthSettings().getClientSecret());
+                }
             }
             app.getExternalServices().put(serviceId, service);
             persisted.capture(service);
-            encryptSecrets(resource, app);
+            encryptSecret(resource, serviceId, service);
             return serializeEncrypted(resource, app);
         });
         persisted.restoreOn(service);
@@ -206,6 +211,20 @@ public class ExternalServiceService {
     }
 
     /**
+     * Decrypts the stored side of a write. A service whose secret no longer decrypts is not an error here: its
+     * secret is cleared and its id returned, so only a body that would have kept it is refused.
+     */
+    private Set<String> decryptSecretsLenient(ResourceDescriptor resource, Application application) {
+        Set<String> unreadableServices = new HashSet<>();
+        eachServiceWithSecret(resource, application, (serviceId, authSettings, bucketInfo) -> {
+            if (encryptionService.decryptLenient(secretAad(resource, serviceId), bucketInfo, authSettings)) {
+                unreadableServices.add(serviceId);
+            }
+        });
+        return unreadableServices;
+    }
+
+    /**
      * Decrypts in place for a read that wants the {@code clientSecretHint}. A secret that fails to decrypt
      * (legacy plaintext, rotated key) is dropped rather than left as ciphertext, so it yields no hint while
      * the read still succeeds and every other service keeps its own.
@@ -245,6 +264,18 @@ public class ExternalServiceService {
         for (Map.Entry<String, ExternalService> entry : services.entrySet()) {
             ExternalServiceValidation.validate(entry.getKey(), entry.getValue(),
                     !existingServices.containsKey(entry.getKey()), existingServices.get(entry.getKey()));
+        }
+    }
+
+    /** Returns {@code true} when the stored secret could not be decrypted and was cleared. */
+    private boolean decryptSecretLenient(ResourceDescriptor resource, String serviceId, ExternalService service) {
+        return hasSecret(service)
+                && encryptionService.decryptLenient(secretAad(resource, serviceId), bucketInfo(resource), service.getAuthSettings());
+    }
+
+    private void encryptSecret(ResourceDescriptor resource, String serviceId, ExternalService service) {
+        if (hasSecret(service)) {
+            encryptionService.encrypt(secretAad(resource, serviceId), bucketInfo(resource), service.getAuthSettings());
         }
     }
 
@@ -289,7 +320,7 @@ public class ExternalServiceService {
         return resource.getUrl() + "/external_services/" + serviceId;
     }
 
-    private static void preserveOmittedSecrets(Application application, Application existing) {
+    private static void preserveOmittedSecrets(Application application, Application existing, Set<String> unreadableServices) {
         if (existing == null || existing.getExternalServices() == null || application.getExternalServices() == null) {
             return;
         }
@@ -300,12 +331,19 @@ public class ExternalServiceService {
             }
             ExternalService existingService = existing.getExternalServices().get(entry.getKey());
             // Never carry a secret across an authentication_type change — it belonged to the old type.
-            if (existingService != null && !authTypeChanged(existingService, service)
-                    && existingService.getAuthSettings() != null
-                    && existingService.getAuthSettings().getClientSecret() != null) {
-                service.getAuthSettings().setClientSecret(existingService.getAuthSettings().getClientSecret());
+            if (existingService != null && !authTypeChanged(existingService, service)) {
+                if (unreadableServices.contains(entry.getKey())) {
+                    throw ExternalServiceValidation.unreadableStoredSecret(entry.getKey());
+                }
+                if (existingService.getAuthSettings() != null && existingService.getAuthSettings().getClientSecret() != null) {
+                    service.getAuthSettings().setClientSecret(existingService.getAuthSettings().getClientSecret());
+                }
             }
         }
+    }
+
+    private static BucketInfo bucketInfo(ResourceDescriptor resource) {
+        return new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
     }
 
     private static void clearAuthStatuses(Application application) {

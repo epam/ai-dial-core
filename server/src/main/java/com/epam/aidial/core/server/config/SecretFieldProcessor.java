@@ -72,6 +72,23 @@ public class SecretFieldProcessor {
     }
 
     /**
+     * Paths (such as {@code upstreams[0].key}) of the encrypted fields that hold an {@code ENC[...]} value which
+     * cannot be decrypted. Reads only: nothing is changed, and plaintext values are never reported.
+     */
+    public List<String> findUnreadableFields(Object entity, ResourceDescriptor descriptor) {
+        List<String> unreadableFields = new ArrayList<>();
+        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        traverse(entity, null, (owner, field, ownerPath) -> {
+            try {
+                decryptValue((String) field.get(owner), aad, field.getName());
+            } catch (SecurityException e) {
+                unreadableFields.add(new Path(ownerPath, field.getName()).render());
+            }
+        });
+        return unreadableFields;
+    }
+
+    /**
      * Strip every {@link EncryptedField}-annotated value (and any nested array elements that carry
      * the annotation) from {@code payload}. Used to project invalid-entity payloads on the admin
      * GET surface — the raw blob may still hold {@code ENC[...]} ciphertext (decryption_error
@@ -231,6 +248,25 @@ public class SecretFieldProcessor {
     }
 
     private void walk(Object entity, byte[] aad, boolean encrypt, boolean lenient) {
+        traverse(entity, null, (owner, field, ownerPath) -> {
+            String value = (String) field.get(owner);
+            String transformed = transform(value, aad, field.getName(), owner.getClass(), encrypt, lenient);
+            // Reference identity, not Objects.equals: encrypt/decrypt return the *input*
+            // reference unchanged on no-op paths (null/empty, already enveloped,
+            // ${secret:...} placeholders). Skipping field.set in those cases avoids a
+            // redundant reflective write.
+            if (transformed != value) {
+                field.set(owner, transformed);
+            }
+        });
+    }
+
+    /**
+     * The single walk over an entity graph: visits every {@link EncryptedField} String field, descending through
+     * nested objects, collections and maps that carry one. Everything that reads or rewrites those fields goes
+     * through it, so they cannot disagree on which fields exist.
+     */
+    private void traverse(Object entity, Path path, FieldVisitor visitor) {
         if (entity == null) {
             return;
         }
@@ -238,19 +274,10 @@ public class SecretFieldProcessor {
         for (Field field : declaredFieldsIncludingInherited(cls)) {
             try {
                 if (field.isAnnotationPresent(EncryptedField.class) && field.getType() == String.class) {
-                    String value = (String) field.get(entity);
-                    String transformed = transform(value, aad, field.getName(), cls, encrypt, lenient);
-                    // Reference identity, not Objects.equals: encrypt/decrypt return the *input*
-                    // reference unchanged on no-op paths (null/empty, already enveloped,
-                    // ${secret:...} placeholders). Skipping field.set in those cases avoids a
-                    // redundant reflective write.
-                    if (transformed != value) {
-                        field.set(entity, transformed);
-                    }
+                    visitor.visit(entity, field, path);
                     continue;
                 }
-                Object child = field.get(entity);
-                recurseInto(child, aad, encrypt, lenient);
+                traverseChild(field.get(entity), path, field.getName(), visitor);
             } catch (IllegalAccessException e) {
                 throw new IllegalStateException("Reflection failure on " + cls.getName() + "." + field.getName(), e);
             }
@@ -274,24 +301,46 @@ public class SecretFieldProcessor {
         }
     }
 
-    private void recurseInto(Object child, byte[] aad, boolean encrypt, boolean lenient) {
+    private void traverseChild(Object child, Path parent, String fieldName, FieldVisitor visitor) {
         if (child == null) {
             return;
         }
         if (child instanceof Collection<?> collection) {
+            Path path = new Path(parent, fieldName);
+            int index = 0;
             for (Object item : collection) {
                 if (item != null && classHasEncryptedField(item.getClass())) {
-                    walk(item, aad, encrypt, lenient);
+                    traverse(item, new Path(path, index), visitor);
                 }
+                index++;
             }
         } else if (child instanceof Map<?, ?> map) {
-            for (Object value : map.values()) {
+            Path path = new Path(parent, fieldName);
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                Object value = entry.getValue();
                 if (value != null && classHasEncryptedField(value.getClass())) {
-                    walk(value, aad, encrypt, lenient);
+                    traverse(value, new Path(path, entry.getKey()), visitor);
                 }
             }
         } else if (classHasEncryptedField(child.getClass())) {
-            walk(child, aad, encrypt, lenient);
+            traverse(child, new Path(parent, fieldName), visitor);
+        }
+    }
+
+    @FunctionalInterface
+    private interface FieldVisitor {
+        /** {@code ownerPath} locates {@code owner} in the walked graph; it is {@code null} for the root entity. */
+        void visit(Object owner, Field field, Path ownerPath) throws IllegalAccessException;
+    }
+
+    /** Where an object sits in the walked graph; rendered, like {@code upstreams[0].key}, only when asked for. */
+    private record Path(Path parent, Object key) {
+        String render() {
+            String prefix = parent == null ? "" : parent.render();
+            if (key instanceof Integer index) {
+                return prefix + "[" + index + "]";
+            }
+            return prefix.isEmpty() ? String.valueOf(key) : prefix + "." + key;
         }
     }
 

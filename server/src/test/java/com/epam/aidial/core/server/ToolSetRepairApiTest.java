@@ -7,6 +7,7 @@ import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -180,6 +181,31 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
 
             JsonNode result = ProxyUtil.MAPPER.readTree(repair.body());
             assertEquals("REREGISTERED", result.get("result").asText());
+        }
+    }
+
+    @Test
+    void testRepairSucceedsWhenStoredSecretsAreUnreadable() throws Exception {
+        String name = "toolset-repair-unreadable@";
+        try (TestWebServer server = new TestWebServer(9876)) {
+            setupDiscovery(server);
+            server.map(HttpMethod.POST, "/register",
+                    200, REGISTRATION_RESPONSE_JSON, "Content-Type", "application/json");
+
+            createDcrToolset(name);
+            corruptStoredToolSetSecrets("toolsets/" + ADMIN_BUCKET + "/" + name, false);
+
+            Response repair = send(HttpMethod.POST,
+                    "/v1/ops/toolset/" + ADMIN_BUCKET + "/" + name + "/repair",
+                    null, null, "authorization", "admin");
+            assertEquals(200, repair.status(), repair.body());
+
+            Response get = send(HttpMethod.GET, "/v1/toolsets/" + ADMIN_BUCKET + "/" + name,
+                    null, null, "authorization", "admin");
+            JsonNode authSettings = ProxyUtil.MAPPER.readTree(get.body()).get("auth_settings");
+            assertEquals("dcr-client-id", authSettings.get("client_id").asText());
+            assertEquals("cret", authSettings.get("client_secret_hint").asText());
+            assertFalse(readStoredBlob("toolsets/" + ADMIN_BUCKET + "/" + name).contains(CORRUPTED_CIPHERTEXT));
         }
     }
 

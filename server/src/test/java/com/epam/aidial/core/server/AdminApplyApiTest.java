@@ -1165,6 +1165,54 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyToolSetWithoutSecretFailsWhenStoredSecretIsUnreadable() {
+        String toolSetPath = "toolsets/platform/apply-toolset-unreadable";
+        String manifest = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "ToolSet",
+                      "name": "%s",
+                      "spec": {
+                        "transport": "http",
+                        "endpoint": "http://localhost:9876/mcp",
+                        "display_name": "Apply Toolset",
+                        "auth_settings": {
+                          "authentication_type": "OAUTH",
+                          "client_id": "my-client-id",
+                          %s
+                          "redirect_uri": "http://admin/callback",
+                          "authorization_endpoint": "http://localhost:9876/authorize",
+                          "token_endpoint": "http://localhost:9876/token"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            Response created = send(HttpMethod.POST, "/v1/admin/apply", null,
+                    manifest.formatted(toolSetPath, "\"client_secret\": \"my-client-secret\","), "authorization", "admin");
+            verify(created, 200);
+            assertEquals(1, ProxyUtil.MAPPER.readTree(created.body()).get("applied").asInt(), created.body());
+
+            corruptStoredToolSetSecrets(toolSetPath, false);
+            String storedBefore = readStoredBlob(toolSetPath);
+
+            Response response = send(HttpMethod.POST, "/v1/admin/apply", null,
+                    manifest.formatted(toolSetPath, ""), "authorization", "admin");
+            verify(response, 200);
+            JsonNode result = ProxyUtil.MAPPER.readTree(response.body()).get("results").get(0);
+            assertEquals("FAILED", result.get("status").asText(), response.body());
+            assertTrue(result.get("error").asText().contains("can't be decrypted"), response.body());
+            assertEquals(storedBefore, readStoredBlob(toolSetPath));
+        }
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyRejectsOutOfContractEntityName() {
         // /v1/admin/apply must enforce the same entity-name contract as the single-entity PUT —
         // it must not be a back door that lets a name PUT would reject slip into blob storage.

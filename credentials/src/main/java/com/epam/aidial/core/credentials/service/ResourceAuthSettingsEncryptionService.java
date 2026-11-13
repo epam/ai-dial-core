@@ -33,6 +33,24 @@ public class ResourceAuthSettingsEncryptionService {
         processFields(resourceId, bucketInfo, resourceAuthSettings, false);
     }
 
+    /**
+     * As {@link #decrypt}, but a stored {@code clientSecret} that cannot be decrypted is not an error: both secrets
+     * are cleared and {@code true} is returned. The code verifier shares the secret's key and AAD, so it is lost with it.
+     */
+    public boolean decryptLenient(String resourceId,
+                                  BucketInfo bucketInfo,
+                                  ResourceAuthSettings resourceAuthSettings) {
+        try {
+            decrypt(resourceId, bucketInfo, resourceAuthSettings);
+            return false;
+        } catch (EncryptionException e) {
+            log.warn("Can't decrypt auth settings of {}, treating the stored secrets as lost: {}", resourceId, e.getMessage());
+            resourceAuthSettings.setClientSecret(null);
+            resourceAuthSettings.setCodeVerifier(null);
+            return true;
+        }
+    }
+
     private void processFields(String resourceId,
                                BucketInfo bucketInfo,
                                ResourceAuthSettings settings,

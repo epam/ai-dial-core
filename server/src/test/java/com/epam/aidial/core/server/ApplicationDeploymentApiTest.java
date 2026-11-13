@@ -338,6 +338,70 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testApplicationUndeploySucceedsWithUnreadableExternalServiceSecret() throws Exception {
+        String appUrl = "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-service-secret";
+        verify(send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                  "display_name": "My App Service Secret",
+                  "display_version": "1.0",
+                  "icon_url": "http://application1/icon.svg",
+                  "description": "My App Description",
+                  "function": {
+                    "runtime": "python3.11",
+                    "source_folder": "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-service-secret/",
+                    "mapping" : {
+                      "chat_completion" : "/application"
+                    },
+                    "env": {
+                      "VAR": "VAL"
+                    }
+                  },
+                  "external_services": {
+                    "billing": {
+                      "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        "client_secret": "undeploy-secret-1234",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token",
+                        "token_endpoint_auth_method": "client_secret_post"
+                      }
+                    }
+                  }
+                }
+                """), 200);
+        verify(upload(HttpMethod.PUT,
+                "/v1/files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app-service-secret/app.py", null, """
+                        some python code
+                        """), 200);
+
+        webServer.map(HttpMethod.POST, "/v1/image/0123", 200, """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.POST, "/v1/deployment/0123", 200, """
+                event: result
+                data: {"url":"http://localhost:17321"}
+                """);
+        verify(send(HttpMethod.POST, "/v1/ops/application/deploy", null, "{\"url\": \"" + appUrl + "\"}"), 200);
+        awaitApplicationStatus("/v1/" + appUrl, "DEPLOYED");
+
+        corruptStoredAuthSettings(ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService),
+                "/external_services/billing/auth_settings", false);
+
+        webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200, """
+                event: result
+                data: {}
+                """);
+        webServer.map(HttpMethod.DELETE, "/v1/deployment/0123", 200, """
+                event: result
+                data: {"deleted":true}
+                """);
+        verify(send(HttpMethod.POST, "/v1/ops/application/undeploy", null, "{\"url\": \"" + appUrl + "\"}"), 200);
+        awaitApplicationStatus("/v1/" + appUrl, "UNDEPLOYED");
+    }
+
+    @Test
     void testApplicationRestarted() {
         testApplicationStarted();
 

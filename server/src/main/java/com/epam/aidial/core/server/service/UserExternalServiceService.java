@@ -83,10 +83,10 @@ public class UserExternalServiceService {
         PersistedSecret persisted = new PersistedSecret();
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             ExternalService existing = json == null ? null : ProxyUtil.convertToObject(json, ExternalService.class);
-            decryptSecret(aad, bucket, existing);
+            boolean existingSecretUnreadable = decryptSecretLenient(aad, bucket, existing);
             ExternalServiceValidation.validate(serviceId, service, existing == null, existing);
             clearAuthStatuses(service);
-            preserveOmittedSecret(service, existing);
+            preserveOmittedSecret(serviceId, service, existing, existingSecretUnreadable);
             persisted.capture(service);
             encryptSecret(aad, bucket, service);
             result.setValue(service);
@@ -173,15 +173,25 @@ public class UserExternalServiceService {
         }
     }
 
+    /** Returns {@code true} when the stored secret could not be decrypted and was cleared. */
+    private boolean decryptSecretLenient(String aad, BucketInfo bucket, ExternalService service) {
+        return hasSecret(service) && secretEncryptionService.decryptLenient(aad, bucket, service.getAuthSettings());
+    }
+
     private static boolean hasSecret(ExternalService service) {
         return service != null && service.getAuthSettings() != null && service.getAuthSettings().getClientSecret() != null;
     }
 
-    private static void preserveOmittedSecret(ExternalService service, ExternalService existing) {
-        if (existing == null || existing.getAuthSettings() == null || service.getAuthSettings() == null) {
+    private static void preserveOmittedSecret(String serviceId, ExternalService service, ExternalService existing,
+                                              boolean existingSecretUnreadable) {
+        if (existing == null || existing.getAuthSettings() == null || service.getAuthSettings() == null
+                || service.getAuthSettings().getClientSecret() != null) {
             return;
         }
-        if (service.getAuthSettings().getClientSecret() == null && existing.getAuthSettings().getClientSecret() != null) {
+        if (existingSecretUnreadable) {
+            throw ExternalServiceValidation.unreadableStoredSecret(serviceId);
+        }
+        if (existing.getAuthSettings().getClientSecret() != null) {
             service.getAuthSettings().setClientSecret(existing.getAuthSettings().getClientSecret());
         }
     }

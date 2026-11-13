@@ -30,10 +30,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -118,12 +120,12 @@ class ToolSetRepairServiceTest {
         String storedJson = ProxyUtil.convertToString(storedToolSet);
 
         // Track call order for decrypt/applyRegistration/encrypt to verify the invariant:
-        // both decrypts (outer + inner-callback) happen before applyRegistration, which happens before encrypt.
+        // the decrypt in the compute callback happens before applyRegistration, which happens before encrypt.
         List<String> callOrder = new ArrayList<>();
         doAnswer(inv -> {
             callOrder.add("decrypt");
-            return null;
-        }).when(encryptionService).decrypt(any(), any(), any());
+            return false;
+        }).when(encryptionService).decryptLenient(any(), any(), any());
         doAnswer(inv -> {
             callOrder.add("encrypt");
             return null;
@@ -150,9 +152,59 @@ class ToolSetRepairServiceTest {
             repairService.repair(resource, context);
         }
 
-        // Expected: outer decrypt → inner callback decrypt → applyRegistration → encrypt.
+        // Expected: callback decrypt → applyRegistration → encrypt.
         // Enforces that no field reaches encrypt() in its encrypted-from-storage state.
-        assertEquals(List.of("decrypt", "decrypt", "applyRegistration", "encrypt"), callOrder);
+        assertEquals(List.of("decrypt", "applyRegistration", "encrypt"), callOrder);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void repairReplacesUnreadableSecretsAndClearsOrphanedChallenge() {
+        String toolsetUrl = "toolsets/bucket/toolset@";
+        ResourceDescriptor resource = buildDcrToolsetResource(toolsetUrl);
+        ResourceItemMetadata meta = new ResourceItemMetadata();
+        meta.setAuthor("test-author");
+
+        when(registrationService.discoverMetadata(any(), any())).thenReturn(mock(AuthorizationServerMetadata.class));
+        when(registrationService.register(any(), any(), any(), anyBoolean()))
+                .thenReturn(ClientRegistration.builder().clientId("new-client-id").clientSecret("new-client-secret").build());
+
+        ResourceAuthSettings storedAuthSettings = new ResourceAuthSettings();
+        storedAuthSettings.setAuthenticationType(AuthenticationType.OAUTH);
+        storedAuthSettings.setDynamicallyRegistered(true);
+        storedAuthSettings.setCodeChallenge("old-challenge");
+        storedAuthSettings.setCodeChallengeMethod("S256");
+        ToolSet storedToolSet = new ToolSet();
+        storedToolSet.setAuthSettings(storedAuthSettings);
+
+        doAnswer(inv -> {
+            ResourceAuthSettings settings = inv.getArgument(2);
+            settings.setClientSecret(null);
+            settings.setCodeVerifier(null);
+            return true;
+        }).when(encryptionService).decryptLenient(any(), any(), any());
+
+        AtomicReference<String> written = new AtomicReference<>();
+        when(resourceService.computeResource(eq(resource), eq(EtagHeader.ANY), eq("test-author"), any()))
+                .thenAnswer(invocation -> {
+                    Function<String, String> fn = invocation.getArgument(3);
+                    written.set(fn.apply(ProxyUtil.convertToString(storedToolSet)));
+                    return meta;
+                });
+
+        ProxyContext context = mock(ProxyContext.class);
+        try (MockedStatic<CredentialsLocatorFactory> factory = mockStatic(CredentialsLocatorFactory.class)) {
+            factory.when(() -> CredentialsLocatorFactory.fromAnyUrl(
+                    eq(toolsetUrl), eq(context), eq(ResourceTypes.TOOL_SET)))
+                    .thenReturn(mock(CredentialsLocator.class));
+
+            assertDoesNotThrow(() -> repairService.repair(resource, context));
+        }
+
+        ResourceAuthSettings result = ProxyUtil.convertToObject(written.get(), ToolSet.class).getAuthSettings();
+        assertNull(result.getCodeChallenge());
+        assertNull(result.getCodeChallengeMethod());
+        verify(authSettingsService).applyRegistration(any(), any());
     }
 
     @Test

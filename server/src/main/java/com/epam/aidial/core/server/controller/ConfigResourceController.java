@@ -1945,6 +1945,15 @@ public class ConfigResourceController implements Controller {
                         source = requestNode;
                     }
                     entity = ConfigEntityCodec.treeToEntity(source, spec.entityClass());
+                    if (spec.hasEncryptedFields() && existingBody != null) {
+                        // What the merge kept from the stored blob must still decrypt, or the entity could only be
+                        // saved as unusable. Checked before anything is written.
+                        List<String> unreadableSecrets = secretFieldProcessor.findUnreadableFields(entity, descriptor);
+                        if (!unreadableSecrets.isEmpty()) {
+                            throw new HttpException(HttpStatus.BAD_REQUEST, "Stored secret of %s can't be decrypted; send a new value for: %s"
+                                    .formatted(descriptor.getName(), String.join(", ", unreadableSecrets)));
+                        }
+                    }
                     if (entity instanceof Model m) {
                         checkModel(m);
                     } else if (entity instanceof Interceptor interceptor) {
