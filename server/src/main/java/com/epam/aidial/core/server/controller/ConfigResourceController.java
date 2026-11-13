@@ -8,7 +8,6 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Router;
@@ -44,6 +43,7 @@ import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.ConfigEntityRedactor;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
@@ -1301,7 +1301,7 @@ public class ConfigResourceController implements Controller {
                             applicationService.decryptExternalServiceSecretsForResponse(
                                     descriptorFor(ResourceTypes.APPLICATION), entity);
                         }
-                        return redactExternalServiceSecrets(projectItem(entity, key), admin);
+                        return ConfigEntityRedactor.redactExternalServiceSecrets(projectItem(entity, key), admin);
                     });
             case TOOL_SET -> handleSingleGetFromBlob(ResourceTypes.TOOL_SET,
                     (key, toolSet) -> {
@@ -1311,7 +1311,7 @@ public class ConfigResourceController implements Controller {
                             toolSetService.decryptAuthSettingsForResponse(
                                     descriptorFor(ResourceTypes.TOOL_SET), entity);
                         }
-                        return redactAuthSettingsSecrets(projectItem(entity, key), admin);
+                        return ConfigEntityRedactor.redactAuthSettingsSecrets(projectItem(entity, key), admin);
                     });
             case GLOBAL_SETTINGS -> handleSettingsGet(config);
             // the definition, target included: admin only, see AdminRoleAuthorizationService
@@ -1430,8 +1430,8 @@ public class ConfigResourceController implements Controller {
      * Deserializes a blob body for {@link #handleSingleGetFromBlob}. No decryption is performed:
      * secret fields on entity types are {@code @JsonProperty(WRITE_ONLY)} and are therefore
      * suppressed by Jackson on serialization regardless of their content; APPLICATION and TOOL_SET
-     * secrets are additionally redacted by the projector ({@link #redactExternalServiceSecrets}/
-     * {@link #redactAuthSettingsSecrets}).
+     * secrets are additionally redacted by the projector ({@link ConfigEntityRedactor#redactExternalServiceSecrets}/
+     * {@link ConfigEntityRedactor#redactAuthSettingsSecrets}).
      */
     private Object deserializeBlob(ResourceTypes type, String body) {
         return switch (type) {
@@ -2351,52 +2351,12 @@ public class ConfigResourceController implements Controller {
     }
 
     private ObjectNode projectItem(Object item, String name) {
-        // Default MAPPER respects @JsonProperty(WRITE_ONLY) on @EncryptedField fields, so secrets
+        // The shared projection respects @JsonProperty(WRITE_ONLY) on @EncryptedField fields, so secrets
         // simply drop from the response. There is no plaintext-reveal path (slice U.4 retired
         // the ?reveal_secrets=true / security-admin reveal flow).
-        ObjectNode node = ProxyUtil.MAPPER.valueToTree(item);
+        ObjectNode node = ConfigEntityRedactor.toJsonWithoutEncrypted(item);
         node.put("name", name);
         node.put("status", "valid");
-        return node;
-    }
-
-    /**
-     * {@code Application}/{@code ToolSet} secrets ({@code ResourceAuthSettings.clientSecret}/
-     * {@code codeVerifier}) are not {@code @EncryptedField}-annotated, so — unlike models — they
-     * are held <strong>decrypted</strong> in the merged {@link Config} for internal routing use.
-     * {@code @JsonProperty(WRITE_ONLY)} is not an option here: {@code ApplicationService}/
-     * {@code ToolSetService} persist through the plain {@code MAPPER} (not {@code BLOB_MAPPER}'s
-     * {@code @EncryptedField}-aware override), so WRITE_ONLY would also drop the field from the
-     * blob write itself. Redact on the {@link ObjectNode} snapshot {@link #projectItem} already
-     * produces instead — a fresh copy, so this never mutates the live {@link Config} entity.
-     *
-     * <p>{@code revealHint} replaces the removed secret with its {@code client_secret_hint}; admins only.</p>
-     */
-    private static void redactSecretFields(JsonNode authSettings, boolean revealHint) {
-        if (authSettings instanceof ObjectNode settings) {
-            JsonNode clientSecret = settings.remove(ResourceAuthSettings.CLIENT_SECRET_FIELD);
-            settings.remove(ResourceAuthSettings.CODE_VERIFIER_FIELD);
-            // Drop unconditionally first: the hint is this method's to emit, never the projected node's.
-            settings.remove(ResourceAuthSettings.CLIENT_SECRET_HINT_FIELD);
-            if (revealHint && clientSecret != null && clientSecret.isTextual()) {
-                String hint = ResourceAuthSettings.hintFor(clientSecret.textValue());
-                if (hint != null) {
-                    settings.put(ResourceAuthSettings.CLIENT_SECRET_HINT_FIELD, hint);
-                }
-            }
-        }
-    }
-
-    private static ObjectNode redactAuthSettingsSecrets(ObjectNode node, boolean revealHint) {
-        redactSecretFields(node.get("auth_settings"), revealHint);
-        return node;
-    }
-
-    private static ObjectNode redactExternalServiceSecrets(ObjectNode node, boolean revealHint) {
-        JsonNode externalServices = node.get("external_services");
-        if (externalServices != null && externalServices.isObject()) {
-            externalServices.forEach(service -> redactSecretFields(service.get("auth_settings"), revealHint));
-        }
         return node;
     }
 
@@ -2425,9 +2385,9 @@ public class ConfigResourceController implements Controller {
         }
         ResourceTypes type = resourceType();
         if (type == ResourceTypes.TOOL_SET) {
-            redactAuthSettingsSecrets(node, false);
+            ConfigEntityRedactor.redactAuthSettingsSecrets(node, false);
         } else if (type == ResourceTypes.APPLICATION) {
-            redactExternalServiceSecrets(node, false);
+            ConfigEntityRedactor.redactExternalServiceSecrets(node, false);
         }
         node.put("name", record.getSimpleName());
         node.put("status", "invalid");

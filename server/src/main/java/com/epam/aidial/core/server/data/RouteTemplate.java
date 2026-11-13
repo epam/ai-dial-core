@@ -212,6 +212,11 @@ public enum RouteTemplate {
             "/v1/admin/system-export"
     ),
 
+    ADMIN_EXPORT(
+            "^/v1/admin/export$",
+            "/v1/admin/export"
+    ),
+
     ADMIN_SYSTEM_IMPORT(
             "^/v1/admin/system-import$",
             "/v1/admin/system-import"

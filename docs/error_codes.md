@@ -6,6 +6,7 @@ DIAL Core server cannot or will not process the request due to something that is
  - Resource URL is malformed
  - Both API key and Authorization headers are provided
  - Folder can't be downloaded
+ - The body of `POST /v1/admin/export` is missing or empty, has a field other than `roots`, or is not a valid selection of Applications (see [Admin export](admin-export.md#export-of-selected-applications))
 
 #### 401 UNAUTHORIZED
 
@@ -19,6 +20,7 @@ User is authenticated by Core but doesn't have insufficient permissions to a res
 - lack of privileges for access to model, application
 - admin can approve publications only
 - access to attached files in chat completion request
+- caller of `POST /v1/admin/export` is not an explicit admin, uses a per-request API key, or cannot read a selected `public/` Application
 - a required resource dependency of the application is not accessible to the user or not approved by an administrator
 - only administrators can manage an application's admin consent, and only for an application they can read in the config, the public or review bucket, or their own bucket
 - a user changes an application's resource dependencies while `applications.allowUserAuthoredDependencies` is off
@@ -29,6 +31,7 @@ The user request has been authenticated and authorized but DIAL Core server can'
 - application, model
 - file
 - conversation, prompt
+- Application selected for the export of `POST /v1/admin/export`
 
 #### 405 METHOD NOT ALLOWED
 
@@ -48,6 +51,7 @@ The status code indicates a request conflict with the current state of the targe
  - Application must be stopped before deployment
  - Application must be started before undeployment
  - Application must be stopped before deleting
+ - `POST /v1/admin/export`: a bucket lock of `public/` or `platform/` is held by another export, a system export or an admin write, retry later
  - The application's resource dependencies changed since the administrator reviewed them
 
 #### 412 PRECONDITION FAILED
@@ -72,6 +76,8 @@ Supported content type is `application/json` for chat completion requests only.
 
 The server failed to receive request body.
 
+`POST /v1/admin/export` never answers 422: references that are not followed are logged by the server and the response is still `200`, see [Admin export](admin-export.md#references-that-are-not-followed)
+
 #### 429 TOO MANY REQUESTS
 
 The status code indicates the client has sent too many requests in a given amount of time. This mechanism of asking the client to slow down the rate of requests is commonly called "rate limiting".
@@ -88,6 +94,8 @@ With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these sp
 #### 500 INTERNAL SERVER ERROR
 
 The status code indicates that the server encountered an unexpected condition that prevented it from fulfilling the request. This error is a generic "catch-all" response to server issues, indicating that the server cannot find a more appropriate 5XX error to respond with.
+
+- `POST /v1/admin/export` failed before the archive started (`Failed to export the Applications`), for example when the roots could not be checked or the writer fails before the first bytes of the archive reach the response. After the response has started no status is sent: the deadline, a body that cannot be bound or a failed read cut the stream, see [Admin export](admin-export.md#responses)
 
 #### 502 BAD GATEWAY
 The status code indicates that a server was acting as a gateway or proxy and that it received an invalid response from the upstream server.

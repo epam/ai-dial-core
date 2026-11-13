@@ -168,6 +168,27 @@ class ComplexResourceServiceTest {
     }
 
     @Test
+    void testVersionFileStreamReadsFileOfTheGivenVersionAndIsNullWhenTheFileOrTheVersionDoesNotExist() throws Exception {
+        ResourceDescriptor resource = skill("pinned");
+        putSkill(resource, EtagHeader.ANY);
+        String version = complexResourceService.getMarker(resource).getCurrentVersion();
+
+        try (ResourceService.ResourceStream stream = complexResourceService.getVersionFileStream(resource, version, "SKILL.md")) {
+            assertEquals(MANIFEST, new String(stream.inputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+        }
+        assertNull(complexResourceService.getVersionFileStream(resource, version, "missing.md"));
+        assertNull(complexResourceService.getVersionFileStream(resource, "no-such-version", "SKILL.md"));
+
+        // a newer version becomes the current one and the previous version is not removed at once (a sweep removes it after a grace period),
+        // so a reader that pinned the old version still reads it whole
+        complexResourceService.put(resource, handler, Map.of("SKILL.md", Buffer.buffer(MANIFEST + "\nmore")), EtagHeader.ANY, "user1");
+        assertTrue(!version.equals(complexResourceService.getMarker(resource).getCurrentVersion()));
+        try (ResourceService.ResourceStream stream = complexResourceService.getVersionFileStream(resource, version, "SKILL.md")) {
+            assertEquals(MANIFEST, new String(stream.inputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
     void testReferenceWrittenOnFirstCreationOnly() {
         ResourceDescriptor resource = skill("mySkill");
 

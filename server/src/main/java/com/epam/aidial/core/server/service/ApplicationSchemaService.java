@@ -17,10 +17,12 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
+import com.epam.aidial.core.server.validation.CollectionIssueKind;
 import com.epam.aidial.core.server.validation.DialFileKeyword;
 import com.epam.aidial.core.server.validation.DialMetaKeyword;
 import com.epam.aidial.core.server.validation.DialResourceKeyKeyword;
 import com.epam.aidial.core.server.validation.ListCollector;
+import com.epam.aidial.core.server.validation.MarkerCollection;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -36,8 +38,10 @@ import com.networknt.schema.CollectorContext;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.JsonMetaSchema;
 import com.networknt.schema.JsonSchema;
+import com.networknt.schema.JsonSchemaException;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.resource.DisallowSchemaLoader;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
@@ -86,6 +90,16 @@ public class ApplicationSchemaService {
     private static final JsonSchemaFactory SCHEMA_FACTORY = JsonSchemaFactory.builder()
             .metaSchema(DIAL_META_SCHEMA)
             .defaultMetaSchemaIri(DIAL_META_SCHEMA.getIri())
+            .build();
+
+    /**
+     * The export's factory: as {@link #SCHEMA_FACTORY}, but it refuses every {@code $ref} that is not local to the document, so a schema
+     * cannot make Core fetch anything.
+     */
+    private static final JsonSchemaFactory EXPORT_SCHEMA_FACTORY = JsonSchemaFactory.builder()
+            .metaSchema(DIAL_META_SCHEMA)
+            .defaultMetaSchemaIri(DIAL_META_SCHEMA.getIri())
+            .schemaLoaders(loaders -> loaders.add(DisallowSchemaLoader.getInstance()))
             .build();
 
     private static final TypeReference<LinkedHashMap<String, Route>> APP_ROUTE_TYPE_REF = new TypeReference<>() {
@@ -210,23 +224,39 @@ public class ApplicationSchemaService {
                 return cached;
             }
         }
-        CachedSchema result = build(source);
+        CachedSchema result = build(source, false);
         schemaCache.put(schemaId, result);
         return result;
     }
 
+    /**
+     * Builds the schema from its stored document and, when it declares {@code dial:applicationTypeSchemaEndpoint}, from a download of
+     * the runner's document; the cache is not touched.
+     *
+     * @param quiet true for the export: a failed download logs no endpoint or response, the exception carries no endpoint or cause,
+     *              and an interrupt is rethrown. Request processing passes false
+     */
     @SneakyThrows
-    private CachedSchema build(String source) {
+    private CachedSchema build(String source, boolean quiet) {
         JsonNode schema = ProxyUtil.MAPPER.readTree(source);
         if (!schema.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
             return new CachedSchema(source, source, schema);
         }
         String url = schema.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT).textValue();
         try {
-            ObjectNode appSchema = downloadAppSchema(url);
+            ObjectNode appSchema = downloadAppSchema(url, quiet);
             merge(appSchema, schema);
             return new CachedSchema(source, appSchema.toString(), appSchema);
         } catch (Exception e) {
+            if (quiet) {
+                if (e instanceof InterruptedException) {
+                    // an interrupt is neither a failure of the runner nor a reason to go on
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+                log.warn("Failed to download application schema");
+                throw new ApplicationTypeSchemaProcessingException("Failed to download application schema");
+            }
             log.warn("Failed to download application schema: {}", url, e);
             throw new ApplicationTypeSchemaProcessingException("Failed to download application schema: " + url, e);
         }
@@ -263,7 +293,7 @@ public class ApplicationSchemaService {
             CollectorContext collectorContext = new CollectorContext();
             // the live entry serves when it was built from the same text; a scratch schema is built but never cached
             CachedSchema cached = schemaCache.get(schemaId);
-            CachedSchema schema = cached != null && cached.source.equals(source) ? cached : build(source);
+            CachedSchema schema = cached != null && cached.source.equals(source) ? cached : build(source, false);
             messages = schema.compiled().validate(json, InputFormat.JSON, e -> e.setCollectorContext(collectorContext));
         } catch (Exception e) {
             warnings.add(new ValidationWarning("applicationTypeSchemaId", e.getMessage()));
@@ -304,7 +334,7 @@ public class ApplicationSchemaService {
     }
 
     @SneakyThrows
-    private ObjectNode downloadAppSchema(String url) {
+    private ObjectNode downloadAppSchema(String url, boolean quiet) {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(java.time.Duration.ofSeconds(5))
@@ -314,8 +344,12 @@ public class ApplicationSchemaService {
         int status = response.statusCode();
         String body = response.body();
         if (status != 200) {
-            log.debug("Error of downloading application schema {}: status {}, response {}, headers: {}",
-                    request.uri(), response.statusCode(), response.body(), response.headers());
+            if (quiet) {
+                log.debug("Error of downloading application schema: status {}", status);
+            } else {
+                log.debug("Error of downloading application schema {}: status {}, response {}, headers: {}",
+                        request.uri(), response.statusCode(), response.body(), response.headers());
+            }
             throw new HttpException(status, "Application runner returned error on downloading application schema");
         }
         JsonNode tree = ProxyUtil.MAPPER.readTree(body);
@@ -543,6 +577,55 @@ public class ApplicationSchemaService {
     public List<ResourceDescriptor> getDeployments(Application application) {
         return getApplicationResources(application, Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET),
                 ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
+    }
+
+    /**
+     * The schema of an application as the export holds it: evaluable, or the reason why it is not.
+     *
+     * @param schema {@code null} when there is an issue
+     * @param issue  {@code SCHEMA_NOT_FOUND} when nothing holds the id, {@code SCHEMA_UNAVAILABLE} when the schema or its Runner's document
+     *               cannot be evaluated
+     */
+    public record ExportSchema(@Nullable JsonSchema schema, @Nullable CollectionIssueKind issue) {
+    }
+
+    /**
+     * Builds the schema from the given configuration, live: the cache is neither read nor written, so the export never sees a stale
+     * schema and never replaces the one of request processing. A missing or unusable schema is an {@link ExportSchema} with an issue;
+     * any other failure propagates.
+     */
+    public ExportSchema buildExportSchema(URI schemaId, Config config) {
+        String source = config.getCustomApplicationSchema(schemaId);
+        if (source == null) {
+            return new ExportSchema(null, CollectionIssueKind.SCHEMA_NOT_FOUND);
+        }
+        CachedSchema cached;
+        try {
+            cached = build(source, true);
+        } catch (ApplicationTypeSchemaProcessingException e) {
+            return new ExportSchema(null, CollectionIssueKind.SCHEMA_UNAVAILABLE);
+        }
+        try {
+            return new ExportSchema(EXPORT_SCHEMA_FACTORY.getSchema(cached.raw), null);
+        } catch (JsonSchemaException e) {
+            return new ExportSchema(null, CollectionIssueKind.SCHEMA_UNAVAILABLE);
+        }
+    }
+
+    /**
+     * Collects the marked values of the application's properties against a schema that the caller already holds, with their RFC 6901
+     * pointer; nothing is parsed, checked or authorized.
+     *
+     * <p>Issues carry no library message and no value, because a message can hold the instance value or an IRI.
+     */
+    public MarkerCollection collectMarkerReferences(Application application, JsonSchema schema) {
+        String propertiesJson;
+        try {
+            propertiesJson = ProxyUtil.MAPPER.writeValueAsString(application.getApplicationProperties());
+        } catch (JsonProcessingException e) {
+            throw new ApplicationTypeSchemaProcessingException("Failed to serialize the properties of the application", e);
+        }
+        return MarkerCollection.collect(schema, propertiesJson);
     }
 
     @SuppressWarnings("unchecked")

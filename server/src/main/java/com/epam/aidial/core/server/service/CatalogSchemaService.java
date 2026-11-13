@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.metaschemas.CatalogMetaSchemaHolder;
 import com.epam.aidial.core.server.config.ConfigStore;
@@ -10,18 +11,23 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.CatalogFileKeyword;
 import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
+import com.epam.aidial.core.server.validation.CollectionIssueKind;
 import com.epam.aidial.core.server.validation.ListCollector;
+import com.epam.aidial.core.server.validation.MarkerCollection;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.networknt.schema.CollectorContext;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.JsonMetaSchema;
 import com.networknt.schema.JsonSchema;
+import com.networknt.schema.JsonSchemaException;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.resource.DisallowSchemaLoader;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
@@ -51,6 +57,16 @@ public class CatalogSchemaService {
     private static final JsonSchemaFactory SCHEMA_FACTORY = JsonSchemaFactory.builder()
             .metaSchema(CATALOG_DIAL_META_SCHEMA)
             .defaultMetaSchemaIri(CATALOG_DIAL_META_SCHEMA.getIri())
+            .build();
+
+    /**
+     * The export's factory: as {@link #SCHEMA_FACTORY}, but it refuses every {@code $ref} that is not local to the document, so a schema
+     * cannot make Core fetch anything.
+     */
+    private static final JsonSchemaFactory EXPORT_SCHEMA_FACTORY = JsonSchemaFactory.builder()
+            .metaSchema(CATALOG_DIAL_META_SCHEMA)
+            .defaultMetaSchemaIri(CATALOG_DIAL_META_SCHEMA.getIri())
+            .schemaLoaders(loaders -> loaders.add(DisallowSchemaLoader.getInstance()))
             .build();
 
     private final ResourceService resourceService;
@@ -131,6 +147,37 @@ public class CatalogSchemaService {
             }
         }
         return result;
+    }
+
+    /**
+     * Collects every {@code dial:file}-tagged value of the catalog properties without failing on an invalid one, as
+     * {@code ApplicationSchemaService.collectMarkerReferences} does; the pointer is relative to {@code catalog_properties}. A missing or
+     * unusable schema is an issue; any other failure propagates. Issues carry no library message and no value.
+     */
+    public MarkerCollection collectMarkerReferences(Deployment deployment, Config config) {
+        URI schemaId = deployment.getCatalogSchemaId();
+        if (schemaId == null || deployment.getCatalogProperties() == null) {
+            return new MarkerCollection(List.of(), List.of());
+        }
+        String schemaText = config.getCatalogSchema(schemaId);
+        if (schemaText == null) {
+            return MarkerCollection.ofIssue(CollectionIssueKind.SCHEMA_NOT_FOUND);
+        }
+
+        JsonSchema schema;
+        try {
+            schema = EXPORT_SCHEMA_FACTORY.getSchema(schemaText);
+        } catch (JsonSchemaException e) {
+            return MarkerCollection.ofIssue(CollectionIssueKind.SCHEMA_UNAVAILABLE);
+        }
+
+        String propertiesJson;
+        try {
+            propertiesJson = ProxyUtil.MAPPER.writeValueAsString(deployment.getCatalogProperties());
+        } catch (JsonProcessingException e) {
+            throw new CatalogSchemaProcessingException("Failed to serialize the catalog properties", e);
+        }
+        return MarkerCollection.collect(schema, propertiesJson);
     }
 
     /**

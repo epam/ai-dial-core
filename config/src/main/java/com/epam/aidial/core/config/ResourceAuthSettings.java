@@ -3,8 +3,10 @@ package com.epam.aidial.core.config;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,7 +26,7 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class ResourceAuthSettings {
 
-    /** Wire names, for the JSON-level redaction in {@code ConfigResourceController}. */
+    /** Wire names, for the JSON-level redaction of {@link #removeSecretFields}. */
     public static final String CLIENT_SECRET_FIELD = "client_secret";
     public static final String CODE_VERIFIER_FIELD = "code_verifier";
     public static final String CODE_CHALLENGE_FIELD = "code_challenge";
@@ -34,6 +36,21 @@ public class ResourceAuthSettings {
     public static final int SHORT_HINT_LENGTH = 2;
     public static final int HINT_MIN_SECRET_LENGTH = 8;
     public static final int FULL_HINT_SECRET_LENGTH = 12;
+
+    /**
+     * Removes the secret fields from the JSON of an {@code auth_settings} object; anything else is left alone.
+     *
+     * @return the removed {@code client_secret} node, for a caller that derives a hint from it, or {@code null}
+     */
+    public static JsonNode removeSecretFields(JsonNode authSettings) {
+        if (!(authSettings instanceof ObjectNode settings)) {
+            return null;
+        }
+        JsonNode clientSecret = settings.remove(CLIENT_SECRET_FIELD);
+        settings.remove(CODE_VERIFIER_FIELD);
+        settings.remove(CLIENT_SECRET_HINT_FIELD);
+        return clientSecret;
+    }
 
     @NotNull(message = "AuthenticationType must be defined")
     @JsonAlias({"authenticationType", "authentication_type"})
@@ -96,8 +113,7 @@ public class ResourceAuthSettings {
 
     /**
      * Returns a copy with credential material removed; the receiver is left unchanged. A newly added secret
-     * field has to be cleared here <em>and</em> in {@code ConfigResourceController.redactSecretFields}, which
-     * redacts a JSON projection rather than this object.
+     * field has to be cleared here <em>and</em> in {@link #removeSecretFields}, which redacts a JSON projection rather than this object.
      */
     public ResourceAuthSettings withoutSecrets() {
         ResourceAuthSettings copy = toBuilder().build();

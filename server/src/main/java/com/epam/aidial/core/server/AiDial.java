@@ -53,6 +53,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.AdminConsentService;
+import com.epam.aidial.core.server.service.AdminExportSettings;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
 import com.epam.aidial.core.server.service.AdminSystemImportService;
 import com.epam.aidial.core.server.service.AdminSystemImportValidationService;
@@ -435,6 +436,8 @@ public class AiDial {
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
+            AdminExportSettings adminExportSettings = Json.decodeValue(settings("adminExport").toBuffer(), AdminExportSettings.class);
+            adminExportSettings.validate();
             AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), kmsSettings.isEnabled(),
                     readEncryptionSettings().getKeySize() / Byte.SIZE);
             AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
@@ -471,7 +474,7 @@ public class AiDial {
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminSystemExportService, adminSystemExportSettings, orgUnitService,
+                    adminExportSettings, adminSystemExportService, adminSystemExportSettings, orgUnitService,
                     adminSystemImportService, adminSystemImportSettings);
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
