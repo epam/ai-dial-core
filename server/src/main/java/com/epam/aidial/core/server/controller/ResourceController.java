@@ -658,9 +658,23 @@ public class ResourceController extends AccessControlBaseController {
         });
     }
 
-    private void requireAdminToSetInterceptors(Application application) {
-        if (!application.getInterceptors().isEmpty() && !accessService.hasAdminAccess(context)) {
-            throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
+    /**
+     * Only DIAL admins set interceptors, and only ones the config defines. A write through a unit role skips this: it
+     * keeps the stored interceptors, which may include one the config has dropped since.
+     */
+    private void validateInterceptors(Application application) {
+        List<String> interceptors = ApplicationService.interceptorsOf(application);
+        if (interceptors.isEmpty()) {
+            return;
+        }
+        if (!accessService.hasAdminAccess(context)) {
+            throw new HttpException(FORBIDDEN, ApplicationService.ONLY_ADMINS_SET_INTERCEPTORS);
+        }
+        Config config = context.getConfig();
+        for (String interceptor : interceptors) {
+            if (!config.getInterceptors().containsKey(interceptor)) {
+                throw new HttpException(BAD_REQUEST, "Unknown interceptor: " + interceptor);
+            }
         }
     }
 
@@ -669,14 +683,6 @@ public class ResourceController extends AccessControlBaseController {
             ResourceDependencyValidator.validateShape(application);
             checkCreateCodeApp(application);
             validateSchemaBasedApplication(application);
-            if (!application.getInterceptors().isEmpty()) {
-                Config config = context.getConfig();
-                for (String interceptor : application.getInterceptors()) {
-                    if (!config.getInterceptors().containsKey(interceptor)) {
-                        throw new HttpException(BAD_REQUEST, "Unknown interceptor: " + interceptor);
-                    }
-                }
-            }
             for (String dependency : application.getDependencies()) {
                 try {
                     deploymentService.findDeployment(context, dependency);
@@ -775,14 +781,13 @@ public class ResourceController extends AccessControlBaseController {
                 AdminManagedFieldsWriteMode adminManagedFieldsWriteMode =
                         AdminManagedFieldsWriteMode.of(adminPublicWrite, bodyJson);
                 return taskExecutor.submit(() -> {
+                    validateCustomApplication(application);
                     if (isUnitRoleWrite(descriptor, adminPublicWrite)) {
                         // the service lets the write keep the stored interceptors, checked under the lock
-                        validateCustomApplication(application);
                         return applicationService.putApplicationByUnitRole(descriptor, etag, author, application,
                                 externalServicesWriteMode, dependenciesSubmitted).getKey();
                     }
-                    requireAdminToSetInterceptors(application);
-                    validateCustomApplication(application);
+                    validateInterceptors(application);
                     boolean userAuthored = !accessService.hasExplicitAdminAccess(context);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
                             adminManagedFieldsWriteMode, externalServicesWriteMode, userAuthored, dependenciesSubmitted).getKey();

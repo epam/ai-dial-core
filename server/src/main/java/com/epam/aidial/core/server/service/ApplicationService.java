@@ -60,9 +60,12 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class ApplicationService {
+
+    public static final String ONLY_ADMINS_SET_INTERCEPTORS = "Only admins are allowed to set interceptors";
 
     private static final String DEPLOYMENTS_NAME = "deployments";
 
@@ -294,10 +297,19 @@ public class ApplicationService {
         return Pair.of(meta, toStore.getValue());
     }
 
-    private static void requireSameInterceptors(Application application, Application existing) {
-        List<String> stored = existing == null ? List.of() : Objects.requireNonNullElse(existing.getInterceptors(), List.of());
-        if (!stored.equals(Objects.requireNonNullElse(application.getInterceptors(), List.of()))) {
-            throw new HttpException(HttpStatus.FORBIDDEN, "Only admins are allowed to change interceptors");
+    /**
+     * The application's own interceptors, none when it has no application or the body sent none.
+     */
+    public static List<String> interceptorsOf(@Nullable Application application) {
+        return application == null || application.getInterceptors() == null ? List.of() : application.getInterceptors();
+    }
+
+    /**
+     * Only DIAL admins set interceptors: anyone else writes an application with exactly the ones it has.
+     */
+    public static void requireSameInterceptors(Application application, @Nullable Application existing) {
+        if (!interceptorsOf(existing).equals(interceptorsOf(application))) {
+            throw new PermissionDeniedException(ONLY_ADMINS_SET_INTERCEPTORS);
         }
     }
 
