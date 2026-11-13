@@ -86,6 +86,11 @@
   "adminSystemExport": {
     "stallTimeout": 60000
   },
+  "adminSystemImport": {
+    "stallTimeout": 60000,
+    "progressInterval": 15000,
+    "parallelism": 4
+  },
   "clientChannel": {
     "watchdog": {
       "period": 10000
@@ -95,7 +100,8 @@
     "connectTimeout": 10000
   },
   "applications": {
-    "includeCustomApps": true
+    "includeCustomApps": true,
+    "allowUserAuthoredDependencies": false
   },
   "access": {
     "admin": {

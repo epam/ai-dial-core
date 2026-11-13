@@ -2,11 +2,13 @@ package com.epam.aidial.core.storage.util;
 
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceType;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.function.Function;
 
 @UtilityClass
@@ -70,8 +72,11 @@ public class RedisUtil {
     }
 
     public String redisKey(ResourceDescriptor descriptor, String prefix) {
-        String resourcePath = BlobStorageUtil.toStoragePath(prefix, descriptor.getAbsoluteFilePath());
-        return descriptor.getType().name().toLowerCase() + ":" + resourcePath;
+        return redisKey(descriptor.getType(), descriptor.getAbsoluteFilePath(), prefix);
+    }
+
+    public String redisKey(ResourceType type, String absoluteFilePath, String prefix) {
+        return type.name().toLowerCase(Locale.ROOT) + ":" + BlobStorageUtil.toStoragePath(prefix, absoluteFilePath);
     }
 
     public String getResourceType(String redisKey) {

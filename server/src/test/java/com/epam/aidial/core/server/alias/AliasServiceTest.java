@@ -230,6 +230,7 @@ class AliasServiceTest {
     void onlyItemsDirectlyInThePublicAliasFolderAreStoredAliases() {
         assertNull(service.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl("aliases/public/folder/pub-v1", null)));
         assertNull(service.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl("aliases/public/missing", null)));
+        assertNull(service.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl("aliases/platform/plt-v1", null)));
         ResourceDescriptor broken = ResourceDescriptorFactory.fromAnyUrl("aliases/public/broken", null);
         when(resourceService.getResource(broken)).thenReturn("{\"displayName\":\"no target\"}");
         assertNull(service.findStoredAlias(broken));

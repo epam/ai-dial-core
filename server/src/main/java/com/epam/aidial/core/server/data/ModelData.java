@@ -16,6 +16,9 @@ public class ModelData extends DeploymentData {
     private CapabilitiesData capabilities = new CapabilitiesData();
     private String tokenizerModel;
     private Integer embeddingDimensions;
+    private String provider;
+    private String deprecationDate;
+    private String endOfService;
     private TokenLimitsData limits;
     private PricingData pricing;
 

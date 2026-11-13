@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
@@ -39,6 +42,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 import redis.embedded.RedisServer;
 
 import java.net.URI;
@@ -626,5 +630,37 @@ public class ResourceBaseTest {
 
             return expected.equals(actual) ? 0 : -1;
         }
+    }
+
+    /** Runs {@code action} and returns the resource-dependency audit events it emitted for {@code appUrl}. */
+    protected static List<String> captureAuditEvents(String appUrl, Runnable action) {
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_RESOURCE_DEPS_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        try {
+            action.run();
+        } finally {
+            auditLogger.detachAppender(appender);
+        }
+        return appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .filter(message -> message.startsWith("event=resource_dependency_")
+                        && message.contains("application_id=" + appUrl + " "))
+                .toList();
+    }
+
+    /** The admin-consent POST body an administrator sends after reviewing {@code appUrl}'s current declaration. */
+    protected String reviewedResources(String appUrl) {
+        Response app = send(HttpMethod.GET, "/v1/" + appUrl, null, "", "authorization", "admin");
+        verify(app, 200);
+        JsonArray resources = new JsonArray();
+        for (Object dependency : new JsonObject(app.body()).getJsonArray("resource_dependencies")) {
+            JsonObject declared = (JsonObject) dependency;
+            resources.add(new JsonObject()
+                    .put("url", declared.getJsonObject("target").getString("url"))
+                    .put("access", declared.getJsonArray("access")));
+        }
+        return new JsonObject().put("resources", resources).encode();
     }
 }

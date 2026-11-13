@@ -18,4 +18,11 @@ public interface ContentEncryptionKeyManager {
      * @return decrypted CEK bytes
      */
     byte[] getOrCreateKey(ResourceDescriptor cekDescriptor);
+
+    /**
+     * Forgets a cached CEK, so the next {@link #getOrCreateKey} reads it again from storage. Does nothing when the
+     * manager does not cache.
+     */
+    default void invalidate(ResourceDescriptor cekDescriptor) {
+    }
 }
