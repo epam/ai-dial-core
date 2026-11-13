@@ -29,6 +29,9 @@ An object containing parameters for each [model](#models).
 * `intro`: A string with a short introductory/onboarding text for the model, shown to end users separately from `description`.
 * `displayName`: A string with the models's name. Display name is shown in all DIAL client UI dropdowns, tables, and logs so operators can quickly identify the model.
 * `displayVersion`: A string with the model's version. Use it to distinguish between "latest," "beta," or date-stamped builds.
+* `provider`: A string with the hosting provider that supplies the model's API endpoint, e.g. `AWS`, `Google`, `Azure`. Free-form and informational only: DIAL Core does not interpret it.
+* `deprecationDate`: A date in ISO-8601 format (`YYYY-MM-DD`) after which the model is considered deprecated, even though existing deployments continue to function. Informational only: DIAL Core neither validates nor enforces it.
+* `endOfService`: A date in ISO-8601 format (`YYYY-MM-DD`) when the provider terminates access to the model, making it unavailable. Informational only: DIAL Core neither validates nor enforces it.
 * `endpoint`: Model API for chat completions or embeddings.
 * `overrideName`: If set, the model is called under this name: the outgoing request body's `model` field (and the `X-DIAL-OVERRIDE-NAME` header) are rewritten to this value before the request reaches the model adapter. Doesn't change routing — only the value the adapter receives.
 * `embeddingDimensions`: The size of the embedding vector returned by an embedding model (e.g. `1536` for `text-embedding-ada-002`). Omit for chat/completion models.
@@ -86,6 +89,9 @@ An object containing parameters for each [model](#models).
             "overrideName": "/some[!exotic?]/model/name",
             "displayName": "GPT-3.5",
             "displayVersion": "Turbo",
+            "provider": "Azure",
+            "deprecationDate": "2027-06-30",
+            "endOfService": "2027-12-31",
             "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
             "upstreams": [
                 {

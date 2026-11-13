@@ -26,6 +26,23 @@ public class Model extends Deployment {
     private List<String> fieldsHashingOrder = List.of("prefix.body.tools", "prefix.body.messages");
     @JsonAlias({"embeddingDimensions", "embedding_dimensions"})
     private Integer embeddingDimensions;
+    /**
+     * Informational: the hosting provider that supplies the model's API endpoint, e.g. {@code AWS}, {@code Google}
+     * or {@code Azure}. Free-form; not interpreted by DIAL Core.
+     */
+    private String provider;
+    /**
+     * Informational: ISO-8601 date ({@code yyyy-MM-dd}) after which the model is considered deprecated, even though
+     * existing deployments keep working. Not interpreted by DIAL Core.
+     */
+    @JsonAlias({"deprecationDate", "deprecation_date"})
+    private String deprecationDate;
+    /**
+     * Informational: ISO-8601 date ({@code yyyy-MM-dd}) when the provider terminates access to the model, making it
+     * unavailable. Not interpreted by DIAL Core.
+     */
+    @JsonAlias({"endOfService", "end_of_service"})
+    private String endOfService;
 
     public Model() {
         setMaxRetryAttempts(5);

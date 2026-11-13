@@ -138,6 +138,9 @@
             "overrideName": "/some[!exotic?]/model/name",
             "displayName": "GPT-3.5",
             "displayVersion": "Turbo",
+            "provider": "Azure",
+            "deprecationDate": "2027-06-30",
+            "endOfService": "2027-12-31",
             "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
             "upstreams": [
                 {
