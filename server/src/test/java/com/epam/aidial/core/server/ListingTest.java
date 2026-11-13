@@ -49,6 +49,21 @@ public class ListingTest extends ResourceBaseTest {
     }
 
     @Test
+    void testProvider(Vertx vertx, VertxTestContext context) {
+        checkListing(vertx, context, "/openai/models", "test-model-v1", "provider", "Azure");
+    }
+
+    @Test
+    void testDeprecationDate(Vertx vertx, VertxTestContext context) {
+        checkListing(vertx, context, "/openai/models", "test-model-v1", "deprecation_date", "2027-06-30");
+    }
+
+    @Test
+    void testEndOfService(Vertx vertx, VertxTestContext context) {
+        checkListing(vertx, context, "/openai/models", "test-model-v1", "end_of_service", "2027-12-31");
+    }
+
+    @Test
     void testEmbeddingDimensions(Vertx vertx, VertxTestContext context) {
         checkListing(vertx, context, "/openai/models", "embedding-ada", "embedding_dimensions", 1536);
     }

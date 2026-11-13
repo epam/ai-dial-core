@@ -206,7 +206,8 @@ When storage cannot list or read the stored aliases, a listing SHALL answer with
 
 ### Requirement: Content of an alias entry
 A listing entry of an alias SHALL carry the alias's name and display fields and the target's features, pricing,
-limits, defaults and interfaces, and SHALL NOT carry the target's path or endpoint. The display name, description,
+limits, defaults, interfaces, provider and lifecycle dates (`provider`, `deprecation_date`, `end_of_service`), and
+SHALL NOT carry the target's path or endpoint. The display name, description,
 icon, intro and keywords SHALL be the target's when the alias does not set them; the display version, author, dates
 and catalog fields SHALL NOT fall back to the target's.
 
@@ -221,6 +222,11 @@ and catalog fields SHALL NOT fall back to the target's.
 #### Scenario: Application shown as a model
 - **WHEN** an alias with `presentAs: model` targets an application
 - **THEN** `/openai/models/<alias>` answers `200` with `object` `model`
+
+#### Scenario: Provider and lifecycle dates of the target
+- **WHEN** an alias targets a model with `provider` `Azure`, `deprecationDate` `2027-06-30` and `endOfService`
+  `2027-12-31`
+- **THEN** `/openai/models` shows the alias with the same `provider`, `deprecation_date` and `end_of_service`
 
 ### Requirement: Aliases of the config file
 `GET /v1/admin/config/file/aliases` SHALL list the names of the aliases in the config file and
