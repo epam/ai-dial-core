@@ -19,6 +19,9 @@ User is authenticated by Core but doesn't have insufficient permissions to a res
 - lack of privileges for access to model, application
 - admin can approve publications only
 - access to attached files in chat completion request
+- a required resource dependency of the application is not accessible to the user or not approved by an administrator
+- only administrators can manage an application's admin consent, and only for an application they can read in the config, the public or review bucket, or their own bucket
+- a user changes an application's resource dependencies while `applications.allowUserAuthoredDependencies` is off
 
 #### 404 NOT FOUND
 
@@ -45,6 +48,7 @@ The status code indicates a request conflict with the current state of the targe
  - Application must be stopped before deployment
  - Application must be started before undeployment
  - Application must be stopped before deleting
+ - The application's resource dependencies changed since the administrator reviewed them
 
 #### 412 PRECONDITION FAILED
 
@@ -57,7 +61,7 @@ In that case, the request (usually an upload or a modification of a resource) ca
 
 The status code indicates that the request entity was larger than limits defined by server:
 - `maxUploadedFileSize` defined in storage settings if content type is `multipart/form-data`. The default value is 512 Mb.
-- `maxSize` defined in resource settings. The default value is 67 Mb
+- `maxSize` defined in resource settings. The default value is 67 Mb. It does not apply to the archive sent to `POST /v1/admin/system-import`.
 
 #### 415 UNSUPPORTED_MEDIA_TYPE
 

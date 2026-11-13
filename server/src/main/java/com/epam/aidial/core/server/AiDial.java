@@ -52,7 +52,10 @@ import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.AdminConsentService;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
+import com.epam.aidial.core.server.service.AdminSystemImportService;
+import com.epam.aidial.core.server.service.AdminSystemImportValidationService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -97,6 +100,7 @@ import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
+import com.epam.aidial.core.server.util.CoreVersion;
 import com.epam.aidial.core.server.util.ProxySettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -107,6 +111,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.service.TempFolderCleaner;
 import com.epam.aidial.core.storage.service.TimerService;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -190,6 +195,7 @@ public class AiDial {
     private ResourceService resourceService;
     private ComplexResourceSweepService complexResourceSweepService;
     private BudgetCounterSweepService budgetCounterSweepService;
+    private TimerService.Timer systemImportStagingCleanupTimer;
     private McpHttpClientBuilder mcpHttpClientBuilder;
     private McpHttpClientBuilder discoveryMcpHttpClientBuilder;
     private EncryptionService encryptionService;
@@ -264,7 +270,10 @@ public class AiDial {
                     timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId, blockingCallTracer);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"), blockingCallTracer);
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(blockingCallTracer);
+            KmsSettings kmsSettings = readKmsSettings();
+            KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, blockingCallTracer);
+            ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(keyManagementService, kmsSettings);
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(contentEncryptionKeyService);
             SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
                     credentialEncryptionService,
                     new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
@@ -390,13 +399,14 @@ public class AiDial {
                     toolSetService, resourceService, applicationSchemaService, aliasService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
+            AdminConsentService adminConsentService = new AdminConsentService(deploymentService, resourceService, clock);
+            applicationService.setAdminConsentService(adminConsentService);
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
             WellKnownResourceMetadataService wellKnownResourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
-
             ApiKeyValidation apiKeyValidation = Json.decodeValue(settings("apiKeyValidation").toBuffer(), ApiKeyValidation.class);
             boolean printAuthorizationHeader = settings.getBoolean("printAuthorizationHeader", false);
 
@@ -425,26 +435,44 @@ public class AiDial {
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
-            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), readKmsSettings().isEnabled(),
+            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), kmsSettings.isEnabled(),
                     readEncryptionSettings().getKeySize() / Byte.SIZE);
             AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
             adminSystemExportSettings.validate();
+
+            AdminSystemImportService.Settings adminSystemImportSettings = Json.decodeValue(
+                    settings("adminSystemImport").toBuffer(), AdminSystemImportService.Settings.class);
+            adminSystemImportSettings.validate();
+            AdminSystemImportValidationService adminSystemImportValidationService = new AdminSystemImportValidationService(
+                    CoreVersion.parse(version()), kmsSettings.isEnabled(), keyManagementService);
+            AdminSystemImportService adminSystemImportService = new AdminSystemImportService(storage, lockService, resourceService,
+                    mergedConfigStore, adminSystemImportValidationService, contentEncryptionKeyService, command -> taskExecutor.submit(() -> {
+                        command.run();
+                        return null;
+                    }), adminSystemImportSettings, clock, generator);
+            TempFolderCleaner systemImportStagingCleaner = new TempFolderCleaner(
+                    storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24));
+            long systemImportStagingCleanupPeriodMs = Duration.ofHours(24).toMillis();
+            systemImportStagingCleanupTimer = timerService.scheduleWithFixedDelay(
+                    systemImportStagingCleanupPeriodMs, systemImportStagingCleanupPeriodMs, systemImportStagingCleaner::cleanup);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, externalServiceService, userExternalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
+                    consentService, adminConsentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, securedResourceService, mcpHttpClientBuilder, toolSetRepairService, applicationSchemaService,
                     catalogSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
-                    perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
+                    perRequestPermissionService, resourceAuthSettingsEncryptionService,
+                    authSettingsResolver, clientChannelService, taskExecutor, version(),
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminSystemExportService, adminSystemExportSettings, orgUnitService);
+                    adminSystemExportService, adminSystemExportSettings, orgUnitService,
+                    adminSystemImportService, adminSystemImportSettings);
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
@@ -513,19 +541,15 @@ public class AiDial {
         return Json.decodeValue(toolsetSecurity.getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
     }
 
-    private CredentialEncryptionService getCredentialEncryptionService(BlockingCallTracer blockingCallTracer) {
-        KmsSettings kmsSettings = readKmsSettings();
-        EncryptionSettings encryptionSettings = readEncryptionSettings();
-        ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
-        KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, blockingCallTracer);
-        ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
-                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
-        ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(contentEncryptionKeyManager);
-        DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
+    private CredentialEncryptionService getCredentialEncryptionService(ContentEncryptionKeyService contentEncryptionKeyService) {
+        DataEncryptionService dataEncryptionService = new DataEncryptionService(readEncryptionSettings(), new SecureRandom());
         return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);
     }
 
-    private ContentEncryptionKeyService getContentEncryptionKeyService(ContentEncryptionKeyManager contentEncryptionKeyManager) {
+    private ContentEncryptionKeyService getContentEncryptionKeyService(KeyManagementService keyManagementService, KmsSettings kmsSettings) {
+        ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(readEncryptionSettings());
+        ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
+                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
         Function<BucketInfo, BucketInfo> rootBucketExtractor = bucketInfo -> {
             String rootLocation = PublicationUtil.getRootLocation(bucketInfo.location());
             if (bucketInfo.location().equals(rootLocation)) {
@@ -565,6 +589,7 @@ public class AiDial {
             close(resourceService);
             close(complexResourceSweepService);
             close(budgetCounterSweepService);
+            close(systemImportStagingCleanupTimer);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
             // Unhook from the global composite before vertx.close() so its shutdown metrics

@@ -212,6 +212,11 @@ public enum RouteTemplate {
             "/v1/admin/system-export"
     ),
 
+    ADMIN_SYSTEM_IMPORT(
+            "^/v1/admin/system-import$",
+            "/v1/admin/system-import"
+    ),
+
     BUCKET(
             "^/v1/bucket$",
             "/v1/bucket"
@@ -355,6 +360,10 @@ public enum RouteTemplate {
     CONFIG(
             "^/v1/ops/config/reload$",
             "/v1/ops/config/reload"
+    ),
+    ADMIN_CONSENT(
+            "^/v1/admin-consent/(?<id>.+)$",
+            "/v1/admin-consent/{id}"
     ),
     USER_CONSENT(
             "^/v1/consent/(?<id>.+?)$",

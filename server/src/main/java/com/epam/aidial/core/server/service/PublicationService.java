@@ -871,7 +871,7 @@ public class PublicationService {
             ResourceDescriptor to = ResourceDescriptorFactory.fromPublicUrl(targetUrl);
 
             if (from.getType() == ResourceTypes.APPLICATION) {
-                applicationService.copyApplication(from, to, publication.getDisplayAuthor(), false, app -> {
+                applicationService.copyApplication(from, to, publication.getDisplayAuthor(), false, ApplicationService.ApprovalPolicy.CARRY, app -> {
                     app.setReference(ProxyUtil.generateReference());
                     app.setIconUrl(replaceLink(replacementLinks, app.getIconUrl()));
                 });

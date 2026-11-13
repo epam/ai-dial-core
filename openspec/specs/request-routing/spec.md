@@ -40,12 +40,18 @@ Core SHALL answer `405` with an empty body and no `Allow` header to a request wh
 Core SHALL answer `413` with body `Request body is too large`, before the health, version and metadata checks and
 without credentials, to a request whose `Content-Length` exceeds `storage.maxUploadedFileSize` (default 536870912)
 when its `Content-Type` starts with `multipart/form-data`, or exceeds `resources.maxSize` (default 67108864)
-otherwise. A request without a parsable `Content-Length` SHALL be checked as 1024 bytes long.
+otherwise, except a `POST /v1/admin/system-import` body. A request without a parsable `Content-Length` SHALL be checked
+as 1024 bytes long.
 
 #### Scenario: Oversized JSON body
 - **WHEN** `resources.maxSize` is `1024` and a client sends `PUT /v1/conversations/<bucket>/c` with
   `Content-Length: 2048` and `Content-Type: application/json`
 - **THEN** Core answers `413` with body `Request body is too large`
+
+#### Scenario: Large system import archive
+- **WHEN** a client sends `POST /v1/admin/system-import` with `Content-Type: application/zip` and a `Content-Length`
+  larger than `resources.maxSize`
+- **THEN** Core does not answer `413` and passes the request on to authentication
 
 ### Requirement: Malformed percent-escape
 Core SHALL answer `500` with an empty body, after the size check and before authentication, to a request whose path
@@ -148,9 +154,9 @@ and `/v1/deployments/{id}/route/...` patterns, and exactly one on every other bu
 
 ### Requirement: Path variable decoding
 Core SHALL percent-decode (`+` stays `+`) the identifier variables it extracts: deployment, model, application,
-toolset, response, consent, invitation and external-service ids, config entity `{path}`, admin file `{name}` and the
-v2 `{filePath}`. File, resource and v2 resource paths and the app-route `{routePath}` SHALL be passed on still encoded.
-An identifier that is not a valid URI path (an unencoded `[`, say) SHALL get `500` with an empty body.
+toolset, response, consent, admin-consent, invitation and external-service ids, config entity `{path}`, admin file
+`{name}` and the v2 `{filePath}`. File, resource and v2 resource paths and the app-route `{routePath}` SHALL be passed on
+still encoded. An identifier that is not a valid URI path (an unencoded `[`, say) SHALL get `500` with an empty body.
 
 #### Scenario: Encoded deployment id
 - **WHEN** an authenticated client sends `GET /openai/deployments/deployment_x-y%2B%2F`
@@ -161,12 +167,17 @@ An identifier that is not a valid URI path (an unencoded `[`, say) SHALL get `50
 - **THEN** the file download handler receives `files/bucket/fol%2Fder%201/file1%23.txt` (see resource-access-control)
 
 ### Requirement: Multi-segment ids
-Core SHALL let a deployment, model, application, toolset or consent `{id}` span `/`, so a custom application addressed
-by its url (`applications/{bucket}/{name}`) is a valid id; the id is the shortest match before the pattern's fixed suffix.
+Core SHALL let a deployment, model, application, toolset, consent or admin-consent `{id}` span `/`, so a custom
+application addressed by its url (`applications/{bucket}/{name}`) is a valid id; the id is the shortest match before the
+pattern's fixed suffix.
 
 #### Scenario: Custom application in a chat completions path
 - **WHEN** an authenticated client sends `POST /openai/deployments/applications/bucket/my-application/chat/completions`
 - **THEN** the deployment request handler receives deployment id `applications/bucket/my-application`
+
+#### Scenario: Custom application in an admin-consent path
+- **WHEN** an admin sends `GET /v1/admin-consent/applications/public/dependency-consent-app`
+- **THEN** the admin consent handler receives id `applications/public/dependency-consent-app`
 
 ### Requirement: Deployment interfaces
 Core SHALL route `POST /openai/deployments/{id}/(completions|chat/completions|embeddings)` to the deployment request
@@ -335,12 +346,21 @@ Core SHALL route `GET /v1/admin/health/config`, `POST /v1/admin/validate`, `POST
 ### Requirement: Bucket, user and schema routes
 Core SHALL route `GET /v1/bucket`, `GET /v1/user/info`, `GET /v1/user/limits`, `GET /v1/user/usage`,
 `GET /v1/user/offline-credentials`, `POST /v1/user/offline-credentials/(signin|signout)`, `GET` and
-`POST /v1/consent/{id}`, and `GET /v1/application_type_schemas/(schemas|schema|meta_schema)` and
+`POST /v1/consent/{id}`, `GET`, `POST` and `DELETE /v1/admin-consent/{id}`, and
+`GET /v1/application_type_schemas/(schemas|schema|meta_schema)` and
 `GET /v1/catalog_schemas/(schemas|schema|meta_schema)` to their handlers.
 
 #### Scenario: Bucket
 - **WHEN** an authenticated client sends `GET /v1/bucket`
 - **THEN** the bucket handler answers
+
+#### Scenario: Admin consent
+- **WHEN** an admin sends `GET /v1/admin-consent/applications/public/dependency-consent-app`
+- **THEN** the admin consent handler answers
+
+#### Scenario: Admin-consent suffix on a user consent path
+- **WHEN** an admin sends `POST /v1/consent/applications/public/dependency-consent-app/admin-consent` with no body
+- **THEN** the user consent handler answers `400` (it demands a body), and no admin consent is stored
 
 ### Requirement: Share and invitation routes
 Core SHALL route `POST /v1/ops/resource/share/(create|list|discard|revoke|copy)` to sharing, `GET /v1/invitations` to

@@ -22,6 +22,7 @@ import com.epam.aidial.core.config.policy.PolicyKind;
 import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
+import com.epam.aidial.core.server.alias.StoredAliases;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.budget.EffectiveBudgets;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -93,6 +94,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     private static final long REBUILD_DEBOUNCE_MS = 500;
     private static final long NO_PENDING_TIMER = -1L;
+    static final String REBUILD_EVENT_URL = "config/rebuild";
     private static final String REASON_PARSE = "parse_error";
     private static final String REASON_VALIDATION = "validation_error";
     public static final String REASON_DECRYPTION = "decryption_error";
@@ -113,7 +115,8 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.APPLICATION,
             ResourceTypes.TOOL_SET,
             ResourceTypes.POLICY,
-            ResourceTypes.POLICY_ASSIGNMENT);
+            ResourceTypes.POLICY_ASSIGNMENT,
+            ResourceTypes.ALIAS);
 
     private static final Set<String> MANAGED_URL_SEGMENTS = managedUrlSegments();
 
@@ -301,6 +304,10 @@ public final class MergedConfigStore implements ConfigStore {
     private void onResourceEvent(ResourceEvent event) {
         String senderPodId = event.getSenderPodId();
         if (senderPodId != null && senderPodId.equals(thisPodId)) {
+            return;
+        }
+        if (REBUILD_EVENT_URL.equals(event.getUrl())) {
+            requestRebuild();
             return;
         }
         if (!isManagedEventUrl(event.getUrl())) {
@@ -626,6 +633,14 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
+    /**
+     * Tells every other pod to rebuild its merged config, for a change that writes many blobs without a per-entity event.
+     * Each pod rebuilds through {@link #requestRebuild()}, so it waits for the bucket locks the caller may still hold.
+     */
+    public void requestRebuildOnAllPods() {
+        resourceService.publishUpdate(REBUILD_EVENT_URL);
+    }
+
     private void onRebuildTimerFire(long firingId) {
         // Bail out if we were superseded between scheduling and firing — the replacement timer
         // will run (or already has). Belt-and-suspenders against Vert.x's best-effort cancelTimer.
@@ -662,15 +677,23 @@ public final class MergedConfigStore implements ConfigStore {
     public Config rebuildNow() {
         // Distributed bucket lock: same partial-state hazard as reload/timer — a full blob scan on
         // this pod must not interleave with a peer pod's in-flight multi-blob apply (design 02 §4.4).
-        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
-            rebuildLock.lock();
-            try {
-                cancelPendingRebuild();
-                return rebuild();
-            } finally {
-                rebuildLock.unlock();
-            }
-        });
+        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, this::rebuildNowUnderBucketLocks);
+    }
+
+    /**
+     * The body of {@link #rebuildNow()}, for a caller that already holds {@link #ADMIN_BUCKET_LOCATIONS} (a
+     * system import's replace phase). Calling this without holding them lets the blob scan interleave with a
+     * peer pod's in-flight multi-blob apply (design 02 §4.4); every other caller must go through
+     * {@link #rebuildNow()} instead.
+     */
+    public Config rebuildNowUnderBucketLocks() {
+        rebuildLock.lock();
+        try {
+            cancelPendingRebuild();
+            return rebuild();
+        } finally {
+            rebuildLock.unlock();
+        }
     }
 
     private void cancelPendingRebuild() {
@@ -814,6 +837,7 @@ public final class MergedConfigStore implements ConfigStore {
                 // Passing no onSkip makes it throw whatever the mode, so that the caller falls back to a full
                 // rebuild, which sees both records and applies onInvalidEntity.
                 case POLICY_ASSIGNMENT -> ConfigPostProcessor.validateSingleAssignment(next, mapKey, null);
+                case ALIAS -> ConfigPostProcessor.validateSingleAlias(next, mapKey, onSkip);
                 default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
             }
         } catch (RuntimeException error) {
@@ -1086,6 +1110,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.setToolsets(new LinkedHashMap<>(config.getToolsets()));
             case POLICY -> config.setPolicies(new HashMap<>(config.getPolicies()));
             case POLICY_ASSIGNMENT -> config.setPolicyAssignments(new HashMap<>(config.getPolicyAssignments()));
+            case ALIAS -> config.setAliases(new LinkedHashMap<>(config.getAliases()));
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -1105,6 +1130,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().get(mapKey);
             case POLICY -> config.getPolicies().get(mapKey);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().get(mapKey);
+            case ALIAS -> config.getAliases().get(mapKey);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         };
     }
@@ -1124,6 +1150,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().put(mapKey, (ToolSet) entity);
             case POLICY -> config.getPolicies().put(mapKey, (Policy) entity);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().put(mapKey, (PolicyAssignment) entity);
+            case ALIAS -> config.getAliases().put(mapKey, (Alias) entity);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -1143,6 +1170,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().remove(mapKey);
             case POLICY -> config.getPolicies().remove(mapKey);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().remove(mapKey);
+            case ALIAS -> config.getAliases().remove(mapKey);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -1595,7 +1623,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     public static boolean isShortNameKeyed(ResourceTypes type) {
         return switch (type) {
-            case MODEL, INTERCEPTOR, ROUTER, TRANSLATOR, ROLE, APPLICATION, TOOL_SET -> true;
+            case MODEL, INTERCEPTOR, ROUTER, TRANSLATOR, ROLE, APPLICATION, TOOL_SET, ALIAS -> true;
             default -> false;
         };
     }
@@ -1684,6 +1712,19 @@ public final class MergedConfigStore implements ConfigStore {
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
+            case ALIAS -> {
+                Alias dirty = BLOB_MAPPER.treeToValue(node, Alias.class);
+                List<ValidationWarning> warnings = StoredAliases.validateFields(dirty);
+                if (!warnings.isEmpty()) {
+                    throw new InvalidEntityException(ResourceTypes.ALIAS, mapKey, warnings);
+                }
+                // Round-trip through toJson to strip fields the management API would reject (pricing, features, etc.)
+                // so the config alias carries only the fields a stored alias keeps, matching what GET returns.
+                Alias entity = BLOB_MAPPER.treeToValue(StoredAliases.toJson(dirty), Alias.class);
+                Object previous = config.getAliases().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
             default -> {
                 /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */
                 return new BlobPutResult(null, null);
@@ -1717,6 +1758,7 @@ public final class MergedConfigStore implements ConfigStore {
             case ROUTER -> restore(config.getRouters(), mapKey, (Router) previous);
             case POLICY -> restore(config.getPolicies(), mapKey, (Policy) previous);
             case POLICY_ASSIGNMENT -> restore(config.getPolicyAssignments(), mapKey, (PolicyAssignment) previous);
+            case ALIAS -> restore(config.getAliases(), mapKey, (Alias) previous);
             default -> { /* no-op */ }
         }
     }

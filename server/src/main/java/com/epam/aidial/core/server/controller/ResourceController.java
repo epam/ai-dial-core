@@ -26,6 +26,7 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ExternalServicesWriteMode;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -659,6 +660,7 @@ public class ResourceController extends AccessControlBaseController {
 
     private void validateCustomApplication(Application application) {
         try {
+            ResourceDependencyValidator.validateShape(application);
             checkCreateCodeApp(application);
             validateSchemaBasedApplication(application);
             if (!application.getInterceptors().isEmpty()) {
@@ -766,16 +768,18 @@ public class ResourceController extends AccessControlBaseController {
                         ProxyUtil.hasTopLevelField(bodyJson, "external_services", "externalServices")
                                 ? ExternalServicesWriteMode.OVERRIDE
                                 : ExternalServicesWriteMode.PRESERVE_IF_OMITTED;
+                boolean dependenciesSubmitted = ProxyUtil.hasTopLevelField(bodyJson, "resource_dependencies", "resourceDependencies");
                 AdminManagedFieldsWriteMode adminManagedFieldsWriteMode =
                         AdminManagedFieldsWriteMode.of(adminPublicWrite, bodyJson);
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
                     if (isUnitRoleWrite(descriptor, adminPublicWrite)) {
                         return applicationService.putApplicationByUnitRole(descriptor, etag, author, application,
-                                externalServicesWriteMode).getKey();
+                                externalServicesWriteMode, dependenciesSubmitted).getKey();
                     }
+                    boolean userAuthored = !accessService.hasExplicitAdminAccess(context);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
-                            adminManagedFieldsWriteMode, externalServicesWriteMode).getKey();
+                            adminManagedFieldsWriteMode, externalServicesWriteMode, userAuthored, dependenciesSubmitted).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {

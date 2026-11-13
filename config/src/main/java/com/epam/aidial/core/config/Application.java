@@ -54,6 +54,10 @@ public class Application extends Deployment {
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
     private boolean allowUserExternalServices;
 
+    @JsonAlias({"resourceDependencies", "resource_dependencies"})
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private List<ResourceDependency> resourceDependencies = List.of();
+
     // maintain the order of routes defined in the app config
     private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
 
@@ -211,5 +215,6 @@ public class Application extends Deployment {
         this.setExternalServices(source.getExternalServices());
         this.setAppIdentity(source.getAppIdentity());
         this.setAllowUserExternalServices(source.isAllowUserExternalServices());
+        this.setResourceDependencies(source.getResourceDependencies());
     }
 }
