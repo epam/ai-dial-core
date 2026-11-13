@@ -15,6 +15,7 @@ import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.OrgUnitService;
@@ -30,6 +31,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.service.ResourceTopic;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -61,6 +63,8 @@ public class ResourceOperationController {
     private final OrgUnitService orgUnitService;
     private final ApplicationSchemaService applicationSchemaService;
     private final CatalogSchemaService catalogSchemaService;
+    private final ApplicationService applicationService;
+    private final ResourceService resourceService;
 
     public ResourceOperationController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -73,6 +77,8 @@ public class ResourceOperationController {
         this.orgUnitService = proxy.getOrgUnitService();
         this.applicationSchemaService = proxy.getApplicationSchemaService();
         this.catalogSchemaService = proxy.getCatalogSchemaService();
+        this.applicationService = proxy.getApplicationService();
+        this.resourceService = proxy.getResourceService();
     }
 
     @ApiOperation(
@@ -290,6 +296,9 @@ public class ResourceOperationController {
         if (!destination.isPublic()) {
             return;
         }
+        if (deployment instanceof Application application) {
+            requireInterceptorsKept(application, source, destination);
+        }
 
         Set<ResourceDescriptor> files = new HashSet<>(catalogSchemaService.getFiles(deployment));
         if (deployment instanceof Application application) {
@@ -300,6 +309,18 @@ public class ResourceOperationController {
             if (file.isFolder() || !permissions.get(file).contains(ResourceAccessType.READ)) {
                 throw new PermissionDeniedException("No read access to %s, which the resource refers to".formatted(file.getUrl()));
             }
+        }
+    }
+
+    /**
+     * Only DIAL admins set interceptors: a copy or move replacing an application keeps the interceptors it has, and a
+     * new one brings them only from the shared space.
+     */
+    private void requireInterceptorsKept(Application application, ResourceDescriptor source, ResourceDescriptor destination) {
+        if (resourceService.hasResource(destination)) {
+            ApplicationService.requireSameInterceptors(application, applicationService.getApplication(destination).getValue());
+        } else if (!source.isPublic() && !ApplicationService.interceptorsOf(application).isEmpty()) {
+            throw new PermissionDeniedException(ApplicationService.ONLY_ADMINS_SET_INTERCEPTORS);
         }
     }
 
