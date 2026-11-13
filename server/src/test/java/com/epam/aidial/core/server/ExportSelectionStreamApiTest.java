@@ -1,158 +1,215 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Level;
+import com.epam.aidial.core.server.ExportApiSupport.Logs;
+import com.epam.aidial.core.server.ExportApiSupport.Reply;
 import com.epam.aidial.core.server.service.ExportArchive;
-import com.epam.aidial.core.server.service.ExportArchive.BodyRedactor;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.epam.aidial.core.storage.util.EtagHeader;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.junit.jupiter.api.BeforeEach;
+import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayInputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The response of the selective Application export on {@code POST /v1/admin/export}, end to end: the closure, the redaction,
- * the archive and the stream, through the real server. The tests swap the production redactor for a {@link BodyRedactor} that
- * removes the {@code description} field, so a body is shown to be redacted before it is exported; it is a stand-in, not a policy.
+ * The response of the selective export on {@code POST /v1/admin/export}, end to end through the real server: the stream, the entry of each
+ * resource, the absence of secrets and the logged references.
  */
 public class ExportSelectionStreamApiTest extends ResourceBaseTest {
 
-    private static final String PATH = "/v1/admin/export";
-    private static final String SECRET = "SECRET-FIELD-VALUE-MARKER";
-    private static final String ROOT_REQUEST = "{\"roots\":[{\"type\":\"application\",\"url\":\"applications/platform/exported\"}]}";
+    /** The live stand of a developer may hold 9876, which the other tests of the toolset use. */
+    private static final int TOOLSET_PORT = 9877;
+    private static final String SECRET = "the-client-secret-8f3a";
+    private static final String ROUTE_KEY = "ROUTE-UPSTREAM-KEY-VALUE";
+    private static final String TOOLSET_SECRET = "the-toolset-secret-77aa";
+    private static final String MODEL_KEY = "MODEL-UPSTREAM-KEY-VALUE";
+    private static final String ROOT_REQUEST = ExportApiSupport.rootsRequest("applications/platform/exported");
 
-    private static final BodyRedactor REMOVES_THE_DESCRIPTION = (identity, body) -> {
-        try {
-            ObjectNode node = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
-            node.remove("description");
-            return ProxyUtil.MAPPER.writeValueAsBytes(node);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("not JSON", e);
-        }
-    };
-
-    private record Reply(int status, String contentType, String disposition, byte[] body) {
-        String text() {
-            return new String(body, StandardCharsets.UTF_8);
-        }
-    }
-
-    @BeforeEach
-    void setRedactor() {
-        dial.getProxy().setExportBodyRedactor(REMOVES_THE_DESCRIPTION);
-    }
-
-    private Reply post(String token, String body) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + serverPort + PATH))
-                .version(HttpClient.Version.HTTP_1_1).header("authorization", token)
-                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
-        HttpResponse<byte[]> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofByteArray());
-        return new Reply(response.statusCode(), response.headers().firstValue("Content-Type").orElse("-"),
-                response.headers().firstValue("Content-Disposition").orElse("-"), response.body());
-    }
-
-    private static Map<String, byte[]> entries(Reply reply) throws Exception {
-        Map<String, byte[]> entries = new LinkedHashMap<>();
-        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(reply.body()))) {
-            for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
-                entries.put(entry.getName(), zip.readAllBytes());
-            }
-        }
-        return entries;
+    private Reply post(String body) throws Exception {
+        return ExportApiSupport.post(serverPort, body);
     }
 
     private void store(String name, String json) {
-        dial.getStorage().store("platform/applications/" + name, "application/json", null, Map.of(), json.getBytes(StandardCharsets.UTF_8));
+        ExportApiSupport.storeJson(dial, "platform/applications/" + name, json);
     }
 
-    private void storeRootWithDependency() {
-        store("exported", "{\"endpoint\":\"http://application.invalid/chat\",\"description\":\"" + SECRET
-                + "\",\"dependencies\":[\"applications/platform/dependency\"]}");
+    private void put(String path, String body) {
+        verify(send(HttpMethod.PUT, path, null, body, "authorization", "admin", "If-None-Match", "*"), 200);
+    }
+
+    private JsonNode adminGet(String path) throws IOException {
+        Response get = send(HttpMethod.GET, path, null, "", "authorization", "admin");
+        verify(get, 200);
+        return ProxyUtil.MAPPER.readTree(get.body());
+    }
+
+    /**
+     * What the admin GET adds to the entity and the entry does not have: the name and status of the API projection and the computed sign-in
+     * statuses.
+     */
+    private static JsonNode withoutApiFields(JsonNode tree) {
+        ObjectNode copy = tree.deepCopy();
+        copy.remove("name");
+        copy.remove("status");
+        List<JsonNode> authSettings = new ArrayList<>();
+        authSettings.add(copy.get("auth_settings"));
+        if (copy.has("external_services")) {
+            copy.get("external_services").forEach(service -> authSettings.add(service.get("auth_settings")));
+        }
+        authSettings.stream().filter(auth -> auth instanceof ObjectNode).forEach(auth -> ((ObjectNode) auth)
+                .remove(List.of("user_level_auth_status", "app_level_auth_status", "global_auth_status")));
+        return copy;
+    }
+
+    /** Stores, through the admin API (so that secrets are encrypted at rest), a graph with every kind of secret. */
+    private void storeGraphWithSecrets() throws Exception {
+        put("/v1/interceptors/platform/icpt", "{\"endpoint\":\"http://localhost:4088/api/v1/interceptor/handle\"}");
+        put("/v1/models/platform/mdl", "{\"type\":\"chat\",\"endpoint\":\"http://localhost:7001/chat\",\"interceptors\":[\"icpt\"],"
+                + "\"upstreams\":[{\"endpoint\":\"http://localhost:7001/u\",\"key\":\"" + MODEL_KEY + "\"}]}");
+        try (TestWebServer ignore = new TestWebServer(TOOLSET_PORT)) {
+            put("/v1/toolsets/platform/tools", "{\"endpoint\":\"http://localhost:" + TOOLSET_PORT + "\",\"transport\":\"HTTP\",\"display_name\":\"Tools\","
+                    + "\"auth_settings\":{\"authentication_type\":\"OAUTH\",\"client_id\":\"tcid\",\"client_secret\":\"" + TOOLSET_SECRET + "\","
+                    + "\"redirect_uri\":\"http://localhost:3000/auth/signin\",\"authorization_endpoint\":\"https://static.auth.example.com/authorize\","
+                    + "\"token_endpoint\":\"https://static.auth.example.com/token\"}}");
+        }
+        put("/v1/applications/platform/exported", """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Secret-bearing App",
+                  "description": "d",
+                  "dependencies": ["mdl", "toolsets/platform/tools"],
+                  "routes": {"r": {"paths": ["/x"], "upstreams": [{"endpoint": "http://localhost:7001/r", "key": "%s"}]}},
+                  "external_services": {
+                    "svc1": {
+                      "display_name": "Salesforce",
+                      "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "my-client-id",
+                        "client_secret": "%s",
+                        "redirect_uri": "http://localhost:3000/auth/signin",
+                        "authorization_endpoint": "https://static.auth.example.com/authorize",
+                        "token_endpoint": "https://static.auth.example.com/token"
+                      }
+                    }
+                  }
+                }
+                """.formatted(ROUTE_KEY, SECRET));
+    }
+
+    @Test
+    void testSelectedApplicationAndItsDependencyAreStreamedAsZipInBreadthFirstOrder() throws Exception {
+        store("exported", "{\"endpoint\":\"http://application.invalid/chat\",\"dependencies\":[\"applications/platform/dependency\"]}");
         store("dependency", "{\"endpoint\":\"http://dependency.invalid/chat\"}");
-    }
 
-    private static JsonNode registryOf(Map<String, byte[]> entries) throws Exception {
-        return ProxyUtil.MAPPER.readTree(entries.get(ExportArchive.REGISTRY_ENTRY));
-    }
-
-    @Test
-    void testSidecarOfResourceWrittenThroughTheResourceServiceHoldsItsTimes() throws Exception {
-        ResourceDescriptor written = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION, "platform", "platform/", "written");
-        dial.getProxy().getResourceService().putResource(written, "{\"endpoint\":\"http://written.invalid/chat\"}", EtagHeader.ANY, null, false);
-
-        Map<String, byte[]> writtenEntries = entries(post("admin", "{\"roots\":[{\"type\":\"application\",\"url\":\"applications/platform/written\"}]}"));
-
-        JsonNode sidecar = ProxyUtil.MAPPER.readTree(writtenEntries.get(".dial-system-export/metadata/platform/applications/written"));
-        assertEquals("application/json", sidecar.get("contentType").asText());
-        assertFalse(sidecar.has("contentEncoding") || sidecar.has("userMetadata"));
-        assertTrue(Instant.parse(sidecar.get("creationDate").asText()).isBefore(Instant.now().plusSeconds(60)));
-        assertTrue(Instant.parse(sidecar.get("lastModified").asText()).isBefore(Instant.now().plusSeconds(60)));
-    }
-
-    @Test
-    void testSelectedApplicationAndItsDependencyAreStreamedAsZipWithTheBodiesRedacted() throws Exception {
-        storeRootWithDependency();
-
-        Reply reply = post("admin", ROOT_REQUEST);
+        Reply reply = post(ROOT_REQUEST);
 
         assertEquals(200, reply.status());
         assertEquals("application/zip", reply.contentType());
         assertTrue(reply.disposition().startsWith("attachment; filename=\"dial-export-"), reply.disposition());
-        Map<String, byte[]> entries = entries(reply);
-        List<String> names = new ArrayList<>(entries.keySet());
-        assertEquals(ExportArchive.MANIFEST_ENTRY, names.get(0), "the manifest is the first entry");
-        assertEquals(ExportArchive.VERIFICATION_ENTRY, names.get(names.size() - 1), "the verification entry is the last");
-        assertEquals(7, names.size());
-
-        JsonNode registry = registryOf(entries);
-        assertEquals("dial-export-dependency-registry", registry.get("kind").asText());
-        assertEquals(1, registry.get("roots").size());
-        assertEquals(2, registry.get("resources").size());
-        JsonNode root = ExportRegistryJson.resources(registry).get(0);
-        assertEquals("selected", root.get("role").asText());
-        assertEquals("dependency", ExportRegistryJson.resources(registry).get(1).get("role").asText());
-
-        assertFalse(reply.text().contains(SECRET), "the removed field is not in the response");
-        for (JsonNode resource : registry.get("resources")) {
-            assertTrue(entries.containsKey(resource.get("entryName").asText()));
-        }
-        assertFalse(new String(entries.get(root.get("entryName").asText()), StandardCharsets.UTF_8).contains("description"));
+        List<String> names = new ArrayList<>(reply.entries().keySet());
+        assertEquals(List.of(ExportArchive.MANIFEST_ENTRY, "platform/applications/exported", "platform/applications/dependency"), names,
+                "the manifest first, then one entry per resource at its storage path, and nothing else");
     }
 
     @Test
-    void testRedactorFailureIsServerErrorBeforeTheArchiveAndEchoesNothing() throws Exception {
-        storeRootWithDependency();
-        dial.getProxy().setExportBodyRedactor((identity, body) -> {
-            throw new IllegalStateException("cannot redact " + SECRET);
+    void testManifestIsTheFirstEntryAndHoldsFormatModeVersionAndTime() throws Exception {
+        store("exported", "{\"endpoint\":\"http://application.invalid/chat\"}");
+
+        Reply reply = post(ROOT_REQUEST);
+
+        assertEquals(200, reply.status());
+        assertEquals(".dial-export/manifest.json", reply.entries().keySet().iterator().next());
+        JsonNode manifest = ProxyUtil.MAPPER.readTree(reply.entries().get(ExportArchive.MANIFEST_ENTRY));
+        assertEquals(2, manifest.get("formatVersion").asInt());
+        assertEquals("selective", manifest.get("mode").asText());
+        assertFalse(manifest.get("coreVersion").asText().isBlank());
+        assertTrue(Instant.parse(manifest.get("createdAt").asText()).isBefore(Instant.now().plusSeconds(60)));
+        assertEquals(4, manifest.size());
+    }
+
+    @Test
+    void testSuccessfulExportIsRecordedAtInfoAsStartedAndCompletedWithCountsAndNoRoot() throws Exception {
+        store("exported", "{\"endpoint\":\"http://application.invalid/chat\",\"dependencies\":[\"applications/platform/dependency\"]}");
+        store("dependency", "{\"endpoint\":\"http://dependency.invalid/chat\"}");
+        Reply reply;
+        List<String> started;
+        List<String> completed;
+        String logText;
+        try (Logs logs = new Logs()) {
+            reply = post(ROOT_REQUEST);
+            started = logs.lines(Level.INFO, "Export started");
+            completed = logs.lines(Level.INFO, "Export completed");
+            logText = logs.text();
+        }
+
+        assertEquals(200, reply.status());
+        assertEquals(List.of("INFO Export started: roots=1"), started);
+        assertEquals(1, completed.size(), completed.toString());
+        assertTrue(completed.get(0).matches("INFO Export completed: duration=\\d+ms, resources=2"), completed.get(0));
+        assertEquals(3, reply.entries().size(), "the manifest and the two resources");
+        assertFalse(started.get(0).contains("exported") || completed.get(0).contains("exported"), "a record names no root");
+        assertFalse(logText.contains("Admin export rejected"), logText);
+    }
+
+    @Test
+    void testEveryEntryIsTheAdminGetProjectionOfItsEntityAndNoSecretIsInTheArchive() throws Exception {
+        storeGraphWithSecrets();
+        JsonNode applicationGet = adminGet("/v1/applications/platform/exported");
+        JsonNode modelGet = adminGet("/v1/models/platform/mdl");
+        JsonNode interceptorGet = adminGet("/v1/interceptors/platform/icpt");
+        JsonNode toolSetGet = adminGet("/v1/toolsets/platform/tools");
+
+        Reply reply = post(ROOT_REQUEST);
+
+        assertEquals(200, reply.status());
+        Map<String, byte[]> entries = reply.entries();
+        assertEquals(List.of("platform/applications/exported", "platform/models/mdl", "platform/toolsets/tools", "platform/interceptors/icpt"),
+                ExportApiSupport.resourceNames(entries), "the root, then its references in the order of the body, then theirs");
+        assertEquals(withoutApiFields(applicationGet), withoutApiFields(ProxyUtil.MAPPER.readTree(entries.get("platform/applications/exported"))));
+        assertEquals(withoutApiFields(modelGet), withoutApiFields(ProxyUtil.MAPPER.readTree(entries.get("platform/models/mdl"))));
+        assertEquals(withoutApiFields(interceptorGet), withoutApiFields(ProxyUtil.MAPPER.readTree(entries.get("platform/interceptors/icpt"))));
+        assertEquals(withoutApiFields(toolSetGet), withoutApiFields(ProxyUtil.MAPPER.readTree(entries.get("platform/toolsets/tools"))));
+        JsonNode application = ProxyUtil.MAPPER.readTree(entries.get("platform/applications/exported"));
+        assertEquals("8f3a", application.at("/external_services/svc1/auth_settings/client_secret_hint").asText(),
+                "the hint comes from the decrypted secret, not from its ciphertext");
+        assertEquals("77aa", ProxyUtil.MAPPER.readTree(entries.get("platform/toolsets/tools")).at("/auth_settings/client_secret_hint").asText());
+
+        entries.forEach((name, content) -> {
+            String text = new String(content, StandardCharsets.UTF_8);
+            assertFalse(text.contains("ENC["), "ciphertext in " + name);
+            for (String secret : List.of(SECRET, ROUTE_KEY, TOOLSET_SECRET, MODEL_KEY)) {
+                assertFalse(text.contains(secret), secret + " in " + name);
+            }
         });
+    }
 
-        Reply reply = post("admin", ROOT_REQUEST);
+    @Test
+    void testBodyThatCannotBeBoundCutsTheStreamLogsTheResourceAndReleasesTheBucketLocks() throws Exception {
+        store("exported", "{\"endpoint\":\"http://application.invalid/chat\",\"dependencies\":[\"applications/platform/mistyped\"]}");
+        store("mistyped", "{\"endpoint\":{\"nested\":\"SECRET-IN-BODY\"}}");
+        String logText;
+        List<String> aborts;
+        try (Logs logs = new Logs()) {
+            ExportApiSupport.assertExportFails(serverPort, ROOT_REQUEST);
+            logText = logs.text();
+            aborts = logs.lines(Level.WARN, "Export aborted after the response started");
+        }
 
-        assertEquals(500, reply.status());
-        assertNotEquals("application/zip", reply.contentType());
-        assertFalse(reply.disposition().contains("dial-export"));
-        assertFalse(reply.text().contains(SECRET), "the answer echoes the cause: " + reply.text());
+        assertEquals(1, aborts.size(), logText);
+        assertTrue(aborts.get(0).contains("resource=application:platform:mistyped,"), "the abort record holds the key: " + aborts.get(0));
+        assertTrue(aborts.get(0).contains("(resource=application:platform:mistyped)"), "the message holds the key: " + aborts.get(0));
+        assertFalse(aborts.get(0).contains("applications/platform/mistyped"), "the abort record holds the URL: " + aborts.get(0));
+        assertFalse(logText.contains("SECRET-IN-BODY"), "the log holds no value of the body");
+        ExportApiSupport.awaitLocksReleased(dial.getProxy().getLockService());
     }
 }

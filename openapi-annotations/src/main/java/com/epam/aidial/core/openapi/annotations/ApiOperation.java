@@ -14,8 +14,6 @@ public @interface ApiOperation {
     String path();
     String operationId();
     ApiSchema requestBody() default @ApiSchema;
-    /** False when the endpoint also accepts an empty body, so the request body is rendered as optional. */
-    boolean requestBodyRequired() default true;
     /** The description of the operation; empty for none. */
     String description() default "";
     String[] tags() default {};

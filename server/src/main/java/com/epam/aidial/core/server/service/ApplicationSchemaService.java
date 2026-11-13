@@ -89,8 +89,8 @@ public class ApplicationSchemaService {
             .build();
 
     /**
-     * The factory of the export: the same meta-schema and keywords as {@link #SCHEMA_FACTORY}, but it refuses every
-     * {@code $ref} that is not local to the document, so a schema document cannot make Core fetch or read anything.
+     * The export's factory: as {@link #SCHEMA_FACTORY}, but it refuses every {@code $ref} that is not local to the document, so a schema
+     * cannot make Core fetch anything.
      */
     private static final JsonSchemaFactory EXPORT_SCHEMA_FACTORY = JsonSchemaFactory.builder()
             .metaSchema(DIAL_META_SCHEMA)
@@ -213,12 +213,11 @@ public class ApplicationSchemaService {
     }
 
     /**
-     * Builds the schema from its stored document and, when it declares {@code dial:applicationTypeSchemaEndpoint}, from a
-     * download of the runner's document. It neither reads nor writes the cache.
+     * Builds the schema from its stored document and, when it declares {@code dial:applicationTypeSchemaEndpoint}, from a download of
+     * the runner's document; the cache is not touched.
      *
-     * @param quiet true for the export: a failed download then writes no endpoint, response or exception to a log, raises an exception that
-     *              carries no endpoint and no cause, and an interrupt is restored and rethrown. Request processing passes false and
-     *              behaves exactly as before: the endpoint and the cause are logged and wrapped, an interrupt included
+     * @param quiet true for the export: a failed download logs no endpoint or response, the exception carries no endpoint or cause,
+     *              and an interrupt is rethrown. Request processing passes false
      */
     @SneakyThrows
     @Nullable
@@ -489,19 +488,17 @@ public class ApplicationSchemaService {
     /**
      * The schema of an application as the export holds it: evaluable, or the reason why it is not.
      *
-     * @param schema the schema, built with the factory that refuses a {@code $ref} outside the document; {@code null} when there is an issue
-     * @param issue  {@code SCHEMA_NOT_FOUND} when nothing holds the id, {@code SCHEMA_UNAVAILABLE} when the schema, or the document of its
-     *               Runner, cannot be evaluated; {@code null} when there is a schema
+     * @param schema {@code null} when there is an issue
+     * @param issue  {@code SCHEMA_NOT_FOUND} when nothing holds the id, {@code SCHEMA_UNAVAILABLE} when the schema or its Runner's document
+     *               cannot be evaluated
      */
     public record ExportSchema(@Nullable JsonSchema schema, @Nullable CollectionIssueKind issue) {
     }
 
     /**
-     * Builds the schema with the given id from the given configuration, so that an export which holds one snapshot looks the schema up in
-     * the same generation as everything else. The schema is built as request processing builds it, through the same download of the
-     * Runner's document, but live: the cache is neither read nor written, so the export never sees a stale schema and never replaces the
-     * one that request processing uses. A missing schema and an unusable remote part are an {@link ExportSchema} with an issue, not an
-     * exception; any other failure propagates.
+     * Builds the schema from the given configuration, live: the cache is neither read nor written, so the export never sees a stale
+     * schema and never replaces the one of request processing. A missing or unusable schema is an {@link ExportSchema} with an issue;
+     * any other failure propagates.
      */
     public ExportSchema buildExportSchema(URI schemaId, Config config) {
         CachedSchema cached;
@@ -521,8 +518,8 @@ public class ApplicationSchemaService {
     }
 
     /**
-     * Collects the marked values of the application's properties against a schema that the caller already holds. The collector parses
-     * nothing, checks no existence and authorizes nothing: it returns the original values with their marker kind and RFC 6901 pointer.
+     * Collects the marked values of the application's properties against a schema that the caller already holds, with their RFC 6901
+     * pointer; nothing is parsed, checked or authorized.
      *
      * <p>Issues carry no library message and no value, because a message can hold the instance value or an IRI.
      */

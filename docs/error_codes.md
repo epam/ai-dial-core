@@ -20,7 +20,7 @@ User is authenticated by Core but doesn't have insufficient permissions to a res
 - lack of privileges for access to model, application
 - admin can approve publications only
 - access to attached files in chat completion request
-- caller of `POST /v1/admin/export` is not an explicit admin, uses a per-request API key, or cannot read a selected or referenced `public/` resource
+- caller of `POST /v1/admin/export` is not an explicit admin, uses a per-request API key, or cannot read a selected `public/` Application
 
 #### 404 NOT FOUND
 
@@ -48,7 +48,7 @@ The status code indicates a request conflict with the current state of the targe
  - Application must be stopped before deployment
  - Application must be started before undeployment
  - Application must be stopped before deleting
- - `POST /v1/admin/export`: another export of Applications is running (the one cluster-wide slot), retry later
+ - `POST /v1/admin/export`: a bucket lock of `public/` or `platform/` is held by another export, a system export or an admin write, retry later
 
 #### 412 PRECONDITION FAILED
 
@@ -62,7 +62,6 @@ In that case, the request (usually an upload or a modification of a resource) ca
 The status code indicates that the request entity was larger than limits defined by server:
 - `maxUploadedFileSize` defined in storage settings if content type is `multipart/form-data`. The default value is 512 Mb.
 - `maxSize` defined in resource settings. The default value is 67 Mb
-- `POST /v1/admin/export`: the export exceeds one of the limits `adminExport.maxNodes`, `maxDepth`, `maxEdges`, `maxResourceMiB` or `maxRetainedMiB` (counted on the stored bodies read and on the redacted bytes held); nothing is exported
 
 #### 415 UNSUPPORTED_MEDIA_TYPE
 
@@ -73,7 +72,7 @@ Supported content type is `application/json` for chat completion requests only.
 
 The server failed to receive request body.
 
-`POST /v1/admin/export` never answers 422: unresolved dependencies are listed in the registry of a `200` response, see [Admin export](admin-export.md#unresolved-dependencies-and-partial-exports)
+`POST /v1/admin/export` never answers 422: references that are not followed are logged by the server and the response is still `200`, see [Admin export](admin-export.md#references-that-are-not-followed)
 
 #### 429 TOO MANY REQUESTS
 
@@ -90,7 +89,7 @@ On the Responses routes (`/openai/v1/responses`, `/openai/responses`) a reached 
 
 The status code indicates that the server encountered an unexpected condition that prevented it from fulfilling the request. This error is a generic "catch-all" response to server issues, indicating that the server cannot find a more appropriate 5XX error to respond with.
 
-- `POST /v1/admin/export` failed before the archive started (`Failed to prepare the export`), for example a stored body of an Application, Model, Interceptor or ToolSet that cannot be parsed or bound, a body that is not a JSON object, or an unsafe resource path. `Failed to export the Applications` is the answer when the response streamer fails before it writes the head
+- `POST /v1/admin/export` failed before the archive started (`Failed to prepare the export`), for example when the roots could not be checked. `Failed to export the Applications` is the answer when the writer fails before the first bytes of the archive reach the response. After the response has started no status is sent: a limit, the deadline, a body that cannot be bound or a failed read cut the stream, see [Admin export](admin-export.md#responses)
 
 #### 502 BAD GATEWAY
 The status code indicates that a server was acting as a gateway or proxy and that it received an invalid response from the upstream server.
@@ -108,14 +107,12 @@ In overload cases, some server-side applications will reject requests with a 503
 - All retries to upstream servers are returned with 429 error
 - The application controller is not available
 - Code interpreter is not available
-- No redactor is configured for `POST /v1/admin/export`, so no body may be exported (answered after the request checks and the plan)
 
 #### 504 GATEWAY TIMEOUT
 
 The status code indicates that the server, while acting as a gateway or proxy, did not get a response in time from the upstream server in order to complete the request.
 
 - Upstream server didn't respond in time on chat completion request
-- `POST /v1/admin/export` did not finish within `adminExport.deadline` before the first byte (after it the connection is reset)
 
 #### 505 HTTP VERSION NOT SUPPORTED
 

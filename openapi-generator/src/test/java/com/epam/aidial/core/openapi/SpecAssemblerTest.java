@@ -1,7 +1,10 @@
 package com.epam.aidial.core.openapi;
 
+import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.server.controller.AdminExportController;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.swagger.v3.core.util.Yaml;
 import io.swagger.v3.oas.models.media.Schema;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +26,16 @@ class SpecAssemblerTest {
         assertNotNull(yaml);
         assertTrue(yaml.contains(version), "YAML should contain the parameterized version");
         assertFalse(yaml.contains("0.42.0-rc"), "YAML should not contain the old hardcoded version");
+    }
+
+    @Test
+    void descriptionOfAnOperationIsRenderedFromItsAnnotation() throws Exception {
+        String description = AdminExportController.class.getMethod("handle").getAnnotation(ApiOperation.class).description();
+
+        String yaml = new SpecAssembler("1.0.0").assemble();
+
+        assertFalse(description.isEmpty());
+        assertEquals(description, Yaml.mapper().readTree(yaml).at("/paths/~1v1~1admin~1export/post/description").asText());
     }
 
     @Test

@@ -22,8 +22,8 @@ import java.util.List;
  * Admin-only system export of the {@code public} and {@code platform} buckets at {@code POST /v1/admin/system-export}.
  * The optional {@code scope} query parameter selects the buckets, see {@link AdminSystemExportService#resolveBucketLocations}.
  *
- * <p>The archive is streamed while {@link AdminSystemExportService} builds it, as {@link ZipResponseStreamer} describes.
- * A failure before the head, such as {@code 409} when another system export or a write holds a bucket lock, gets a status.
+ * <p>The archive is streamed as {@link ZipResponseStreamer} describes; a failure before the head, such as a {@code 409} on a held bucket
+ * lock, gets a status.
  */
 public class AdminSystemExportController implements Controller {
 
@@ -78,7 +78,7 @@ public class AdminSystemExportController implements Controller {
         }
 
         Instant start = Instant.now();
-        streamer.stream(context, "dial-system-export", start, null, ExportSlot.none(), out -> exportService.export(out, start, bucketLocations), error -> {
+        streamer.stream(context, "dial-system-export", start, null, ExportSlot.newReleasedSlot(), out -> exportService.export(out, start, bucketLocations), error -> {
             if (error instanceof AdminSystemExportBusyException) {
                 context.respond(HttpStatus.CONFLICT, error.getMessage());
             } else {

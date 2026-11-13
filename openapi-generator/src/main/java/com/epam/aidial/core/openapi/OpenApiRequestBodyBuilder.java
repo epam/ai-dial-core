@@ -16,7 +16,7 @@ public final class OpenApiRequestBodyBuilder {
         }
 
         RequestBody requestBody = new RequestBody();
-        requestBody.setRequired(endpoint.requestBodyRequired());
+        requestBody.setRequired(true);
 
         Content content = new Content();
         MediaType mediaType = new MediaType();

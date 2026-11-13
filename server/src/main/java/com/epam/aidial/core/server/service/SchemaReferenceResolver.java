@@ -5,7 +5,6 @@ import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.service.ShortNameResolution.Origin;
 import com.epam.aidial.core.server.service.ShortNameResolution.Outcome;
-import com.epam.aidial.core.server.service.ShortNameResolution.Skipped;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
@@ -25,20 +24,19 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 /**
- * Resolves an application type schema or a catalog schema by its {@code $id}, with the same three signals as
- * {@link ShortNameResolver}. A schema is keyed by its body {@code $id} and its blob name is arbitrary, so the platform-blob signal
- * is a scan of the platform schema blobs, done once per schema type: it pages through the metadata and reads one body at a time
- * under the deadline, and keeps only the {@code $id} of each. The scan is outside the snapshot. The instance is not thread-safe
- * and serves one export.
+ * Resolves an application type schema or a catalog schema by its {@code $id}, with the same three signals as {@link ShortNameResolver}.
+ * The blob name of a schema is arbitrary, so the platform-blob signal is a scan of the platform schema blobs, once per schema type, one
+ * body at a time under the deadline, keeping only the {@code $id}; the scan is outside the snapshot. Not thread-safe; serves one export.
  */
 public final class SchemaReferenceResolver {
 
     /**
      * @param descriptor the platform blob of an effective platform schema; {@code null} otherwise
      */
-    public record SchemaResolution(Outcome outcome, @Nullable ResourceDescriptor descriptor, @Nullable Origin origin,
-                                   boolean hasShadowedEntity, List<Skipped> skipped) {
+    public record SchemaResolution(Outcome outcome, @Nullable ResourceDescriptor descriptor, @Nullable Origin origin) {
     }
+
+    private static final SchemaResolution UNKNOWN = new SchemaResolution(Outcome.ORIGIN_UNKNOWN, null, null);
 
     /** The blobs of one page that the scan lists; the bodies are read one by one, not with the page. */
     private static final int SCAN_PAGE_SIZE = 100;
@@ -61,57 +59,46 @@ public final class SchemaReferenceResolver {
     }
 
     /**
-     * @param type     {@link ResourceTypes#APP_TYPE_SCHEMA} or {@link ResourceTypes#CATALOG_SCHEMA}
-     * @param schemaId the {@code $id} that a reference names
+     * Exactly one valid platform blob with the {@code $id} wins over a schema of the file configuration with that {@code $id}, whichever
+     * body the merged map holds; the file schema is the origin only when no valid blob carries the {@code $id}. Several valid blobs, or
+     * no file configuration, leave the origin unknown.
+     *
+     * @param type {@link ResourceTypes#APP_TYPE_SCHEMA} or {@link ResourceTypes#CATALOG_SCHEMA}
      */
     public SchemaResolution resolve(ResourceTypes type, String schemaId) {
         String mergedBody = MergedConfigStore.getSchemaMapOf(merged, type).get(schemaId);
         List<String> blobNames = blobNamesBySchemaId.computeIfAbsent(type, this::scanPlatformBlobs).getOrDefault(schemaId, List.of());
         Map<String, InvalidEntityRecord> invalidOfType = invalidEntities.getOrDefault(type, Map.of());
-        List<Skipped> skipped = new ArrayList<>();
+        boolean hasSkipped = false;
         List<String> validBlobNames = new ArrayList<>();
         for (String blobName : blobNames) {
             InvalidEntityRecord entry = invalidOfType.get(MergedConfigStore.canonicalId(type, ResourceDescriptor.PLATFORM_BUCKET, blobName));
             if (entry == null) {
                 validBlobNames.add(blobName);
             } else {
-                skipped.add(new Skipped(type, entry.getCanonicalId(), entry.getSource(), entry.getReason()));
+                hasSkipped = true;
             }
         }
 
         if (mergedBody == null) {
-            if (!skipped.isEmpty() && validBlobNames.isEmpty()) {
-                return new SchemaResolution(Outcome.SKIPPED, null, null, false, skipped);
+            if (hasSkipped && validBlobNames.isEmpty()) {
+                return new SchemaResolution(Outcome.SKIPPED, null, null);
             }
-            return new SchemaResolution(validBlobNames.isEmpty() ? Outcome.NOT_FOUND : Outcome.ORIGIN_UNKNOWN, null, null, false, skipped);
+            return new SchemaResolution(validBlobNames.isEmpty() ? Outcome.NOT_FOUND : Outcome.ORIGIN_UNKNOWN, null, null);
         }
         if (fileConfig == null) {
-            return unknown(skipped);
+            return UNKNOWN;
         }
         String fileBody = MergedConfigStore.getSchemaMapOf(fileConfig, type).get(schemaId);
-        boolean isFileInstance = fileBody != null && fileBody == mergedBody;
-        boolean hasBlob = !blobNames.isEmpty();
-        boolean hasInvalidBlob = !skipped.isEmpty();
-
-        if (isFileInstance) {
-            return hasBlob && !hasInvalidBlob
-                    ? unknown(skipped)
-                    : new SchemaResolution(Outcome.FOUND, null, Origin.FILE, false, skipped);
-        }
-        if (hasBlob && validBlobNames.size() == 1) {
-            if (fileBody != null) {
-                // the export takes the file schema; the platform blob is shadowed (design Decision 23)
-                return new SchemaResolution(Outcome.FOUND, null, Origin.FILE, true, skipped);
-            }
+        if (validBlobNames.size() == 1) {
             ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(type, ResourceDescriptor.PLATFORM_BUCKET,
                     ResourceDescriptor.PLATFORM_LOCATION, validBlobNames.get(0));
-            return new SchemaResolution(Outcome.FOUND, descriptor, Origin.PLATFORM, false, skipped);
+            return new SchemaResolution(Outcome.FOUND, descriptor, Origin.PLATFORM);
         }
-        return unknown(skipped);
-    }
-
-    private static SchemaResolution unknown(List<Skipped> skipped) {
-        return new SchemaResolution(Outcome.ORIGIN_UNKNOWN, null, null, false, skipped);
+        if (validBlobNames.isEmpty() && fileBody != null && fileBody == mergedBody) {
+            return new SchemaResolution(Outcome.FOUND, null, Origin.FILE);
+        }
+        return UNKNOWN;
     }
 
     private Map<String, List<String>> scanPlatformBlobs(ResourceTypes type) {

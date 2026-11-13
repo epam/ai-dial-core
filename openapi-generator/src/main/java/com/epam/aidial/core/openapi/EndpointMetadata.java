@@ -21,13 +21,12 @@ public final class EndpointMetadata {
             ApiParameter[] parameters,
             ApiResponse[] responses,
             ApiExtension[] extensions,
-            boolean requestBodyRequired,
             String description
     ) {
 
         public Endpoint(String method, String path, String operationId, ApiSchema requestBody, String[] tags, String contentType,
                         ApiParameter[] parameters, ApiResponse[] responses, ApiExtension[] extensions) {
-            this(method, path, operationId, requestBody, tags, contentType, parameters, responses, extensions, true, "");
+            this(method, path, operationId, requestBody, tags, contentType, parameters, responses, extensions, "");
         }
 
         public Endpoint {

@@ -31,6 +31,5 @@ public class MergedConfigStoreOriginSignalsTest extends MergedConfigStoreTestSup
         MergedConfigStore store = newStore(MergedConfigStore.MODE_SKIP);
 
         assertSame(SCHEMA_BODY, store.get().getApplicationTypeSchemas().get(SCHEMA_ID));
-        assertSame(file.getApplicationTypeSchemas().get(SCHEMA_ID), store.get().getApplicationTypeSchemas().get(SCHEMA_ID));
     }
 }

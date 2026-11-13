@@ -3166,19 +3166,13 @@ paths:
         "404":
           description: A selected Application does not exist
         "409":
-          description: "Another export of Applications is running (the one slot), retry later"
-        "413":
-          description: "A selective export exceeds a limit of the adminExport settings (resources, references, depth, size of one resource or total size); nothing is exported"
+          description: "A bucket lock is held by another export, a system export or an admin write, retry later"
         "500":
           description: The server had an error while processing your request.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
-        "503":
-          description: "No redactor is configured, so no body of a selection may be exported"
-        "504":
-          description: A selective export did not finish within the deadline of the adminExport settings
       x-preview: true
       requestBody:
         content:
@@ -3186,7 +3180,7 @@ paths:
             schema:
               $ref: "#/components/schemas/ExportRequestParserExportRequestBody"
         required: true
-      description: "Admin only (explicit admin rules; a per-request key is refused). Exports the selected Applications and their dependencies as a ZIP in the layout of the system export: the technical manifest first, the dependency registry second, each resource as redacted JSON at its storage path after its metadata entry, the resources of the file configuration as fragments, and a verification entry last. The export of whole buckets is POST /v1/admin/system-export. The request holds only roots. A dependency that is missing, unsupported, external or unresolved, and incomplete discovery, do not fail the export: the package is written and the registry lists each finding. See docs/admin-export.md."
+      description: "Admin only: the caller needs explicit admin rules, and a per-request key is refused. Exports the selected Applications and the dependencies that they need as a ZIP that is streamed one resource at a time. The entries come in this order: .dial-export/manifest.json (formatVersion 2, mode selective) first, then each resource at its storage path, the entities of the file configuration instead as fragments under .dial-export/config/. The archive holds no metadata entries and no verification entry. An Application, a Model, an Interceptor and a ToolSet are written in the form of the admin GET of the entity, without secrets (a masked client_secret_hint stays); an application type schema is written without the keys of its upstreams, and a catalog schema, a Prompt, a File and a Skill as stored. The archive holds no list of dependencies: a dependency that is missing, unsupported, external or unresolved does not fail the export and is only logged by the server. The request holds only roots, which are checked before the response starts (403 for a public root that the caller cannot read, 404 for a root that does not exist). The export holds the bucket locks of the admin buckets from before the response starts to the last byte, so it excludes the system export, another export and every admin write, and it answers 409 when a lock is held. A limit of the adminExport settings (resources, references, depth, size of one resource, deadline) or any other failure after the response has started cuts the stream: the connection is reset and the ZIP is incomplete, so a client must discard it. The export of whole buckets is POST /v1/admin/system-export. See docs/admin-export.md."
   /v1/admin/health/config:
     get:
       tags:

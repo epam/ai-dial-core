@@ -62,7 +62,6 @@ import com.epam.aidial.core.server.service.BackgroundJobService.Settings;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.ExportBodyRedactor;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
@@ -449,8 +448,6 @@ public class AiDial {
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
                     adminExportSettings, adminSystemExportService, adminSystemExportSettings, orgUnitService);
-            // the redaction of the bodies of an export of selected Applications; without it that export answers 503 and writes no body
-            proxy.setExportBodyRedactor(new ExportBodyRedactor());
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn

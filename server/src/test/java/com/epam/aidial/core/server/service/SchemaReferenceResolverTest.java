@@ -6,7 +6,6 @@ import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.service.SchemaReferenceResolver.SchemaResolution;
 import com.epam.aidial.core.server.service.ShortNameResolution.Origin;
 import com.epam.aidial.core.server.service.ShortNameResolution.Outcome;
-import com.epam.aidial.core.server.service.ShortNameResolution.Skipped;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
@@ -31,7 +30,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -45,12 +43,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * {@link SchemaReferenceResolver} on its own: a schema named by a fixed field is located by a scan of the platform schema blobs,
- * with every outcome of that lookup and a single listing per schema type. The same outcomes are also seen through
- * {@code DeploymentEdgeDiscoveryTest}, where they become edge statuses.
+ * {@link SchemaReferenceResolver} on its own: a schema named by a fixed field is located by a scan of the platform schema blobs, with every
+ * outcome of that lookup and a single listing per schema type. {@code DeploymentEdgeDiscoveryTest} shows the same outcomes as edge statuses.
  */
 @ExtendWith(MockitoExtension.class)
 public class SchemaReferenceResolverTest {
+
+    private static final ExportLimits.Deadline UNBOUNDED = TestDeadlines.NEVER;
 
     private static final String ID = "https://dial.example/schemas/quickapps";
     private static final String OTHER_ID = "https://dial.example/schemas/other";
@@ -86,7 +85,7 @@ public class SchemaReferenceResolverTest {
     }
 
     private SchemaReferenceResolver resolver() {
-        return new SchemaReferenceResolver(merged, invalid, file, resourceService, ExportLimits.Deadline.unbounded());
+        return new SchemaReferenceResolver(merged, invalid, file, resourceService, UNBOUNDED);
     }
 
     private static String body(String id) {
@@ -108,8 +107,6 @@ public class SchemaReferenceResolverTest {
                 new InvalidEntityRecord(blobName, canonicalId, reason, List.of(), "api", null));
     }
 
-    // ---- platform, shadowing, file-only
-
     @Test
     public void testPlatformSchemaIsLocatedByItsIdWhateverItsBlobIsNamed() {
         givenMerged(SCHEMA, ID, body(ID));
@@ -119,16 +116,14 @@ public class SchemaReferenceResolverTest {
 
         assertEquals(Outcome.FOUND, resolution.outcome());
         assertEquals(Origin.PLATFORM, resolution.origin());
-        assertFalse(resolution.hasShadowedEntity());
         assertEquals("arbitrary-name", resolution.descriptor().getName());
         assertEquals("folder", resolution.descriptor().getParentPath(), "the blob keeps its path");
         assertEquals(SCHEMA, resolution.descriptor().getType());
         assertEquals("platform/", resolution.descriptor().getBucketLocation());
-        assertTrue(resolution.skipped().isEmpty());
     }
 
     @Test
-    public void testFileSchemaTakesPrecedenceOverPlatformSchemaAndShadowsIt() {
+    public void testPlatformSchemaWinsOverFileSchemaOfTheSameId() {
         file.getApplicationTypeSchemas().put(ID, "{\"$id\":\"" + ID + "\",\"title\":\"from the file\"}");
         givenMerged(SCHEMA, ID, body(ID));
         givenBlob(SCHEMA, "b", body(ID));
@@ -136,13 +131,12 @@ public class SchemaReferenceResolverTest {
         SchemaResolution resolution = resolver().resolve(SCHEMA, ID);
 
         assertEquals(Outcome.FOUND, resolution.outcome());
-        assertEquals(Origin.FILE, resolution.origin(), "the file entity takes precedence over the platform blob");
-        assertNull(resolution.descriptor(), "the platform blob is not the effective entity");
-        assertTrue(resolution.hasShadowedEntity(), "the platform blob is shadowed");
+        assertEquals(Origin.PLATFORM, resolution.origin(), "the platform blob has the higher priority");
+        assertEquals("b", resolution.descriptor().getName());
     }
 
     @Test
-    public void testFileSchemaNextToValidBlobIsOriginUnknown() {
+    public void testPlatformSchemaWinsWhenTheMergedBodyIsTheFileInstance() {
         String shared = body(ID);
         givenMerged(SCHEMA, ID, shared);
         file.getApplicationTypeSchemas().put(ID, shared);
@@ -150,13 +144,40 @@ public class SchemaReferenceResolverTest {
 
         SchemaResolution resolution = resolver().resolve(SCHEMA, ID);
 
-        assertEquals(Outcome.ORIGIN_UNKNOWN, resolution.outcome());
+        assertEquals(Outcome.FOUND, resolution.outcome());
+        assertEquals(Origin.PLATFORM, resolution.origin());
+        assertEquals("b", resolution.descriptor().getName());
+    }
+
+    @Test
+    public void testFileSchemaWithoutPlatformBlobIsFile() {
+        String shared = body(ID);
+        givenMerged(SCHEMA, ID, shared);
+        file.getApplicationTypeSchemas().put(ID, shared);
+
+        SchemaResolution resolution = resolver().resolve(SCHEMA, ID);
+
+        assertEquals(Outcome.FOUND, resolution.outcome());
+        assertEquals(Origin.FILE, resolution.origin());
         assertNull(resolution.descriptor());
+    }
+
+    @Test
+    public void testTwoValidBlobsWithOneIdBesideFileSchemaAreOriginUnknown() {
+        String shared = body(ID);
+        givenMerged(SCHEMA, ID, shared);
+        file.getApplicationTypeSchemas().put(ID, shared);
+        givenBlob(SCHEMA, "first", body(ID));
+        givenBlob(SCHEMA, "second", body(ID));
+
+        SchemaResolution resolution = resolver().resolve(SCHEMA, ID);
+
+        assertEquals(Outcome.ORIGIN_UNKNOWN, resolution.outcome());
         assertNull(resolution.origin());
     }
 
     @Test
-    public void testFileSchemaNextToSkippedBlobIsFileAndTheBlobIsReported() {
+    public void testFileSchemaNextToSkippedBlobIsFile() {
         String shared = body(ID);
         givenMerged(SCHEMA, ID, shared);
         file.getApplicationTypeSchemas().put(ID, shared);
@@ -167,13 +188,10 @@ public class SchemaReferenceResolverTest {
 
         assertEquals(Outcome.FOUND, resolution.outcome());
         assertEquals(Origin.FILE, resolution.origin());
-        assertEquals(List.of(new Skipped(SCHEMA, "schemas/platform/bad", "api", "invalid schema")), resolution.skipped());
     }
 
-    // ---- skipped, absent, not found
-
     @Test
-    public void testOnlySkippedBlobGivesSkippedWithItsRecord() {
+    public void testOnlySkippedBlobGivesSkipped() {
         givenBlob(SCHEMA, "dup", body(ID));
         givenSkipped(SCHEMA, "dup", "duplicate $id");
 
@@ -181,7 +199,6 @@ public class SchemaReferenceResolverTest {
 
         assertEquals(Outcome.SKIPPED, resolution.outcome());
         assertNull(resolution.descriptor());
-        assertEquals(List.of(new Skipped(SCHEMA, "schemas/platform/dup", "api", "duplicate $id")), resolution.skipped());
     }
 
     @Test
@@ -198,10 +215,7 @@ public class SchemaReferenceResolverTest {
         SchemaResolution resolution = resolver().resolve(SCHEMA, ID);
 
         assertEquals(Outcome.NOT_FOUND, resolution.outcome());
-        assertTrue(resolution.skipped().isEmpty());
     }
-
-    // ---- more than one blob for one $id
 
     @Test
     public void testTwoValidBlobsWithOneIdAreOriginUnknownWhetherOrNotTheConfigurationHoldsIt() {
@@ -217,7 +231,7 @@ public class SchemaReferenceResolverTest {
     }
 
     @Test
-    public void testOneValidBlobBesideSkippedOneIsFoundAtTheValidBlobAndTheOtherIsReported() {
+    public void testOneValidBlobBesideSkippedOneIsFoundAtTheValidBlob() {
         givenMerged(SCHEMA, ID, body(ID));
         givenBlob(SCHEMA, "good", body(ID));
         givenBlob(SCHEMA, "bad", body(ID));
@@ -227,10 +241,7 @@ public class SchemaReferenceResolverTest {
 
         assertEquals(Outcome.FOUND, resolution.outcome());
         assertEquals("good", resolution.descriptor().getName());
-        assertEquals(List.of("schemas/platform/bad"), resolution.skipped().stream().map(Skipped::canonicalId).toList());
     }
-
-    // ---- what the scan reads
 
     @Test
     public void testBlobsWithoutUsableIdAreIgnored() {
@@ -267,8 +278,6 @@ public class SchemaReferenceResolverTest {
         }
     }
 
-    // ---- the two schema types do not mix
-
     @Test
     public void testCatalogSchemaIsResolvedFromItsOwnMapAndItsOwnListing() {
         givenMerged(CATALOG, CATALOG_ID, body(CATALOG_ID));
@@ -290,7 +299,6 @@ public class SchemaReferenceResolverTest {
         SchemaResolution resolution = resolver().resolve(CATALOG, CATALOG_ID);
 
         assertEquals(Outcome.ORIGIN_UNKNOWN, resolution.outcome(), "the blob is valid for its own type and not held by the configuration");
-        assertTrue(resolution.skipped().isEmpty());
     }
 
     @Test

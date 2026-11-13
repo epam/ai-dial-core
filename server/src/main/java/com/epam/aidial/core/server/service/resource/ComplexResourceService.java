@@ -338,9 +338,8 @@ public class ComplexResourceService {
     }
 
     /**
-     * Streams a single file of a given version, which is how an export reads the version that it pinned: the files of a version are immutable, so
-     * the version stays the same while a newer one replaces it as the current one, until the old one is removed. Returns {@code null} if the file
-     * no longer exists in that version.
+     * Streams a single file of a given version, which is how an export reads the version that it pinned: the files of a version are
+     * immutable. Returns {@code null} if the file no longer exists in that version.
      */
     @SneakyThrows
     public ResourceService.ResourceStream getVersionFileStream(ResourceDescriptor resource, String versionId, String relativePath) {

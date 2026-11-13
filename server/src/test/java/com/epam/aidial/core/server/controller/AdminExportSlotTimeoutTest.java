@@ -1,11 +1,11 @@
 package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.service.ExportLimits;
-import com.epam.aidial.core.server.service.ExportPlanner;
-import com.epam.aidial.core.server.service.ExportTestNodes;
+import com.epam.aidial.core.server.service.ExportStreamer;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -40,13 +40,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * A plan that outlasts the deadline, on real threads and a real lock in Redis: the deadline interrupts the plan thread, the plan
- * ignores the interrupt and fails with 504 while the flag is still set, and the slot must be free at once, not at the end of its
+ * A check of the roots that outlasts the deadline, on real threads and real bucket locks in Redis: the deadline interrupts the check thread,
+ * the check ignores the interrupt and fails with 504 while the flag is still set, and the locks are free at once, not at the end of their
  * lease.
  */
 @ExtendWith(MockitoExtension.class)
@@ -70,7 +71,7 @@ public class AdminExportSlotTimeoutTest {
     @Mock
     private Vertx vertx;
     @Mock
-    private ExportPlanner planner;
+    private ExportStreamer streamer;
 
     @BeforeAll
     static void startRedis() throws IOException {
@@ -101,12 +102,11 @@ public class AdminExportSlotTimeoutTest {
     }
 
     private AdminExportController controller() {
-        ExportLimits limits = new ExportLimits(100, 500, 10, 10_000, 4 * 1024 * 1024, 32 * 1024 * 1024, Duration.ofMillis(200));
+        ExportLimits limits = new ExportLimits(100, 500, 10, 10_000, 4 * 1024 * 1024, Duration.ofMillis(200));
         return new AdminExportController(context, authorizationService, taskExecutor, vertx, Duration.ofSeconds(1),
-                accessService, () -> planner, null, ExportTestNodes.NO_CONTENT, "test", lockService, limits);
+                accessService, () -> streamer, "test", lockService, limits);
     }
 
-    /** Runs each task on a thread of its own, as the executor does, and completes a future of no context. */
     private void runTasksOnVirtualThreads() {
         lenient().when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable<?> task = invocation.getArgument(0);
@@ -122,7 +122,6 @@ public class AdminExportSlotTimeoutTest {
         });
     }
 
-    /** Fires the handler of a timer on a thread of its own after the delay, as the event loop does. */
     @SuppressWarnings("unchecked")
     private void fireTimersOnTime() {
         lenient().when(vertx.setTimer(anyLong(), any(Handler.class))).thenAnswer(invocation -> {
@@ -141,18 +140,18 @@ public class AdminExportSlotTimeoutTest {
     }
 
     @Test
-    public void testPlanThatIgnoresTheInterruptEndsWith504AndLeavesTheSlotFree() throws Exception {
+    public void testCheckThatIgnoresTheInterruptEndsWith504AndLeavesTheBucketLocksFree() throws Exception {
         runTasksOnVirtualThreads();
         fireTimersOnTime();
         AtomicBoolean interruptedWhenItFailed = new AtomicBoolean();
-        when(planner.plan(any(), any(), any(), any())).thenAnswer(invocation -> {
+        doAnswer(invocation -> {
             // a busy loop, which an interrupt cannot end: it only sets the flag
             while (!Thread.currentThread().isInterrupted()) {
                 Thread.onSpinWait();
             }
             interruptedWhenItFailed.set(Thread.currentThread().isInterrupted());
             throw new HttpException(HttpStatus.GATEWAY_TIMEOUT, "The export took too long");
-        });
+        }).when(streamer).checkRoots(any(), any());
         CountDownLatch answered = new CountDownLatch(1);
         when(context.respond(any(Throwable.class), anyString())).thenAnswer(invocation -> {
             answered.countDown();
@@ -165,10 +164,10 @@ public class AdminExportSlotTimeoutTest {
         ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
         verify(context).respond(error.capture(), anyString());
         assertEquals(HttpStatus.GATEWAY_TIMEOUT, ((HttpException) error.getValue()).getStatus(), "the timeout stays a timeout");
-        assertTrue(interruptedWhenItFailed.get(), "the plan failed with the interrupt flag still set, the case under test");
+        assertTrue(interruptedWhenItFailed.get(), "the check failed with the interrupt flag still set, the case under test");
 
-        LockService.Lock next = lockService.tryLock(AdminExportController.SELECTION_SLOT);
-        assertNotNull(next, "the slot is free at once and not at the end of its lease of 300 s");
+        LockService.Lock next = lockService.tryLockBuckets(MergedConfigStore.ADMIN_BUCKET_LOCATIONS);
+        assertNotNull(next, "the bucket locks are free at once and not at the end of their lease of 300 s");
         next.close();
     }
 }

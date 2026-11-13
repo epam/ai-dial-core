@@ -6,38 +6,24 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * What was found in the body of one resource that the export examined: its edges and the problems met. It does not depend
- * on the type of the resource, so a closure and a registry can be built over any type that has a
- * discovery.
+ * What was found in the body of one Deployment: its edges and the problems met. The export logs each shown issue with the resource
+ * and the pointer, never a value.
  *
- * @param issues the problems, including the schema kinds; use {@link #reportedIssues()} for the ones that are shown
+ * @param issues the problems, including the schema kinds; {@link #listReportedIssues()} gives the ones that are shown
  */
 public record ExportDiscovery(List<DiscoveredEdge> edges, List<DiscoveryIssue> issues) {
 
     private static final Set<CollectionIssueKind> SHOWN_BY_SCHEMA_EDGES =
             Set.of(CollectionIssueKind.SCHEMA_NOT_FOUND, CollectionIssueKind.SCHEMA_UNAVAILABLE);
 
-    /**
-     * A problem in finding the references of one resource. It carries no message and no value, because both can hold a
-     * credential.
-     *
-     * @param pointer RFC 6901 pointer into the body of the resource
-     */
+    /** A problem in finding the references of one resource. It carries no message and no value, because both can hold a credential. */
     public record DiscoveryIssue(CollectionIssueKind kind, String pointer) {
     }
 
     /**
-     * @return whether there is no issue, so no reference could have been missed
+     * @return every issue but the two schema kinds, which the schema edge shows, so that a condition is never shown twice
      */
-    public boolean isComplete() {
-        return issues.isEmpty();
-    }
-
-    /**
-     * @return the issues that the registry lists: every issue but the two schema kinds, which the schema edge shows, so that a
-     *         condition is never shown twice
-     */
-    public List<DiscoveryIssue> reportedIssues() {
+    public List<DiscoveryIssue> listReportedIssues() {
         return issues.stream().filter(issue -> !SHOWN_BY_SCHEMA_EDGES.contains(issue.kind())).toList();
     }
 }

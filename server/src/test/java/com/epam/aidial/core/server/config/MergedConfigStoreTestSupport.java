@@ -34,11 +34,9 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.lenient;
 
 /**
- * Shared harness of the tests that drive a real {@link MergedConfigStore} over a mocked file store and a mocked
- * {@link ResourceService}.
- *
- * <p>A blob listed through {@link #stubBlobs} is visible to the rebuild scan and to {@code hasResource}; a lag between
- * the two is set up with {@link #platformBlobExists}.
+ * Shared harness of the tests that drive a real {@link MergedConfigStore} over a mocked file store and a mocked {@link ResourceService}.
+ * A blob listed through {@link #stubBlobs} is visible to the rebuild scan and to {@code hasResource}; a lag between the two is set up
+ * with {@link #platformBlobExists}.
  */
 @ExtendWith(MockitoExtension.class)
 abstract class MergedConfigStoreTestSupport {
@@ -121,9 +119,7 @@ abstract class MergedConfigStoreTestSupport {
         return ResourceDescriptorFactory.fromDecoded(type, "platform", "platform/", name);
     }
 
-    /**
-     * Makes the scan list exactly these platform blobs, and makes {@code hasResource} report each of them present.
-     */
+    /** Makes the scan list exactly these platform blobs, and {@code hasResource} report each of them present. */
     protected void stubBlobs(Blob... blobs) {
         lenient().when(resourceService.listResources(any(), any())).thenReturn(List.of());
         Map<ResourceTypes, List<Pair<ResourceItemMetadata, String>>> byType = new LinkedHashMap<>();
@@ -138,9 +134,7 @@ abstract class MergedConfigStoreTestSupport {
                 any())).thenReturn(items));
     }
 
-    /**
-     * Sets what {@code hasResource} answers for one platform descriptor, independently of what the scan lists.
-     */
+    /** Sets what {@code hasResource} answers for one platform descriptor, independently of what the scan lists. */
     protected void platformBlobExists(ResourceTypes type, String name, boolean exists) {
         lenient().when(resourceService.hasResource(argThat(descriptor -> descriptor != null
                 && descriptor.getType() == type
@@ -148,9 +142,7 @@ abstract class MergedConfigStoreTestSupport {
                 && name.equals(descriptor.getName())))).thenReturn(exists);
     }
 
-    /**
-     * Makes {@code getResource} return this body for the platform descriptor, as a replica event handler reads it.
-     */
+    /** Makes {@code getResource} return this body for the platform descriptor, as a replica event handler reads it. */
     protected void platformBlobBodyIs(ResourceTypes type, String name, String body) {
         lenient().when(resourceService.getResource(argThat(descriptor -> descriptor != null
                 && descriptor.getType() == type
@@ -158,15 +150,11 @@ abstract class MergedConfigStoreTestSupport {
                 && name.equals(descriptor.getName())))).thenReturn(body);
     }
 
-    protected MergedConfigStore newUninitializedStore(String mode) {
-        return new MergedConfigStore(
+    protected MergedConfigStore newStore(String mode) {
+        MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
                 secretFieldProcessor, lockService, mode,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
-    }
-
-    protected MergedConfigStore newStore(String mode) {
-        MergedConfigStore store = newUninitializedStore(mode);
         store.init(fileConfigStore);
         return store;
     }

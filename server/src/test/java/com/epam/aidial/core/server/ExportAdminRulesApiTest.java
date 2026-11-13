@@ -9,13 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
- * The explicit-admin gate of {@code POST /v1/admin/export} when {@code access.admin.rules} is empty.
- * The rule matcher treats an empty rule set as allow-all, so without the fail-closed gate every caller would be an admin;
- * the export, like the rest of the admin surface, answers 403 to everyone instead, the admin token included.
+ * The explicit-admin gate of {@code POST /v1/admin/export} when {@code access.admin.rules} is empty: the matcher treats an empty rule set
+ * as allow-all, so the fail-closed gate answers 403 to everyone, the admin token included.
  */
 public class ExportAdminRulesApiTest extends ResourceBaseTest {
 
-    private static final String PATH = "/v1/admin/export";
+    private static final String PATH = ExportApiSupport.PATH;
     private static final String MARKER = "SUBMITTED-VALUE-MARKER";
     private static final String PLATFORM_ROOT = "{\"roots\":[{\"type\":\"application\",\"url\":\"applications/platform/exported\"}]}";
 

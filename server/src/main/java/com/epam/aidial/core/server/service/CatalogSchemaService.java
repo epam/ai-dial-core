@@ -60,8 +60,8 @@ public class CatalogSchemaService {
             .build();
 
     /**
-     * The factory of the export: the same meta-schema and keyword as {@link #SCHEMA_FACTORY}, but it refuses every
-     * {@code $ref} that is not local to the document, so a schema document cannot make Core fetch or read anything.
+     * The export's factory: as {@link #SCHEMA_FACTORY}, but it refuses every {@code $ref} that is not local to the document, so a schema
+     * cannot make Core fetch anything.
      */
     private static final JsonSchemaFactory EXPORT_SCHEMA_FACTORY = JsonSchemaFactory.builder()
             .metaSchema(CATALOG_DIAL_META_SCHEMA)
@@ -150,13 +150,9 @@ public class CatalogSchemaService {
     }
 
     /**
-     * Collects every {@code dial:file}-tagged value of the catalog properties without failing on an invalid one. The
-     * result has the semantics of {@code ApplicationSchemaService.collectMarkerReferences}: marker kind, RFC 6901
-     * pointer relative to {@code catalog_properties} and the original value, with no parsing, no existence check and no
-     * authorization. The schema is taken from the given configuration, so that an export which holds one snapshot looks
-     * it up in the same generation as everything else.
-     * A missing schema or a schema that cannot be evaluated is an issue; any other failure propagates. Issues carry no
-     * library message and no value. Catalog schemas are held by the config, so there is no remote part to retrieve.
+     * Collects every {@code dial:file}-tagged value of the catalog properties without failing on an invalid one, as
+     * {@code ApplicationSchemaService.collectMarkerReferences} does; the pointer is relative to {@code catalog_properties}. A missing or
+     * unusable schema is an issue; any other failure propagates. Issues carry no library message and no value.
      */
     public MarkerCollection collectMarkerReferences(Deployment deployment, Config config) {
         URI schemaId = deployment.getCatalogSchemaId();

@@ -103,6 +103,6 @@ class RequestTimeCollectionCompatibilityTest {
         Map<String, Object> extra = new java.util.HashMap<>(withRecorder.getCollectorMap());
         extra.keySet().removeAll(plain.getCollectorMap().keySet());
         assertEquals(Set.of(MarkerRecorder.KEY), extra.keySet(), "the recorder is the only addition");
-        assertEquals(2, recorder.references().size());
+        assertEquals(2, recorder.listReferences().size());
     }
 }

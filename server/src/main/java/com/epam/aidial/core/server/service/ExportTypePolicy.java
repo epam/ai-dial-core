@@ -1,85 +1,94 @@
 package com.epam.aidial.core.server.service;
 
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Interceptor;
+import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import javax.annotation.Nullable;
 
-/**
- * The v1 matrix of what an export supports, in one place. Every type that is
- * not listed is unsupported, so a new resource type starts unsupported. Each answer is a statement about v1, not a general
- * policy for a type.
- */
+/** The v1 matrix of what an export supports. A type that is not listed is unsupported, so a new resource type starts unsupported. */
 final class ExportTypePolicy {
 
-    /**
-     * What the export does with the body of a type, which decides whether its references are followed.
-     */
+    /** What the export does with the body of a type, which decides whether its references are followed. */
     enum Content {
-        /**
-         * The body is a Deployment (an Application, a Model, an Interceptor or a ToolSet). It is exported redacted, and its references are
-         * read, so the closure follows them.
-         */
+        /** A Deployment: exported as the projection of its entity; its references are followed. */
         EXAMINED,
-        /** A schema document: exported redacted, with no references to follow. */
+        /** A schema document, exported without the upstream keys of an application type schema. */
         SCHEMA,
-        /** The body is exported exactly as stored, and its references are not examined. */
+        /** Exported exactly as stored; its references are not examined. */
         AS_STORED,
-        /** A File: its bytes are copied from storage as they are stored, never read as JSON, redacted or examined. */
+        /** A File: copied as stored, never read as JSON. */
         STREAMED,
-        /** A resource of versioned files, of which the files of the pinned current version are copied as they are stored. */
+        /** Versioned files: those of the pinned current version are copied as stored. */
         COMPLEX
     }
 
     /**
-     * @param isRoot         only an Application is accepted as a root for now
-     * @param inPlatform     a supported dependency in {@code platform/}
-     * @param inPublic       a supported dependency in {@code public/}; a public dependency that is not an Application is never a root
-     * @param isDefinitionOnly only the definition is exported, without the endpoint, tokenizer or any other external artifact that it names
+     * @param redaction removes the secrets from the projected tree; the keys of a model and an interceptor are WRITE_ONLY, so theirs holds none
      */
-    private record Traits(boolean isRoot, boolean inPlatform, boolean inPublic, Content content, boolean isDefinitionOnly) {
+    private record EntityTraits(Class<? extends Deployment> entityClass, Function<Config, Map<String, ? extends Deployment>> entities,
+                                UnaryOperator<ObjectNode> redaction) {
     }
 
-    private static final Traits UNSUPPORTED = new Traits(false, false, false, null, false);
+    /**
+     * @param isRoot only an Application is accepted as a root for now
+     * @param entity {@code null} unless the content is {@link Content#EXAMINED}
+     */
+    private record Traits(boolean isRoot, boolean inPlatform, boolean inPublic, Content content, @Nullable EntityTraits entity) {
+    }
 
-    /** One row per supported type; every type that has no row is unsupported. */
+    private static final Traits UNSUPPORTED = new Traits(false, false, false, null, null);
+
+    private static final EntityTraits APPLICATION_ENTITY = new EntityTraits(Application.class, Config::getApplications,
+            tree -> EntityProjection.redactExternalServiceSecrets(tree, true));
+    private static final EntityTraits TOOL_SET_ENTITY = new EntityTraits(ToolSet.class, Config::getToolsets,
+            tree -> EntityProjection.redactAuthSettingsSecrets(tree, true));
+    private static final EntityTraits MODEL_ENTITY = new EntityTraits(Model.class, Config::getModels, UnaryOperator.identity());
+    private static final EntityTraits INTERCEPTOR_ENTITY = new EntityTraits(Interceptor.class, Config::getInterceptors, UnaryOperator.identity());
+
     private static final Map<ResourceTypes, Traits> TRAITS = Map.ofEntries(
-            Map.entry(ResourceTypes.APPLICATION, new Traits(true, true, true, Content.EXAMINED, false)),
-            Map.entry(ResourceTypes.TOOL_SET, new Traits(false, true, true, Content.EXAMINED, false)),
-            Map.entry(ResourceTypes.MODEL, new Traits(false, true, false, Content.EXAMINED, true)),
-            Map.entry(ResourceTypes.INTERCEPTOR, new Traits(false, true, false, Content.EXAMINED, true)),
-            Map.entry(ResourceTypes.APP_TYPE_SCHEMA, new Traits(false, true, false, Content.SCHEMA, false)),
-            Map.entry(ResourceTypes.CATALOG_SCHEMA, new Traits(false, true, false, Content.SCHEMA, false)),
-            Map.entry(ResourceTypes.FILE, new Traits(false, false, true, Content.STREAMED, false)),
-            Map.entry(ResourceTypes.SKILL, new Traits(false, false, true, Content.COMPLEX, false)),
-            Map.entry(ResourceTypes.PROMPT, new Traits(false, false, true, Content.AS_STORED, false)));
+            Map.entry(ResourceTypes.APPLICATION, new Traits(true, true, true, Content.EXAMINED, APPLICATION_ENTITY)),
+            Map.entry(ResourceTypes.TOOL_SET, new Traits(false, true, true, Content.EXAMINED, TOOL_SET_ENTITY)),
+            Map.entry(ResourceTypes.MODEL, new Traits(false, true, false, Content.EXAMINED, MODEL_ENTITY)),
+            Map.entry(ResourceTypes.INTERCEPTOR, new Traits(false, true, false, Content.EXAMINED, INTERCEPTOR_ENTITY)),
+            Map.entry(ResourceTypes.APP_TYPE_SCHEMA, new Traits(false, true, false, Content.SCHEMA, null)),
+            Map.entry(ResourceTypes.CATALOG_SCHEMA, new Traits(false, true, false, Content.SCHEMA, null)),
+            Map.entry(ResourceTypes.FILE, new Traits(false, false, true, Content.STREAMED, null)),
+            Map.entry(ResourceTypes.SKILL, new Traits(false, false, true, Content.COMPLEX, null)),
+            Map.entry(ResourceTypes.PROMPT, new Traits(false, false, true, Content.AS_STORED, null)));
 
     private ExportTypePolicy() {
     }
 
-    private static Traits traitsOf(ResourceTypes type) {
+    private static Traits resolveTraits(ResourceTypes type) {
         return TRAITS.getOrDefault(type, UNSUPPORTED);
     }
 
-    /**
-     * @return the type of the resource, which the export only handles for the types of {@link ResourceTypes}
-     */
-    static ResourceTypes typeOf(ResourceDescriptor descriptor) {
+    static ResourceTypes resolveType(ResourceDescriptor descriptor) {
         return (ResourceTypes) descriptor.getType();
     }
 
     static boolean isRoot(ResourceTypes type) {
-        return traitsOf(type).isRoot();
+        return resolveTraits(type).isRoot();
     }
 
     /**
-     * @param bucketLocation the decrypted bucket location of the dependency; only exactly {@code platform/} and
-     *                       {@code public/} are eligible
+     * @param bucketLocation the decrypted bucket location of the dependency; only exactly {@code platform/} and {@code public/} are eligible
      */
     static boolean isSupportedDependency(ResourceTypes type, String bucketLocation) {
-        Traits traits = traitsOf(type);
+        Traits traits = resolveTraits(type);
         if (ResourceDescriptor.PLATFORM_LOCATION.equals(bucketLocation)) {
             return traits.inPlatform();
         }
@@ -87,14 +96,12 @@ final class ExportTypePolicy {
     }
 
     /**
-     * The bucket binding of the configuration API ({@link EntityBucketBinding}), checked before a resource is read or probed. The binding is keyed by the URL segment of the
-     * type, which for an application type schema is {@code schemas} and not its blob group {@code app_type_schemas}.
-     *
-     * @param bucketName the bucket as it is named in the URL
+     * The bucket binding of the configuration API ({@link EntityBucketBinding}), checked before a resource is read or probed. It is keyed by
+     * the URL segment of the type: {@code schemas} for an application type schema, not its blob group {@code app_type_schemas}.
      */
     static boolean isBound(ResourceTypes type, String bucketName) {
         if (type == ResourceTypes.SKILL) {
-            // EntityBucketBinding has no entry for a complex resource; for the export a Skill is bound to the public bucket only (task 13.3, E6)
+            // EntityBucketBinding has no entry for a complex resource; for the export a Skill is bound to the public bucket only
             return ResourceDescriptor.PUBLIC_BUCKET.equals(bucketName);
         }
         return EntityBucketBinding.isAllowed(type.urlSegment(), bucketName);
@@ -104,15 +111,40 @@ final class ExportTypePolicy {
      * @return what the export does with the body of the type; {@code null} for an unsupported type
      */
     @Nullable
-    static Content contentOf(ResourceTypes type) {
-        return traitsOf(type).content();
+    static Content resolveContent(ResourceTypes type) {
+        return resolveTraits(type).content();
+    }
+
+    static List<ResourceTypes> listExaminedTypes() {
+        return Arrays.stream(ResourceTypes.values()).filter(type -> resolveContent(type) == Content.EXAMINED).toList();
     }
 
     /**
-     * @return whether only the definition of this type is exported, without the endpoint, tokenizer or any other external artifact that
-     *         it names, which the registry warns of
+     * @return the entity of that name, or {@code null} if there is none or the type has no entity
      */
-    static boolean isDefinitionOnly(ResourceTypes type) {
-        return traitsOf(type).isDefinitionOnly();
+    @Nullable
+    static Deployment findDeployment(Config config, ResourceTypes type, String name) {
+        EntityTraits entity = resolveTraits(type).entity();
+        return entity == null ? null : entity.entities().apply(config).get(name);
+    }
+
+    /**
+     * @throws IllegalArgumentException if the type has no entity that the export binds
+     */
+    static Class<? extends Deployment> resolveEntityClass(ResourceTypes type) {
+        EntityTraits entity = resolveTraits(type).entity();
+        if (entity == null) {
+            throw new IllegalArgumentException("This type has no entity that the export binds");
+        }
+        return entity.entityClass();
+    }
+
+    /**
+     * @return what removes the secrets from the projected tree of an entity of the type; {@code null} if the type has no entity
+     */
+    @Nullable
+    static UnaryOperator<ObjectNode> resolveRedaction(ResourceTypes type) {
+        EntityTraits entity = resolveTraits(type).entity();
+        return entity == null ? null : entity.redaction();
     }
 }

@@ -86,7 +86,6 @@
     "maxDepth": 10,
     "maxEdges": 10000,
     "maxResourceMiB": 4,
-    "maxRetainedMiB": 32,
     "deadline": 180000
   },
   "budgetCounterSweep": {

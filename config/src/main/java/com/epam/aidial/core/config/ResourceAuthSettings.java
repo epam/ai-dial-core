@@ -38,10 +38,9 @@ public class ResourceAuthSettings {
     public static final int FULL_HINT_SECRET_LENGTH = 12;
 
     /**
-     * Removes {@code client_secret}, {@code code_verifier} and {@code client_secret_hint} from the JSON of an {@code auth_settings}
-     * object, the one rule for the response of the config API and for the export. Anything that is not an object is left alone.
+     * Removes the secret fields from the JSON of an {@code auth_settings} object; anything else is left alone.
      *
-     * @return the removed {@code client_secret} node (for the caller that derives a hint from it), or {@code null} if there was none
+     * @return the removed {@code client_secret} node, for a caller that derives a hint from it, or {@code null}
      */
     public static JsonNode removeSecretFields(JsonNode authSettings) {
         if (!(authSettings instanceof ObjectNode settings)) {
@@ -114,8 +113,7 @@ public class ResourceAuthSettings {
 
     /**
      * Returns a copy with credential material removed; the receiver is left unchanged. A newly added secret
-     * field has to be cleared here <em>and</em> in {@code ConfigResourceController.redactSecretFields}, which
-     * redacts a JSON projection rather than this object.
+     * field has to be cleared here <em>and</em> in {@link #removeSecretFields}, which redacts a JSON projection rather than this object.
      */
     public ResourceAuthSettings withoutSecrets() {
         ResourceAuthSettings copy = toBuilder().build();

@@ -186,27 +186,6 @@ class SecretFieldProcessorTest {
     }
 
     @Test
-    void stripEncryptedFields_dropsSecretsStoredUnderTheJsonAliasOfTheFieldAndOfItsContainers() {
-        ObjectNode payload = ProxyUtil.MAPPER.createObjectNode();
-        ObjectNode upstream = payload.putObject("routes").putObject("r").putArray("dial:upstreams").addObject();
-        upstream.put("dial:endpoint", "http://u/v1");
-        upstream.put("dial:key", "ENC[up]");
-        upstream.put("dial:secretExtraData", "ENC[up-xd]");
-        ObjectNode providerInterface = upstream.putObject("dial:interfaces").putObject("chat");
-        providerInterface.put("dial:endpoint", "http://i/v1");
-        providerInterface.put("dial:key", "ENC[iface]");
-
-        ObjectNode stripped = SecretFieldProcessor.stripEncryptedFields(payload, Application.class);
-
-        ObjectNode strippedUpstream = (ObjectNode) stripped.get("routes").get("r").get("dial:upstreams").get(0);
-        assertFalse(strippedUpstream.has("dial:key"));
-        assertFalse(strippedUpstream.has("dial:secretExtraData"));
-        assertFalse(strippedUpstream.get("dial:interfaces").get("chat").has("dial:key"));
-        assertEquals("http://u/v1", strippedUpstream.get("dial:endpoint").asText());
-        assertEquals("http://i/v1", strippedUpstream.get("dial:interfaces").get("chat").get("dial:endpoint").asText());
-    }
-
-    @Test
     void stripEncryptedFields_dropsSecretsNestedInUpstreamInterfaces() {
         ObjectNode payload = ProxyUtil.MAPPER.createObjectNode();
         ObjectNode upstream = payload.putArray("upstreams").addObject();

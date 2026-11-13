@@ -8,7 +8,6 @@ import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
 import com.epam.aidial.core.server.validation.CollectionIssueKind;
 import com.epam.aidial.core.server.validation.MarkerCollection;
 import com.epam.aidial.core.server.validation.MarkerCollection.MarkerReference;
-import com.epam.aidial.core.server.validation.MarkerKind;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.sun.net.httpserver.HttpServer;
@@ -161,9 +160,7 @@ class CatalogSchemaServiceTest {
         Assertions.assertEquals(1, result.size());
     }
 
-    // ----------------------------------------------------------------------------------------------------------
-    // Marker collection of a catalog Deployment: the shared collection algorithm is tested with ApplicationSchemaService, so only what is
-    // specific to catalog schemas is tested here. They live in the config, so there is no schema cache and no remote download.
+    // the shared collection algorithm is tested with ApplicationSchemaService; only what is specific to catalog schemas is tested here
 
     private static Map<String, Object> properties(Object... keyValues) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -174,19 +171,18 @@ class CatalogSchemaServiceTest {
     }
 
     private static MarkerReference fileReference(String pointer, String value) {
-        return new MarkerReference(MarkerKind.FILE, pointer, value);
+        return new MarkerReference(pointer, value);
     }
 
     private MarkerCollection collectFrom(String catalogSchema, Map<String, Object> catalogProperties) {
-        when(configStore.get()).thenReturn(config);
         when(config.getCatalogSchema(SCHEMA_ID)).thenReturn(catalogSchema);
         model.setCatalogSchemaId(SCHEMA_ID);
         model.setCatalogProperties(catalogProperties);
-        return service.collectMarkerReferences(model, configStore.get());
+        return service.collectMarkerReferences(model, config);
     }
 
     @Test
-    void collectMarkerReferencesReturnsKindPointerAndValueOfEachFile() {
+    void collectMarkerReferencesReturnsPointerAndValueOfEachFile() {
         String catalogSchema = """
                 {"type":"object","properties":{
                   "badge":{"type":"string","dial:file":true},
@@ -199,7 +195,7 @@ class CatalogSchemaServiceTest {
         Assertions.assertEquals(List.of(fileReference("/badge", "files/public/b.png"),
                 fileReference("/icon", "files/public/i.png")), result.references());
         Assertions.assertTrue(result.issues().isEmpty());
-        Assertions.assertTrue(result.isComplete());
+        verifyNoInteractions(configStore);
     }
 
     @Test
@@ -211,23 +207,20 @@ class CatalogSchemaServiceTest {
         for (MarkerCollection result : List.of(withoutSchema, withoutProperties)) {
             Assertions.assertTrue(result.references().isEmpty());
             Assertions.assertTrue(result.issues().isEmpty());
-            Assertions.assertTrue(result.isComplete());
         }
         verifyNoInteractions(configStore);
     }
 
     @Test
     void collectMarkerReferencesReportsSchemaNotFoundWithoutThrowing() {
-        when(configStore.get()).thenReturn(config);
         model.setCatalogSchemaId(SCHEMA_ID);
         model.setCatalogProperties(properties("badge", "files/public/b.png"));
 
-        MarkerCollection result = service.collectMarkerReferences(model, configStore.get());
+        MarkerCollection result = service.collectMarkerReferences(model, config);
 
         Assertions.assertTrue(result.references().isEmpty());
         Assertions.assertEquals(1, result.issues().size());
         Assertions.assertEquals(CollectionIssueKind.SCHEMA_NOT_FOUND, result.issues().get(0).kind());
-        Assertions.assertFalse(result.isComplete());
     }
 
     @Test
@@ -253,7 +246,7 @@ class CatalogSchemaServiceTest {
         MarkerCollection result = collectFrom(catalogSchema, properties("badge", "files/public/b.png"));
 
         Assertions.assertEquals(List.of(fileReference("/badge", "files/public/b.png")), result.references());
-        Assertions.assertTrue(result.isComplete());
+        Assertions.assertTrue(result.issues().isEmpty());
     }
 
     @ParameterizedTest
@@ -280,27 +273,11 @@ class CatalogSchemaServiceTest {
             Assertions.assertEquals(0, requests.get(), "a schema document must not make Core send a request");
             Assertions.assertTrue(result.references().isEmpty());
             Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, result.issues().get(0).kind());
-            Assertions.assertFalse(result.issues().get(0).message().contains(address));
-            Assertions.assertFalse(result.isComplete());
+            Assertions.assertFalse(result.issues().get(0).toString().contains(address));
         } finally {
             server.stop(0);
             Files.deleteIfExists(file);
         }
-    }
-
-    @Test
-    void collectMarkerReferencesWithGivenConfigReadsTheSchemaFromThatConfigAndNotFromTheStore() {
-        Config snapshotConfig = org.mockito.Mockito.mock(Config.class);
-        when(snapshotConfig.getCatalogSchema(SCHEMA_ID)).thenReturn("""
-                {"type":"object","properties":{"badge":{"type":"string","dial:file":true}}}""");
-        model.setCatalogSchemaId(SCHEMA_ID);
-        model.setCatalogProperties(properties("badge", "files/public/b.png"));
-
-        MarkerCollection result = service.collectMarkerReferences(model, snapshotConfig);
-
-        Assertions.assertEquals(List.of(new MarkerReference(MarkerKind.FILE, "/badge", "files/public/b.png")), result.references());
-        Assertions.assertTrue(result.isComplete());
-        verifyNoInteractions(configStore);
     }
 
 }

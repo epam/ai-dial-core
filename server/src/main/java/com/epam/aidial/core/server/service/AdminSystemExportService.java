@@ -317,9 +317,8 @@ public class AdminSystemExportService {
         }
     }
 
-    /** The sidecar of a blob; the selective export (ExportArchive) writes the same record. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record BlobMetadata(String contentType, String contentEncoding, String contentDisposition, String contentLanguage,
+    private record BlobMetadata(String contentType, String contentEncoding, String contentDisposition, String contentLanguage,
                                 String cacheControl, String creationDate, String lastModified, Map<String, String> userMetadata) {
     }
 }

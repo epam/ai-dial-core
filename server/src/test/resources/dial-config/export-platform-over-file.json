@@ -1,0 +1,20 @@
+{
+  "models": {
+    "shared-model": {
+      "type": "chat",
+      "endpoint": "http://file.invalid/shared/chat/completions",
+      "upstreams": [{"endpoint": "http://file.invalid/shared", "key": "FILE-SECRET-SHARED"}]
+    },
+    "file-model": {
+      "type": "chat",
+      "endpoint": "http://file.invalid/only/chat/completions",
+      "upstreams": [{"endpoint": "http://file.invalid/only", "key": "FILE-SECRET-ONLY"}]
+    }
+  },
+  "keys": {
+    "proxyKey1": {"project": "test", "role": "default"}
+  },
+  "roles": {
+    "default": {"limits": {}}
+  }
+}

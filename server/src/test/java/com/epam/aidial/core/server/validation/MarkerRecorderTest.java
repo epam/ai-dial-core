@@ -21,29 +21,29 @@ class MarkerRecorderTest {
     }
 
     @Test
-    void recordKeepsKindPointerAndValueInEvaluationOrder() {
+    void recordKeepsPointerAndValueInEvaluationOrder() {
         CollectorContext context = new CollectorContext();
         MarkerRecorder recorder = new MarkerRecorder();
         context.getCollectorMap().put(MarkerRecorder.KEY, recorder);
 
-        MarkerRecorder.record(context, MarkerKind.FILE, path("list", 1), "files/b/x");
-        MarkerRecorder.record(context, MarkerKind.RESOURCE, path("obj", "inner"), "toolsets/platform/t");
+        MarkerRecorder.record(context, path("list", 1), "files/b/x");
+        MarkerRecorder.record(context, path("obj", "inner"), "toolsets/platform/t");
 
-        assertEquals(List.of(new MarkerReference(MarkerKind.FILE, "/list/1", "files/b/x"),
-                new MarkerReference(MarkerKind.RESOURCE, "/obj/inner", "toolsets/platform/t")), recorder.references());
+        assertEquals(List.of(new MarkerReference("/list/1", "files/b/x"),
+                new MarkerReference("/obj/inner", "toolsets/platform/t")), recorder.listReferences());
     }
 
     @Test
-    void recordCollapsesTheSameKindPointerAndValueButNotTheSameValueAtTwoPointers() {
+    void recordCollapsesTheSamePointerAndValueButNotTheSameValueAtTwoPointers() {
         CollectorContext context = new CollectorContext();
         MarkerRecorder recorder = new MarkerRecorder();
         context.getCollectorMap().put(MarkerRecorder.KEY, recorder);
 
-        MarkerRecorder.record(context, MarkerKind.RESOURCE, path("a"), "v");
-        MarkerRecorder.record(context, MarkerKind.RESOURCE, path("a"), "v");
-        MarkerRecorder.record(context, MarkerKind.RESOURCE, path("b"), "v");
+        MarkerRecorder.record(context, path("a"), "v");
+        MarkerRecorder.record(context, path("a"), "v");
+        MarkerRecorder.record(context, path("b"), "v");
 
-        assertEquals(2, recorder.references().size());
+        assertEquals(2, recorder.listReferences().size());
     }
 
     @Test

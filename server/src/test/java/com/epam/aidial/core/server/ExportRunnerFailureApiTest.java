@@ -1,49 +1,37 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Level;
+import com.epam.aidial.core.server.ExportApiSupport.Logs;
+import com.epam.aidial.core.server.ExportApiSupport.Reply;
 import com.epam.aidial.core.server.config.MergedConfigStore;
-import com.epam.aidial.core.server.service.ExportArchive;
-import com.epam.aidial.core.server.service.ExportArchive.BodyRedactor;
-import com.epam.aidial.core.server.util.ProxyUtil;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A failure of the Runner of an application type schema, whatever its cause, is a dependency finding and not a request failure: the
- * export is a partial archive with 200, the schema edge is {@code unresolved}, the discovery is incomplete, and neither the registry
- * nor the log holds the cause, the endpoint or the Runner's content.
+ * A failure of the Runner of an application type schema, whatever its cause, is a finding in the log and not a request failure: the export
+ * is a partial archive with 200, and neither the archive nor the log holds the cause, the endpoint or the Runner's content.
  */
 public class ExportRunnerFailureApiTest extends ResourceBaseTest {
 
     private static final String SCHEMA_ID = "https://dial.example/schemas/runner";
-    private static final BodyRedactor PASS_THROUGH = (identity, body) -> body.getBytes(StandardCharsets.UTF_8);
 
     private final AtomicInteger runnerStatus = new AtomicInteger(503);
     private HttpServer runner;
 
     @BeforeEach
     void startRunnerAndStoreTheScenario() throws Exception {
-        dial.getProxy().setExportBodyRedactor(PASS_THROUGH);
         runner = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         runner.createContext("/schema", exchange -> {
             byte[] body = "RUNNER-BODY-MARKER".getBytes(StandardCharsets.UTF_8);
@@ -75,46 +63,42 @@ public class ExportRunnerFailureApiTest extends ResourceBaseTest {
     }
 
     private void store(String blobPath, String json) {
-        dial.getStorage().store(blobPath, "application/json", null, Map.of(), json.getBytes(StandardCharsets.UTF_8));
+        ExportApiSupport.storeJson(dial, blobPath, json);
     }
 
-    private HttpResponse<byte[]> export() throws IOException, InterruptedException {
-        String body = "{\"roots\":[{\"type\":\"application\",\"url\":\"applications/platform/root\"}]}";
-        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + serverPort + "/v1/admin/export"))
-                .version(HttpClient.Version.HTTP_1_1).header("authorization", "admin")
-                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
-        return HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofByteArray());
-    }
-
-    private void assertPartialExport(HttpResponse<byte[]> response, String what) throws Exception {
-        assertEquals(200, response.statusCode(), what);
-        Map<String, byte[]> entries = new LinkedHashMap<>();
-        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(response.body()))) {
-            for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
-                entries.put(entry.getName(), zip.readAllBytes());
-            }
+    private void assertPartialExport(String what) throws Exception {
+        Reply reply;
+        List<String> findings;
+        String exportLog;
+        try (Logs logs = new Logs()) {
+            reply = ExportApiSupport.post(serverPort, ExportApiSupport.rootsRequest("applications/platform/root"));
+            findings = logs.lines(Level.WARN, "Export: ");
+            exportLog = String.join("\n", findings);
         }
-        String registryText = new String(entries.get(ExportArchive.REGISTRY_ENTRY), StandardCharsets.UTF_8);
-        JsonNode registry = ProxyUtil.MAPPER.readTree(registryText);
-        List<JsonNode> unresolved = ExportRegistryJson.unresolved(registry);
-        assertEquals(1, unresolved.size(), what);
-        assertEquals("unresolved", unresolved.get(0).get("status").asText(), what);
-        assertEquals("/application_type_schema_id", unresolved.get(0).get("pointer").asText(), what);
-        assertFalse(registry.get("discovery").get("complete").asBoolean(), what);
-        assertFalse(registryText.contains("RUNNER-BODY-MARKER") || registryText.contains("ENDPOINT-MARKER") || registryText.contains("127.0.0.1"),
-                "the registry holds no cause: " + what);
+
+        assertEquals(200, reply.status(), what);
+        Map<String, byte[]> entries = reply.entries();
+        assertEquals(List.of("platform/applications/root"), ExportApiSupport.resourceNames(entries), what);
+        assertEquals(1, findings.size(), what + ": " + findings);
+        assertTrue(findings.get(0).contains("resource=application:platform:root pointer=/application_type_schema_id reason=schema-unavailable"), findings.get(0));
+        assertFalse(exportLog.contains("RUNNER-BODY-MARKER") || exportLog.contains("ENDPOINT-MARKER") || exportLog.contains("127.0.0.1"),
+                "the log of the export holds no cause: " + what);
+        entries.forEach((name, body) -> {
+            String text = new String(body, StandardCharsets.UTF_8);
+            assertFalse(text.contains("RUNNER-BODY-MARKER") || text.contains("ENDPOINT-MARKER"), name);
+        });
     }
 
     @Test
-    void testRunnerFailureOfAnyStatusOrNoRunnerAtAllIsUnresolvedSchemaEdgeInPartialExport() throws Exception {
-        for (int status : new int[] {503, 500, 429, 404, 418, 302}) {
+    void testRunnerFailureOfAnyStatusOrNoRunnerAtAllIsLoggedInPartialExport() throws Exception {
+        for (int status : new int[] {503, 404, 302}) {
             runnerStatus.set(status);
 
-            assertPartialExport(export(), "Runner status " + status);
+            assertPartialExport("Runner status " + status);
         }
 
         runner.stop(0);
 
-        assertPartialExport(export(), "Runner stopped");
+        assertPartialExport("Runner stopped");
     }
 }

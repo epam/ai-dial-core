@@ -209,7 +209,6 @@ public final class AnnotationEndpointCollector {
                 parameters,
                 responses,
                 op.extensions(),
-                op.requestBodyRequired(),
                 op.description()
         );
     }

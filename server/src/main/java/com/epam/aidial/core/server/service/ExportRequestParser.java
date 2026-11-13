@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.server.data.ExportResourceIdentity;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -25,17 +24,12 @@ public final class ExportRequestParser {
     public record ExportRequest(List<ResourceDescriptor> roots) {
     }
 
-    /**
-     * The body as submitted; {@link #parse} checks every field. It has no field but {@code roots}, so any other field is refused.
-     *
-     * @param roots the selected Applications; at least one
-     */
+    /** The body as submitted; {@link #parse} checks every field. Any field but {@code roots} is refused. */
     public record ExportRequestBody(@Nullable List<ExportRoot> roots) {
     }
 
     /**
      * @param type {@code application}, the only accepted value
-     * @param url  the resource URL of the Application in the {@code public} or {@code platform} bucket
      */
     public record ExportRoot(@Nullable String type, @Nullable String url) {
     }
@@ -44,20 +38,20 @@ public final class ExportRequestParser {
     }
 
     /**
-     * @param maxRoots the most Applications that the request may name; more is refused before any of them is looked at
+     * @param maxRoots more is refused before any root is looked at
      */
     public static ExportRequest parse(String body, int maxRoots) {
         ExportRequestBody raw;
         try {
             raw = ProxyUtil.MAPPER.readValue(body, ExportRequestBody.class);
         } catch (JsonProcessingException e) {
-            throw badRequest("The request body is not valid for this endpoint");
+            throw newBadRequestException("The request body is not valid for this endpoint");
         }
         if (raw == null || raw.roots() == null || raw.roots().isEmpty()) {
-            throw badRequest("roots must hold at least one Application");
+            throw newBadRequestException("roots must hold at least one Application");
         }
         if (raw.roots().size() > maxRoots) {
-            throw badRequest("roots accepts at most " + maxRoots + " Applications");
+            throw newBadRequestException("roots accepts at most " + maxRoots + " Applications");
         }
 
         List<ResourceDescriptor> roots = new ArrayList<>();
@@ -70,25 +64,25 @@ public final class ExportRequestParser {
     private static ResourceDescriptor toRoot(int index, @Nullable ExportRoot root) {
         String message = "roots[" + index + "] must be an Application in the public or platform bucket";
         if (root == null || root.type() == null || root.url() == null) {
-            throw badRequest(message);
+            throw newBadRequestException(message);
         }
         ResourceDescriptor descriptor;
         try {
             descriptor = ResourceDescriptorFactory.fromAnyUrl(root.url(), null);
         } catch (RuntimeException e) {
-            throw badRequest(message);
+            throw newBadRequestException(message);
         }
         boolean isEligibleLocation = ResourceDescriptor.PUBLIC_LOCATION.equals(descriptor.getBucketLocation())
                 || ResourceDescriptor.PLATFORM_LOCATION.equals(descriptor.getBucketLocation());
         ResourceTypes type = (ResourceTypes) descriptor.getType();
-        if (!root.type().equals(ExportResourceIdentity.typeName(type)) || !ExportTypePolicy.isRoot(type) || descriptor.isFolder()
+        if (!root.type().equals(ExportResourceNames.resolveTypeName(type)) || !ExportTypePolicy.isRoot(type) || descriptor.isFolder()
                 || !isEligibleLocation || !ExportTypePolicy.isBound(type, descriptor.getBucketName())) {
-            throw badRequest(message);
+            throw newBadRequestException(message);
         }
         return descriptor;
     }
 
-    private static HttpException badRequest(String message) {
+    private static HttpException newBadRequestException(String message) {
         return new HttpException(HttpStatus.BAD_REQUEST, message);
     }
 }

@@ -1,89 +1,76 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
-import com.epam.aidial.core.server.data.ExportResourceIdentity;
-import com.epam.aidial.core.server.service.ExportTypePolicy.Content;
-import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.server.util.HashUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Map;
 import javax.annotation.Nullable;
 
 /**
- * An entity that the file configuration defines has no blob, so the export reads it from the file-sourced {@link Config} as it stands
- * and writes it as JSON, the same way for both phases. Its descriptor is a stand-in with the bucket location
- * {@link ExportResourceIdentity#FILE_LOCATION}: it keys the node of the closure and is never used to read a blob.
+ * An entity of the file configuration has no blob, so the export reads it from the file-sourced {@link Config} as it stands. Its
+ * descriptor is a stand-in with the bucket location {@code file/}: it keys the visited set and is never used to read a blob.
  */
 public final class ExportFileEntities {
 
     private static final String BUCKET = "file";
+    private static final String FILE_LOCATION = "file/";
 
     private ExportFileEntities() {
     }
 
-    static ResourceDescriptor descriptorOf(ResourceTypes type, String name) {
-        return ResourceDescriptorFactory.fromDecoded(type, BUCKET, ExportResourceIdentity.FILE_LOCATION, name);
+    static ResourceDescriptor newDescriptor(ResourceTypes type, String name) {
+        return ResourceDescriptorFactory.fromDecoded(type, BUCKET, FILE_LOCATION, name);
     }
 
     /**
-     * @param schemaId the {@code $id} of a schema; its stand-in is named by the digest of it, which is the segment of its key
+     * @param schemaId the {@code $id} of a schema; its stand-in is named by the digest of it
      */
-    static ResourceDescriptor descriptorOfSchema(ResourceTypes type, String schemaId) {
-        return descriptorOf(type, ExportResourceIdentity.schemaDigest(schemaId));
+    static ResourceDescriptor newSchemaDescriptor(ResourceTypes type, String schemaId) {
+        return newDescriptor(type, computeSchemaDigest(schemaId));
     }
 
     public static boolean isFile(ResourceDescriptor descriptor) {
-        return ExportResourceIdentity.FILE_LOCATION.equals(descriptor.getBucketLocation());
+        return FILE_LOCATION.equals(descriptor.getBucketLocation());
     }
 
     /**
-     * The representation of an entity of the file configuration (design Decision 24): the tree that the default mapper makes of the
-     * entity of a Model, Interceptor, ToolSet or Application, or the parse of the configured text of a schema. The default mapper
-     * drops the {@code @EncryptedField} values, as the config API does; the {@code auth_settings} secrets are not annotated, so the tree
-     * still holds them in plaintext until the redactor removes them, and it is never logged or kept.
-     *
-     * @return the tree, or {@code null} when the file configuration no longer holds the entity or the type has no file form
+     * @return the segment of the key and the entry name of a schema: the first 16 bytes of the digest of its {@code $id}, as hex
+     */
+    static String computeSchemaDigest(String schemaId) {
+        return HashUtil.sha256Hex(schemaId).substring(0, 32);
+    }
+
+    /**
+     * @return the entity that the file configuration holds, or {@code null} when it no longer holds it or the type has no file form;
+     *         the entity is the live one and must not be changed
      */
     @Nullable
-    public static JsonNode readTree(@Nullable Config fileConfig, ResourceDescriptor descriptor) {
+    static Deployment findDeployment(@Nullable Config fileConfig, ResourceDescriptor descriptor) {
         if (fileConfig == null) {
             return null;
         }
-        ResourceTypes type = ExportTypePolicy.typeOf(descriptor);
-        if (ExportTypePolicy.contentOf(type) == Content.SCHEMA) {
-            Map<String, String> schemas = type == ResourceTypes.APP_TYPE_SCHEMA ? fileConfig.getApplicationTypeSchemas() : fileConfig.getCatalogSchemas();
-            for (Map.Entry<String, String> schema : schemas.entrySet()) {
-                if (ExportResourceIdentity.schemaDigest(schema.getKey()).equals(descriptor.getName())) {
-                    return parse(schema.getValue());
-                }
-            }
+        return ExportTypePolicy.findDeployment(fileConfig, ExportTypePolicy.resolveType(descriptor), descriptor.getName());
+    }
+
+    /**
+     * @return the configured text of the schema, or {@code null} when the file configuration no longer holds it
+     */
+    @Nullable
+    static String findSchemaText(@Nullable Config fileConfig, ResourceDescriptor descriptor) {
+        if (fileConfig == null) {
             return null;
         }
-        Object entity = entityOf(fileConfig, type, descriptor.getName());
-        return entity == null ? null : ProxyUtil.MAPPER.valueToTree(entity);
-    }
-
-    private static JsonNode parse(String text) {
-        try {
-            return ProxyUtil.MAPPER.readTree(text);
-        } catch (JsonProcessingException e) {
-            // no cause: the message of the parser can hold a piece of the document
-            throw new IllegalStateException("A schema of the file configuration is not valid JSON");
+        Map<String, String> schemas = ExportTypePolicy.resolveType(descriptor) == ResourceTypes.APP_TYPE_SCHEMA
+                ? fileConfig.getApplicationTypeSchemas() : fileConfig.getCatalogSchemas();
+        for (Map.Entry<String, String> schema : schemas.entrySet()) {
+            if (computeSchemaDigest(schema.getKey()).equals(descriptor.getName())) {
+                return schema.getValue();
+            }
         }
-    }
-
-    @Nullable
-    private static Object entityOf(Config fileConfig, ResourceTypes type, String name) {
-        return switch (type) {
-            case APPLICATION -> fileConfig.getApplications().get(name);
-            case MODEL -> fileConfig.getModels().get(name);
-            case TOOL_SET -> fileConfig.getToolsets().get(name);
-            case INTERCEPTOR -> fileConfig.getInterceptors().get(name);
-            default -> null;
-        };
+        return null;
     }
 }

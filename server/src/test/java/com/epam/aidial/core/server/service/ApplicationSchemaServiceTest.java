@@ -14,7 +14,6 @@ import com.epam.aidial.core.server.validation.CollectionIssue;
 import com.epam.aidial.core.server.validation.CollectionIssueKind;
 import com.epam.aidial.core.server.validation.MarkerCollection;
 import com.epam.aidial.core.server.validation.MarkerCollection.MarkerReference;
-import com.epam.aidial.core.server.validation.MarkerKind;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,8 +23,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -42,7 +39,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
 
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -944,9 +940,6 @@ public class ApplicationSchemaServiceTest {
         Assertions.assertEquals(2, service.schemaCacheSize());
     }
 
-    // ----------------------------------------------------------------------------------------------------------
-    // Marker collection: the structured references (kind, pointer, value) and the issues of a schema and the properties it describes.
-
     private static final URI SCHEMA_ID = URI.create("schemaId");
 
     private static Map<String, Object> properties(Object... keyValues) {
@@ -957,10 +950,7 @@ public class ApplicationSchemaServiceTest {
         return result;
     }
 
-    /**
-     * Collects as the export does: builds the schema of the application from the given configuration, and either reports why it cannot be
-     * used or collects the properties against it.
-     */
+    /** Collects as the export does: builds the schema from the given configuration, then collects the properties against it. */
     private MarkerCollection collect(ApplicationSchemaService under, Config source) {
         ApplicationSchemaService.ExportSchema built = under.buildExportSchema(application.getApplicationTypeSchemaId(), source);
         return built.issue() != null ? MarkerCollection.ofIssue(built.issue()) : under.collectMarkerReferences(application, built.schema());
@@ -977,16 +967,12 @@ public class ApplicationSchemaServiceTest {
         return collect(config);
     }
 
-    private static MarkerReference resourceReference(String pointer, String value) {
-        return new MarkerReference(MarkerKind.RESOURCE, pointer, value);
-    }
-
-    private static MarkerReference fileReference(String pointer, String value) {
-        return new MarkerReference(MarkerKind.FILE, pointer, value);
+    private static MarkerReference reference(String pointer, String value) {
+        return new MarkerReference(pointer, value);
     }
 
     @Test
-    public void collectMarkerReferences_returnsKindPointerAndValueOfEachMarker() {
+    public void collectMarkerReferences_returnsPointerAndValueOfEachMarker() {
         String mergedSchema = """
                 {"type":"object","properties":{
                   "first":{"type":"string","dial:resource":true},
@@ -995,10 +981,9 @@ public class ApplicationSchemaServiceTest {
         MarkerCollection result = collectFrom(mergedSchema,
                 properties("first", "toolsets/platform/a", "second", "files/public/x"));
 
-        Assertions.assertEquals(List.of(resourceReference("/first", "toolsets/platform/a"),
-                fileReference("/second", "files/public/x")), result.references());
+        Assertions.assertEquals(List.of(reference("/first", "toolsets/platform/a"),
+                reference("/second", "files/public/x")), result.references());
         Assertions.assertTrue(result.issues().isEmpty());
-        Assertions.assertTrue(result.isComplete());
     }
 
     @Test
@@ -1016,11 +1001,11 @@ public class ApplicationSchemaServiceTest {
                 properties("viaOneOf", "toolsets/platform/a", "viaAnyOf", "files/public/x", "viaAllOf", "toolsets/platform/b",
                         "visitedTwice", "toolsets/platform/c"));
 
-        Assertions.assertEquals(List.of(resourceReference("/viaOneOf", "toolsets/platform/a"),
-                fileReference("/viaAnyOf", "files/public/x"),
-                resourceReference("/viaAllOf", "toolsets/platform/b"),
-                resourceReference("/visitedTwice", "toolsets/platform/c")), result.references());
-        Assertions.assertTrue(result.isComplete());
+        Assertions.assertEquals(List.of(reference("/viaOneOf", "toolsets/platform/a"),
+                reference("/viaAnyOf", "files/public/x"),
+                reference("/viaAllOf", "toolsets/platform/b"),
+                reference("/visitedTwice", "toolsets/platform/c")), result.references());
+        Assertions.assertTrue(result.issues().isEmpty());
     }
 
     @Test
@@ -1033,13 +1018,12 @@ public class ApplicationSchemaServiceTest {
         MarkerCollection result = collectFrom(mergedSchema,
                 properties("broken", "not-a-number", "good", "toolsets/platform/a"));
 
-        Assertions.assertEquals(List.of(resourceReference("/good", "toolsets/platform/a")), result.references());
+        Assertions.assertEquals(List.of(reference("/good", "toolsets/platform/a")), result.references());
         Assertions.assertEquals(List.of("", "/broken"), result.issues().stream().map(CollectionIssue::pointer).toList(),
                 "an issue of the root has the empty pointer");
         for (CollectionIssue issue : result.issues()) {
             Assertions.assertEquals(CollectionIssueKind.INSTANCE_INVALID, issue.kind());
         }
-        Assertions.assertFalse(result.isComplete());
     }
 
     @Test
@@ -1050,7 +1034,7 @@ public class ApplicationSchemaServiceTest {
 
         MarkerCollection result = collectFrom(mergedSchema, properties("file", "not-a-file-url"));
 
-        Assertions.assertEquals(List.of(fileReference("/file", "not-a-file-url")), result.references());
+        Assertions.assertEquals(List.of(reference("/file", "not-a-file-url")), result.references());
         Assertions.assertEquals(1, result.issues().size());
         Assertions.assertEquals(CollectionIssueKind.INSTANCE_INVALID, result.issues().get(0).kind());
         Assertions.assertEquals("/file", result.issues().get(0).pointer());
@@ -1068,9 +1052,9 @@ public class ApplicationSchemaServiceTest {
         MarkerCollection result = collectFrom(mergedSchema,
                 properties("url", external, "shortName", "gpt-4o", "spaced", "files/b/a b"));
 
-        Assertions.assertEquals(List.of(resourceReference("/url", external),
-                resourceReference("/shortName", "gpt-4o"),
-                resourceReference("/spaced", "files/b/a b")), result.references());
+        Assertions.assertEquals(List.of(reference("/url", external),
+                reference("/shortName", "gpt-4o"),
+                reference("/spaced", "files/b/a b")), result.references());
         Assertions.assertTrue(result.issues().isEmpty());
     }
 
@@ -1097,15 +1081,6 @@ public class ApplicationSchemaServiceTest {
         Assertions.assertTrue(result.references().isEmpty());
         Assertions.assertEquals(1, result.issues().size());
         Assertions.assertEquals(CollectionIssueKind.SCHEMA_NOT_FOUND, result.issues().get(0).kind());
-        Assertions.assertFalse(result.isComplete());
-    }
-
-    private void givenSchemaWithRemoteEndpoint(URI schemaId) {
-        application.setApplicationTypeSchemaId(schemaId);
-        application.setApplicationProperties(properties("first", "toolsets/platform/a"));
-        when(configStore.get()).thenReturn(config);
-        when(config.getCustomApplicationSchema(schemaId)).thenReturn("""
-                {"dial:applicationTypeSchemaEndpoint":"http://runner.example/schema"}""");
     }
 
     @Test
@@ -1119,24 +1094,6 @@ public class ApplicationSchemaServiceTest {
         Assertions.assertEquals("boom", thrown.getMessage());
     }
 
-    static Stream<Arguments> issuesAndWhetherTheCollectionIsComplete() {
-        return Stream.of(
-                Arguments.of("no issue", List.of(), true),
-                Arguments.of("properties that violate the schema",
-                        List.of(new CollectionIssue(CollectionIssueKind.INSTANCE_INVALID, "/a", "internal")), false),
-                Arguments.of("schema not found",
-                        List.of(new CollectionIssue(CollectionIssueKind.SCHEMA_NOT_FOUND, "", "internal")), false),
-                Arguments.of("schema unavailable",
-                        List.of(new CollectionIssue(CollectionIssueKind.SCHEMA_UNAVAILABLE, "", "internal")), false));
-    }
-
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("issuesAndWhetherTheCollectionIsComplete")
-    public void markerCollectionComplete_isFalseWhenThereIsAnIssue(String description, List<CollectionIssue> issues,
-                                                                                boolean expectedComplete) {
-        Assertions.assertEquals(expectedComplete, new MarkerCollection(List.of(), issues).isComplete(), description);
-    }
-
     @Test
     public void collectMarkerReferences_acceptsLocalRefsOfSchemaWithAbsoluteId() {
         String mergedSchema = """
@@ -1146,8 +1103,8 @@ public class ApplicationSchemaServiceTest {
 
         MarkerCollection result = collectFrom(mergedSchema, properties("a", "toolsets/platform/a"));
 
-        Assertions.assertEquals(List.of(resourceReference("/a", "toolsets/platform/a")), result.references());
-        Assertions.assertTrue(result.isComplete());
+        Assertions.assertEquals(List.of(reference("/a", "toolsets/platform/a")), result.references());
+        Assertions.assertTrue(result.issues().isEmpty());
     }
 
     @ParameterizedTest
@@ -1176,8 +1133,7 @@ public class ApplicationSchemaServiceTest {
             Assertions.assertEquals(1, result.issues().size());
             CollectionIssue issue = result.issues().get(0);
             Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, issue.kind());
-            Assertions.assertFalse(issue.message().contains(address), "the issue must not carry the IRI");
-            Assertions.assertFalse(result.isComplete());
+            Assertions.assertFalse(issue.toString().contains(address), "the issue must not carry the IRI");
         } finally {
             server.stop(0);
             java.nio.file.Files.deleteIfExists(file);
@@ -1185,7 +1141,7 @@ public class ApplicationSchemaServiceTest {
     }
 
     @Test
-    public void collectMarkerReferences_returnsIssuesInStableOrderWithoutTheLibraryMessage() {
+    public void collectMarkerReferences_returnsIssuesInStableOrderWithoutTheInstanceValue() {
         String mergedSchema = """
                 {"type":"object","properties":{
                   "b":{"type":"integer"},
@@ -1195,12 +1151,9 @@ public class ApplicationSchemaServiceTest {
 
         Assertions.assertEquals(List.of("/a", "/b"), result.issues().stream().map(CollectionIssue::pointer).toList());
         for (CollectionIssue issue : result.issues()) {
-            Assertions.assertFalse(issue.message().contains("secret-value"), "the message must not hold the instance value");
+            Assertions.assertFalse(issue.toString().contains("secret-value"), "the issue must not hold the instance value");
         }
     }
-
-    // ----------------------------------------------------------------------------------------------------------
-    // The collector checks no existence, unlike the request-time getters
 
     @Test
     public void collectMarkerReferences_checksNoExistenceOfTheResources() {
@@ -1210,8 +1163,6 @@ public class ApplicationSchemaServiceTest {
         Assertions.assertTrue(collection.issues().isEmpty());
         verifyNoInteractions(resourceService, complexResourceService);
     }
-
-    // ---- the export reuses the service's own Runner download: live, no cache, same guarantees ----------------
 
     private static final String RUNNER_SCHEMA = """
             {"type":"object","properties":{"first":{"type":"string","dial:resource":true}}}""";
@@ -1240,12 +1191,12 @@ public class ApplicationSchemaServiceTest {
     public void collectMarkerReferences_doesNotReplaceTheSchemaThatRequestProcessingUses()
             throws IOException, InterruptedException {
         URI schemaId = URI.create("schemaId");
-        givenSchemaWithRemoteEndpoint(schemaId);
+        givenSchemaWhoseRunnerIs(schemaId, "http://runner.example/schema");
         givenRunnerAnswers(RUNNER_SCHEMA);
 
         MarkerCollection beforeAnythingIsCached = collect(configStore.get());
 
-        Assertions.assertEquals(List.of(resourceReference("/first", "toolsets/platform/a")), beforeAnythingIsCached.references());
+        Assertions.assertEquals(List.of(reference("/first", "toolsets/platform/a")), beforeAnythingIsCached.references());
         Assertions.assertEquals(0, service.schemaCacheSize(), "the export neither reads nor fills the cache");
 
         String cachedByRequestProcessing = service.getSchema(schemaId, false);
@@ -1262,7 +1213,7 @@ public class ApplicationSchemaServiceTest {
     @Test
     public void getSchema_withForceReloadStillReplacesTheCachedSchema() throws IOException, InterruptedException {
         URI schemaId = URI.create("schemaId");
-        givenSchemaWithRemoteEndpoint(schemaId);
+        givenSchemaWhoseRunnerIs(schemaId, "http://runner.example/schema");
         givenRunnerAnswers(RUNNER_SCHEMA);
         String before = service.getSchema(schemaId, false);
         givenRunnerAnswers("{\"type\":\"object\",\"properties\":{}}");
@@ -1292,8 +1243,8 @@ public class ApplicationSchemaServiceTest {
 
             MarkerCollection result = collect(serviceWithTheRealClient(), configStore.get());
 
-            Assertions.assertEquals(List.of(resourceReference("/first", "toolsets/platform/a")), result.references());
-            Assertions.assertTrue(result.isComplete());
+            Assertions.assertEquals(List.of(reference("/first", "toolsets/platform/a")), result.references());
+            Assertions.assertTrue(result.issues().isEmpty());
             Assertions.assertEquals(1, requests.get());
             Assertions.assertFalse(headerNames.contains("authorization") || headerNames.contains("cookie")
                     || headerNames.contains("proxy-authorization"), "no credential is sent: " + headerNames);
@@ -1332,7 +1283,6 @@ public class ApplicationSchemaServiceTest {
             Assertions.assertEquals(0, targetRequests.get(), "the redirect target is never contacted");
             Assertions.assertEquals(1, result.issues().size());
             Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, result.issues().get(0).kind());
-            Assertions.assertFalse(result.isComplete());
         } finally {
             runner.stop(0);
             target.stop(0);
@@ -1454,8 +1404,6 @@ public class ApplicationSchemaServiceTest {
         }
     }
 
-    // ---- a Runner failure makes the schema unavailable, whatever its cause -------------------------------------------------------------
-
     private MarkerCollection collectAfterRunnerFailure() {
         URI schemaId = URI.create("schemaId");
         givenSchemaWhoseRunnerIs(schemaId, "http://runner.example/schema");
@@ -1465,7 +1413,6 @@ public class ApplicationSchemaServiceTest {
     private static void assertSchemaUnavailable(MarkerCollection result) {
         Assertions.assertEquals(1, result.issues().size());
         Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, result.issues().get(0).kind());
-        Assertions.assertFalse(result.isComplete());
     }
 
     @ParameterizedTest
@@ -1508,8 +1455,8 @@ public class ApplicationSchemaServiceTest {
 
         MarkerCollection result = collect(snapshotConfig);
 
-        Assertions.assertEquals(List.of(resourceReference("/first", "toolsets/platform/a")), result.references());
-        Assertions.assertTrue(result.isComplete());
+        Assertions.assertEquals(List.of(reference("/first", "toolsets/platform/a")), result.references());
+        Assertions.assertTrue(result.issues().isEmpty());
         verifyNoInteractions(configStore);
         Assertions.assertEquals(0, service.schemaCacheSize());
     }

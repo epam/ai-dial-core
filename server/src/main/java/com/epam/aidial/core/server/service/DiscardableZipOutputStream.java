@@ -13,9 +13,7 @@ final class DiscardableZipOutputStream extends ZipOutputStream {
         super(out);
     }
 
-    /**
-     * Releases the deflater without finishing the archive. Safe to call after {@link #close()}.
-     */
+    /** Releases the deflater without finishing the archive. Safe to call after {@link #close()}. */
     void discard() {
         def.end();
     }

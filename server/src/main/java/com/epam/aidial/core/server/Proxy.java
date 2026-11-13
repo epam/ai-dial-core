@@ -31,7 +31,6 @@ import com.epam.aidial.core.server.service.BackgroundJobService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
-import com.epam.aidial.core.server.service.ExportArchive;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
@@ -81,10 +80,8 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.WebSocketClient;
-import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.Strings;
@@ -214,13 +211,6 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final TracingSettings tracingSettings;
     private final BlockingCallTracer blockingCallTracer;
     private final AdminExportSettings adminExportSettings;
-    /**
-     * The redaction of the bodies of an export of selected Applications, set by {@code AiDial}. Without one that export
-     * answers 503 and writes no body.
-     */
-    @Nullable
-    @Setter(AccessLevel.PACKAGE)
-    private volatile ExportArchive.BodyRedactor exportBodyRedactor;
     private final AdminSystemExportService adminSystemExportService;
     private final AdminSystemExportService.Settings adminSystemExportSettings;
     private final OrgUnitService orgUnitService;

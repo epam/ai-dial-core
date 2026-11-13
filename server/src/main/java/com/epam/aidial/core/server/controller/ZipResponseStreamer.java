@@ -23,13 +23,11 @@ import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 /**
- * Streams a ZIP that a writer builds on a task thread into a {@link BoundedPipe}, and from the pipe to the response through an
- * {@link InputStreamReader}, so a slow client slows the writer down instead of growing memory, and a client that is too slow for the
- * stall timeout fails the export.
+ * Streams a ZIP that a writer builds on a task thread into a {@link BoundedPipe} and on to the response, so a slow client slows the
+ * writer down instead of growing memory, and a client too slow for the stall timeout fails the export.
  *
- * <p>Once the {@code 200} head is sent the status cannot change. A failure after that resets the connection, so the client sees a
- * transport error and an archive without the central directory, never a complete ZIP. A failure before that is handed to the caller,
- * which answers with a status.
+ * <p>Once the {@code 200} head is sent the status cannot change: a later failure resets the connection, so the client never gets a
+ * complete ZIP. A failure before the head is handed to the caller, which answers with a status.
  */
 final class ZipResponseStreamer {
 
@@ -47,13 +45,13 @@ final class ZipResponseStreamer {
     }
 
     /**
-     * {@code writer} does not close the stream; the {@code slot} is released when it ends or cannot start. When the {@code deadline}, if
-     * any, passes, the pipe is aborted, which ends a write that waits for a slow client.
+     * {@code writer} does not close the stream; {@code locks} are released when it ends or cannot start. The pipe is aborted when the
+     * {@code deadline} passes.
      *
      * @param fileNamePrefix   the file name is {@code <prefix>-<start>.zip}
-     * @param failureResponder answers a failure that happens before the head is written; the slot is released by then
+     * @param failureResponder answers a failure before the head is written; the locks are released by then
      */
-    void stream(ProxyContext context, String fileNamePrefix, Instant start, @Nullable ExportLimits.Deadline deadline, ExportSlot slot,
+    void stream(ProxyContext context, String fileNamePrefix, Instant start, @Nullable ExportLimits.Deadline deadline, ExportSlot locks,
                 Consumer<OutputStream> writer, Consumer<Throwable> failureResponder) {
         HttpServerResponse response = context.getResponse().setChunked(true);
         // set only when the archive starts, so that a status response sent before it does not carry them
@@ -75,8 +73,8 @@ final class ZipResponseStreamer {
             }
         });
 
-        long abortTimer = deadline == null || deadline.remainingMillis() < 0 ? -1
-                : vertx.setTimer(deadline.remainingMillis(), id -> pipe.closeExceptionally(new IOException("The export took too long")));
+        long abortTimer = deadline == null ? -1
+                : vertx.setTimer(deadline.computeRemainingMillis(), id -> pipe.closeExceptionally(new IOException("The export took too long")));
         Future<Object> writing;
         try {
             writing = taskExecutor.submit(() -> {
@@ -88,7 +86,7 @@ final class ZipResponseStreamer {
                     throw e;
                 } finally {
                     cancelTimer(abortTimer);
-                    slot.release();
+                    locks.release();
                 }
                 pipe.getOutput().close();
                 return null;
@@ -98,11 +96,11 @@ final class ZipResponseStreamer {
             cancelTimer(abortTimer);
             responsePipe.close();
             reader.close();
-            slot.releaseThen(taskExecutor, () -> failureResponder.accept(e));
+            locks.releaseThen(taskExecutor, () -> failureResponder.accept(e));
             return;
         }
-        // a writer that ran has released the slot already; one that was dropped before it ran has not
-        writing.onFailure(error -> slot.releaseThen(taskExecutor, () -> {
+        // a writer that ran has released the locks already; one that was dropped before it ran has not
+        writing.onFailure(error -> locks.releaseThen(taskExecutor, () -> {
             cancelTimer(abortTimer);
             // the writer has already logged the failure; stop feeding the response before it is ended
             responsePipe.close();
