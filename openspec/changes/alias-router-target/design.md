@@ -1,0 +1,82 @@
+# Design
+
+## Context
+
+What the code on `development` does today:
+
+- `AliasTargets.java:parse` accepts `models/`, `applications/` and `toolsets/` only; `AliasTargets.java:resolve`
+  looks the name up in those three config maps; `AliasTargets.java:fits` accepts a `Model` or an `Application` for
+  the `model` and `application` types.
+- `Alias.java:getEffectivePresentation` derives the type from the first path segment and knows the same three.
+- `AliasService.java` builds the alias pass with `AliasPasses.java:build`: an `AliasApplicationPass` whose interfaces
+  point at Core's own address (`localBaseUrl`), one per interface the target declares
+  (`DeploymentEndpointUtil.java:isInterfaceDeclared`). The pass copies none of the alias's `defaultHeaders`.
+- `ApplyDefaultDeploymentSettingsFn.java:applyDefaultHeaders` sets a deployment's default headers on the inbound
+  request, only under names the request does not carry. For an alias call it runs with the pass, which has none.
+- `ApiKeyData.java` sets `lentDeployment` to the pass's target name; `DeploymentService.java:isLent` then admits the
+  target pass.
+- `RouterDecisionClient.java:routerHeaders` copies the client's headers to the decide request, so a header set on
+  the alias pass's outgoing request reaches the router as a client header.
+- `RouterDecisionFlow.java` appends the router's name to the execution path and rewrites the answer's `model` to
+  the router's name (requirement "Router name in the answer").
+
+## Goals / Non-Goals
+
+Goals: an alias may point to a router; the answer names the alias; the alias's default headers reach the target.
+
+Non-goals: one-pass alias serving; granting the router's chosen deployments; stored aliases to a router.
+
+## Decisions
+
+1. **`routers/<name>` is a fourth config target, resolved like the other three.** `parse` returns
+   `ResourceTypes.ROUTER`, `resolve` reads `config.getRouters()`, `fits` admits a `Router` for `model` and
+   `application`. Rejected: publishing the router itself in the model listings. It would change
+   "Routers absent from other listings" for every router and still give one name per router.
+
+2. **Default type is `model`.** `getEffectivePresentation` maps `routers` to `MODEL`. Rejected: requiring
+   `presentAs`. The only reason to put an alias over a router is to show it as a model.
+
+3. **The alias pass is built as for any model or application target.** `AliasPasses.build` already works from the
+   interfaces the target declares, and a router declares its interfaces as a model does (requirement "Router
+   interfaces validated as a model's"). The listing view goes through `AliasPasses.java:modelView`, which gives a
+   chat model without pricing or limits for a target that is not a `Model`.
+
+4. **The answer names the alias, and the target pass does the rename.** The target pass already rewrites `model`
+   for a decided request. It takes the name from the first element of the incoming execution path when the pass was
+   lent by an alias (`lentDeployment` equals the router's name), else the router's name. Rejected: rewriting in the
+   alias pass, which today relays the body untouched and would have to parse every chunk a second time.
+
+5. **Alias default headers replace the client's.** The alias's headers are set on the alias pass's inbound request
+   with `headers.set`, before the request is forwarded. This differs from a model's default headers, which never
+   replace a client value. Reason: an alias's header says what the alias is, and the caller must not be able to
+   change it; a model's default header is a fallback. Rejected: the same "only when absent" rule, which lets a
+   client of alias `weak` send the header of alias `hi-end`.
+
+6. **The headers apply to the top-level `defaultHeaders` only.** An alias has no `interfaces` of its own, so
+   `Deployment.java:resolveDefaultHeaders` gives the top-level map for every interface type.
+
+7. **Header names follow the existing rules.** The alias's map goes through whatever name check the config applies
+   to a deployment's `defaultHeaders` today; apply (task 1.1) confirms which check that is and records it here. The
+   target pass still drops what only Core may set (`X-DIAL-ROUTER-ATTEMPTS`, `X-DIAL-ROUTER-NOTICE`).
+
+Deliberate differences from today's behaviour: an alias's `defaultHeaders`, ignored until now, are sent; a decided
+answer reached through an alias names the alias.
+
+## Risks / Trade-offs
+
+- An existing config with `defaultHeaders` on an alias changes behaviour on upgrade. Named in the release note.
+- A header set by the alias travels on to the deployment that serves the call, as any client header does. A tier
+  header is harmless there; an admin must not put a secret in an alias's `defaultHeaders`.
+- A router with `userRoles: []` makes an alias without `userRoles` unreachable, because the alias takes the
+  target's roles (requirement "Who may use an alias"). Documented in `aliases.md`; unchanged by this change.
+
+## Cost per request
+
+No new Core pass, body copy, body parse, Redis or blob round trip. An alias over a router costs what an alias over
+a model costs (one loopback pass) plus what the router costs (one decide request). The alias pass sets a few
+headers. Not measured in this change; the loopback pass is measured in the follow-up that removes it.
+
+## Migration Plan
+
+None for data. Rolling upgrade: a pod on the old version fails to load a config with a `routers/` alias target, so
+add such aliases only after every pod runs the new version.
