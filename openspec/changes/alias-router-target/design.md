@@ -33,8 +33,9 @@ Non-goals: one-pass alias serving; granting the router's chosen deployments; sto
    `application`. Rejected: publishing the router itself in the model listings. It would change
    "Routers absent from other listings" for every router and still give one name per router.
 
-2. **Default type is `model`.** `getEffectivePresentation` maps `routers` to `MODEL`. Rejected: requiring
-   `presentAs`. The only reason to put an alias over a router is to show it as a model.
+2. **No default type for a router target.** `getEffectivePresentation` is not changed: the type is `presentAs`
+   or the type the path names, and `routers` names none of the three, so the alias must state `presentAs`.
+   Rejected: mapping `routers` to `MODEL`, a special rule the feature does not need.
 
 3. **The alias pass is built as for any model or application target.** `AliasPasses.build` already works from the
    interfaces the target declares, and a router declares its interfaces as a model does (requirement "Router
@@ -46,11 +47,10 @@ Non-goals: one-pass alias serving; granting the router's chosen deployments; sto
    lent by an alias (`lentDeployment` equals the router's name), else the router's name. Rejected: rewriting in the
    alias pass, which today relays the body untouched and would have to parse every chunk a second time.
 
-5. **Alias default headers replace the client's.** The alias's headers are set on the alias pass's inbound request
-   with `headers.set`, before the request is forwarded. This differs from a model's default headers, which never
-   replace a client value. Reason: an alias's header says what the alias is, and the caller must not be able to
-   change it; a model's default header is a fallback. Rejected: the same "only when absent" rule, which lets a
-   client of alias `weak` send the header of alias `hi-end`.
+5. **Alias default headers work as a deployment's.** `AliasPasses.build` copies the alias's `defaultHeaders` to
+   the pass, and `ApplyDefaultDeploymentSettingsFn.java:applyDefaultHeaders` applies them as it does for any
+   deployment: only under names the request does not carry. Rejected for now: replacing the client's value, a
+   new rule for one deployment kind; it is added when a header must not be changeable by the caller.
 
 6. **The headers apply to the top-level `defaultHeaders` only.** An alias has no `interfaces` of its own, so
    `Deployment.java:resolveDefaultHeaders` gives the top-level map for every interface type.
@@ -65,6 +65,9 @@ answer reached through an alias names the alias.
 ## Risks / Trade-offs
 
 - An existing config with `defaultHeaders` on an alias changes behaviour on upgrade. Named in the release note.
+- A client may send its own value of a header the alias defaults, as with any deployment. With a tier header a
+  client of alias `weak` can then ask for the tier of alias `hi-end`; what it may reach is still limited by its
+  access to the chosen deployments.
 - A header set by the alias travels on to the deployment that serves the call, as any client header does. A tier
   header is harmless there; an admin must not put a secret in an alias's `defaultHeaders`.
 - A router with `userRoles: []` makes an alias without `userRoles` unreachable, because the alias takes the

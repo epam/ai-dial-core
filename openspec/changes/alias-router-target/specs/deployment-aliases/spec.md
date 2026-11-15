@@ -16,12 +16,13 @@ display fields of a deployment.
 - **THEN** the config file load fails, as for a duplicate deployment name
 
 #### Scenario: Router target loaded
-- **WHEN** the config has a router `r1` and an alias `strong` with target path `routers/r1`
+- **WHEN** the config has a router `r1` and an alias `strong` with `presentAs: model` and target path `routers/r1`
 - **THEN** the config loads and `strong` can be called
 
 ### Requirement: Alias type
 The type an alias is listed and called as SHALL be its `presentAs`, or the type the first segment of its target path
-names when `presentAs` is not set; a `routers/` target without `presentAs` SHALL give the type `model`. Core SHALL
+names when `presentAs` is not set. A `routers/` path names no type, so Core SHALL refuse such an alias without
+`presentAs`. Core SHALL
 refuse an alias whose target path starts with `aliases/`, and an alias whose type does not fit a config target:
 `model` and `application` fit a model, an application or a router target, `toolset` fits a toolset target or an
 application target that has `mcp`.
@@ -38,8 +39,12 @@ application target that has `mcp`.
 - **WHEN** an alias with `presentAs: model` targets `toolsets/search`
 - **THEN** the config file load fails
 
-#### Scenario: Router shown as a model by default
-- **WHEN** an alias without `presentAs` targets `routers/r1`, which declares `openaiChatCompletions` and `anthropicMessages`
+#### Scenario: Router target without a type
+- **WHEN** an alias without `presentAs` targets `routers/r1`
+- **THEN** the config file load fails
+
+#### Scenario: Router shown as a model
+- **WHEN** an alias with `presentAs: model` targets `routers/r1`, which declares `openaiChatCompletions` and `anthropicMessages`
 - **THEN** `/openai/models` and `/anthropic/v1/models` list the alias with `object` `model`, and neither lists `r1`
 
 #### Scenario: Router shown as a toolset
@@ -69,22 +74,22 @@ own rights, as on a direct call of the router.
 - **THEN** `claude` receives the request and the client receives its answer
 
 ### Requirement: Default headers of an alias
-For an alias of type `model` or `application`, the alias pass SHALL set every header of the alias's `defaultHeaders`
-on the request it forwards to the target, replacing a value the client sent under the same name. The target pass
-SHALL treat them as headers the client sent.
+For an alias of type `model` or `application`, the alias pass SHALL set each header of the alias's `defaultHeaders`
+that the client did not send on the request it forwards to the target, as for a deployment's default headers. The
+target pass SHALL treat them as headers the client sent.
 
 #### Scenario: Header reaches the decide request
 - **WHEN** `strong` targets `routers/r1` and has `defaultHeaders: {"X-DIAL-ROUTER-TIER": "strong"}`, and a client
   calls `strong` without that header
 - **THEN** the decide request `r1` receives has `X-DIAL-ROUTER-TIER: strong`
 
-#### Scenario: Client value replaced
+#### Scenario: Client value kept
 - **WHEN** a client calls the same alias with `X-DIAL-ROUTER-TIER: hi-end`
-- **THEN** the decide request has `X-DIAL-ROUTER-TIER: strong` and no other value of that header
+- **THEN** the decide request has `X-DIAL-ROUTER-TIER: hi-end` and no other value of that header
 
 #### Scenario: Header reaches a model target
 - **WHEN** `assistant` targets `models/gpt-4-internal` and has `defaultHeaders: {"X-Team": "a"}`, and a client calls
-  `assistant` with `X-Team: b`
+  `assistant` without that header
 - **THEN** the upstream of `gpt-4-internal` receives `X-Team: a`
 
 #### Scenario: Direct call unaffected

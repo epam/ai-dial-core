@@ -9,11 +9,12 @@ accepted by the config and then ignored, so several aliases over one router all 
 
 ## What Changes
 
-- An alias accepts the target path `routers/<name>`. Without `presentAs` it is listed and called as a model.
+- An alias accepts the target path `routers/<name>`. A router is none of the alias types, so such an alias states
+  `presentAs` (`model` or `application`).
 - A call of such an alias is decided by the router and served as a direct call of the router is. The answer's
   `model` is the alias's name, not the router's.
-- The alias pass sets the alias's `defaultHeaders` on the request it forwards, replacing a value the client sent
-  under the same name. The target pass, and the decide request of a router target, see them as client headers.
+- An alias's `defaultHeaders` work as a deployment's do: the alias pass sets each one the client did not send. The
+  target pass, and the decide request of a router target, see them as client headers.
   **Behaviour change:** an existing alias that declares `defaultHeaders` starts sending them.
 - Tests for both, and updates of `docs/dynamic-settings/aliases.md` and `routers.md`.
 
