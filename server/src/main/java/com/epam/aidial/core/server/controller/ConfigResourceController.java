@@ -16,6 +16,7 @@ import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
+import com.epam.aidial.core.credentials.util.UnreadableSecretMessage;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -1944,6 +1945,18 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
+     * What the merge kept from the stored blob must still decrypt, or the entity could only be saved as unusable.
+     * Checked before anything is written.
+     */
+    private void rejectUnreadableSecrets(Object entity, ResourceDescriptor descriptor) {
+        List<String> unreadableSecrets = secretFieldProcessor.findUnreadableFields(entity, descriptor);
+        if (!unreadableSecrets.isEmpty()) {
+            throw new HttpException(HttpStatus.BAD_REQUEST,
+                    UnreadableSecretMessage.of(descriptor.getName(), String.join(", ", unreadableSecrets)));
+        }
+    }
+
+    /**
      * PUT-upsert: creates the entity when no prior blob exists, updates it otherwise.
      * Honors RFC 7232 {@code If-None-Match: *} (412 if the entity already exists) and
      * {@code If-Match: <etag>} (412 on mismatch) via {@link EtagHeader#validate(String)}. Both
@@ -1995,7 +2008,8 @@ public class ConfigResourceController implements Controller {
                                 "Request body must be a JSON object");
                     }
                     JsonNode source;
-                    if (spec.hasEncryptedFields() && existingBody != null) {
+                    boolean mergedWithStoredSecrets = spec.hasEncryptedFields() && existingBody != null;
+                    if (mergedWithStoredSecrets) {
                         // Update arm with secret fields — preserve omitted/sentinel-masked
                         // ciphertext from the prior blob (see SecretFieldProcessor).
                         JsonNode existingBlobNode;
@@ -2030,6 +2044,9 @@ public class ConfigResourceController implements Controller {
                         source = requestNode;
                     }
                     entity = ConfigEntityCodec.treeToEntity(source, spec.entityClass());
+                    if (mergedWithStoredSecrets) {
+                        rejectUnreadableSecrets(entity, descriptor);
+                    }
                     if (entity instanceof Model m) {
                         checkModel(m);
                     } else if (entity instanceof Interceptor interceptor) {

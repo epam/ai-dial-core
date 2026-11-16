@@ -184,20 +184,17 @@ public class ToolSetService {
         if (toolSet.getReference() == null) {
             toolSet.setReference(ProxyUtil.generateReference());
         }
+        BucketInfo bucketInfo = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             ToolSet existing = ProxyUtil.convertToObject(json, ToolSet.class);
             if (inheritForwardAuthToken) {
                 toolSet.setForwardAuthToken(existing != null && existing.isForwardAuthToken());
             }
-            if (existing != null) {
-                resourceAuthSettingsEncryptionService.decrypt(resource.getUrl(),
-                        new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
-                        existing.getAuthSettings());
-            }
-            resourceAuthSettingsService.processResourceAuthSettings(toolSet, existing);
-            resourceAuthSettingsEncryptionService.encrypt(resource.getUrl(),
-                    new BucketInfo(resource.getBucketName(), resource.getBucketLocation()),
-                    toolSet.getAuthSettings());
+            boolean existingSecretUnreadable = existing != null
+                    && !resourceAuthSettingsEncryptionService.tryDecryptOrDropSecrets(resource.getUrl(), bucketInfo,
+                            existing.getAuthSettings());
+            resourceAuthSettingsService.processResourceAuthSettings(toolSet, existing, existingSecretUnreadable);
+            resourceAuthSettingsEncryptionService.encrypt(resource.getUrl(), bucketInfo, toolSet.getAuthSettings());
             return ProxyUtil.convertToString(toolSet);
         });
 
