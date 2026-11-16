@@ -43,23 +43,6 @@ class DeploymentServiceLentTest {
     }
 
     @Test
-    void legacyLentDeploymentFieldIsHonouredForOldPrks() {
-        ProxyContext context = mock(ProxyContext.class);
-        ApiKeyData apiKeyData = new ApiKeyData();
-        when(context.getApiKeyData()).thenReturn(apiKeyData);
-        Model target = new Model();
-        target.setName("gpt-4");
-
-        apiKeyData.setPerRequestKey("key");
-        // old PRK: has lentDeployment but no lent=true entry
-        apiKeyData.setLentDeployment("gpt-4");
-        assertTrue(DeploymentService.isLent(context, target), "legacy lentDeployment field must be honoured");
-
-        apiKeyData.setLentDeployment(null);
-        assertFalse(DeploymentService.isLent(context, target));
-    }
-
-    @Test
     void regularReadGrantDoesNotConferLentStatus() {
         ProxyContext context = mock(ProxyContext.class);
         ApiKeyData apiKeyData = new ApiKeyData();

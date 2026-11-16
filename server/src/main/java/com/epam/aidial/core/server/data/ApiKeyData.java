@@ -66,9 +66,6 @@ public class ApiKeyData {
     private List<String> interceptors;
     // Index to track which interceptor is called next
     private int interceptorIndex = -1;
-    // Legacy: the deployment an alias pass lent its target — decoded for backward compat but no longer written.
-    // Alias-target grants are now represented as lent=true entries in perRequestSharedResources.
-    private String lentDeployment;
     // deployment triggers interceptors
     private String initialDeployment;
     private String initialDeploymentApi;
