@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
+import com.epam.aidial.core.credentials.util.UnreadableSecretMessage;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.ClientSecretValidation;
@@ -65,7 +66,6 @@ public class ExternalServiceValidation {
 
     /** A write that would have kept the stored {@code client_secret} cannot, because it no longer decrypts. */
     public static HttpException unreadableStoredSecret(String serviceId) {
-        return new HttpException(HttpStatus.BAD_REQUEST,
-                "External service '%s': stored client_secret can't be decrypted; send client_secret".formatted(serviceId));
+        return new HttpException(HttpStatus.BAD_REQUEST, UnreadableSecretMessage.of("external service '" + serviceId + "'", "client_secret"));
     }
 }

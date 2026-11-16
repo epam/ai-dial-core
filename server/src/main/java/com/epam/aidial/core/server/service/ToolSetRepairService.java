@@ -80,10 +80,10 @@ public class ToolSetRepairService {
             // in the new ClientRegistration (e.g. codeVerifier is skipped when PKCE is absent).
             // Any field left untouched would still carry its encrypted value and be double-encrypted.
             // An unreadable secret is lost either way: the registration replaces it.
-            boolean secretUnreadable = encryptionService.decryptLenient(resourceUrl, bucketInfo, storedSettings);
+            encryptionService.tryDecryptOrDropSecrets(resourceUrl, bucketInfo, storedSettings);
             authSettingsService.applyRegistration(storedSettings, registration);
             storedSettings.setDynamicallyRegistered(true);
-            if (secretUnreadable && storedSettings.getCodeVerifier() == null) {
+            if (storedSettings.getCodeVerifier() == null) {
                 storedSettings.setCodeChallenge(null);
                 storedSettings.setCodeChallengeMethod(null);
             }

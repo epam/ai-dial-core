@@ -124,8 +124,8 @@ class ToolSetRepairServiceTest {
         List<String> callOrder = new ArrayList<>();
         doAnswer(inv -> {
             callOrder.add("decrypt");
-            return false;
-        }).when(encryptionService).decryptLenient(any(), any(), any());
+            return true;
+        }).when(encryptionService).tryDecryptOrDropSecrets(any(), any(), any());
         doAnswer(inv -> {
             callOrder.add("encrypt");
             return null;
@@ -181,8 +181,8 @@ class ToolSetRepairServiceTest {
             ResourceAuthSettings settings = inv.getArgument(2);
             settings.setClientSecret(null);
             settings.setCodeVerifier(null);
-            return true;
-        }).when(encryptionService).decryptLenient(any(), any(), any());
+            return false;
+        }).when(encryptionService).tryDecryptOrDropSecrets(any(), any(), any());
 
         AtomicReference<String> written = new AtomicReference<>();
         when(resourceService.computeResource(eq(resource), eq(EtagHeader.ANY), eq("test-author"), any()))

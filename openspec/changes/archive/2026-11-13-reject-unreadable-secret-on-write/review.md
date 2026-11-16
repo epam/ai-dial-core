@@ -12,10 +12,10 @@ the new value is encrypted under the current content encryption key.
 
 | Write | Before | Now |
 |---|---|---|
-| Toolset `PUT` (Resource API, admin config API, `/v1/admin/apply`) omitting `client_secret`, stored secret unreadable | bare `500` | `400` naming the toolset and asking for `client_secret`; a dynamically registered toolset's message names the repair endpoint. In `/v1/admin/apply` the same text is the entry's `FAILED` error |
+| Toolset `PUT` (Resource API, admin config API, `/v1/admin/apply`) omitting `client_secret`, stored secret unreadable | bare `500` | `400` naming the toolset and asking for a new `client_secret`; the docs, not the message, name the repair route for a dynamically registered toolset. In `/v1/admin/apply` the same text is the entry's `FAILED` error |
 | Application `PUT` carrying `external_services`, a service with an unreadable secret and no `client_secret`, same type | `500` | `400` naming the service; other services, unrelated fields and dropping the service still succeed |
 | Single external-service `PUT`, unreadable secret and no `client_secret`, same type | `500`, and one bad service blocked writing every other service of the application | `400` for that service only; a healthy service is written and the others keep their stored ciphertext byte for byte |
-| User-authored external-service `PUT` omitting `client_secret` | `500` | `400`, also on an authentication-type change (that path keeps the stored secret whatever the type) |
+| User-authored external-service `PUT` omitting `client_secret` | `500` | `400`; an authentication-type change goes through, as on the inline path |
 | Model, key or route `PUT` omitting a secret whose stored value is unreadable | `500` after the blob was written, or `200` with a stored value that failed on reload | `400` listing every unreadable field (`upstreams[0].key`), nothing written, ETag unchanged |
 
 ### Cases that now succeed instead of `500`
@@ -49,8 +49,16 @@ unusable value is no longer kept silently. The error lists every unreadable fiel
   small private methods (`decryptSecretLenient`, `encryptSecret`) so `put`/`putExternalService` read as one line each.
   `decryptSecretLenient` stays before `ExternalServiceValidation.validate`: validation exempts a secret handed back
   unchanged and can only compare it with the stored one in plaintext.
-- `ExternalServiceValidation.unreadableStoredSecret` holds the shared `400` text, because inline and user-authored
-  services must word it identically.
+- `ExternalServiceService.preserveOmittedSecret` is the one preserve-or-refuse rule for inline and user-authored
+  services (it first existed as three copies, and the user-authored one lacked the type-change exemption). The user path
+  therefore no longer carries a secret across an `authentication_type` change either, as it did before this change.
+- All three paths share one message, `Secret of <name> can't be decrypted; send a new value for: <fields>`
+  (`UnreadableSecretMessage`). The toolset message no longer names the repair route, because the `credentials` module
+  does not know about it; the docs do.
+- `decryptLenient` became `tryDecryptOrDropSecrets` and returns `true` on success. The repair flag was dropped: a
+  challenge without a verifier is cleared whatever the cause.
+- `SecretFieldProcessor` passes the field value to the visitors and allocates a small `Path` per nested object on every
+  traversal, including the platform reload rebuild. The cost is negligible next to AES-GCM.
 
 ## Checks run
 
@@ -86,6 +94,14 @@ On Windows 11 with JDK 21.0.8.
   lock) and `PublicationApiTest.testPublicationCreation_OnlyRules`. Run alone twice on each tree, that last test
   failed once and passed once on both, so it is flaky, not caused by this change. Four other tests failed only on the
   baseline run.
+
+## Not covered
+
+- A toolset with PKCE but **no** `client_secret` whose stored `code_verifier` can't be decrypted. The verifier is read
+  with a plaintext fallback (`decryptValueWithLegacyFallback`), which never throws, so `tryDecryptOrDropSecrets`
+  reports success, a `PUT` keeps and re-encrypts the garbage value, and sign-in later fails at the token exchange. It
+  predates this change and needs a different detection, so it is left to the follow-up issue
+  https://github.com/epam/ai-dial-core/issues/2294.
 
 ## Open
 

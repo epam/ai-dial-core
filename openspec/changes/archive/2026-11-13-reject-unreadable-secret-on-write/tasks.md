@@ -8,14 +8,14 @@ needs a JDK 21 as `JAVA_HOME`). Tests plant an unreadable secret the way `Applic
 
 ## 1. Credentials module: lenient decrypt, the flag, the PKCE pair
 
-- [x] 1.1 Add `ResourceAuthSettingsEncryptionService.decryptLenient`, returning whether a stored `clientSecret` could not
-  be decrypted and nulling `clientSecret` and `codeVerifier` in that case. Verify in `ResourceAuthSettingsEncryptionServiceTest`:
-  readable secret returns `false` and decrypts both fields; undecryptable Base64 secret returns `true` and nulls both;
-  absent secret returns `false`; plaintext legacy secret returns `true`.
+- [x] 1.1 Add `ResourceAuthSettingsEncryptionService.tryDecryptOrDropSecrets`, returning whether everything decrypted and
+  nulling `clientSecret` and `codeVerifier` when a stored `clientSecret` could not be. Verify in
+  `ResourceAuthSettingsEncryptionServiceTest`: readable secret returns `true` and decrypts both fields; undecryptable
+  Base64 secret returns `false` and nulls both; absent secret returns `true`; plaintext legacy secret returns `false`.
 - [x] 1.2 Add the `existingSecretUnreadable` parameter to `ResourceAuthSettingsService.processResourceAuthSettings`
   (design decision 2) and update the existing calls in `ResourceAuthSettingsServiceTest` and `ToolSetService`. Verify
   in `ResourceAuthSettingsServiceTest`: flag with a null body secret throws `IllegalArgumentException` and the message
-  names the toolset; dynamically registered adds the repair hint; flag with a body secret does not throw; flag with a
+  names the toolset; flag with a body secret does not throw; flag with a
   changed authentication type does not throw.
 - [x] 1.3 In `resolveCodeChallengeSettings`, regenerate the challenge and verifier when the flag is set and a method
   exists (design decision 3). Verify in `ResourceAuthSettingsServiceTest`: the new pair differs from the stored one and
@@ -24,7 +24,7 @@ needs a JDK 21 as `JAVA_HOME`). Tests plant an unreadable secret the way `Applic
 
 ## 2. Toolset write and repair
 
-- [x] 2.1 In `ToolSetService.writeToolSet`, call `decryptLenient` on `existing` and pass the flag to
+- [x] 2.1 In `ToolSetService.writeToolSet`, call `tryDecryptOrDropSecrets` on `existing` and pass the flag to
   `processResourceAuthSettings`. Verify in `ToolSetApiTest` (extend the preserve-on-omit tests; scenarios "New secret
   replaces an unreadable one" and "Omitted secret"): `PUT` with a new `client_secret` answers `200` and `GET` carries
   `client_secret_hint`; the same `PUT` without it answers `400`, the ETag is unchanged, and the body holds neither the
@@ -32,11 +32,10 @@ needs a JDK 21 as `JAVA_HOME`). Tests plant an unreadable secret the way `Applic
 - [x] 2.2 Verify the PKCE scenario in `ToolSetApiTest`: after the `200`, a sign-in completes its token exchange with a
   `code_verifier` that matches the `code_challenge` of its authorization request (the `MockWebServer` token endpoint
   asserts it).
-- [x] 2.3 Verify the remaining toolset scenarios in `ToolSetApiTest`: a dynamically registered toolset's `400` names the
-  repair endpoint; `OAUTH` to `API_KEY` with the key answers `200`; and in `ConfigApplyApiTest` (or the class that holds
+- [x] 2.3 Verify the remaining toolset scenarios in `ToolSetApiTest`: `OAUTH` to `API_KEY` with the key answers `200`; and in `ConfigApplyApiTest` (or the class that holds
   the toolset apply tests) a manifest without `client_secret` yields a `FAILED` entry with the same message.
-- [x] 2.4 In `ToolSetRepairService.repair`, drop the decrypt at `:62`, use `decryptLenient` at `:84`, and clear
-  `codeChallenge`/`codeChallengeMethod` when the verifier was nulled and the registration has no PKCE method (design
+- [x] 2.4 In `ToolSetRepairService.repair`, drop the decrypt at `:62`, use `tryDecryptOrDropSecrets` at `:84`, and clear
+  `codeChallenge`/`codeChallengeMethod` when there is no verifier after the registration (design
   decision 5). Update the call-order assertion in `ToolSetRepairServiceTest` (it expects `decrypt, decrypt,
   applyRegistration, encrypt`) and add a case for the unreadable secret. Verify in `ToolSetRepairApiTest`: repair of a
   dynamically registered toolset with an unreadable secret answers `200`, `GET` shows the new `client_id` and a

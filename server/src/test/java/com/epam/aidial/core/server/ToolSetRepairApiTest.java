@@ -193,7 +193,7 @@ public class ToolSetRepairApiTest extends ResourceBaseTest {
                     200, REGISTRATION_RESPONSE_JSON, "Content-Type", "application/json");
 
             createDcrToolset(name);
-            corruptStoredToolSetSecrets("toolsets/" + ADMIN_BUCKET + "/" + name, false);
+            corruptStoredToolSetSecrets("toolsets/" + ADMIN_BUCKET + "/" + name);
 
             Response repair = send(HttpMethod.POST,
                     "/v1/ops/toolset/" + ADMIN_BUCKET + "/" + name + "/repair",

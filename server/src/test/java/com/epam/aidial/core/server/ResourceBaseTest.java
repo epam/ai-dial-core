@@ -356,8 +356,8 @@ public class ResourceBaseTest {
     }
 
     // Overwrites a stored toolset's secrets, bypassing the API's encrypt path, as a lost key or a copied blob would.
-    protected void corruptStoredToolSetSecrets(String url, boolean markDynamicallyRegistered) {
-        corruptStoredAuthSettings(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService), "/auth_settings", markDynamicallyRegistered);
+    protected void corruptStoredToolSetSecrets(String url) {
+        corruptStoredAuthSettings(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService), "/auth_settings");
     }
 
     // Replaces an encrypted field of a stored config entity (model, key, route) with an envelope no key decrypts.
@@ -371,16 +371,13 @@ public class ResourceBaseTest {
 
     // The same for the auth_settings object found at authSettingsPointer (a JSON pointer) in the stored blob.
     @SneakyThrows
-    protected void corruptStoredAuthSettings(ResourceDescriptor descriptor, String authSettingsPointer, boolean markDynamicallyRegistered) {
+    protected void corruptStoredAuthSettings(ResourceDescriptor descriptor, String authSettingsPointer) {
         ResourceService resourceService = dial.getProxy().getResourceService();
         JsonNode blob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
         ObjectNode authSettings = (ObjectNode) blob.at(authSettingsPointer);
         authSettings.put("client_secret", CORRUPTED_CIPHERTEXT);
         if (authSettings.has("code_verifier")) {
             authSettings.put("code_verifier", CORRUPTED_CIPHERTEXT);
-        }
-        if (markDynamicallyRegistered) {
-            authSettings.put("dynamically_registered", true);
         }
         resourceService.putResource(descriptor, blob.toString(), EtagHeader.ANY, null, false);
     }

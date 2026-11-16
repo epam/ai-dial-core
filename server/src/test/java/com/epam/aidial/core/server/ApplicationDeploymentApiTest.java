@@ -387,7 +387,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         awaitApplicationStatus("/v1/" + appUrl, "DEPLOYED");
 
         corruptStoredAuthSettings(ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService),
-                "/external_services/billing/auth_settings", false);
+                "/external_services/billing/auth_settings");
 
         webServer.map(HttpMethod.DELETE, "/v1/image/0123", 200, """
                 event: result

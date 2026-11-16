@@ -48,9 +48,9 @@ Its preserve step (`:88-90`) copies the stored secret into a body that omits it.
 
 ### 1. Lenient decrypt of the stored side that reports, instead of throwing
 
-`ResourceAuthSettingsEncryptionService` gets `decryptLenient(resourceId, bucketInfo, settings)`, returning `true` when a
-stored `clientSecret` was present and could not be decrypted. In that case it sets both `clientSecret` and `codeVerifier`
-to `null` and returns, and the caller keeps the flag. The strict `decrypt` stays for every other use.
+`ResourceAuthSettingsEncryptionService` gets `tryDecryptOrDropSecrets(resourceId, bucketInfo, settings)`, returning
+`false` when a stored `clientSecret` was present and could not be decrypted. In that case it sets both `clientSecret` and
+`codeVerifier` to `null` and returns, and the caller keeps the flag. The strict `decrypt` stays for every other use.
 
 - A stored plaintext `clientSecret` (written before encryption existed) fails the same decrypt, and is treated the same.
 - `codeVerifier` is not tested on its own. It lives in the same bucket under the same AAD, so it fails together with the
@@ -65,17 +65,17 @@ second time and look valid. `SecretFieldProcessor` can do that skip only because
 
 - **Toolset:** `processResourceAuthSettings(updated, existing, existingSecretUnreadable)`. In the OAuth-to-OAuth branch,
   where `:88-90` copies the stored secret, the flag with a null body secret throws `IllegalArgumentException`:
-  `Stored client_secret of toolset <url> can't be decrypted; send client_secret`. When the stored
-  `dynamicallyRegistered` is true, the message adds that the toolset can be repaired. `ToolSetService.writeToolSet` is
-  the only production caller, so the parameter replaces the two-argument form and the tests' calls are updated.
-- **Inline external services:** `ExternalServiceService.decryptSecretsLenient(resource, application)` returns the ids of
+  `Secret of <url> can't be decrypted; send a new value for: client_secret`, the one wording
+  (`UnreadableSecretMessage`) every path uses. The `credentials` module does not know about the toolset repair route,
+  so the message carries no repair hint; the docs name the route. `ToolSetService.writeToolSet` is the only production
+  caller, so the parameter replaces the two-argument form and the tests' calls are updated.
+- **Inline external services:** `ExternalServiceService.decryptOrDropSecrets(resource, application)` returns the ids of
   the unreadable services. `preserveOmittedSecrets` (`:284`) throws
-  `HttpException(BAD_REQUEST, "External service '<id>': stored client_secret can't be decrypted; send client_secret")`,
-  the wording of `ExternalServiceValidation`, for an id in that set whose body omits the secret and whose type did not
-  change. `putExternalService`'s own preserve step (`:147-151`) gets the same check.
-- **User-authored:** `UserExternalServiceService.decryptSecretLenient` returns the flag and `preserveOmittedSecret` (`:180`)
-  throws the same `400`. That method keeps the stored secret whatever the type, unlike the inline path, so the `400`
-  applies on a type change too. This change does not add a type-change exemption there.
+  `HttpException(BAD_REQUEST, ...)` in the shared wording, for an id in that set whose body omits the secret and whose
+  type did not change. `putExternalService` and the user-authored `put` call the same static
+  `ExternalServiceService.preserveOmittedSecret`, so the rule is written once.
+- **User-authored:** `UserExternalServiceService` calls that helper too. It used to keep the stored secret whatever the
+  type; it now follows the inline rule, so a type change goes through and no secret crosses it.
 
 The check sits in the preserve step, not in a pre-check, so "would have kept it" is the code that keeps it and the rule
 cannot drift from the behaviour.
@@ -109,9 +109,9 @@ for the whole map. It decrypts the stored side leniently as in decision 2 and on
 
 `ToolSetRepairService.repair` drops the first decrypt (`:62`). Dynamic registration reads only `getRedirectUri()` from the
 settings it is given (`DynamicResourceRegistrationStrategy:129`). The decrypt inside `computeResource` (`:84`) becomes
-`decryptLenient`, and stays only so that fields `applyRegistration` does not replace are not encrypted twice. After
-`applyRegistration`, if the stored verifier was nulled and the registration carries no PKCE method, the stored
-`codeChallenge` and `codeChallengeMethod` are cleared too, so a challenge is never left without its verifier. Eligibility
+`tryDecryptOrDropSecrets`, and stays only so that fields `applyRegistration` does not replace are not encrypted twice.
+After `applyRegistration`, if there is no verifier, the stored `codeChallenge` and `codeChallengeMethod` are cleared
+too, so a challenge is never left without its verifier. Eligibility
 (`dynamicallyRegistered`, OAuth) is unchanged, and the test `testRepairRejectedForStaticOauthToolset` keeps its meaning.
 
 ### 6. Models, keys and routes: trial-decrypt what is kept, before writing

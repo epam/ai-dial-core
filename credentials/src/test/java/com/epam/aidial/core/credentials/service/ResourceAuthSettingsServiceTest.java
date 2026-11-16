@@ -331,15 +331,10 @@ class ResourceAuthSettingsServiceTest {
 
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
 
-        IllegalArgumentException staticClient = Assertions.assertThrows(IllegalArgumentException.class,
+        IllegalArgumentException exception = Assertions.assertThrows(IllegalArgumentException.class,
                 () -> resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, true));
-        Assertions.assertTrue(staticClient.getMessage().contains(RESOURCE_NAME));
-        Assertions.assertFalse(staticClient.getMessage().contains("repair"));
 
-        existingToolSet.getAuthSettings().setDynamicallyRegistered(true);
-        IllegalArgumentException dynamic = Assertions.assertThrows(IllegalArgumentException.class,
-                () -> resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, true));
-        Assertions.assertTrue(dynamic.getMessage().contains("repair"));
+        assertEquals("Secret of " + RESOURCE_NAME + " can't be decrypted; send a new value for: client_secret", exception.getMessage());
     }
 
     @Test

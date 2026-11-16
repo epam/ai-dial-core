@@ -3804,7 +3804,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
             String initialChallenge = ProxyUtil.MAPPER.readTree(response.body()).at("/auth_settings/code_challenge").asText();
             assertFalse(initialChallenge.isEmpty());
 
-            corruptStoredToolSetSecrets(toolSetPath, false);
+            corruptStoredToolSetSecrets(toolSetPath);
             String storedBefore = readStoredBlob(toolSetPath);
 
             response = send(HttpMethod.PUT, "/v1/" + toolSetPath, null, body.formatted(""), "authorization", "admin");
@@ -3842,7 +3842,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testToolsetUpdateWithUnreadableSecretPointsDynamicallyRegisteredToRepairAndAllowsAuthTypeChange() {
+    void testToolsetUpdateWithUnreadableSecretAllowsAuthTypeChange() {
         String toolSetPath = "toolsets/4X25dj1mja51jykqxsXnCH/toolset-unreadable-dcr";
         try (TestWebServer server = new TestWebServer(9876)) {
             server.map(HttpMethod.POST, "/mcp", 401, "");
@@ -3863,7 +3863,7 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     }
                     """, "authorization", "admin");
             assertEquals(200, response.status());
-            corruptStoredToolSetSecrets(toolSetPath, true);
+            corruptStoredToolSetSecrets(toolSetPath);
 
             String oauthWithoutSecret = """
                     {
@@ -3881,7 +3881,6 @@ public class ToolSetApiTest extends ResourceBaseTest {
                     """;
             response = send(HttpMethod.PUT, "/v1/" + toolSetPath, null, oauthWithoutSecret, "authorization", "admin");
             assertEquals(400, response.status());
-            assertTrue(response.body().contains("repair"), response.body());
 
             response = send(HttpMethod.PUT, "/v1/" + toolSetPath, null, """
                     {

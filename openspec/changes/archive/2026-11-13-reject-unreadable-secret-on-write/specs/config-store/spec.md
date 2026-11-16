@@ -82,8 +82,8 @@ be decrypted SHALL be refused with `400` naming it.
 
 ### Requirement: External service write with an unreadable secret
 An external-service write SHALL succeed when the stored `client_secret` cannot be decrypted and the body supplies a new
-`client_secret`; an application-level service also succeeds when it changes `authentication_type` or, in an application
-`PUT`, is dropped. An omitted `client_secret` SHALL answer `400` naming the service. A write to one service SHALL NOT
+`client_secret`; a service also succeeds when it changes `authentication_type` or, in an application `PUT`, is
+dropped. An omitted `client_secret` SHALL answer `400` naming the service. A write to one service SHALL NOT
 read or change another service's stored secret.
 
 #### Scenario: New secret replaces an unreadable one
@@ -122,12 +122,8 @@ without it, where the write would keep the stored one, SHALL answer `400` naming
 
 #### Scenario: Omitted secret
 - **WHEN** the same toolset is sent without `client_secret`
-- **THEN** Core answers `400` with a message that names the toolset and says the stored `client_secret` cannot be used,
-  and the toolset's ETag is unchanged
-
-#### Scenario: Omitted secret on a dynamically registered toolset
-- **WHEN** the toolset was dynamically registered and the `PUT` omits `client_secret`
-- **THEN** the `400` message also names the repair endpoint, because the client never held the secret
+- **THEN** Core answers `400` with a message that names the toolset and asks for a new `client_secret`, and the
+  toolset's ETag is unchanged
 
 #### Scenario: Authentication type changes
 - **WHEN** the body changes `authentication_type` from `OAUTH` to `API_KEY` and supplies the API key

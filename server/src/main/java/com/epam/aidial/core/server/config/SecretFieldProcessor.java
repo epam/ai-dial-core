@@ -78,9 +78,9 @@ public class SecretFieldProcessor {
     public List<String> findUnreadableFields(Object entity, ResourceDescriptor descriptor) {
         List<String> unreadableFields = new ArrayList<>();
         byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-        traverse(entity, null, (owner, field, ownerPath) -> {
+        traverse(entity, null, (owner, field, value, ownerPath) -> {
             try {
-                decryptValue((String) field.get(owner), aad, field.getName());
+                decryptValue(value, aad, field.getName());
             } catch (SecurityException e) {
                 unreadableFields.add(new Path(ownerPath, field.getName()).render());
             }
@@ -248,8 +248,7 @@ public class SecretFieldProcessor {
     }
 
     private void walk(Object entity, byte[] aad, boolean encrypt, boolean lenient) {
-        traverse(entity, null, (owner, field, ownerPath) -> {
-            String value = (String) field.get(owner);
+        traverse(entity, null, (owner, field, value, ownerPath) -> {
             String transformed = transform(value, aad, field.getName(), owner.getClass(), encrypt, lenient);
             // Reference identity, not Objects.equals: encrypt/decrypt return the *input*
             // reference unchanged on no-op paths (null/empty, already enveloped,
@@ -274,7 +273,7 @@ public class SecretFieldProcessor {
         for (Field field : declaredFieldsIncludingInherited(cls)) {
             try {
                 if (field.isAnnotationPresent(EncryptedField.class) && field.getType() == String.class) {
-                    visitor.visit(entity, field, path);
+                    visitor.visit(entity, field, (String) field.get(entity), path);
                     continue;
                 }
                 traverseChild(field.get(entity), path, field.getName(), visitor);
@@ -330,7 +329,7 @@ public class SecretFieldProcessor {
     @FunctionalInterface
     private interface FieldVisitor {
         /** {@code ownerPath} locates {@code owner} in the walked graph; it is {@code null} for the root entity. */
-        void visit(Object owner, Field field, Path ownerPath) throws IllegalAccessException;
+        void visit(Object owner, Field field, String value, Path ownerPath) throws IllegalAccessException;
     }
 
     /** Where an object sits in the walked graph; rendered, like {@code upstreams[0].key}, only when asked for. */

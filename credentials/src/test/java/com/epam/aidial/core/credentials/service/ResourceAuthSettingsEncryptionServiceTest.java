@@ -222,7 +222,7 @@ class ResourceAuthSettingsEncryptionServiceTest {
     }
 
     @Test
-    void testDecryptLenient_decryptsReadableSecrets() {
+    void testTryDecryptOrDropSecrets_decryptsReadableSecrets() {
         BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
         ResourceAuthSettings settings = new ResourceAuthSettings();
         settings.setClientSecret(Base64.getEncoder().encodeToString(ENCRYPTED_CLIENT_SECRET));
@@ -230,13 +230,13 @@ class ResourceAuthSettingsEncryptionServiceTest {
         when(encryptionService.decrypt(bucketInfo, ENCRYPTED_CLIENT_SECRET, AAD))
                 .thenReturn(CLIENT_SECRET.getBytes(StandardCharsets.UTF_8));
 
-        assertFalse(service.decryptLenient(RESOURCE_ID, bucketInfo, settings));
+        assertTrue(service.tryDecryptOrDropSecrets(RESOURCE_ID, bucketInfo, settings));
 
         assertEquals(CLIENT_SECRET, settings.getClientSecret());
     }
 
     @Test
-    void testDecryptLenient_clearsBothSecretsWhenClientSecretCannotBeDecrypted() {
+    void testTryDecryptOrDropSecrets_dropsBothSecretsWhenClientSecretCannotBeDecrypted() {
         BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
         ResourceAuthSettings settings = new ResourceAuthSettings();
         settings.setClientSecret(Base64.getEncoder().encodeToString(ENCRYPTED_CLIENT_SECRET));
@@ -245,29 +245,29 @@ class ResourceAuthSettingsEncryptionServiceTest {
         when(encryptionService.decrypt(bucketInfo, ENCRYPTED_CLIENT_SECRET, AAD))
                 .thenThrow(new RuntimeException("authentication tag mismatch"));
 
-        assertTrue(service.decryptLenient(RESOURCE_ID, bucketInfo, settings));
+        assertFalse(service.tryDecryptOrDropSecrets(RESOURCE_ID, bucketInfo, settings));
 
         assertNull(settings.getClientSecret());
         assertNull(settings.getCodeVerifier());
     }
 
     @Test
-    void testDecryptLenient_treatsPlaintextClientSecretAsUnreadable() {
+    void testTryDecryptOrDropSecrets_treatsPlaintextClientSecretAsUnreadable() {
         BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
         ResourceAuthSettings settings = new ResourceAuthSettings();
         settings.setClientSecret("not base64 !!");
 
-        assertTrue(service.decryptLenient(RESOURCE_ID, bucketInfo, settings));
+        assertFalse(service.tryDecryptOrDropSecrets(RESOURCE_ID, bucketInfo, settings));
 
         assertNull(settings.getClientSecret());
     }
 
     @Test
-    void testDecryptLenient_withoutClientSecretReturnsFalse() {
+    void testTryDecryptOrDropSecrets_withoutClientSecretSucceedsWithoutDecrypting() {
         BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
         ResourceAuthSettings settings = new ResourceAuthSettings();
 
-        assertFalse(service.decryptLenient(RESOURCE_ID, bucketInfo, settings));
+        assertTrue(service.tryDecryptOrDropSecrets(RESOURCE_ID, bucketInfo, settings));
 
         verifyNoInteractions(encryptionService);
     }

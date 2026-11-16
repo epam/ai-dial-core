@@ -1229,7 +1229,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
             verify(created, 200);
             assertEquals(1, ProxyUtil.MAPPER.readTree(created.body()).get("applied").asInt(), created.body());
 
-            corruptStoredToolSetSecrets(toolSetPath, false);
+            corruptStoredToolSetSecrets(toolSetPath);
             String storedBefore = readStoredBlob(toolSetPath);
 
             Response response = send(HttpMethod.POST, "/v1/admin/apply", null,

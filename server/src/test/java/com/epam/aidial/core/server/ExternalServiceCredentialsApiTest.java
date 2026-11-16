@@ -1258,7 +1258,7 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                 oauthExternalService(secretField("good-secret-wxyz"))));
         assertEquals(200, created.status(), () -> created.body());
         corruptStoredAuthSettings(ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService),
-                "/external_services/salesforce/auth_settings", false);
+                "/external_services/salesforce/auth_settings");
         return appUrl;
     }
 
@@ -1292,14 +1292,14 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
 
         // Changing the authentication type does not keep the secret, so an unreadable one is no obstacle.
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService);
-        corruptStoredAuthSettings(descriptor, "/external_services/salesforce/auth_settings", false);
+        corruptStoredAuthSettings(descriptor, "/external_services/salesforce/auth_settings");
         String apiKeyService = "{\"auth_settings\": {\"authentication_type\": \"API_KEY\", \"api_key_header\": \"X-Key\"}}";
         Response retyped = putApplicationWithServices(appUrl, "{\"salesforce\": %s, \"good\": %s}".formatted(
                 apiKeyService, oauthExternalService("")));
         assertEquals(200, retyped.status(), () -> retyped.body());
 
         // Dropping an unreadable service needs nothing from it.
-        corruptStoredAuthSettings(descriptor, "/external_services/good/auth_settings", false);
+        corruptStoredAuthSettings(descriptor, "/external_services/good/auth_settings");
         Response dropped = putApplicationWithServices(appUrl, "{\"salesforce\": %s}".formatted(apiKeyService));
         assertEquals(200, dropped.status(), () -> dropped.body());
         assertNull(ProxyUtil.MAPPER.readTree(readStoredBlob(appUrl)).get("external_services").get("good"));
