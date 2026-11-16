@@ -128,6 +128,14 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
     }
 
     @Test
+    @DialConfigLocation("dial-config/org-unit-navigator-role.json")
+    void testRoleSeeingTheChildUnitsListsTheRulesOfItsUnit() {
+        assign("public/Acme", "navigator");
+        Response rules = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, "{\"url\": \"public/Acme/\"}", "authorization", BOB);
+        assertEquals(200, rules.status(), rules.body());
+    }
+
+    @Test
     void testRoleAboveStillShowsEveryChildUnit() {
         assign("public/Acme", "viewer");
 

@@ -142,10 +142,10 @@ public class AccessService {
     }
 
     /**
-     * Read that is more than listing a unit's folder for the child units in it: in a unit, what its roles read there.
+     * Read access other than what a role in a unit below gives, which only lists a unit's folder on the way down.
      */
-    public boolean hasReadAccessBeyondListing(ResourceDescriptor folder, ProxyContext context) {
-        return hasReadAccessBesidesUnitRoles(folder, context) || orgUnitGrants.rolesRead(context, folder);
+    public boolean hasReadAccessBesidesRolesBelow(ResourceDescriptor folder, ProxyContext context) {
+        return hasReadAccessBesidesUnitRoles(folder, context) || orgUnitGrants.readsWithoutRolesBelow(context, folder);
     }
 
     /**

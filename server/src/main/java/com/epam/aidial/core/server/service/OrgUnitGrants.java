@@ -101,17 +101,20 @@ public class OrgUnitGrants {
     }
 
     /**
-     * Whether the caller's roles read the resource, beyond listing a unit's folder for its child units. False when no
-     * unit owns it.
+     * Whether the caller's roles at the unit owning the resource read it, as {@link #access} decides without the roles
+     * held in units below. False when no unit owns it.
      */
-    public boolean rolesRead(ProxyContext context, ResourceDescriptor resource) {
+    public boolean readsWithoutRolesBelow(ProxyContext context, ResourceDescriptor resource) {
         if (candidates(context, Set.of(resource)).isEmpty()) {
             return false;
         }
         Map<String, OrgUnit> units = orgUnits.getUnitList().units();
         String key = OrgUnitService.ownerOf(units, resource);
-        return !key.equals(OrgUnitService.SHARED_SPACE_KEY)
-                && granted(orgUnits.callerRoles(context, units), key, resource).contains(ResourceAccessType.READ);
+        if (key.equals(OrgUnitService.SHARED_SPACE_KEY)) {
+            return false;
+        }
+        CallerUnitRoles caller = orgUnits.callerRoles(context, units);
+        return granted(caller, key, resource).contains(ResourceAccessType.READ) || isUnitFolder(key, resource) && caller.seesChildUnitsOf(key);
     }
 
     /**
