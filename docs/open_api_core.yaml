@@ -16977,6 +16977,8 @@ components:
           type: integer
         displayName:
           type: string
+        object:
+          $ref: "#/components/schemas/PolicyObjectSet"
     CacheBreakpoint:
       type: object
       properties:
@@ -19729,6 +19731,11 @@ components:
       - budget
     PolicyObjectSet:
       type: object
+      oneOf:
+      - type: string
+      - type: array
+        items:
+          type: string
     PolicyQuantity:
       type: string
       enum:
@@ -21009,6 +21016,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BudgetStats"
+        costObject:
+          type: string
+          description: "The cost object whose budgets the caller's model calls are charged to: only the `budgets` entries with this `costObject` can be charged. Absent when spending limits are off or the caller is an API key."
     UserOrgUnits:
       type: object
       properties:
