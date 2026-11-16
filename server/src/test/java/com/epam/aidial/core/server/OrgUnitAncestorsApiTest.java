@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.Rule;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -93,6 +94,37 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
 
         Response own = send(HttpMethod.PUT, url, null, app.formatted("files/public/Acme/Risk/US%20Risk/Basel/"), "authorization", BOB);
         assertEquals(200, own.status(), own.body());
+    }
+
+    @Test
+    void testApplicationsReferToNoFolderSpanningUnitsTheirAuthorCantRead() {
+        assign("public/Acme/Risk", "viewer");
+        String app = "{\"displayName\": \"app\", \"applicationTypeSchemaId\": "
+                + "\"https://mydial.somewhere.com/custom_application_schemas/specific_application_type\", "
+                + "\"applicationProperties\": {\"property1\": \"p1\", \"property2\": \"p2\", \"property3\": [\"%s\"]}}";
+        String url = "/v1/applications/public/Acme/Risk/US%20Risk/Basel/app";
+
+        Response spanning = send(HttpMethod.PUT, url, null, app.formatted("files/public/Acme/Risk/"), "authorization", BOB);
+        assertEquals(403, spanning.status(), spanning.body());
+
+        Response file = send(HttpMethod.PUT, url, null, app.formatted("files/public/Acme/Risk/r.txt"), "authorization", BOB);
+        assertEquals(200, file.status(), file.body());
+    }
+
+    @Test
+    void testRulesOfTheUnitsAboveStayHidden() {
+        // nothing stores rules inside a unit any more: seed one as a node of an older version would have
+        Rule rule = new Rule();
+        rule.setSource("roles");
+        rule.setFunction(Rule.Function.TRUE);
+        dial.getProxy().getRuleService().storeRules("public/Acme/", List.of(rule));
+        String body = "{\"url\": \"public/Acme/\"}";
+
+        assertEquals(403, send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, body, "authorization", BOB).status());
+
+        assign("public/Acme", "viewer");
+        Response rules = send(HttpMethod.POST, "/v1/ops/publication/rule/list", null, body, "authorization", BOB);
+        assertEquals(200, rules.status(), rules.body());
     }
 
     @Test

@@ -361,10 +361,10 @@ public class ResponsesControllerTest {
 
         when(proxy.getTokenStatsTracker().startSpan(context))
                 .thenReturn(Future.succeededFuture());
-        when(proxy.getAccessService().hasReadAccessToAllOf(
+        when(proxy.getAccessService().hasReadAccessToContentOf(
                 ResourceDescriptorFactory.fromPublicUrl("files/public/image.png"), context))
                 .thenReturn(true);
-        when(proxy.getAccessService().hasReadAccessToAllOf(
+        when(proxy.getAccessService().hasReadAccessToContentOf(
                 ResourceDescriptorFactory.fromPublicUrl("files/public/file.txt"), context))
                 .thenReturn(true);
         doAnswer(invocation -> {

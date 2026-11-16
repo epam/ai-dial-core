@@ -67,7 +67,7 @@ public class OrgUnitGrants {
                 continue;
             }
             Set<ResourceAccessType> access = new HashSet<>(granted(caller, key, resource));
-            if (isUnitFolder(key, resource) && (caller.seesChildUnitsOf(key) || caller.holdsRoleBelow(key))) {
+            if (isUnitFolder(key, resource) && caller.listsFolderOf(key)) {
                 access.add(ResourceAccessType.READ);
             }
             if (readOnly) {
@@ -98,6 +98,20 @@ public class OrgUnitGrants {
 
         CallerUnitRoles caller = orgUnits.callerRoles(context, units);
         return spanned.stream().allMatch(key -> granted(caller, key, folder).contains(ResourceAccessType.READ));
+    }
+
+    /**
+     * Whether the caller's roles read the resource, beyond listing a unit's folder for its child units. False when no
+     * unit owns it.
+     */
+    public boolean rolesRead(ProxyContext context, ResourceDescriptor resource) {
+        if (candidates(context, Set.of(resource)).isEmpty()) {
+            return false;
+        }
+        Map<String, OrgUnit> units = orgUnits.getUnitList().units();
+        String key = OrgUnitService.ownerOf(units, resource);
+        return !key.equals(OrgUnitService.SHARED_SPACE_KEY)
+                && granted(orgUnits.callerRoles(context, units), key, resource).contains(ResourceAccessType.READ);
     }
 
     /**

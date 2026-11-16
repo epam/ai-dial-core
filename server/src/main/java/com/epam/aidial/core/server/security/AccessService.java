@@ -142,6 +142,13 @@ public class AccessService {
     }
 
     /**
+     * Read that is more than listing a unit's folder for the child units in it: in a unit, what its roles read there.
+     */
+    public boolean hasReadAccessBeyondListing(ResourceDescriptor folder, ProxyContext context) {
+        return hasReadAccessBesidesUnitRoles(folder, context) || orgUnitGrants.rolesRead(context, folder);
+    }
+
+    /**
      * Whether a unit owns the resource, so roles rather than the read rules decide who reads it.
      */
     public boolean isInUnit(ResourceDescriptor resource) {
@@ -157,9 +164,9 @@ public class AccessService {
     }
 
     /**
-     * Read on a file, or on a folder and everything below it: what handing a resource to an application needs.
+     * Read on a file, or on a folder and everything below it.
      */
-    public boolean hasReadAccessToAllOf(ResourceDescriptor resource, ProxyContext context) {
+    public boolean hasReadAccessToContentOf(ResourceDescriptor resource, ProxyContext context) {
         return resource.isFolder() ? hasReadAccessToEverythingUnder(resource, context) : hasReadAccess(resource, context);
     }
 

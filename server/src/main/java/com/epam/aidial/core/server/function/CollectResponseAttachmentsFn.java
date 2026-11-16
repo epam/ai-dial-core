@@ -108,7 +108,7 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
             // build context with API key data of the target deployment
             ProxyContext deploymentContext = context.copyWith(context.getProxyApiKeyData());
             AccessService accessService = proxy.getAccessService();
-            if (accessService.hasReadAccessToAllOf(resource, deploymentContext)) {
+            if (accessService.hasReadAccessToContentOf(resource, deploymentContext)) {
                 permittedAttachments.put(resource.getUrl(), ResourceAccessType.READ_ONLY);
             }
         }

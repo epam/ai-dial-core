@@ -255,6 +255,7 @@ Rules sent with a request into a unit are dropped when it is created or updated,
 Chat's empty list, the rules the admin panel copies onto a moved folder and a cleared rules list all pass. A request
 that held only rules approves to nothing. `POST /v1/ops/publication/rule/list` on a folder inside a unit answers its
 rules, none, to anyone who reads that folder through roles, as Chat asks when a folder is picked to publish into.
+Listing a unit's folder only for the child units in it, as a person does above their role, doesn't count.
 
 To review, a holder of `read publications/**` in every touched unit may `get` such a request, read (not change) its
 review copies while it is pending, and `list` `publications/public/` to see the pending requests whose `targetFolder`

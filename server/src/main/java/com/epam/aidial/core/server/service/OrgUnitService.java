@@ -1009,7 +1009,22 @@ public class OrgUnitService {
         OrgUnitRoles roleDefinitions = OrgUnitRoles.of(context.getConfig());
         return new CallerUnitRoles(roleDefinitions,
                 key -> OrgUnitSubjects.rolesToReadWith(context, roleAssignmentsOf(key, units.get(key))),
-                () -> OrgUnitSubjects.isPerson(context) ? CallerUnitRoles.unitsAboveHeldRoles(roleDefinitions, loadHeldRolesByUnit(context, units)) : Set.of());
+                () -> unitsAboveHeldRoles(context, roleDefinitions, units));
+    }
+
+    /**
+     * Read once per request, as each access decision and listing filter builds its own {@link CallerUnitRoles}.
+     */
+    private Set<String> unitsAboveHeldRoles(ProxyContext context, OrgUnitRoles roleDefinitions, Map<String, OrgUnit> units) {
+        if (!OrgUnitSubjects.isPerson(context)) {
+            return Set.of();
+        }
+        Set<String> unitsAbove = context.getUnitsAboveHeldRoles();
+        if (unitsAbove == null) {
+            unitsAbove = CallerUnitRoles.unitsAboveHeldRoles(roleDefinitions, loadHeldRolesByUnit(context, units));
+            context.setUnitsAboveHeldRoles(unitsAbove);
+        }
+        return unitsAbove;
     }
 
     private Map<String, Set<String>> loadHeldRolesByUnit(ProxyContext context, Map<String, OrgUnit> units) {

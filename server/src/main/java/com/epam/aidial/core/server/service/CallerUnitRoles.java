@@ -47,6 +47,13 @@ final class CallerUnitRoles {
     }
 
     /**
+     * Whether the caller lists the unit's folder, at least for the child units in it.
+     */
+    boolean listsFolderOf(String unit) {
+        return seesChildUnitsOf(unit) || holdsRoleBelow(unit);
+    }
+
+    /**
      * Persons only; always false for applications and API keys.
      */
     boolean holdsRoleBelow(String unit) {
