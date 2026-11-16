@@ -111,19 +111,6 @@ public class ApiKeyData {
         }
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();
-            if (context.getDeployment() instanceof AliasPass pass) {
-                // Grant the target pass the right to call the target: READ in perRequestSharedResources, lent=true so
-                // that only this alias-authorized path bypasses accessibleByPerRequestKey and rate-limit role matching.
-                bakeLentGrant(proxyApiKeyData.getPerRequestSharedResources(), pass.getTargetName());
-            } else {
-                // An interceptor in front of the target, or the target's own callback (e.g. a translator's), calls
-                // Core back for the same target: carry the lent grant forward so the target remains reachable.
-                String lentKey = findLentGrantKey(apiKeyData, receiver, context.getInitialDeployment());
-                if (lentKey != null) {
-                    proxyApiKeyData.getPerRequestSharedResources().put(lentKey,
-                            apiKeyData.getPerRequestSharedResources().get(lentKey));
-                }
-            }
             currentPath.add(receiver);
             proxyApiKeyData.setSourceDeployment(receiver);
         } else if (context.getRoute() != null) {
@@ -141,8 +128,29 @@ public class ApiKeyData {
                 sharePerRequestPermissions(proxyApiKeyData, receivers, context.getInitialDeployment());
             }
         }
+        // after the sharing above, whose putAll would otherwise replace a lent entry with a plain one for the same url
+        if (context.getDeployment() != null) {
+            lend(proxyApiKeyData, context, receiver);
+        }
         proxyApiKeyData.setExecutionPath(currentPath);
         proxyApiKeyData.setSpanId(context.getSpanId());
+    }
+
+    private static void lend(ApiKeyData proxyApiKeyData, ProxyContext context, String receiver) {
+        Map<String, PerRequestSharedData> grants = proxyApiKeyData.getPerRequestSharedResources();
+        if (context.getDeployment() instanceof AliasPass pass) {
+            // Grant the target pass the right to call the target: READ in perRequestSharedResources, lent=true so
+            // that only this alias-authorized path bypasses accessibleByPerRequestKey and rate-limit role matching.
+            bakeLentGrant(grants, pass.getTargetName());
+            return;
+        }
+        // An interceptor in front of the target, or the target's own callback (e.g. a translator's), calls
+        // Core back for the same target: carry the lent grant forward so the target remains reachable.
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        String lentKey = findLentGrantKey(apiKeyData, receiver, context.getInitialDeployment());
+        if (lentKey != null) {
+            grants.merge(lentKey, apiKeyData.getPerRequestSharedResources().get(lentKey), PerRequestSharedData::merge);
+        }
     }
 
     /**
