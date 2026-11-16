@@ -153,7 +153,7 @@ none, followed by `/decide`; an interface whose base url so chosen is a plugin u
 
 #### Scenario: Embedded interface next to an HTTP one
 - **WHEN** `routers.r4` declares `baseUrl: http://router`, `mode: decision`,
-  `interfaces.openaiChatCompletions: {"base_url": "plugin://p1"}` and `interfaces.openaiResponses: {}`
+  `interfaces.openaiChatCompletions: {"base_url": "dial-plugin://p1"}` and `interfaces.openaiResponses: {}`
 - **THEN** a chat completion for `r4` is decided by plugin `p1` and `http://router` receives no request for it, and a
   Responses request for `r4` is decided by `POST http://router/decide`
 
@@ -690,7 +690,7 @@ requires mode 'decision'`). On a router in decision mode Core SHALL reject a tra
 
 #### Scenario: Embedded interface on a decision router accepted
 - **WHEN** the config declares `routers.r1` with `baseUrl: http://router`, `mode: decision` and
-  `interfaces.anthropicMessages: {"base_url": "plugin://p1"}`
+  `interfaces.anthropicMessages: {"base_url": "dial-plugin://p1"}`
 - **THEN** the config loads, and `GET /v1/routers/r1` answers `200`
 
 ### Requirement: Decision by an embedded plugin
@@ -702,7 +702,7 @@ and records.
 
 #### Scenario: Plugin decides
 - **WHEN** `routers.r1` declares `mode: decision` and `interfaces.openaiChatCompletions: {"base_url":
-  "plugin://p1"}`, plugin `p1` answers `{"candidates": ["m1"]}`, and a client sends a non-streamed chat completion for
+  "dial-plugin://p1"}`, plugin `p1` answers `{"candidates": ["m1"]}`, and a client sends a non-streamed chat completion for
   `r1`
 - **THEN** `p1` receives `POST /decide` with `X-DIAL-ROUTER: r1`, `X-DIAL-API: openaiChatCompletions`, an `API-KEY`
   that is not the client's key and an empty body; `m1` serves the request; the client's answer has `model: r1`; and
@@ -725,7 +725,7 @@ and records.
 - **THEN** `p1`'s host does not report the request cancelled
 
 #### Scenario: Router baseUrl names the plugin
-- **WHEN** `routers.rp` declares `mode: decision`, `baseUrl: plugin://p1/v1` and `interfaces.openaiChatCompletions:
+- **WHEN** `routers.rp` declares `mode: decision`, `baseUrl: dial-plugin://p1/v1` and `interfaces.openaiChatCompletions:
   {}`, plugin `p1` answers `{"candidates": ["m1"]}`, and a client sends a chat completion for `rp`
 - **THEN** `p1` receives `POST /v1/decide` and `m1` serves the request
 

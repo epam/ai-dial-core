@@ -39,7 +39,7 @@ public class ProxyClient {
 
     /**
      * Creates the request to {@code plugin}, which serves an interface of the context's deployment.
-     * {@code absoluteUri} is the {@code plugin://<name>} url the interface resolves to, with the path and query.
+     * {@code absoluteUri} is the {@code dial-plugin://<name>} url the interface resolves to, with the path and query.
      *
      * <p>Every failure comes back as a failed future, for the caller's connect-failure path: no {@code plugins} entry
      * by that name, a provider that is not loaded, a plugin that cannot be created, or an

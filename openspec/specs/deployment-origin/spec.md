@@ -232,7 +232,7 @@ hold for deployments-POST, `/openai/v1/chat/completions`, `/openai/v1/responses`
 `count_tokens`.
 
 #### Scenario: Chat completion handed to the plugin
-- **WHEN** application `app` declares `interfaces.openaiChatCompletions: {"base_url": "plugin://p1"}`,
+- **WHEN** application `app` declares `interfaces.openaiChatCompletions: {"base_url": "dial-plugin://p1"}`,
   `plugins.p1` is of type `test-origin`, and a client sends `POST /openai/deployments/app/chat/completions?api-version=1`
 - **THEN** the plugin receives `POST /openai/deployments/app/chat/completions?api-version=1` with the body Core would
   send, `X-DIAL-DEPLOYMENT-FEATURES`, and an `API-KEY` holding a per-request key, not the client's key
@@ -243,40 +243,40 @@ hold for deployments-POST, `/openai/v1/chat/completions`, `/openai/v1/responses`
 
 #### Scenario: Upstream headers for a model
 - **WHEN** a model with one upstream `{"endpoint": "http://cloud/v1", "key": "k1"}` declares
-  `interfaces.openaiChatCompletions: {"base_url": "plugin://p1"}` and a client sends a chat completion for it
+  `interfaces.openaiChatCompletions: {"base_url": "dial-plugin://p1"}` and a client sends a chat completion for it
 - **THEN** the plugin receives `X-UPSTREAM-ENDPOINT: http://cloud/v1` and `X-UPSTREAM-KEY: k1`
 
 #### Scenario: Embeddings handed to the plugin
-- **WHEN** application `app` declares `interfaces.openaiEmbeddings: {"base_url": "plugin://p1"}` and a client
+- **WHEN** application `app` declares `interfaces.openaiEmbeddings: {"base_url": "dial-plugin://p1"}` and a client
   sends `POST /openai/deployments/app/embeddings`
 - **THEN** the plugin receives `POST /openai/deployments/app/embeddings`
 
 #### Scenario: Responses create handed to the plugin
-- **WHEN** application `app` declares `interfaces.openaiResponses: {"base_url": "plugin://p1"}` and a client
+- **WHEN** application `app` declares `interfaces.openaiResponses: {"base_url": "dial-plugin://p1"}` and a client
   sends `POST /openai/v1/responses` with `"model": "app"`
 - **THEN** the plugin receives `POST /openai/v1/responses`
 
 #### Scenario: Messages handed to the plugin
-- **WHEN** application `app` declares `interfaces.anthropicMessages: {"base_url": "plugin://p1"}` and a client
+- **WHEN** application `app` declares `interfaces.anthropicMessages: {"base_url": "dial-plugin://p1"}` and a client
   sends `POST /anthropic/v1/messages` and then `POST /anthropic/v1/messages/count_tokens` with `"model": "app"`
 - **THEN** the plugin receives `POST /anthropic/v1/messages` and then `POST /anthropic/v1/messages/count_tokens`
 
 #### Scenario: Path after the plugin name
-- **WHEN** application `app` declares `interfaces.openaiChatCompletions: {"base_url": "plugin://p1/v2"}` and a client
+- **WHEN** application `app` declares `interfaces.openaiChatCompletions: {"base_url": "dial-plugin://p1/v2"}` and a client
   sends `POST /openai/deployments/app/chat/completions?api-version=1`
 - **THEN** plugin `p1` receives `POST /v2/openai/deployments/app/chat/completions?api-version=1`
 
 ### Requirement: Embedded origin answer
 Core SHALL treat the plugin's answer as an HTTP origin's answer, under every other requirement of this capability:
 retriable statuses, the relay, usage and the analytics row. The row's `response.upstream_uri` SHALL be the plugin url
-the interface resolves to (`plugin://<plugin name>` when no path follows the name) for a deployment without
+the interface resolves to (`dial-plugin://<plugin name>` when no path follows the name) for a deployment without
 `upstreams`, and the attempt's upstream endpoint for one with them.
 
 #### Scenario: Streamed answer from a plugin
 - **WHEN** the `test-origin` plugin `p1` serving application `app` answers `200` with
   `Content-Type: text/event-stream`, two content events and a last event with `usage.total_tokens: 15`
 - **THEN** the client gets the events with `X-UPSTREAM-ATTEMPTS: 1`, and one analytics row is written for the POST
-  with `response.upstream_uri: plugin://p1`
+  with `response.upstream_uri: dial-plugin://p1`
 
 #### Scenario: Model usage charged
 - **WHEN** the plugin serving model `m` answers a chat completion `200` with `usage.total_tokens: 15`
@@ -290,9 +290,9 @@ the interface resolves to (`plugin://<plugin name>` when no path follows the nam
   `X-UPSTREAM-ATTEMPTS: 2`
 
 #### Scenario: Upstream uri with a path
-- **WHEN** application `app` declares `interfaces.openaiChatCompletions: {"base_url": "plugin://p1/v2"}` and the
+- **WHEN** application `app` declares `interfaces.openaiChatCompletions: {"base_url": "dial-plugin://p1/v2"}` and the
   `test-origin` plugin answers a chat completion for it `200`
-- **THEN** the analytics row for the POST has `response.upstream_uri: plugin://p1/v2`
+- **THEN** the analytics row for the POST has `response.upstream_uri: dial-plugin://p1/v2`
 
 ### Requirement: Embedded origin failure
 Core SHALL answer the connect-failure `502`, without trying another upstream, when the plugin cannot serve: no
@@ -301,7 +301,7 @@ from its settings fails. A plugin call that fails, or completes with no answer, 
 the response headers.
 
 #### Scenario: Missing plugin entry
-- **WHEN** application `app` declares `interfaces.openaiChatCompletions: {"base_url": "plugin://missing"}`,
+- **WHEN** application `app` declares `interfaces.openaiChatCompletions: {"base_url": "dial-plugin://missing"}`,
   no `plugins.missing` exists, and a client sends a chat completion for it
 - **THEN** the client gets `502` with `message` and `display_message` `Failed to connect to upstream server`, the
   answer of "Connect failure"
@@ -474,7 +474,7 @@ any origin plugin's are.
 #### Scenario: Messages request handed to the translator plugin
 - **WHEN** model `m` declares `baseUrl: http://adapter`, `interfaces.openaiChatCompletions: {}` and
   `interfaces.anthropicMessages: {"mode": "translator", "translator": {"out": "openaiChatCompletions", "baseUrl":
-  "plugin://p1"}}`, `plugins.p1` is of type `test-origin`, and a client sends `POST /anthropic/v1/messages` with
+  "dial-plugin://p1"}}`, `plugins.p1` is of type `test-origin`, and a client sends `POST /anthropic/v1/messages` with
   `"model": "m"`
 - **THEN** the plugin receives `POST /anthropic/v1/messages` with an `API-KEY` holding a per-request key, and
   `http://adapter` receives no request until the plugin calls
@@ -487,9 +487,9 @@ any origin plugin's are.
 
 #### Scenario: Named translator with a plugin
 - **WHEN** `translators.a2c` is `{"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl":
-  "plugin://p1"}` and the model's `interfaces.anthropicMessages` is `{"mode": "translator", "translator": "a2c"}`
+  "dial-plugin://p1"}` and the model's `interfaces.anthropicMessages` is `{"mode": "translator", "translator": "a2c"}`
 - **THEN** the plugin receives the client's `POST /anthropic/v1/messages`
 
 #### Scenario: Translator's plugin missing
-- **WHEN** the translator's `baseUrl` is `plugin://missing` and no `plugins.missing` exists
+- **WHEN** the translator's `baseUrl` is `dial-plugin://missing` and no `plugins.missing` exists
 - **THEN** the client gets `502` with the message `Failed to connect to upstream server`

@@ -60,12 +60,12 @@ public class TranslatorTest {
     @Test
     void translatorRequiresBaseUrl() throws Exception {
         Translator translator = MAPPER.readValue("""
-                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "plugin://p1"}
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "dial-plugin://p1"}
                 """, Translator.class);
 
-        assertEquals("plugin://p1", translator.getBaseUrl());
+        assertEquals("dial-plugin://p1", translator.getBaseUrl());
         String written = MAPPER.writeValueAsString(translator);
-        assertEquals("plugin://p1", MAPPER.readTree(written).path("baseUrl").asText());
+        assertEquals("dial-plugin://p1", MAPPER.readTree(written).path("baseUrl").asText());
         assertFalse(MAPPER.readTree(written).has("plugin"), written);
         // the field this version removed fails the read, as any field a translator does not have
         assertThrows(MismatchedInputException.class, () -> MAPPER.readValue("""

@@ -316,7 +316,7 @@ class EmbeddedProxyRequestTest {
     private EmbeddedProxyRequest request(Supplier<Plugin> plugin, HttpServerResponse client) {
         context = (ContextInternal) vertx.getOrCreateContext();
         when(pass.getResponse()).thenReturn(client);
-        return new EmbeddedProxyRequest(context, pass, plugin, HttpMethod.POST, "plugin://p1", "plugin://p1/openai/v1/responses?x=1");
+        return new EmbeddedProxyRequest(context, pass, plugin, HttpMethod.POST, "dial-plugin://p1", "dial-plugin://p1/openai/v1/responses?x=1");
     }
 
     private EmbeddedProxyRequest routerRequest(Plugin plugin, ApiKeyData callKey, ObjectNode tree) {
@@ -327,7 +327,7 @@ class EmbeddedProxyRequestTest {
         context = (ContextInternal) vertx.getOrCreateContext();
         when(pass.getResponse()).thenReturn(client);
         return new EmbeddedProxyRequest(context, pass, () -> plugin, HttpMethod.POST,
-                "plugin://p1", "plugin://p1/decide", new EmbeddedProxyRequest.RouterRequest(callKey, tree));
+                "dial-plugin://p1", "dial-plugin://p1/decide", new EmbeddedProxyRequest.RouterRequest(callKey, tree));
     }
 
     private <T> T onContext(Supplier<T> action) throws Exception {

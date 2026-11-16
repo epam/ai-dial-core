@@ -51,7 +51,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     @Test
     void testEmbeddedIsNotMode() {
         Response put = adminPut("/v1/applications/platform/a", """
-                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "base_url": "plugin://p1"}}}
+                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "base_url": "dial-plugin://p1"}}}
                 """);
 
         assertEquals(400, put.status(), put.body());
@@ -62,7 +62,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     @Test
     void testBlankPluginName() {
         Response put = adminPut("/v1/models/platform/m", """
-                {"type": "chat", "baseUrl": "plugin:///v1", "interfaces": {"openaiChatCompletions": {}}}
+                {"type": "chat", "baseUrl": "dial-plugin:///v1", "interfaces": {"openaiChatCompletions": {}}}
                 """);
 
         assertEquals(422, put.status(), put.body());
@@ -74,7 +74,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testExplicitPassthroughModeWithPlugin() {
         plugin("p1", "{}");
         verify(adminPut("/v1/applications/platform/app", """
-                {"interfaces": {"openaiChatCompletions": {"mode": "passthrough", "base_url": "plugin://p1"}}}
+                {"interfaces": {"openaiChatCompletions": {"mode": "passthrough", "base_url": "dial-plugin://p1"}}}
                 """), 200);
 
         verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
@@ -88,7 +88,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testAliasOfModelServedByPlugin() {
         plugin("p1", "{}");
         verify(adminPut("/v1/models/platform/" + MODEL, """
-                {"type": "chat", "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"}}}
+                {"type": "chat", "interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1"}}}
                 """), 200);
         verify(adminPut("/v1/aliases/public/plugin-alias", "{\"target\": {\"path\": \"models/" + MODEL + "\"}}"), 200);
 
@@ -124,7 +124,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     @Test
     void testOverridePathsUnderAnEmbeddedEntry() {
         Response put = adminPut("/v1/applications/platform/a", """
-                {"interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1",
+                {"interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1",
                   "overridePaths": {"postAzureOpenaiChatCompletions": "/x"}}}}
                 """);
 
@@ -135,7 +135,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     @Test
     void testApplicationWithPluginButNoEmbeddedMode() {
         Response put = adminPut("/v1/applications/platform/a", """
-                {"interfaces": {"openaiChatCompletions": {"base_url": "plugin://"}}}
+                {"interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://"}}}
                 """);
 
         assertEquals(422, put.status(), put.body());
@@ -199,7 +199,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         verify(chat("/openai/deployments/app/chat/completions?api-version=1", CHAT_BODY), 200);
 
         assertEquals("/v2/openai/deployments/app/chat/completions?api-version=1", onlyRequest().uri());
-        assertEquals("plugin://p1/v2", awaitAnalyticsRows(1).get(0).getUpstreamEndpoint());
+        assertEquals("dial-plugin://p1/v2", awaitAnalyticsRows(1).get(0).getUpstreamEndpoint());
     }
 
     // deployment-interfaces-config "Deployment-level plugin url serves the entries without a base url"
@@ -207,7 +207,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testDeploymentLevelPluginUrlServesTheEntries() {
         plugin("p1", "{}");
         verify(adminPut("/v1/applications/platform/a", """
-                {"baseUrl": "plugin://p1", "interfaces": {"openaiChatCompletions": {},
+                {"baseUrl": "dial-plugin://p1", "interfaces": {"openaiChatCompletions": {},
                   "openaiEmbeddings": {"base_url": "http://localhost:4848"}}}
                 """), 200);
 
@@ -232,7 +232,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     @Test
     void testOverridePathsUnderTheDeploymentsPluginUrl() {
         Response put = adminPut("/v1/applications/platform/a", """
-                {"baseUrl": "plugin://p1",
+                {"baseUrl": "dial-plugin://p1",
                  "interfaces": {"openaiChatCompletions": {"overridePaths": {"postAzureOpenaiChatCompletions": "/x"}}}}
                 """);
 
@@ -244,7 +244,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     @Test
     void testPluginUrlInEndpoint() {
         Response put = adminPut("/v1/models/platform/m", """
-                {"type": "chat", "endpoint": "plugin://p1"}
+                {"type": "chat", "endpoint": "dial-plugin://p1"}
                 """);
 
         assertEquals(422, put.status(), put.body());
@@ -257,7 +257,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     @Test
     void testInterceptorWithPluginBaseUrl() {
         Response put = adminPut("/v1/interceptors/platform/i", """
-                {"baseUrl": "plugin://p1", "interfaces": {"openaiChatCompletions": {}}}
+                {"baseUrl": "dial-plugin://p1", "interfaces": {"openaiChatCompletions": {}}}
                 """);
 
         assertEquals(422, put.status(), put.body());
@@ -269,7 +269,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     @Test
     void testCustomApplicationWithPluginBaseUrlRefusedOnWrite() {
         Response put = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/my-app", null, """
-                {"baseUrl": "plugin://p1", "interfaces": {"openaiChatCompletions": {}}}
+                {"baseUrl": "dial-plugin://p1", "interfaces": {"openaiChatCompletions": {}}}
                 """);
 
         assertEquals(422, put.status(), put.body());
@@ -292,7 +292,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         plugin("p1", "{}");
         verify(adminPut("/v1/models/platform/" + MODEL, """
                 {"type": "chat", "upstreams": [{"endpoint": "http://cloud/v1", "key": "k1"}],
-                 "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"}}}
+                 "interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1"}}}
                 """), 200);
 
         verify(chat("/openai/deployments/" + MODEL + "/chat/completions", CHAT_BODY), 200);
@@ -336,10 +336,10 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testBodyTreeIsTheBody() {
         plugin("p1", "{}");
         verify(adminPut("/v1/applications/platform/app", """
-                {"interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"},
-                  "openaiEmbeddings": {"base_url": "plugin://p1"},
-                  "openaiResponses": {"base_url": "plugin://p1"},
-                  "anthropicMessages": {"base_url": "plugin://p1"}}}
+                {"interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1"},
+                  "openaiEmbeddings": {"base_url": "dial-plugin://p1"},
+                  "openaiResponses": {"base_url": "dial-plugin://p1"},
+                  "anthropicMessages": {"base_url": "dial-plugin://p1"}}}
                 """), 200);
 
         verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
@@ -377,7 +377,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         assertEquals(1, rows.size());
         AnalyticsLogContext row = rows.get(0);
         assertEquals("app", row.getDeploymentName());
-        assertEquals("plugin://p1", row.getUpstreamEndpoint());
+        assertEquals("dial-plugin://p1", row.getUpstreamEndpoint());
     }
 
     @Test
@@ -385,7 +385,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testModelUsageCharged() {
         plugin("p1", "{}");
         verify(adminPut("/v1/models/platform/" + MODEL, """
-                {"type": "chat", "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"}}}
+                {"type": "chat", "interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1"}}}
                 """), 200);
 
         verify(chat("/openai/deployments/" + MODEL + "/chat/completions", CHAT_BODY), 200);
@@ -481,7 +481,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testEmbeddedInterfaceGoesToThePlugin() {
         plugin("p1", "{}");
         verify(adminPut("/v1/applications/platform/app", """
-                {"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"}}}
+                {"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1"}}}
                 """), 200);
 
         try (TestWebServer server = new TestWebServer(4848)) {
@@ -497,7 +497,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testEmbeddedInterfaceNeverFallsBack() {
         verify(adminPut("/v1/models/platform/" + MODEL, """
                 {"type": "chat", "endpoint": "http://localhost:4848/chat",
-                 "interfaces": {"openaiChatCompletions": {"base_url": "plugin://missing"}}}
+                 "interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://missing"}}}
                 """), 200);
 
         try (TestWebServer server = new TestWebServer(4848)) {
@@ -523,7 +523,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         plugin("p1", "{}");
         Response response = send(HttpMethod.POST, "/v1/admin/validate", null, """
                 {"manifests": [{"kind": "Application", "name": "applications/public/my-app",
-                  "spec": {"interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"}}}}]}
+                  "spec": {"interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1"}}}}]}
                 """, "authorization", "admin");
 
         verify(response, 422);
@@ -536,7 +536,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testCustomApplicationWithInlineTranslatorPluginRefusedOnWrite() {
         Response put = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/my-app", null, """
                 {"interfaces": {"anthropicMessages": {"mode": "translator",
-                  "translator": {"out": "openaiChatCompletions", "baseUrl": "plugin://p1"}}}}
+                  "translator": {"out": "openaiChatCompletions", "baseUrl": "dial-plugin://p1"}}}}
                 """);
 
         assertEquals(422, put.status(), put.body());
@@ -548,7 +548,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     void testStoredCustomApplicationNamingTranslatorWithPlugin() {
         plugin("p1", "{}");
         verify(adminPut("/v1/translators/platform/c2r", """
-                {"in": "openaiChatCompletions", "out": "openaiResponses", "baseUrl": "plugin://p1"}
+                {"in": "openaiChatCompletions", "out": "openaiResponses", "baseUrl": "dial-plugin://p1"}
                 """), 200);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromPrivateUrl("applications/" + bucket + "/my-app",
                 dial.getProxy().getEncryptionService());
@@ -584,7 +584,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
 
         ResponseMapping mapping = dial.getProxy().getResponseMappingService().getMapping(dialId);
         assertEquals("plugin-resp-1", mapping.getUpstreamResponseId());
-        assertEquals("plugin://p1", mapping.getUpstreamKey());
+        assertEquals("dial-plugin://p1", mapping.getUpstreamKey());
 
         verify(send(HttpMethod.GET, "/openai/v1/responses/" + dialId, null, ""), 200);
         assertEquals(HttpMethod.GET, lastRequest().method());
@@ -756,7 +756,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     private void servedApp(String type) {
         plugin("p1", "{}");
         verify(adminPut("/v1/applications/platform/app", """
-                {"interfaces": {"%s": {"base_url": "plugin://p1"}}}
+                {"interfaces": {"%s": {"base_url": "dial-plugin://p1"}}}
                 """.formatted(type)), 200);
     }
 
@@ -801,7 +801,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         verify(adminPut("/v1/models/platform/" + MODEL, """
                 {"type": "chat", "maxRetryAttempts": 2,
                  "upstreams": [{"endpoint": "http://cloud-a", "key": "a", "tier": 0}, {"endpoint": "http://cloud-b", "key": "b", "tier": 1}],
-                 "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"}}}
+                 "interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1"}}}
                 """), 200);
         return send(HttpMethod.POST, "/openai/deployments/" + MODEL + "/chat/completions", null, CHAT_BODY,
                 "content-type", "application/json", "X-Test-Status-For-Endpoint", "http://cloud-a=429");
@@ -841,7 +841,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
 
     static String embeddedChat(String plugin) {
         return """
-                {"interfaces": {"openaiChatCompletions": {"base_url": "plugin://%s"}}}
+                {"interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://%s"}}}
                 """.formatted(plugin);
     }
 

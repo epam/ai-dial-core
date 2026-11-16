@@ -79,7 +79,7 @@ public class ConfigTranslatorTest extends ResourceBaseTest {
     @Test
     void testTranslatorPluginUrlWithBlankName() {
         Response put = send(HttpMethod.PUT, "/v1/translators/platform/a2c", null, """
-                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "plugin://"}
+                {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "dial-plugin://"}
                 """, "authorization", "admin");
 
         assertEquals(422, put.status(), put.body());

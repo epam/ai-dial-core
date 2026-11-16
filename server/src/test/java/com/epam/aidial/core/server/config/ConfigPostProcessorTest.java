@@ -1308,18 +1308,18 @@ public class ConfigPostProcessorTest {
     @Test
     void testEmbeddedInterfaceIsRead() throws Exception {
         Model model = ProxyUtil.MAPPER.readValue("""
-                {"interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"}}}
+                {"interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1"}}}
                 """, Model.class);
 
         DeploymentInterface declared = model.getInterfaces().get("openaiChatCompletions");
         assertNull(declared.getMode());
-        assertEquals("plugin://p1", declared.getBaseUrl());
+        assertEquals("dial-plugin://p1", declared.getBaseUrl());
     }
 
     @Test
     void testEmbeddedIsNotMode() {
         assertThrows(JsonProcessingException.class, () -> ProxyUtil.MAPPER.readValue("""
-                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "base_url": "plugin://p1"}}}
+                {"interfaces": {"openaiChatCompletions": {"mode": "embedded", "base_url": "dial-plugin://p1"}}}
                 """, Model.class));
     }
 
@@ -1334,7 +1334,7 @@ public class ConfigPostProcessorTest {
     void testBlankPluginInInlineTranslatorRejected() {
         DeploymentInterface declared = new DeploymentInterface();
         declared.setMode(InterfaceMode.TRANSLATOR);
-        declared.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_RESPONSES, "plugin://")));
+        declared.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_RESPONSES, "dial-plugin://")));
 
         assertWarning(applicationWarnings(declared), "A plugin name cannot be blank");
     }
@@ -1362,7 +1362,7 @@ public class ConfigPostProcessorTest {
     void testInterceptorWithInlineTranslatorPluginRejected() {
         DeploymentInterface declared = new DeploymentInterface();
         declared.setMode(InterfaceMode.TRANSLATOR);
-        declared.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_RESPONSES, "plugin://p1")));
+        declared.setTranslator(TranslatorRef.inline(new Translator(null, OPENAI_RESPONSES, "dial-plugin://p1")));
         Interceptor interceptor = new Interceptor();
         interceptor.setName("interceptor");
         interceptor.setInterfaces(Map.of("openaiChatCompletions", declared));
@@ -1411,7 +1411,7 @@ public class ConfigPostProcessorTest {
 
     private static DeploymentInterface embedded(String plugin) {
         DeploymentInterface declared = new DeploymentInterface();
-        declared.setBaseUrl("plugin://" + plugin);
+        declared.setBaseUrl("dial-plugin://" + plugin);
         return declared;
     }
 

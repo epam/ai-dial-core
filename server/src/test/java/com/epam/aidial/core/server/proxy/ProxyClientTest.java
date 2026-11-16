@@ -53,14 +53,14 @@ class ProxyClientTest {
     @Test
     void testOriginEntryRefusesCustomApplication() {
         ExecutionException error = assertThrows(ExecutionException.class,
-                () -> await(client.embedded(context, HttpMethod.POST, "plugin://p1/openai/v1/chat/completions", "p1")));
+                () -> await(client.embedded(context, HttpMethod.POST, "dial-plugin://p1/openai/v1/chat/completions", "p1")));
 
         assertInstanceOf(IllegalStateException.class, error.getCause());
     }
 
     @Test
     void testRouterEntryDoesNotCheckTheDeployment() throws Exception {
-        await(client.embeddedForRouter(context, HttpMethod.POST, "plugin://p1/decide", "p1", new ApiKeyData(), null));
+        await(client.embeddedForRouter(context, HttpMethod.POST, "dial-plugin://p1/decide", "p1", new ApiKeyData(), null));
     }
 
     private static <T> T await(Future<T> future) throws Exception {

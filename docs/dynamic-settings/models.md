@@ -167,7 +167,7 @@ The base URL serving an interface is resolved in this order:
 3. The `translator` serving the entry, when `mode` is `translator`. A translated interface is served by its translator and by nothing else — it takes neither base URL above nor the legacy field below. Refer to [translators](translators.md).
 4. `endpoint`/`responsesEndpoint`, for interface types the `interfaces` map does not declare at all.
 
-A base URL may be a plugin URL, `plugin://<plugin_name>` (preview, may change incompatibly): the interface is then answered by that [plugin](plugins.md) inside DIAL Core, with no HTTP request, and checked and charged exactly as one sent over HTTP. A path may follow the name; DIAL Core keeps it in front of the path it appends. A plugin URL with no name is rejected, and so is one in `endpoint` or `responsesEndpoint`, which no plugin serves. A name with no `plugins` entry yet is accepted; requests for the interface answer `502` until the entry exists.
+A base URL may be a plugin URL, `dial-plugin://<plugin_name>` (preview, may change incompatibly): the interface is then answered by that [plugin](plugins.md) inside DIAL Core, with no HTTP request, and checked and charged exactly as one sent over HTTP. A path may follow the name; DIAL Core keeps it in front of the path it appends. A plugin URL with no name is rejected, and so is one in `endpoint` or `responsesEndpoint`, which no plugin serves. A name with no `plugins` entry yet is accepted; requests for the interface answer `502` until the entry exists.
 
 `interfaces` is the whitelist of what the model serves: a model-level `baseUrl` on its own declares no interface, and an interface listed with neither base URL is answered with `503`. If both `interfaces` and a legacy field are declared for the same interface type, `interfaces` takes precedence; the legacy field is left untouched in config and ignored for routing.
 
@@ -220,7 +220,7 @@ Each value is an object with the following fields:
         "type": "chat",
         "upstreams": [{ "endpoint": "https://cloud.example.com/v1", "key": "..." }],
         "interfaces": {
-            "openaiChatCompletions": { "base_url": "plugin://cloud-signer" }
+            "openaiChatCompletions": { "base_url": "dial-plugin://cloud-signer" }
         }
     },
     "text-embedding-3-small": {

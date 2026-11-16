@@ -7,40 +7,40 @@
     "r1": {
       "mode": "decision",
       "interfaces": {
-        "openaiChatCompletions": {"base_url": "plugin://p1"},
-        "anthropicMessages": {"base_url": "plugin://p1"},
-        "openaiResponses": {"base_url": "plugin://p1"}
+        "openaiChatCompletions": {"base_url": "dial-plugin://p1"},
+        "anthropicMessages": {"base_url": "dial-plugin://p1"},
+        "openaiResponses": {"base_url": "dial-plugin://p1"}
       }
     },
     "rb": {
       "mode": "decision",
       "decision": {"body": true},
       "interfaces": {
-        "openaiChatCompletions": {"base_url": "plugin://p1"},
-        "anthropicMessages": {"base_url": "plugin://p1"},
-        "openaiResponses": {"base_url": "plugin://p1"}
+        "openaiChatCompletions": {"base_url": "dial-plugin://p1"},
+        "anthropicMessages": {"base_url": "dial-plugin://p1"},
+        "openaiResponses": {"base_url": "dial-plugin://p1"}
       }
     },
     "rt": {
       "mode": "decision",
       "decision": {"timeoutMs": 200},
-      "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p1"}}
+      "interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1"}}
     },
     "r9": {
       "mode": "decision",
-      "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p9"}}
+      "interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p9"}}
     },
     "r4": {
       "baseUrl": "http://localhost:4848",
       "mode": "decision",
       "interfaces": {
-        "openaiChatCompletions": {"base_url": "plugin://p1"},
+        "openaiChatCompletions": {"base_url": "dial-plugin://p1"},
         "openaiResponses": {}
       }
     },
     "re": {
       "mode": "decision",
-      "interfaces": {"openaiEmbeddings": {"base_url": "plugin://p1"}}
+      "interfaces": {"openaiEmbeddings": {"base_url": "dial-plugin://p1"}}
     },
     "r2": {
       "baseUrl": "http://localhost:4848",
@@ -54,7 +54,7 @@
       "interfaces": {"openaiChatCompletions": {}}
     },
     "rp": {
-      "baseUrl": "plugin://p1/v1",
+      "baseUrl": "dial-plugin://p1/v1",
       "mode": "decision",
       "interfaces": {"openaiChatCompletions": {}}
     }
@@ -81,7 +81,7 @@
   },
   "applications": {
     "app": {
-      "interfaces": {"openaiChatCompletions": {"base_url": "plugin://p2"}}
+      "interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p2"}}
     }
   },
   "keys": {

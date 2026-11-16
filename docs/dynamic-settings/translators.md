@@ -14,7 +14,7 @@ A map of available translators.
 
 * `in`: **Required.** The interface type the translator accepts — the API a client calls DIAL Core on. It has to differ from `out`.
 * `out`: **Required.** The interface type it converts to. The deployment referencing the translator has to serve `out` itself, and serve it pass-through: that is the API the translator calls DIAL Core back on.
-* `baseUrl`: **Required.** The root URL of the translator service. Each request is forwarded to `baseUrl` + **the exact ingress path it was received on**, exactly as a deployment's own base URL is. A trailing slash is normalized. A plugin URL, `plugin://<plugin_name>` (preview, may change incompatibly), names the [plugins](plugins.md) entry that translates inside DIAL Core instead: refer to [Translators served by a plugin](#translators-served-by-a-plugin).
+* `baseUrl`: **Required.** The root URL of the translator service. Each request is forwarded to `baseUrl` + **the exact ingress path it was received on**, exactly as a deployment's own base URL is. A trailing slash is normalized. A plugin URL, `dial-plugin://<plugin_name>` (preview, may change incompatibly), names the [plugins](plugins.md) entry that translates inside DIAL Core instead: refer to [Translators served by a plugin](#translators-served-by-a-plugin).
 
 Both name an interface type this version of DIAL Core knows. Unlike an `interfaces` key, which is simply inert when it names a type Core does not know, these two are matched — `in` against the interface the translator is referenced from, `out` against the one the deployment serves back — so a name Core cannot resolve is rejected as the config is read, and the previous config stays live.
 
@@ -81,7 +81,7 @@ A translator whose `baseUrl` is a plugin URL runs inside DIAL Core. The interfac
     "anthropicMessagesToOpenaiChatCompletions": {
         "in": "anthropicMessages",
         "out": "openaiChatCompletions",
-        "baseUrl": "plugin://messages-to-chat"
+        "baseUrl": "dial-plugin://messages-to-chat"
     }
 }
 ```

@@ -494,9 +494,9 @@ query and the headers of "Item request to the origin". The mapping's `upstreamKe
 upstreams SHALL be that plugin url.
 
 #### Scenario: Stored response read back from a plugin
-- **WHEN** application `app` declares `interfaces.openaiResponses: {"base_url": "plugin://p1"}`, a client
+- **WHEN** application `app` declares `interfaces.openaiResponses: {"base_url": "dial-plugin://p1"}`, a client
   creates a response on it and the `test-origin` plugin answers `{"id": "plugin-resp-1", ...}`
-- **THEN** Core writes the mapping with `upstreamResponseId: plugin-resp-1` and `upstreamKey: plugin://p1`, and a
+- **THEN** Core writes the mapping with `upstreamResponseId: plugin-resp-1` and `upstreamKey: dial-plugin://p1`, and a
   following `GET /openai/v1/responses/<dial id>` reaches the plugin as `GET /openai/v1/responses/plugin-resp-1`
 
 #### Scenario: Cancel reaches the plugin
@@ -510,7 +510,7 @@ upstreams SHALL be that plugin url.
   reached, and calls no plugin
 
 #### Scenario: Item operation reaches a translator's plugin
-- **WHEN** model `m` serves `openaiResponses` in `translator` mode through a translator with `baseUrl: plugin://p1`,
+- **WHEN** model `m` serves `openaiResponses` in `translator` mode through a translator with `baseUrl: dial-plugin://p1`,
   a client creates a response on it, the plugin answers `{"id": "plugin-resp-2", ...}`, and the client sends
   `GET /openai/v1/responses/<dial id>`
 - **THEN** the plugin receives `GET /openai/v1/responses/plugin-resp-2`

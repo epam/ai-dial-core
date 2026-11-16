@@ -1459,7 +1459,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         String manifests = """
                 "manifests": [{"kind": "Model", "name": "models/platform/validate-plugin-url",
                                "spec": {"type": "chat", "endpoint": "http://localhost:7001/openai/deployments/m/chat/completions",
-                                        "responsesEndpoint": "plugin://p1"}}]
+                                        "responsesEndpoint": "dial-plugin://p1"}}]
                 """;
         Response validate = send(HttpMethod.POST, "/v1/admin/validate", null, "{" + manifests + "}", "authorization", "admin");
         Response apply = send(HttpMethod.POST, "/v1/admin/apply", null, "{\"precheck\": false, " + manifests + "}",

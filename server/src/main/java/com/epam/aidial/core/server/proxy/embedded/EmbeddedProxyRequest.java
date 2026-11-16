@@ -56,7 +56,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     /**
      * @param proxyContext the pass the plugin answers
      * @param plugin       the plugin, taken when the attempt is sent
-     * @param baseUrl      the {@code plugin://<name>} url the interface resolves to
+     * @param baseUrl      the {@code dial-plugin://<name>} url the interface resolves to
      * @param absoluteUri  that url with the path and query, the plugin getting the path and query
      */
     public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin, HttpMethod method,

@@ -42,10 +42,10 @@ public class DeploymentEndpointUtil {
     private static final String DECIDE_PATH = "/decide";
 
     /**
-     * The scheme of a base url naming a plugin: {@code plugin://<name>}, optionally followed by a path. It names the plugin
+     * The scheme of a base url naming a plugin: {@code dial-plugin://<name>}, optionally followed by a path. It names the plugin
      * wherever Core keeps a url (the synthetic upstream, the analytics row, the logs); no HTTP request is ever sent to it.
      */
-    public static final String PLUGIN_URL_PREFIX = "plugin://";
+    public static final String PLUGIN_URL_PREFIX = "dial-plugin://";
 
     /**
      * The plugin a {@link #PLUGIN_URL_PREFIX} url names: the text after the scheme up to the next {@code /}, empty when

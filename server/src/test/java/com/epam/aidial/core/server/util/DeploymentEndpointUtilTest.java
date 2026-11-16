@@ -44,8 +44,8 @@ public class DeploymentEndpointUtilTest {
         application.setEndpoint("http://legacy/chat");
         application.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), embedded("p1")));
 
-        assertEquals("plugin://p1", resolveServingEndpoint(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
-        assertEquals("plugin://p1/openai/deployments/app/chat/completions?api-version=1",
+        assertEquals("dial-plugin://p1", resolveServingEndpoint(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+        assertEquals("dial-plugin://p1/openai/deployments/app/chat/completions?api-version=1",
                 resolveRequestUri(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
                         "/openai/deployments/app/chat/completions", "api-version=1"));
         assertEquals(InterfaceMode.PASSTHROUGH, resolveMode(application, OPENAI_CHAT_COMPLETIONS));
@@ -61,7 +61,7 @@ public class DeploymentEndpointUtilTest {
         entry.setOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/x"));
         application.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), entry));
 
-        assertEquals("plugin://p1/openai/deployments/app/chat/completions",
+        assertEquals("dial-plugin://p1/openai/deployments/app/chat/completions",
                 resolveRequestUri(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
                         "/openai/deployments/app/chat/completions", null));
     }
@@ -83,14 +83,14 @@ public class DeploymentEndpointUtilTest {
         Application application = new Application();
         application.setName("app");
         application.setInterfaces(Map.of(
-                ANTHROPIC_MESSAGES.getValue(), translatedBy(TranslatorRef.inline(new Translator(null, OPENAI_CHAT_COMPLETIONS, "plugin://p1"))),
+                ANTHROPIC_MESSAGES.getValue(), translatedBy(TranslatorRef.inline(new Translator(null, OPENAI_CHAT_COMPLETIONS, "dial-plugin://p1"))),
                 OPENAI_RESPONSES.getValue(), translatedBy(TranslatorRef.named("r2c")),
                 OPENAI_CHAT_COMPLETIONS.getValue(), translatedBy(TranslatorRef.named("not-registered"))));
-        Map<String, Translator> translators = Map.of("r2c", new Translator(OPENAI_RESPONSES, OPENAI_CHAT_COMPLETIONS, "plugin://p2"),
+        Map<String, Translator> translators = Map.of("r2c", new Translator(OPENAI_RESPONSES, OPENAI_CHAT_COMPLETIONS, "dial-plugin://p2"),
                 "http", new Translator(OPENAI_RESPONSES, OPENAI_CHAT_COMPLETIONS, "http://translator"));
 
         assertEquals("p1", resolvePlugin(application, ANTHROPIC_MESSAGES, translators));
-        assertEquals("plugin://p1", resolveServingEndpoint(application, ANTHROPIC_MESSAGES, translators));
+        assertEquals("dial-plugin://p1", resolveServingEndpoint(application, ANTHROPIC_MESSAGES, translators));
         assertEquals(InterfaceMode.TRANSLATOR, resolveMode(application, ANTHROPIC_MESSAGES));
         assertEquals("p2", resolvePlugin(application, OPENAI_RESPONSES, translators));
         assertNull(resolvePlugin(application, OPENAI_CHAT_COMPLETIONS, translators));
@@ -112,25 +112,26 @@ public class DeploymentEndpointUtilTest {
         Application application = new Application();
         application.setInterfaces(Map.of(OPENAI_RESPONSES.getValue(), embedded("p1")));
 
-        assertEquals("plugin://p1/openai/v1/responses/resp-1/cancel", resolveResponseItemUri(application, NO_TRANSLATORS,
+        assertEquals("dial-plugin://p1/openai/v1/responses/resp-1/cancel", resolveResponseItemUri(application, NO_TRANSLATORS,
                 InterfacePathMapping.POST_OPENAI_RESPONSES_CANCEL, "resp-1", null));
     }
 
     private static DeploymentInterface embedded(String plugin) {
         DeploymentInterface entry = new DeploymentInterface();
-        entry.setBaseUrl("plugin://" + plugin);
+        entry.setBaseUrl("dial-plugin://" + plugin);
         return entry;
     }
 
     // deployment-interfaces-config "Plugin url in a base url"
     @Test
     void pluginUrlNamesThePlugin() {
-        assertEquals("p1", pluginName("plugin://p1"));
-        assertEquals("p1", pluginName("plugin://p1/v2"));
-        assertEquals("p_1", pluginName("plugin://p_1"));
-        assertEquals("", pluginName("plugin:///v1"));
+        assertEquals("p1", pluginName("dial-plugin://p1"));
+        assertEquals("p1", pluginName("dial-plugin://p1/v2"));
+        assertEquals("p_1", pluginName("dial-plugin://p_1"));
+        assertEquals("", pluginName("dial-plugin:///v1"));
         assertNull(pluginName("http://p1"));
-        assertNull(pluginName("PLUGIN://p1"));
+        assertNull(pluginName("DIAL-PLUGIN://p1"));
+        assertNull(pluginName("plugin://p1"));
         assertNull(pluginName(null));
     }
 
@@ -139,15 +140,15 @@ public class DeploymentEndpointUtilTest {
     void deploymentBaseUrlNamesThePluginOfEntriesWithoutTheirOwn() {
         Application application = new Application();
         application.setName("app");
-        application.setBaseUrl("plugin://p1/v2/");
+        application.setBaseUrl("dial-plugin://p1/v2/");
         DeploymentInterface entry = new DeploymentInterface();
         entry.setOverridePaths(Map.of("postAzureOpenaiChatCompletions", "/x"));
         application.setInterfaces(Map.of(OPENAI_CHAT_COMPLETIONS.getValue(), entry));
 
         assertEquals("p1", resolvePlugin(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
-        assertEquals("plugin://p1/v2", resolveServingEndpoint(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
+        assertEquals("dial-plugin://p1/v2", resolveServingEndpoint(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS));
         // the path after the name stays in front of the ingress path, and no override applies to a plugin
-        assertEquals("plugin://p1/v2/openai/deployments/app/chat/completions",
+        assertEquals("dial-plugin://p1/v2/openai/deployments/app/chat/completions",
                 resolveRequestUri(application, OPENAI_CHAT_COMPLETIONS, NO_TRANSLATORS,
                         "/openai/deployments/app/chat/completions", null));
         assertTrue(isInterfaceDeclared(application, OPENAI_CHAT_COMPLETIONS));
