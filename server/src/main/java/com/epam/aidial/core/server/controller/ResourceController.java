@@ -702,7 +702,9 @@ public class ResourceController extends AccessControlBaseController {
         applicationSchemaService.getSchema(application.getApplicationTypeSchemaId(), true);
         if (application.getApplicationProperties() != null) {
             List<ResourceDescriptor> files = applicationSchemaService.getFiles(application);
-            files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
+            files.stream().filter(resource -> !(resource.isFolder()
+                            ? accessService.hasReadAccessToEverythingUnder(resource, context)
+                            : accessService.hasReadAccess(resource, context)))
                     .findAny().ifPresent(file -> {
                         throw new HttpException(FORBIDDEN, "No read access to file: " + file.getUrl());
                     });

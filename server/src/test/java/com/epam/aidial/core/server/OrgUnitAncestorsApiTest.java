@@ -68,6 +68,7 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
 
     @Test
     void testRemovingTheRoleHidesTheUnitsAbove() {
+        assertEquals(List.of("files/public/Acme/", "files/public/Handbook/"), urls(list("public/", BOB)));
         Response removed = send(HttpMethod.DELETE, "/v1/org-units/public/Acme/Risk/US%20Risk/Basel/role-assignments/" + basel, null, null,
                 "authorization", "admin");
         assertEquals(200, removed.status(), removed.body());
@@ -75,6 +76,23 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
         assertEquals(List.of("files/public/Handbook/"), urls(list("public/", BOB)));
         assertEquals(403, list("public/Acme/", BOB).status());
         assertEquals(List.of(), unitPaths(BOB));
+    }
+
+    @Test
+    void testApplicationsReferToNoFolderAboveTheirUnit() {
+        String app = "{\"displayName\": \"app\", \"applicationTypeSchemaId\": "
+                + "\"https://mydial.somewhere.com/custom_application_schemas/specific_application_type\", "
+                + "\"applicationProperties\": {\"property1\": \"p1\", \"property2\": \"p2\", \"property3\": [\"%s\"]}}";
+        String url = "/v1/applications/public/Acme/Risk/US%20Risk/Basel/app";
+
+        Response above = send(HttpMethod.PUT, url, null, app.formatted("files/public/Acme/"), "authorization", BOB);
+        assertEquals(403, above.status(), above.body());
+        assertEquals(404, send(HttpMethod.DELETE, url, null, null, "authorization", BOB).status());
+        assertEquals(200, read("Acme/a.txt", "admin").status());
+        assertEquals(200, read("Acme/HR/h.txt", "admin").status());
+
+        Response own = send(HttpMethod.PUT, url, null, app.formatted("files/public/Acme/Risk/US%20Risk/Basel/"), "authorization", BOB);
+        assertEquals(200, own.status(), own.body());
     }
 
     @Test
