@@ -70,8 +70,7 @@ class ConfigEntityCodecTest {
                 () -> ConfigEntityCodec.treeToEntity(node, Translator.class));
 
         assertEquals(
-                "Failed to parse Translator: Cannot construct instance of `com.epam.aidial.core.config.Translator`, "
-                        + "problem: Translator needs exactly one of baseUrl or plugin",
+                "Failed to parse Translator at \"baseUrl\": Missing required creator property 'baseUrl' (index 2)",
                 e.getMessage());
         assertNotNull(e.getCause());
     }
