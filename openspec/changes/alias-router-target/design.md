@@ -17,8 +17,14 @@ What the code on `development` does today:
   target pass.
 - `RouterDecisionClient.java:routerHeaders` copies the client's headers to the decide request, so a header set on
   the alias pass's outgoing request reaches the router as a client header.
-- `RouterDecisionFlow.java` appends the router's name to the execution path and rewrites the answer's `model` to
-  the router's name (requirement "Router name in the answer").
+- `ApiKeyData.java:initFromContext` appends the router's name to the execution path of a decided pass's key.
+  `RouterModelFn.java` rewrites the answer's `model` to `RouterDecision.getRouterName()` at the answer call sites
+  (chat, Responses, Messages and the interceptor controllers); `ReplaceResponseIdFn.java` stores the same name in a
+  stored response's mapping, and `ResponseItemController.java` renames the read-back with it (requirement "Router
+  name in the answer").
+- `RouterDecisionFlow.java:askRouter` refuses a candidate that is in `config.getRouters()` with `502`.
+- `StoredAliases.java:validateFields` checks a stored alias with `AliasTargets.validateFields`, so what that accepts,
+  a stored alias accepts.
 
 ## Goals / Non-Goals
 
@@ -32,10 +38,14 @@ Non-goals: one-pass alias serving; granting the router's chosen deployments; sto
    `ResourceTypes.ROUTER`, `resolve` reads `config.getRouters()`, `fits` admits a `Router` for `model` and
    `application`. Rejected: publishing the router itself in the model listings. It would change
    "Routers absent from other listings" for every router and still give one name per router.
+   `StoredAliases.validateFields` refuses a `routers/` target, so a stored alias stays out of scope (`400` on `PUT`,
+   a stored blob with one ignored).
 
 2. **No default type for a router target.** `getEffectivePresentation` is not changed: the type is `presentAs`
    or the type the path names, and `routers` names none of the three, so the alias must state `presentAs`.
-   Rejected: mapping `routers` to `MODEL`, a special rule the feature does not need.
+   The refusal is in `AliasTargets.validateFields`, which runs before any `fits` call and whether or not the router
+   exists; `fits` never sees a null type. Rejected: mapping `routers` to `MODEL`, a special rule the feature does
+   not need.
 
 3. **The alias pass is built as for any model or application target.** `AliasPasses.build` already works from the
    interfaces the target declares, and a router declares its interfaces as a model does (requirement "Router
@@ -43,9 +53,14 @@ Non-goals: one-pass alias serving; granting the router's chosen deployments; sto
    chat model without pricing or limits for a target that is not a `Model`.
 
 4. **The answer names the alias, and the target pass does the rename.** The target pass already rewrites `model`
-   for a decided request. It takes the name from the first element of the incoming execution path when the pass was
-   lent by an alias (`lentDeployment` equals the router's name), else the router's name. Rejected: rewriting in the
-   alias pass, which today relays the body untouched and would have to parse every chunk a second time.
+   for a decided request. `RouterDecision` gets an answer name: when the pass was lent by an alias (`lentDeployment`
+   equals the router's name), the last name of the incoming execution path that is neither the router nor one of
+   its interceptors, which is the alias pass's own name whoever called the alias; else the router's name. The
+   `RouterModelFn` call sites and the mapping `ReplaceResponseIdFn` stores use the answer name, so a stored response
+   read back names the alias too. `getRouterName` keeps naming the router for the execution path, the analytics
+   rows and the re-entry check. Rejected: rewriting in the alias pass, which today relays the body untouched and
+   would have to parse every chunk a second time; taking the first name of the path, which is the calling
+   application when an application calls the alias.
 
 5. **Alias default headers work as a deployment's.** `AliasPasses.build` copies the alias's `defaultHeaders` to
    the pass, and `ApplyDefaultDeploymentSettingsFn.java:applyDefaultHeaders` applies them as it does for any
@@ -55,9 +70,14 @@ Non-goals: one-pass alias serving; granting the router's chosen deployments; sto
 6. **The headers apply to the top-level `defaultHeaders` only.** An alias has no `interfaces` of its own, so
    `Deployment.java:resolveDefaultHeaders` gives the top-level map for every interface type.
 
-7. **Header names follow the existing rules.** The alias's map goes through whatever name check the config applies
-   to a deployment's `defaultHeaders` today; apply (task 1.1) confirms which check that is and records it here. The
-   target pass still drops what only Core may set (`X-DIAL-ROUTER-ATTEMPTS`, `X-DIAL-ROUTER-NOTICE`).
+7. **Header names follow the existing rules.** Core checks no name in a deployment's `defaultHeaders`, and none is
+   added for an alias. The headers land on the alias pass's inbound request, so they reach the target pass through
+   the client-header copy and its exclusions (`ProxyUtil.copyHeaders`), and the decide request still drops what only
+   Core may set (`X-DIAL-ROUTER-ATTEMPTS`, `X-DIAL-ROUTER-NOTICE`).
+
+8. **An alias over a router is not a routing candidate.** `askRouter` refuses a candidate that is an alias whose
+   target is `routers/<name>` with `502`, as it refuses a router. Without it a router could reach another router's
+   decision through an alias, which "Candidate is a router" forbids.
 
 Deliberate differences from today's behaviour: an alias's `defaultHeaders`, ignored until now, are sent; a decided
 answer reached through an alias names the alias.

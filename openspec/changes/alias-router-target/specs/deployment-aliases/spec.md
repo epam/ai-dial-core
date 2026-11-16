@@ -51,6 +51,19 @@ application target that has `mcp`.
 - **WHEN** an alias with `presentAs: toolset` targets `routers/r1`
 - **THEN** the config file load fails
 
+### Requirement: Target of a stored alias
+A stored alias SHALL target a config deployment other than a router, or a resource in the `public` bucket. A `PUT`
+with a `routers/` target or a resource target in another bucket SHALL answer `400`, and a stored blob with one SHALL
+be ignored by calls and listings.
+
+#### Scenario: Target in a user bucket
+- **WHEN** an admin stores an alias whose target is `applications/<user bucket>/app` or `toolsets/<user bucket>/tools`
+- **THEN** the answer is `400`
+
+#### Scenario: Router target of a stored alias
+- **WHEN** an admin stores an alias with `presentAs: model` whose target is `routers/r1`
+- **THEN** the answer is `400`
+
 ## ADDED Requirements
 
 ### Requirement: Alias to a router
@@ -72,6 +85,14 @@ own rights, as on a direct call of the router.
 - **WHEN** a client sends `POST /anthropic/v1/messages` with `"model": "strong"` and `r1` answers
   `{"candidates": ["claude"]}`
 - **THEN** `claude` receives the request and the client receives its answer
+
+### Requirement: Alias over a router is not a candidate
+An alias whose target is a router SHALL NOT be a routing candidate: Core SHALL answer it as a router named as a
+candidate.
+
+#### Scenario: Alias over a router as a candidate
+- **WHEN** the router `r2` answers `{"candidates": ["strong"]}` and `strong` targets `routers/r1`
+- **THEN** Core answers `502` and sends nothing to `strong` or `r1`
 
 ### Requirement: Default headers of an alias
 For an alias of type `model` or `application`, the alias pass SHALL set each header of the alias's `defaultHeaders`
