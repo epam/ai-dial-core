@@ -185,6 +185,22 @@ public class ProxyTest {
     }
 
     @Test
+    public void testHandle_SystemImportSkipsBodySizeLimit() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.path()).thenReturn("/v1/admin/system-import");
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("application/zip");
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Long.toString(1L << 30));
+
+        proxy.handle(request);
+
+        verify(response, never()).setStatusCode(REQUEST_ENTITY_TOO_LARGE.getCode());
+        verify(request).pause();
+    }
+
+    @Test
     public void testHandle_HealthCheck() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
@@ -540,7 +556,7 @@ public class ProxyTest {
         Key originalKey = new Key();
         apiKeyData.setOriginalKey(originalKey);
         ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null);
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
 
         proxy.handle(request);
@@ -697,7 +713,7 @@ public class ProxyTest {
         config.setRoutes(routes);
         when(configStore.get()).thenReturn(config);
         ExtractedClaims extractedClaims = new ExtractedClaims("sub", List.of("role1"), "hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null);
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null);
         when(accessTokenValidator.extractClaims(anyString())).thenReturn(Future.succeededFuture(extractedClaims));
 
         proxy.handle(request);

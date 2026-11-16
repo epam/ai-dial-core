@@ -51,6 +51,12 @@ info:
     The value is a JSON object with the features of the deployment: the flags configured in `features` of the model or application in the DIAL Core config.
 
     DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
+
+    # Deployment id
+
+    DIAL Core adds the `X-DIAL-DEPLOYMENT-ID` header with the name of the called deployment to every request it forwards to a deployment, whatever the interface mode. When the deployment has `overrideName`, the path and `X-DIAL-OVERRIDE-NAME` carry that name, and this header still carries the DIAL deployment name.
+
+    DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
   version: 0.0.0
   license:
     name: Apache-2.0
@@ -61,6 +67,8 @@ security:
 - ApiKeyAuth: []
 tags:
 - name: Admin
+- name: Admin Consent
+- name: Aliases
 - name: Anthropic
 - name: Applications
 - name: Catalog
@@ -82,6 +90,7 @@ tags:
 - name: Models
 - name: Notifications
 - name: Org units
+- name: Plugins
 - name: Policies
 - name: Policy Assignments
 - name: Projects
@@ -89,6 +98,7 @@ tags:
 - name: Publications
 - name: Responses API
 - name: Roles
+- name: Routers
 - name: Routes
 - name: Schemas
 - name: Sharing
@@ -160,7 +170,7 @@ paths:
               schema:
                 type: string
             anthropic-ratelimit-unified-status:
-              description: "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. Sent only when the caller has a day/week/month cost limit; the upstream's own `anthropic-ratelimit-*` headers are removed"
+              description: "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. Sent only when the caller has a day/week/month cost limit, or with enforced budgets exactly one budget in their cost object; the upstream's own `anthropic-ratelimit-*` headers are removed"
               required: false
               schema:
                 type: string
@@ -1514,7 +1524,7 @@ paths:
           description: Success
           headers:
             x-codex-primary-used-percent:
-              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit; the upstream's own `x-codex-*` headers are removed"
+              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit, or with enforced budgets exactly one budget in their cost object; the upstream's own `x-codex-*` headers are removed"
               required: false
               schema:
                 type: string
@@ -1885,7 +1895,7 @@ paths:
                   $ref: "#/components/schemas/CreateChatCompletionStreamResponse"
           headers:
             x-codex-primary-used-percent:
-              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit; the upstream's own `x-codex-*` headers are removed"
+              description: "Spent share of the caller's reported DIAL day/week/month spend cap before this request, a whole percent rounded down. Sent only when the caller has such a cost limit, or with enforced budgets exactly one budget in their cost object; the upstream's own `x-codex-*` headers are removed"
               required: false
               schema:
                 type: string
@@ -2128,6 +2138,131 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin-consent/{deployment_id}:
+    get:
+      tags:
+      - Admin Consent
+      summary: "/v1/admin-consent/{deployment_id}"
+      description: Returns the admin consent status of an application's declared resource dependencies. `consented` is true only while a stored approval exists and matches the current declaration — exactly what request-time resolution enforces. `stale` marks an approval the declaration has since changed away from; the last approval stays visible for re-approval. Explicit administrators only.
+      operationId: getApplicationAdminConsentStatus
+      parameters:
+      - name: deployment_id
+        in: path
+        description: "The application's deployment id, as in `/v1/consent/{deployment_id}`: a config application name or `applications/{bucket}/{path}`. Admin consent applies to applications only; any other deployment is 404."
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminConsentStatus"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    post:
+      tags:
+      - Admin Consent
+      summary: "/v1/admin-consent/{deployment_id}"
+      description: "Approves the reviewed resource dependencies for every user; each user still gets only what they can reach themselves. The body lists the resources the administrator reviewed; if the declaration changed since, the call fails with 409 and nothing is stored. A later change of an entry's url or access, or an added, removed or reordered entry, invalidates the approval. Explicit administrators only; 400 when the body is missing or malformed or the application declares no dependencies."
+      operationId: grantApplicationAdminConsent
+      parameters:
+      - name: deployment_id
+        in: path
+        description: "The application's deployment id, as in `/v1/consent/{deployment_id}`: a config application name or `applications/{bucket}/{path}`. Admin consent applies to applications only; any other deployment is 404."
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantAdminConsentRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    delete:
+      tags:
+      - Admin Consent
+      summary: "/v1/admin-consent/{deployment_id}"
+      description: Withdraws the admin consent. Calls started after the withdrawal no longer receive the dependencies; a per-request key already issued keeps its grants until it expires. Explicit administrators only.
+      operationId: withdrawApplicationAdminConsent
+      parameters:
+      - name: deployment_id
+        in: path
+        description: "The application's deployment id, as in `/v1/consent/{deployment_id}`: a config application name or `applications/{bucket}/{path}`. Admin consent applies to applications only; any other deployment is 404."
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/admin/apply:
     post:
       tags:
@@ -2171,6 +2306,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminApplyResponse"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/aliases:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/aliases
+      operationId: listFileConfigAliases
+      responses:
+        "200":
+          description: List of file-sourced aliases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/aliases/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/aliases/{name}"
+      operationId: getFileConfigAlias
+      parameters:
+      - name: name
+        in: path
+        description: Alias name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Alias"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
         "500":
           description: The server had an error while processing your request.
           content:
@@ -2601,6 +2813,83 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin/config/file/plugins:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/plugins
+      operationId: listFileConfigPlugins
+      responses:
+        "200":
+          description: List of file-sourced plugins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/plugins/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/plugins/{name}"
+      operationId: getFileConfigPlugin
+      parameters:
+      - name: name
+        in: path
+        description: Plugin name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Plugin"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/config/file/roles:
     get:
       tags:
@@ -2656,6 +2945,83 @@ paths:
               schema:
                 allOf:
                 - $ref: "#/components/schemas/Role"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/routers:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/config/file/routers
+      operationId: listFileConfigRouters
+      responses:
+        "200":
+          description: List of file-sourced routers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileConfigControllerItemsResponseFileConfigControllerNamedEntity"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/admin/config/file/routers/{name}:
+    get:
+      tags:
+      - Admin
+      summary: "/v1/admin/config/file/routers/{name}"
+      operationId: getFileConfigRouter
+      parameters:
+      - name: name
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Router"
                 - $ref: "#/components/schemas/EntityMetadata"
         "403":
           description: Forbidden
@@ -3111,6 +3477,8 @@ paths:
               schema:
                 type: string
                 format: binary
+        "400":
+          description: "The scope is empty, has an empty element or names an unknown bucket"
         "403":
           description: Forbidden
           content:
@@ -3126,6 +3494,60 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+      parameters:
+      - name: scope
+        in: query
+        description: "Comma-separated, case-insensitive list of the buckets to export: public, platform. May be repeated, the lists are combined. All buckets when omitted."
+        required: false
+        schema:
+          type: string
+  /v1/admin/system-import:
+    post:
+      tags:
+      - Admin
+      summary: /v1/admin/system-import
+      operationId: systemImport
+      requestBody:
+        content:
+          application/zip:
+            schema:
+              type: string
+              format: binary
+        required: true
+      responses:
+        "200":
+          description: "Newline-delimited JSON: progress lines while the replace runs, then a final status line"
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: "The archive is missing, malformed or not accepted by this version"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "408":
+          description: No bytes were received from the client for adminSystemImport.stallTimeout
+        "409":
+          description: "Another system import already holds the guard, retry later"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+      parameters:
+      - name: mode
+        in: query
+        description: merge (the default) writes the archive's blobs over the buckets and deletes nothing; replace first deletes the blobs of each bucket that the archive has blobs for. Case-insensitive.
+        required: false
+        schema:
+          type: string
   /v1/admin/validate:
     post:
       tags:
@@ -3169,6 +3591,193 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminValidateResponse"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/aliases/{bucket}/{path}:
+    get:
+      tags:
+      - Aliases
+      summary: "/v1/aliases/{bucket}/{path}"
+      operationId: getPublicAlias
+      parameters:
+      - name: bucket
+        in: path
+        description: Must be public
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Alias name, which is also its invocation name"
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: "Success: presentAs, target, userRoles and the display fields, with status valid, or the stored body with status invalid and validationWarnings when calls ignore it"
+          headers:
+            ETag:
+              description: Entity tag for the alias
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Alias"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Aliases
+      summary: "/v1/aliases/{bucket}/{path}"
+      operationId: savePublicAlias
+      parameters:
+      - name: bucket
+        in: path
+        description: Must be public
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Alias name, which is also its invocation name"
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Alias"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved alias
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: "Invalid body, a field other than presentAs, target, userRoles and the display fields, a body name other than the path name, an invalid name or one the url encoding changes, or a target that does not fit presentAs"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Aliases
+      summary: "/v1/aliases/{bucket}/{path}"
+      operationId: deletePublicAlias
+      parameters:
+      - name: bucket
+        in: path
+        description: Must be public
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Alias name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "412":
+          description: Precondition Failed - ETag mismatch
         "500":
           description: The server had an error while processing your request.
           content:
@@ -4923,7 +5532,7 @@ paths:
       parameters:
       - name: type
         in: query
-        description: "Filter deployment names by kind (model, application, toolset). Defaults to all kinds."
+        description: "Filter deployment names by kind (model, application, toolset, router). Defaults to all kinds."
         required: false
         schema:
           type: array
@@ -4933,6 +5542,7 @@ paths:
             - model
             - application
             - toolset
+            - router
       responses:
         "200":
           description: Success
@@ -6512,6 +7122,74 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/metadata/aliases/{bucket}/{path}:
+    get:
+      tags:
+      - Aliases
+      summary: "/v1/metadata/aliases/{bucket}/{path}"
+      operationId: getPublicAliasMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: Must be public
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Empty to list the aliases, or an alias name"
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/applications/platform/{path}:
     get:
       tags:
@@ -7232,6 +7910,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/plugins/{bucket}/{path}:
+    get:
+      tags:
+      - Plugins
+      summary: "/v1/metadata/plugins/{bucket}/{path}"
+      operationId: getPluginMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/metadata/policies/{bucket}/{path}:
     get:
       tags:
@@ -7504,6 +8251,74 @@ paths:
                 $ref: "#/components/schemas/ErrorData"
         "401":
           description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/routers/{bucket}/{path}:
+    get:
+      tags:
+      - Routers
+      summary: "/v1/metadata/routers/{bucket}/{path}"
+      operationId: getRouterMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "The parameter specifies path to the requested directory or application, for example: `folder1/folder2/` or `folder1/application_name/`. Note, it could be empty if you want to list the root folder."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
           content:
             application/json:
               schema:
@@ -11447,6 +12262,217 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/plugins/{bucket}/{path}:
+    get:
+      tags:
+      - Plugins
+      summary: "/v1/plugins/{bucket}/{path}"
+      operationId: getPlugin
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Plugin name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the plugin
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Plugin"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Plugins
+      summary: "/v1/plugins/{bucket}/{path}"
+      operationId: savePlugin
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Plugin name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Plugin"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved plugin
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Plugins
+      summary: "/v1/plugins/{bucket}/{path}"
+      operationId: deletePlugin
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Plugin name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/policies/{bucket}/{path}:
     get:
       tags:
@@ -12342,6 +13368,262 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/routers:
+    get:
+      tags:
+      - Deployment listing
+      summary: /v1/routers
+      operationId: getRouters
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDataRouterData"
+  /v1/routers/{bucket}/{path}:
+    get:
+      tags:
+      - Routers
+      summary: "/v1/routers/{bucket}/{path}"
+      operationId: getPlatformRouter
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the router
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/Router"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Routers
+      summary: "/v1/routers/{bucket}/{path}"
+      operationId: savePlatformRouter
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Router"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved router
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Routers
+      summary: "/v1/routers/{bucket}/{path}"
+      operationId: deletePlatformRouter
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/routers/{router_name}:
+    get:
+      tags:
+      - Deployment listing
+      summary: "/v1/routers/{router_name}"
+      operationId: getRouter
+      parameters:
+      - name: router_name
+        in: path
+        description: Router name
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouterData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/routes/{bucket}/{path}:
     get:
       tags:
@@ -16041,6 +17323,26 @@ components:
           type: string
         spec:
           $ref: "#/components/schemas/CatalogSchema"
+    AdminConsentStatus:
+      type: object
+      properties:
+        consented:
+          description: "The approval is live: a record exists and matches the current declaration."
+          type: boolean
+        grantedAt:
+          description: "When it was approved, epoch milliseconds."
+          type: integer
+        grantedBy:
+          description: "Who approved: the administrator's user id, or the API key's project."
+          type: string
+        grantedResources:
+          description: "The approved resources, as declared at approval time."
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentResourceEntry"
+        stale:
+          description: A record exists but no longer matches the current declaration; absent when there is no record.
+          type: boolean
     AdminInterceptorManifest:
       type: object
       properties:
@@ -16078,12 +17380,16 @@ components:
           Application: "#/components/schemas/AdminApplicationManifest"
           Policy: "#/components/schemas/AdminPolicyManifest"
           PolicyAssignment: "#/components/schemas/AdminPolicyAssignmentManifest"
+          Plugin: "#/components/schemas/AdminPluginManifest"
+          Router: "#/components/schemas/AdminRouterManifest"
       oneOf:
       - $ref: "#/components/schemas/AdminSettingsManifest"
       - $ref: "#/components/schemas/AdminSchemaManifest"
       - $ref: "#/components/schemas/AdminCatalogSchemaManifest"
       - $ref: "#/components/schemas/AdminInterceptorManifest"
+      - $ref: "#/components/schemas/AdminRouterManifest"
       - $ref: "#/components/schemas/AdminTranslatorManifest"
+      - $ref: "#/components/schemas/AdminPluginManifest"
       - $ref: "#/components/schemas/AdminRoleManifest"
       - $ref: "#/components/schemas/AdminKeyManifest"
       - $ref: "#/components/schemas/AdminRouteManifest"
@@ -16101,6 +17407,15 @@ components:
           type: string
         spec:
           $ref: "#/components/schemas/Model"
+    AdminPluginManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Plugin"
     AdminPolicyAssignmentManifest:
       type: object
       properties:
@@ -16137,6 +17452,15 @@ components:
           type: string
         spec:
           $ref: "#/components/schemas/Route"
+    AdminRouterManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/Router"
     AdminSchemaManifest:
       type: object
       properties:
@@ -16184,6 +17508,95 @@ components:
             $ref: "#/components/schemas/ValidationResult"
         valid:
           type: integer
+    Alias:
+      type: object
+      properties:
+        author:
+          type: string
+        baseUrl:
+          type: string
+        catalogProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalogSchemaId:
+          type: string
+          format: uri
+        createdAt:
+          type: integer
+        defaultHeaders:
+          $ref: "#/components/schemas/MapStringString"
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        dependencies:
+          type: array
+          items:
+            type: string
+        description:
+          $ref: "#/components/schemas/LocalizedValue"
+        descriptionKeywords:
+          type: array
+          items:
+            type: string
+        displayName:
+          $ref: "#/components/schemas/LocalizedValue"
+        displayVersion:
+          type: string
+        endpoint:
+          type: string
+        features:
+          $ref: "#/components/schemas/Features"
+        forwardAuthToken:
+          type: boolean
+        iconUrl:
+          type: string
+        inputAttachmentTypes:
+          type: array
+          items:
+            type: string
+        interceptors:
+          type: array
+          items:
+            type: string
+        interfaces:
+          $ref: "#/components/schemas/MapStringDeploymentInterface"
+        intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        maxInputAttachments:
+          type: integer
+        maxRetryAttempts:
+          type: integer
+        name:
+          type: string
+        overrideName:
+          type: string
+        presentAs:
+          $ref: "#/components/schemas/AliasPresentation"
+        reference:
+          type: string
+        responsesDefaults:
+          $ref: "#/components/schemas/MapStringObject"
+        responsesEndpoint:
+          type: string
+        target:
+          $ref: "#/components/schemas/AliasTarget"
+        updatedAt:
+          type: integer
+        userRoles:
+          type: array
+          items:
+            type: string
+    AliasPresentation:
+      type: string
+      enum:
+      - model
+      - application
+      - toolset
+    AliasTarget:
+      type: object
+      properties:
+        id: {}
+        path:
+          type: string
+        version: {}
     AllowedToolsResponse:
       required:
       - tools
@@ -16368,6 +17781,11 @@ components:
           $ref: "#/components/schemas/MapStringString"
         baseUrl:
           type: string
+        resource_dependencies:
+          description: Declared resource dependencies for this application. Present only when the application declares dependencies; omitted otherwise.
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceDependency"
     ApplicationData:
       type: object
       properties:
@@ -16544,6 +17962,10 @@ components:
           type: string
         priority:
           type: integer
+        displayName:
+          type: string
+        object:
+          $ref: "#/components/schemas/PolicyObjectSet"
     CacheBreakpoint:
       type: object
       properties:
@@ -17634,6 +19056,12 @@ components:
           $ref: "#/components/schemas/MapStringOrgUnitRole"
         spendingLimits:
           $ref: "#/components/schemas/SpendingLimits"
+        plugins:
+          $ref: "#/components/schemas/MapStringPlugin"
+        aliases:
+          $ref: "#/components/schemas/MapStringAlias"
+        routers:
+          $ref: "#/components/schemas/MapStringRouter"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -17685,11 +19113,27 @@ components:
       properties:
         deployments:
           $ref: "#/components/schemas/MapStringConsentDeployment"
+        resources:
+          description: One entry per resource dependency the application declares; absent for an application that declares none.
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentResourceEntry"
     ConsentDeployment:
       type: object
       properties:
         consentRequired:
           type: boolean
+    ConsentResourceEntry:
+      type: object
+      properties:
+        access:
+          description: The approved access rights.
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        url:
+          description: "The target as declared; placeholders such as `{current-user}` are not resolved."
+          type: string
     Conversation:
       type: object
       properties:
@@ -17957,10 +19401,12 @@ components:
           model: "#/components/schemas/ModelData"
           application: "#/components/schemas/ApplicationData"
           toolset: "#/components/schemas/ToolSetData"
+          router: "#/components/schemas/RouterData"
       oneOf:
       - $ref: "#/components/schemas/ModelData"
       - $ref: "#/components/schemas/ApplicationData"
       - $ref: "#/components/schemas/ToolSetData"
+      - $ref: "#/components/schemas/RouterData"
     DeploymentInterface:
       type: object
       properties:
@@ -18408,6 +19854,14 @@ components:
           $ref: "#/components/schemas/RateLimitSchedule"
         spendingLimits:
           $ref: "#/components/schemas/SpendingLimits"
+    GrantAdminConsentRequest:
+      type: object
+      properties:
+        resources:
+          description: "The resources the administrator reviewed, as declared (the entries the application's `resource_dependencies` yield). Must equal the current declaration."
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentResourceEntry"
     HealthResponse:
       type: object
       properties:
@@ -18664,6 +20118,15 @@ components:
             $ref: "#/components/schemas/ModelData"
         object:
           type: string
+    ListDataRouterData:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouterData"
+        object:
+          type: string
     ListDataToolSetData:
       type: object
       properties:
@@ -18729,6 +20192,10 @@ components:
       oneOf:
       - type: string
       - $ref: "#/components/schemas/MapStringString"
+    MapStringAlias:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Alias"
     MapStringApplication:
       type: object
       additionalProperties:
@@ -18782,6 +20249,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/OrgUnitRole"
+    MapStringPlugin:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Plugin"
     MapStringRole:
       type: object
       additionalProperties:
@@ -18790,6 +20261,10 @@ components:
       type: object
       additionalProperties:
         $ref: "#/components/schemas/Route"
+    MapStringRouter:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Router"
     MapStringSet:
       type: object
       additionalProperties:
@@ -18869,6 +20344,8 @@ components:
           type: array
           items:
             type: string
+        deprecationDate:
+          type: string
         description:
           type: string
         descriptionKeywords:
@@ -18881,6 +20358,8 @@ components:
           type: string
         embeddingDimensions:
           type: integer
+        endOfService:
+          type: string
         endpoint:
           type: string
         features:
@@ -18913,6 +20392,8 @@ components:
           type: string
         pricing:
           $ref: "#/components/schemas/Pricing"
+        provider:
+          type: string
         reference:
           type: string
         responsesDefaults:
@@ -18957,6 +20438,8 @@ components:
           type: integer
         defaults:
           $ref: "#/components/schemas/MapStringObject"
+        deprecation_date:
+          type: string
         description:
           type: string
         description_keywords:
@@ -18969,6 +20452,8 @@ components:
           type: string
         embedding_dimensions:
           type: integer
+        end_of_service:
+          type: string
         features:
           $ref: "#/components/schemas/FeaturesData"
         icon_url:
@@ -18999,6 +20484,8 @@ components:
           type: string
         pricing:
           $ref: "#/components/schemas/PricingData"
+        provider:
+          type: string
         reference:
           type: string
         responses_defaults:
@@ -19066,6 +20553,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Notification"
+    ObjectNode:
+      type: object
     OboCredentialsRequest:
       type: object
       properties:
@@ -19209,6 +20698,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PerRequestReceiver"
+    Plugin:
+      type: object
+      properties:
+        settings:
+          $ref: "#/components/schemas/ObjectNode"
+        type:
+          type: string
     Policy:
       type: object
       properties:
@@ -19242,6 +20738,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PolicySubjectRule"
+        displayName:
+          type: string
     PolicyAmounts:
       type: object
       properties:
@@ -19276,6 +20774,11 @@ components:
       - budget
     PolicyObjectSet:
       type: object
+      oneOf:
+      - type: string
+      - type: array
+        items:
+          type: string
     PolicyQuantity:
       type: string
       enum:
@@ -19559,6 +21062,35 @@ components:
       - SIGNED_IN
       - SIGNED_OUT
       - FAILED
+    ResourceDependency:
+      description: |
+        A declared resource dependency — a request, not a grant. The record carries no access of its own; at request start Core verifies the initiator's reach and the required admin consent, and only then bakes the grant into the per-request key the app holds.
+      type: object
+      properties:
+        access:
+          description: "The access types this dependency requests: READ and/or WRITE."
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        kind:
+          description: Descriptor kind; must be "dial.resourceLink".
+          type: string
+        link_id:
+          description: Unique identity of this record within the application's declaration.
+          type: string
+        required:
+          description: |
+            When true, an unresolvable or unconsented dependency fails the call with 403. When false (default), the dependency degrades silently.
+          type: boolean
+        target:
+          $ref: "#/components/schemas/ResourceDependencyTarget"
+    ResourceDependencyTarget:
+      type: object
+      properties:
+        url:
+          description: |
+            A DIAL resource URL in one of two forms: `<type>/<bucket>/<path>`, a concrete bucket (e.g. "files/public/policies/"), or `<type>/{current-user}/<path>`, the calling user's own bucket (e.g. "skills/{current-user}/"). Checked when the application is written through the API; an application from a config file is not checked on load, and an entry that does not follow the grammar never resolves.
+          type: string
     ResourceEvent:
       type: object
       properties:
@@ -19750,6 +21282,7 @@ components:
       - APPLICATION
       - CODE_INTERPRETER_SESSION
       - USER_CONSENT
+      - ADMIN_CONSENT
       - TOOL_SET
       - CREDENTIALS
       - EXTERNAL_SERVICE
@@ -19759,7 +21292,9 @@ components:
       - APP_TYPE_SCHEMA
       - CATALOG_SCHEMA
       - INTERCEPTOR
+      - ROUTER
       - TRANSLATOR
+      - PLUGIN
       - ROLE
       - PROJECT_KEY
       - POLICY
@@ -19770,6 +21305,7 @@ components:
       - SKILL
       - BACKGROUND_JOB
       - PROJECT
+      - ALIAS
     ResponseFormatJsonObject:
       required:
       - type
@@ -19920,6 +21456,165 @@ components:
           type: string
         status:
           type: integer
+    Router:
+      type: object
+      properties:
+        author:
+          type: string
+        baseUrl:
+          type: string
+        catalogProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalogSchemaId:
+          type: string
+          format: uri
+        createdAt:
+          type: integer
+        defaultHeaders:
+          $ref: "#/components/schemas/MapStringString"
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        dependencies:
+          type: array
+          items:
+            type: string
+        description:
+          $ref: "#/components/schemas/LocalizedValue"
+        descriptionKeywords:
+          type: array
+          items:
+            type: string
+        displayName:
+          $ref: "#/components/schemas/LocalizedValue"
+        displayVersion:
+          type: string
+        endpoint:
+          type: string
+        features:
+          $ref: "#/components/schemas/Features"
+        forwardAuthToken:
+          type: boolean
+        iconUrl:
+          type: string
+        inputAttachmentTypes:
+          type: array
+          items:
+            type: string
+        interceptors:
+          type: array
+          items:
+            type: string
+        interfaces:
+          $ref: "#/components/schemas/MapStringDeploymentInterface"
+        intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        maxInputAttachments:
+          type: integer
+        maxRetryAttempts:
+          type: integer
+        name:
+          type: string
+        overrideName:
+          type: string
+        reference:
+          type: string
+        responsesDefaults:
+          $ref: "#/components/schemas/MapStringObject"
+        responsesEndpoint:
+          type: string
+        updatedAt:
+          type: integer
+        userRoles:
+          type: array
+          items:
+            type: string
+        applicationProperties:
+          $ref: "#/components/schemas/MapStringObject"
+        applicationTypeSchemaId:
+          type: string
+          format: uri
+        decision:
+          $ref: "#/components/schemas/RouterDecision"
+        mode:
+          $ref: "#/components/schemas/RouterMode"
+    RouterData:
+      type: object
+      properties:
+        application:
+          type: string
+        catalog_properties:
+          $ref: "#/components/schemas/MapStringObject"
+        catalog_schema_id:
+          type: string
+          format: uri
+        created_at:
+          type: integer
+        defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        description:
+          $ref: "#/components/schemas/LocalizedValue"
+        description_keywords:
+          type: array
+          items:
+            type: string
+        display_name:
+          $ref: "#/components/schemas/LocalizedValue"
+        display_version:
+          type: string
+        features:
+          $ref: "#/components/schemas/FeaturesData"
+        icon_url:
+          type: string
+        id:
+          type: string
+        input_attachment_types:
+          type: array
+          items:
+            type: string
+        interface_configs:
+          $ref: "#/components/schemas/MapStringInterfaceConfigData"
+        interfaces:
+          type: array
+          items:
+            type: string
+        intro:
+          $ref: "#/components/schemas/LocalizedValue"
+        max_input_attachments:
+          type: integer
+        max_retry_attempts:
+          type: integer
+        model:
+          type: string
+        object:
+          type: string
+        owner:
+          type: string
+        reference:
+          type: string
+        responses_defaults:
+          $ref: "#/components/schemas/MapStringObject"
+        scale_settings:
+          $ref: "#/components/schemas/ScaleSettingsData"
+        status:
+          type: string
+        toolset:
+          type: string
+        updated_at:
+          type: integer
+    RouterDecision:
+      type: object
+      properties:
+        body:
+          type: boolean
+        maxDecisions:
+          type: integer
+        timeoutMs:
+          type: integer
+    RouterMode:
+      type: string
+      enum:
+      - proxy
+      - decision
     RpcRequest:
       type: object
       properties:
@@ -20555,6 +22250,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BudgetStats"
+        costObject:
+          type: string
+          description: "The cost object whose budgets the caller's model calls are charged to: only the `budgets` entries with this `costObject` can be charged. Absent when spending limits are off or the caller is an API key."
     UserOrgUnits:
       type: object
       properties:

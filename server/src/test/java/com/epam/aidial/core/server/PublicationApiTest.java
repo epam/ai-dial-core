@@ -99,6 +99,33 @@ class PublicationApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPublishingToolsetCredentialsNeedsWriteAccess() {
+        String owner = "4X25dj1mja51jykqxsXnCH";
+        for (String name : List.of("read-toolset", "write-toolset")) {
+            verify(send(HttpMethod.PUT, "/v1/toolsets/%s/%s".formatted(owner, name), null, TOOLSET_CREATE_REQEUST_BODY,
+                    "authorization", "admin"), 200);
+        }
+        shareWithUser("toolsets/%s/read-toolset".formatted(owner), "[\"READ\"]");
+        shareWithUser("toolsets/%s/write-toolset".formatted(owner), "[\"READ\", \"WRITE\"]");
+
+        assertEquals(403, publishToolset(owner, "read-toolset", true).status());
+        verify(publishToolset(owner, "read-toolset", false), 200);
+        verify(publishToolset(owner, "write-toolset", true), 200);
+    }
+
+    private Response publishToolset(String owner, String name, boolean publishCredentials) {
+        return send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                {
+                    "name": "%s",
+                    "targetFolder": "public/%s/",
+                    "resources": [{"action": "ADD", "sourceUrl": "toolsets/%s/%s", "targetUrl": "toolsets/public/%s/%s",
+                                   "publishCredentials": %s}]
+                }
+                """.formatted(name, name + "-" + publishCredentials, owner, name, name + "-" + publishCredentials, name, publishCredentials),
+                "authorization", "user");
+    }
+
+    @Test
     void testUpdatePublicationWithOauthExternalServiceKeepsSecretSingleEncrypted() {
         // updatePublication re-puts the review app to rewrite links via getApplication()+putApplication();
         // without decrypting on read it double-encrypts the external-service secret. Guards that path.

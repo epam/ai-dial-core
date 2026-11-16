@@ -602,11 +602,11 @@ public class ShareService {
     }
 
     public void copySharedAccess(String bucket, String location, ResourceDescriptor source, ResourceDescriptor destination) {
-        if (!resourceService.hasResource(source)) {
+        if (!hasResource(source)) {
             throw new IllegalArgumentException("source resource %s does not exists".formatted(source.getUrl()));
         }
 
-        if (!resourceService.hasResource(destination)) {
+        if (!hasResource(destination)) {
             throw new IllegalArgumentException("destination resource %s dos not exists".formatted(destination.getUrl()));
         }
 
@@ -651,6 +651,12 @@ public class ShareService {
         copySharedAccess(bucket, location, source, destination);
         // revoke shared access from source
         revokeSharedAccess(bucket, location, Map.of(source, ResourceAccessType.ALL));
+    }
+
+    private boolean hasResource(ResourceDescriptor resource) {
+        return resource.getType().isComplex()
+                ? complexResourceService.hasResource(resource)
+                : resourceService.hasResource(resource);
     }
 
     private void removeSharedResourcePermissions(

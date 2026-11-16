@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
@@ -7,6 +9,7 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.RoleBasedEntity;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -22,6 +25,7 @@ import com.epam.aidial.core.server.data.ApplicationData;
 import com.epam.aidial.core.server.data.DeploymentData;
 import com.epam.aidial.core.server.data.DeploymentNameData;
 import com.epam.aidial.core.server.data.ListData;
+import com.epam.aidial.core.server.data.RouterData;
 import com.epam.aidial.core.server.data.ToolSetData;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -44,6 +48,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import static com.epam.aidial.core.server.controller.ModelController.createModel;
 
@@ -58,7 +63,8 @@ public class DeploymentController {
     private static final String MODEL_TYPE = "model";
     private static final String APPLICATION_TYPE = "application";
     private static final String TOOLSET_TYPE = "toolset";
-    private static final Set<String> DEPLOYMENT_NAME_TYPES = Set.of(MODEL_TYPE, APPLICATION_TYPE, TOOLSET_TYPE);
+    private static final String ROUTER_TYPE = "router";
+    private static final Set<String> DEPLOYMENT_NAME_TYPES = Set.of(MODEL_TYPE, APPLICATION_TYPE, TOOLSET_TYPE, ROUTER_TYPE);
     private final Proxy proxy;
     private final ProxyContext context;
     private final DeploymentService.DeploymentExtractor appExtractor;
@@ -97,6 +103,10 @@ public class DeploymentController {
     public Future<?> getDeployment(String deploymentId) {
         Config config = context.getConfig();
         Model model = config.getModels().get(deploymentId);
+        if (model == null && AliasListings.isAliasId(config, deploymentId)) {
+            AliasListings.respondModel(context, deploymentId, view -> true, ModelController::createModel);
+            return Future.succeededFuture();
+        }
 
         if (model == null) {
             return context.respond(HttpStatus.NOT_FOUND);
@@ -122,7 +132,7 @@ public class DeploymentController {
             }
     )
     public Future<?> getDeployments() {
-        getModels(List.of()).onSuccess(deployments -> {
+        getModels(List.of(), deploymentService.storedAliasesOnce()).onSuccess(deployments -> {
             ListData<DeploymentData> list = new ListData<>();
             list.setData(deployments);
             context.respond(HttpStatus.OK, list);
@@ -187,7 +197,7 @@ public class DeploymentController {
                     @ApiParameter(name = "type", in = ParameterIn.QUERY,
                             schema = String[].class,
                             description = OpenApiDescriptions.DEPLOYMENT_NAME_TYPES,
-                            allowableValues = {"model", "application", "toolset"})
+                            allowableValues = {"model", "application", "toolset", "router"})
             },
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {DeploymentNameData.class})),
@@ -218,18 +228,25 @@ public class DeploymentController {
     private List<DeploymentNameData> listDeploymentNames(Set<String> types) {
         Config config = context.getConfig();
         List<DeploymentNameData> names = new ArrayList<>();
+        Supplier<List<Alias>> stored = deploymentService.storedAliasesOnce();
         if (types.contains(MODEL_TYPE)) {
             addAccessibleNames(names, config.getModels().values(), MODEL_TYPE);
+            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.MODEL, stored), MODEL_TYPE);
         }
         if (types.contains(APPLICATION_TYPE)) {
             addAccessibleNames(names, config.getApplications().values(), APPLICATION_TYPE);
             if (applicationService.isIncludeCustomApps()) {
                 addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.APPLICATION, Application::new), APPLICATION_TYPE);
             }
+            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.APPLICATION, stored), APPLICATION_TYPE);
         }
         if (types.contains(TOOLSET_TYPE)) {
             addAccessibleNames(names, config.getToolsets().values(), TOOLSET_TYPE);
             addNames(names, deploymentService.listDeploymentNames(context, ResourceTypes.TOOL_SET, ToolSet::new), TOOLSET_TYPE);
+            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.TOOLSET, stored), TOOLSET_TYPE);
+        }
+        if (types.contains(ROUTER_TYPE)) {
+            addAccessibleNames(names, config.getRouters().values(), ROUTER_TYPE);
         }
         return names;
     }
@@ -279,6 +296,14 @@ public class DeploymentController {
             case Model model -> to(model);
             case Application application -> to(resolveLocalApplication(application));
             case ToolSet toolSet -> to(toolSet);
+            case Router router -> RouterData.toData(router);
+            case Alias alias -> {
+                Deployment view = deploymentService.toAliasView(context, alias);
+                if (view == null) {
+                    throw new ResourceNotFoundException("Deployment is not found: " + alias.getName());
+                }
+                yield toDeploymentData(view);
+            }
             // interceptors are deployments as well, but the deployment listing never exposes them
             default -> throw new ResourceNotFoundException("Deployment is not found: " + deployment.getName());
         };
@@ -303,14 +328,19 @@ public class DeploymentController {
 
     private CompositeFuture execute(ExecutionPlan plan) {
         List<Future<List<DeploymentData>>> futures = new ArrayList<>();
+        // the three parts run concurrently and share one listing of the stored aliases
+        Supplier<List<Alias>> stored = deploymentService.storedAliasesOnce();
         if (plan.useModels) {
-            futures.add(getModels(plan.modelFilters));
+            futures.add(getModels(plan.modelFilters, stored));
         }
         if (plan.useApplications) {
-            futures.add(getApplications(plan.appFilters));
+            futures.add(getApplications(plan.appFilters, stored));
         }
         if (plan.useToolsets) {
-            futures.add(getToolSets());
+            futures.add(getToolSets(stored));
+        }
+        if (plan.useRouters) {
+            futures.add(getRouters(plan.routerFilters));
         }
         return Future.all(futures);
     }
@@ -324,11 +354,16 @@ public class DeploymentController {
                     plan.useApplications = true;
                     plan.appFilters.add(app -> DeploymentEndpointUtil.isInterfaceDeclared(app, InterfaceType.OPENAI_CHAT_COMPLETIONS));
                     plan.modelFilters.add(model -> model.getType() == ModelType.CHAT);
+                    plan.useRouters = true;
+                    plan.routerFilters.add(router -> DeploymentEndpointUtil.isInterfaceDeclared(router, InterfaceType.OPENAI_CHAT_COMPLETIONS));
                     break;
                 }
                 case EMBEDDING_IFACE: {
                     plan.useModels = true;
                     plan.modelFilters.add(model -> model.getType() == ModelType.EMBEDDING);
+                    // unlike applications: a router that serves embeddings answers this filter
+                    plan.useRouters = true;
+                    plan.routerFilters.add(router -> DeploymentEndpointUtil.isInterfaceDeclared(router, InterfaceType.OPENAI_EMBEDDINGS));
                     break;
                 }
                 case MCP_IFACE: {
@@ -346,8 +381,10 @@ public class DeploymentController {
                     plan.useApplications = true;
                     plan.useToolsets = true;
                     plan.useModels = true;
+                    plan.useRouters = true;
                     plan.appFilters.clear();
                     plan.modelFilters.clear();
+                    plan.routerFilters.clear();
                     return plan;
                 }
                 default: {
@@ -358,7 +395,7 @@ public class DeploymentController {
         return plan;
     }
 
-    private Future<List<DeploymentData>> getApplications(List<Predicate<Application>> filters) {
+    private Future<List<DeploymentData>> getApplications(List<Predicate<Application>> filters, Supplier<List<Alias>> stored) {
         return proxy.getTaskExecutor().submit(() -> {
             Config config = context.getConfig();
             List<DeploymentData> deployments = new ArrayList<>();
@@ -381,6 +418,11 @@ public class DeploymentController {
             for (Application app : resourceApps) {
                 if (match(filters, app)) {
                     deployments.add(to(app));
+                }
+            }
+            for (Deployment view : deploymentService.listAliasViews(context, AliasPresentation.APPLICATION, stored)) {
+                if (match(filters, (Application) view)) {
+                    deployments.add(to((Application) view));
                 }
             }
             return deployments;
@@ -406,7 +448,7 @@ public class DeploymentController {
         return application;
     }
 
-    private Future<List<DeploymentData>> getToolSets() {
+    private Future<List<DeploymentData>> getToolSets(Supplier<List<Alias>> stored) {
         return proxy.getTaskExecutor().submit(() -> {
             List<DeploymentData> deployments = new ArrayList<>();
             List<ToolSet> resourceToolsets = deploymentService.listDeployments(context, ResourceTypes.TOOL_SET, new DeploymentService.DeploymentExtractor() {
@@ -433,11 +475,24 @@ public class DeploymentController {
                     deployments.add(to(toolSet));
                 }
             }
+            for (Deployment view : deploymentService.listAliasViews(context, AliasPresentation.TOOLSET, stored)) {
+                deployments.add(to((ToolSet) view));
+            }
             return deployments;
         });
     }
 
-    private Future<List<DeploymentData>> getModels(List<Predicate<Model>> filters) {
+    private Future<List<DeploymentData>> getRouters(List<Predicate<Router>> filters) {
+        List<DeploymentData> deployments = new ArrayList<>();
+        for (Router router : context.getConfig().getRouters().values()) {
+            if (router.hasAccess(context.getUserRoles()) && match(filters, router)) {
+                deployments.add(RouterData.toData(router));
+            }
+        }
+        return Future.succeededFuture(deployments);
+    }
+
+    private Future<List<DeploymentData>> getModels(List<Predicate<Model>> filters, Supplier<List<Alias>> stored) {
         List<DeploymentData> deployments = new ArrayList<>();
         Config config = context.getConfig();
         for (Model model : config.getModels().values()) {
@@ -445,7 +500,14 @@ public class DeploymentController {
                 deployments.add(to(model));
             }
         }
-        return Future.succeededFuture(deployments);
+        return AliasListings.listModels(context, stored).map(views -> {
+            for (Model view : views) {
+                if (match(filters, view)) {
+                    deployments.add(to(view));
+                }
+            }
+            return deployments;
+        });
     }
 
     private static DeploymentData to(Model model) {
@@ -499,7 +561,9 @@ public class DeploymentController {
     private static class ExecutionPlan {
         List<Predicate<Model>> modelFilters = new ArrayList<>();
         List<Predicate<Application>> appFilters = new ArrayList<>();
+        List<Predicate<Router>> routerFilters = new ArrayList<>();
         boolean useToolsets;
+        boolean useRouters;
         boolean useApplications;
         boolean useModels;
     }

@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.token;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.service.LockService;
@@ -200,6 +201,51 @@ public class TokenStatsTrackerTest {
         // core ends span for request to app
         tracker.endSpan(chatBackend);
         assertNull(tracker.getTokenStats(chatBackend).result());
+    }
+
+    @Test
+    public void testFallbackKeepsTheFailedCandidatesRollUp() {
+        final String traceId = "trace-id-fallback";
+        Model appA = new Model();
+        appA.setName("app-a");
+        Model appB = new Model();
+        appB.setName("app-b");
+        ProxyContext pass = mock(ProxyContext.class);
+        when(pass.getSpanId()).thenReturn("pass");
+        when(pass.getTraceId()).thenReturn(traceId);
+        when(pass.getDeployment()).thenReturn(appA);
+        tracker.startSpan(pass);
+
+        // app-a calls gpt-4, which reports before app-a fails with a retriable status
+        ProxyContext child = mock(ProxyContext.class);
+        when(child.getSpanId()).thenReturn("child");
+        when(child.getTraceId()).thenReturn(traceId);
+        when(child.getParentSpanId()).thenReturn("pass");
+        tracker.startSpan(child);
+        TokenUsage usage = new TokenUsage();
+        usage.setTotalTokens(10);
+        usage.setAggCost(new BigDecimal("0.3"));
+        TokenStatsTracker.UsageStats stats = tracker.updateDeploymentStats(traceId, "child", "gpt-4", usage).result();
+        assertEquals(List.of(new TokenStatsTracker.AggregatedCost("app-a", new BigDecimal("0.3"))), stats.aggregatedCosts());
+
+        // the pass is re-entered with app-b
+        when(pass.getDeployment()).thenReturn(appB);
+        tracker.startSpan(pass);
+
+        TokenStatsTracker.UsageStats passStats = tracker.getUsageStats(pass).result();
+        assertEquals(new BigDecimal("0.3"), passStats.total().getAggCost());
+        assertEquals(1, passStats.usagePerModel().size());
+        assertEquals("gpt-4", passStats.usagePerModel().get(0).getModel());
+
+        // a model app-b calls credits app-b
+        ProxyContext second = mock(ProxyContext.class);
+        when(second.getSpanId()).thenReturn("second");
+        when(second.getTraceId()).thenReturn(traceId);
+        when(second.getParentSpanId()).thenReturn("pass");
+        tracker.startSpan(second);
+        TokenStatsTracker.UsageStats later = tracker.updateDeploymentStats(traceId, "second", "gpt-4", usage).result();
+        assertEquals(List.of(new TokenStatsTracker.AggregatedCost("app-b", new BigDecimal("0.3"))), later.aggregatedCosts());
+        assertEquals(new BigDecimal("0.6"), tracker.getUsageStats(pass).result().total().getAggCost());
     }
 
     @Test

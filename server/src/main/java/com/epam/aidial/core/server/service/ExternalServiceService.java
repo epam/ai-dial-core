@@ -125,17 +125,19 @@ public class ExternalServiceService {
 
     /**
      * Writes the definition and returns it as persisted, {@code clientSecret} in plaintext — the caller must
-     * redact it before it leaves the process.
+     * redact it before it leaves the process — with whether the stored application declares resource dependencies.
      */
-    public ExternalService putExternalService(ResourceDescriptor resource, String serviceId, ExternalService service, String author) {
+    public StoredService putExternalService(ResourceDescriptor resource, String serviceId, ExternalService service, String author) {
         verifyApplication(resource);
         MutableBoolean typeChanged = new MutableBoolean(false);
+        MutableBoolean declaresDependencies = new MutableBoolean(false);
         PersistedSecret persisted = new PersistedSecret();
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             Application app = ProxyUtil.convertToObject(json, Application.class);
             if (app == null) {
                 throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
             }
+            declaresDependencies.setValue(declaresDependencies(app));
             decryptSecrets(resource, app);
             if (app.getExternalServices() == null) {
                 app.setExternalServices(new LinkedHashMap<>());
@@ -159,21 +161,27 @@ public class ExternalServiceService {
         if (typeChanged.booleanValue()) {
             purgeApplicationCredentials(resource, List.of(serviceId));
         }
-        return service;
+        return new StoredService(service, declaresDependencies.booleanValue());
     }
 
-    public void deleteExternalService(ResourceDescriptor resource, String serviceId, String author) {
+    /**
+     * Removes the definition; returns whether the stored application declares resource dependencies.
+     */
+    public boolean deleteExternalService(ResourceDescriptor resource, String serviceId, String author) {
         verifyApplication(resource);
+        MutableBoolean declaresDependencies = new MutableBoolean(false);
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             Application app = ProxyUtil.convertToObject(json, Application.class);
             if (app == null) {
                 throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
             }
+            declaresDependencies.setValue(declaresDependencies(app));
             if (app.getExternalServices() == null || app.getExternalServices().remove(serviceId) == null) {
                 throw new ResourceNotFoundException("External service '%s' not found".formatted(serviceId));
             }
             return serializeEncrypted(resource, app);
         });
+        return declaresDependencies.booleanValue();
     }
 
     // Unlike ProxyUtil.convertToString, this honors routes[].upstreams[].key/secretExtraData
@@ -313,6 +321,13 @@ public class ExternalServiceService {
         if (authSettings != null) {
             authSettings.clearComputedFields();
         }
+    }
+
+    private static boolean declaresDependencies(Application app) {
+        return app.getResourceDependencies() != null && !app.getResourceDependencies().isEmpty();
+    }
+
+    public record StoredService(ExternalService service, boolean appDeclaresDependencies) {
     }
 
     private static void verifyApplication(ResourceDescriptor resource) {

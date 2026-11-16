@@ -180,10 +180,11 @@ role that no longer exists, such as the earlier `approver`, grants nothing. `sub
 caller's token, written as a folder's read rule is, inside the DIAL 2.0 design's typed envelope:
 `{"type": "claimsPredicate", "source": "email", "function": "EQUAL", "targets": ["jane@acme.example"]}` for a person, or
 `{"type": "claimsPredicate", "source": "groups", "function": "EQUAL", "targets": ["us-risk-leads"]}` for a group. The
-`source` names the claim to read, since identity providers name the group claim differently, and `roles` is the
-claim every provider's `rolePath` maps into. Unit admins write subjects and every request evaluates them, so a subject is
-narrower than a read rule: `source` is a claim name or a dotted path of up to 8 of them, such as `realm_access.roles`,
-each name letters, digits, `_` and `-` with at most 64 characters. It is not the JSON path expression a rule may use,
+`source` names the claim to read, since identity providers name the group claim differently. Two names are read
+through the provider's settings rather than from the token: `roles` is what every provider's `rolePath` maps into, and
+`email` is the address its `userEmailPath` points at, so one person subject works with every provider. Unit admins
+write subjects and every request evaluates them, so a subject is narrower than a read rule: `source` is a claim name
+or a dotted path of up to 8 of them, such as `realm_access.roles`, each name letters, digits, `_` and `-` with at most 64 characters. It is not the JSON path expression a rule may use,
 so a claim whose name holds other characters, such as `cognito:groups`, can't be a subject's source. Of the rule
 functions `EQUAL` and `TRUE` are
 accepted; `CONTAIN`, `REGEX` and `FALSE` are refused with 400 until a consumer needs them. With `EQUAL`, `targets`
@@ -218,6 +219,10 @@ a DIAL admin:
 - `forward_auth_token` keeps its stored value on every write through a role; a new one starts without it, and so does a
   copy or a move by anyone but a DIAL admin that starts or ends in the shared space, including one into their own bucket.
   `app_identity` and `allow_user_external_services` keep theirs, as on any non-admin write.
+- An application's `interceptors` can be kept as they are on a write, even one the config no longer defines, but only a
+  DIAL admin adds, removes or reorders them. A copy or a move that replaces an application in the shared space keeps
+  its interceptors; one that creates an application brings interceptors only from an application already there.
+  Global interceptors and those of the application type apply as before.
 - Deploying, undeploying and redeploying code apps and reading their logs need what they needed before: roles in a
   unit don't count.
 - Copying an application or toolset needs `write` on the source too, so content comes only from the same unit or the
@@ -239,8 +244,8 @@ through them.
 A holder of `read` and `write publications/**` at a unit — by default its `admin` — approves and rejects publication requests
 into it through the usual `/v1/ops/publication/approve` and `/reject`, without being a DIAL admin. A request touches
 the unit of its `targetFolder` and of every resource's `targetUrl`, unpublish (`DELETE`) items included; the approver
-must hold the grant in every one of those units, and none of them may be the shared space. The approver's own request
-stays with DIAL admins.
+must hold the grant in every one of those units, and none of them may be the shared space. An approver decides their
+own requests too, and gets no notification of their own decision.
 
 Rules sent with a request into a unit are dropped when it is created or updated, since roles decide who reads there:
 Chat's empty list, the rules the admin panel copies onto a moved folder and a cleared rules list all pass. A request

@@ -85,7 +85,7 @@ public class ResourceOperationService {
         }
 
         if (destination.getType() == APPLICATION) {
-            applicationService.copyApplication(source, destination, null, overwriteIfExists, app -> {
+            applicationService.copyApplication(source, destination, null, overwriteIfExists, ApplicationService.ApprovalPolicy.CARRY, app -> {
                 if (ApplicationService.isActive(app)) {
                     throw new HttpException(HttpStatus.CONFLICT, "Application must be stopped: " + source.getUrl());
                 }

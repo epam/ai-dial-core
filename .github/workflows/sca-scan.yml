@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   sca:
-    uses: epam/ai-dial-ci/.github/workflows/sca_scheduled.yml@4.13.1
+    uses: epam/ai-dial-ci/.github/workflows/sca_scheduled.yml@4.13.2
     with:
       images: |
         ${{ github.repository }}

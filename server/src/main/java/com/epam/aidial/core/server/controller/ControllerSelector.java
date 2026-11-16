@@ -88,6 +88,15 @@ public class ControllerSelector {
         put(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
         delete(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE, ControllerSelector::configResourceController);
         delete(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        // Aliases in public storage: admin-only management, also registered before RESOURCE/RESOURCE_METADATA.
+        get(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        get(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        post(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        post(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        put(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        put(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        delete(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        delete(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
 
         // GET routes
         get(RouteTemplate.DEPLOYMENT, (proxy, context, pathMatcher) -> {
@@ -107,6 +116,15 @@ public class ControllerSelector {
         get(RouteTemplate.MODELS, (proxy, context, pathMatcher) -> {
             ModelController controller = new ModelController(context);
             return controller::getModels;
+        });
+        get(RouteTemplate.ROUTER, (proxy, context, pathMatcher) -> {
+            RouterController controller = new RouterController(context);
+            String routerId = UrlUtil.decodePath(pathMatcher.group(1));
+            return () -> controller.getRouter(routerId);
+        });
+        get(RouteTemplate.ROUTERS, (proxy, context, pathMatcher) -> {
+            RouterController controller = new RouterController(context);
+            return controller::getRouters;
         });
         get(RouteTemplate.LLM_ANTHROPIC_MODEL, (proxy, context, pathMatcher) -> {
             AnthropicModelController controller = new AnthropicModelController(context);
@@ -259,6 +277,11 @@ public class ControllerSelector {
                 case "signout" -> controller::signOut;
                 default -> null;
             };
+        });
+        get(RouteTemplate.ADMIN_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.getAdminConsentStatus(deploymentId);
         });
         get(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
@@ -549,6 +572,7 @@ public class ControllerSelector {
         });
         post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> new AdminValidateController(proxy, context));
         post(RouteTemplate.ADMIN_SYSTEM_EXPORT, (proxy, context, pathMatcher) -> new AdminSystemExportController(proxy, context));
+        post(RouteTemplate.ADMIN_SYSTEM_IMPORT, (proxy, context, pathMatcher) -> new AdminSystemImportController(proxy, context));
         post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
             AdminApplyController controller = new AdminApplyController(proxy, context);
             return controller::handle;
@@ -563,6 +587,11 @@ public class ControllerSelector {
             return new AdminHealthConfigController(context, authService, mergedConfigStore);
         });
         post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
+        post(RouteTemplate.ADMIN_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.grantAdminConsent(deploymentId);
+        });
         post(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             ConsentController controller = new ConsentController(context, proxy);
@@ -594,6 +623,11 @@ public class ControllerSelector {
             };
         });
         // DELETE routes
+        delete(RouteTemplate.ADMIN_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.withdrawAdminConsent(deploymentId);
+        });
         delete(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);
             String path = context.getRequest().path();

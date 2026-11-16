@@ -73,6 +73,9 @@ allprojects {
             force "io.netty:netty-transport-classes-kqueue:${netty_version}"
             force "io.netty:netty-transport-native-kqueue:${netty_version}"
             force "io.netty:netty-transport-native-unix-common:${netty_version}"
+            // azure-core-http-netty pulls tcnative-boringssl-static 2.0.74.Final (SNYK-JAVA-IONETTY-21755444, -21755446)
+            force "io.netty:netty-tcnative-boringssl-static:${netty_tcnative_version}"
+            force "io.netty:netty-tcnative-classes:${netty_tcnative_version}"
             // opentelemetry-exporter-sender-okhttp pulls okhttp 5.x, which drops okhttp3.internal.Util and
             // breaks mockwebserver 4.x; pin okhttp to the 4.x line the project already targets.
             force "com.squareup.okhttp3:okhttp:${squareup_okhttp3_version}"

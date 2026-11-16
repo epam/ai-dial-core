@@ -41,7 +41,6 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.annotation.Nullable;
 
 
 @Slf4j
@@ -76,6 +75,14 @@ public class AccessService {
             AccessService::getAppSelfAccess,
             this::getOwnResourcesAccessForChainedSchemaRichApplication);
 
+    /**
+     * Reach of the request initiator at any call-chain depth: own bucket, shared, public. Rules that read
+     * the calling per-request key's grants are excluded, so a calling app cannot launder them.
+     */
+    private final List<PermissionRule> initiatorPermissionRules = List.of(
+            AccessService::getInitiatorResourcesAccess,
+            this::getSharedAccess,
+            this::getPublicAccess);
     // last, so a check the rules or anything else already satisfies never reads the unit tree
     private final List<PermissionRule> permissionRules = Stream.concat(permissionRulesBesidesUnitRoles.stream(),
             Stream.<PermissionRule>of(this::getUnitRoleAccess)).toList();
@@ -265,6 +272,23 @@ public class AccessService {
         return result;
     }
 
+    /**
+     * Permissions the request initiator holds on {@code resources} on their own standing. A folder that spans org units
+     * counts only when the initiator reads every one of them. Not {@link #mayPassOnFolder}: it also counts the calling
+     * key's grants and admin standing, which an initiator's reach must not.
+     */
+    public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupInitiatorPermissions(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
+                lookupPermissions(resources, context, ResourceAccessType.ALL, initiatorPermissionRules);
+        permissions.replaceAll((resource, access) -> spansUnreadableUnit(resource, context) ? Set.of() : access);
+        return permissions;
+    }
+
+    private boolean spansUnreadableUnit(ResourceDescriptor resource, ProxyContext context) {
+        return resource.isFolder() && orgUnitGrants.spansUnit(resource) && !orgUnitGrants.readsEveryUnitUnder(context, resource);
+    }
+
     @VisibleForTesting
     Map<ResourceDescriptor, Set<ResourceAccessType>> getAdminAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
@@ -362,38 +386,47 @@ public class AccessService {
         Map<String, PerRequestSharedData> perRequestSharedResources = context.getApiKeyData().getPerRequestSharedResources();
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
-            String resourceUrl = resource.getUrl();
-            PerRequestSharedData data = perRequestSharedResources.get(resourceUrl);
-            if (data != null) {
-                result.put(resource, data.permissions());
-                continue;
-            }
-            Set<ResourceAccessType> folderPermissions = findFolderPermissions(perRequestSharedResources, resourceUrl);
-            if (folderPermissions != null) {
-                result.put(resource, folderPermissions);
+            Set<ResourceAccessType> permissions = findPermissions(perRequestSharedResources, resource.getUrl());
+            if (!permissions.isEmpty()) {
+                result.put(resource, permissions);
             }
         }
         return result;
     }
 
-    @Nullable
-    private static Set<ResourceAccessType> findFolderPermissions(Map<String, PerRequestSharedData> perRequestSharedResources,
-                                                                 String resourceUrl) {
+    /**
+     * Union of the rights of every entry covering {@code resourceUrl}: the exact URL and each folder above it.
+     */
+    private static Set<ResourceAccessType> findPermissions(Map<String, PerRequestSharedData> perRequestSharedResources,
+                                                           String resourceUrl) {
+        Set<ResourceAccessType> result = new HashSet<>();
         for (Map.Entry<String, PerRequestSharedData> entry : perRequestSharedResources.entrySet()) {
             String permittedUrl = entry.getKey();
-            if (ResourceUtil.isFolder(permittedUrl) && resourceUrl.startsWith(permittedUrl)) {
-                return entry.getValue().permissions();
+            if (permittedUrl.equals(resourceUrl) || (ResourceUtil.isFolder(permittedUrl) && resourceUrl.startsWith(permittedUrl))) {
+                result.addAll(entry.getValue().permissions());
             }
         }
-        return null;
+        return result;
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getOwnResourcesAccess(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        String location = BucketBuilder.buildUserBucket(context);
+        return ownBucketAccess(resources, BucketBuilder.buildUserBucket(context));
+    }
+
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> getInitiatorResourcesAccess(
+            Set<ResourceDescriptor> resources, ProxyContext context) {
+        return ownBucketAccess(resources, BucketBuilder.buildInitiatorBucket(context));
+    }
+
+    /**
+     * Full rights on the resources in {@code bucketLocation}; callers pass the key holder's or the initiator's bucket.
+     */
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> ownBucketAccess(
+            Set<ResourceDescriptor> resources, String bucketLocation) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
-            if (resource.getBucketLocation().equals(location)) {
+            if (resource.getBucketLocation().equals(bucketLocation)) {
                 result.put(resource, ResourceAccessType.ALL);
             }
         }

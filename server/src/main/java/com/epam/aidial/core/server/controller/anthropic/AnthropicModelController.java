@@ -11,6 +11,7 @@ import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.controller.AliasListings;
 import com.epam.aidial.core.server.data.anthropic.AnthropicModelData;
 import com.epam.aidial.core.server.data.anthropic.AnthropicModelListData;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -58,6 +59,12 @@ public class AnthropicModelController {
     public Future<?> getModel(String modelId) {
         Config config = context.getConfig();
         Model model = config.getModels().get(modelId);
+        if (model == null && AliasListings.isAliasId(config, modelId)) {
+            AliasListings.respondModel(context, modelId,
+                    view -> DeploymentEndpointUtil.isInterfaceDeclared(view, InterfaceType.ANTHROPIC_MESSAGES),
+                    view -> createModel(view, config.getDefaultLocale()));
+            return Future.succeededFuture();
+        }
 
         if (model == null || !DeploymentEndpointUtil.isInterfaceDeclared(model, InterfaceType.ANTHROPIC_MESSAGES)) {
             return context.respond(HttpStatus.NOT_FOUND);
@@ -101,7 +108,18 @@ public class AnthropicModelController {
                 models.add(createModel(model, config.getDefaultLocale()));
             }
         }
+        AliasListings.listModels(context).onSuccess(views -> {
+            for (Model view : views) {
+                if (DeploymentEndpointUtil.isInterfaceDeclared(view, InterfaceType.ANTHROPIC_MESSAGES)) {
+                    models.add(createModel(view, config.getDefaultLocale()));
+                }
+            }
+            respondPage(models);
+        }).onFailure(error -> AliasListings.respondError(context, error));
+        return Future.succeededFuture();
+    }
 
+    private Future<?> respondPage(List<AnthropicModelData> models) {
         String afterId = context.getRequest().getParam("after_id");
         String beforeId = context.getRequest().getParam("before_id");
 

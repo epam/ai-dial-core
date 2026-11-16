@@ -29,6 +29,10 @@ import java.util.Map;
             @ApiSubType(
                 discriminatorValue = "toolset",
                 type = ToolSetData.class
+                ),
+            @ApiSubType(
+                discriminatorValue = "router",
+                type = RouterData.class
                 )
         }
 )

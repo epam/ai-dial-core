@@ -1,7 +1,10 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.ResourceAccessType;
@@ -101,7 +104,15 @@ public class ApplicationController {
     )
     public Future<?> getApplication(String applicationId) {
         taskExecutor.submit(() -> {
-            if (!(deploymentService.findDeployment(context, applicationId) instanceof Application application)) {
+            Deployment deployment = deploymentService.findDeployment(context, applicationId);
+            if (deployment instanceof Alias alias) {
+                Deployment view = alias.getEffectivePresentation() == AliasPresentation.APPLICATION ? deploymentService.toAliasView(context, alias) : null;
+                if (view == null) {
+                    throw new ResourceNotFoundException("Application is not found: " + applicationId);
+                }
+                return mapApplication((Application) view);
+            }
+            if (!(deployment instanceof Application application)) {
                 throw new ResourceNotFoundException("Application is not found: " + applicationId);
             }
             boolean applicationRequestInfoAboutItSelf = applicationId.equals(context.getDecodedSourceDeployment());
@@ -154,6 +165,9 @@ public class ApplicationController {
             }
             if (applicationService.isIncludeCustomApps()) {
                 list.addAll(deploymentService.listDeployments(context, ResourceTypes.APPLICATION, deploymentExtractor));
+            }
+            for (Deployment view : deploymentService.listAliasViews(context, AliasPresentation.APPLICATION)) {
+                list.add((Application) view);
             }
             return list.stream().map(this::mapApplication).toList();
         }).onSuccess(apps -> {

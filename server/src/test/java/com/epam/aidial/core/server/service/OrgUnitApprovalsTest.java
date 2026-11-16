@@ -140,7 +140,7 @@ class OrgUnitApprovalsTest {
     }
 
     @Test
-    void testRequestsStillCarryingRulesAreDecidedButOwnAreNot() {
+    void testRequestsStillCarryingRulesAndOwnAreDecided() {
         OrgUnitApprovals approvals = approvals(true);
         ProxyContext bob = person("bob@acme.com");
 
@@ -151,8 +151,9 @@ class OrgUnitApprovalsTest {
         open.setFunction(Rule.Function.TRUE);
         assertTrue(approvals.mayDecide(bob, publication("public/Acme/", "files/public/Acme/a.txt").setRules(List.of(open))));
         assertTrue(approvals.mayReview(bob, publication("public/Acme/", "files/public/Acme/a.txt").setRules(List.of())));
-        assertFalse(approvals.mayDecide(bob, publication("public/Acme/", "files/public/Acme/a.txt")
+        assertTrue(approvals.mayDecide(bob, publication("public/Acme/", "files/public/Acme/a.txt")
                 .setUrl("publications/enc-Users_bob@acme.com_/7")));
+        assertTrue(approvals.isRequester(bob, publication("public/Acme/", "files/public/Acme/a.txt").setUrl(null)), "no url counts as own");
     }
 
     @Test
@@ -261,7 +262,7 @@ class OrgUnitApprovalsTest {
                 node.put(claims[i], claims[i + 1]);
             }
         }
-        return context(new ExtractedClaims(email, List.of(), email, node, null, email));
+        return context(new ExtractedClaims(email, List.of(), email, node, null, email, email));
     }
 
     private ProxyContext withRoles(ProxyContext context, String role) {
