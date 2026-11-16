@@ -216,6 +216,14 @@ root context in between. The scratch copy's empty locals lose nothing: every ser
 Vert.x 4.5.30 already hands in a freshly duplicated context, so the incoming `traceparent` is the
 only parent source either way.
 
+## Calls from an origin plugin
+
+A deployment an origin plugin calls in process (see [plugins](dynamic-settings/plugins.md#calling-another-deployment), in preview)
+has no server span of its own, as no HTTP request comes into Core for it. Core writes no span attributes for it, so
+they do not land on the plugin's server span. Its HTTP origin requests keep their client spans, under the plugin's
+server span, and send a `traceparent` of the client's trace. Its analytics row and token-stats span carry the trace id
+of the plugin's request, a span id of their own and the plugin's span as the parent.
+
 ## Background operations
 
 Periodic work that no request started has no trace of its own, so its log lines would carry no trace id. Core

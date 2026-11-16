@@ -32,8 +32,8 @@ from the classpath.
 ### Requirement: Canonical-shaped file keys rejected
 Core SHALL fail the file load when a key under `models`, `interceptors`, `roles`, `keys` or `routes` has the shape
 `<that type>/<bucket>/<name>`, with a message naming the key and "canonical-ID shape". Any other file key containing
-`/` under `models`, `applications`, `interceptors`, `translators`, `roles`, `routes` or `toolsets` SHALL be dropped
-with a warning and not recorded as an invalid entity.
+`/` under `models`, `applications`, `interceptors`, `translators`, `plugins`, `roles`, `routes` or `toolsets` SHALL
+be dropped with a warning and not recorded as an invalid entity.
 
 #### Scenario: Canonical-shaped model key
 - **WHEN** a config file declares `models: {"models/platform/gpt": {...}}`
@@ -43,6 +43,11 @@ with a warning and not recorded as an invalid entity.
 - **WHEN** a config file declares models `bad/model` and `valid-model`
 - **THEN** the merged config contains `valid-model`, not `bad/model`, and `GET /v1/admin/health/config` lists no
   skipped entity for it
+
+#### Scenario: Slash-keyed plugin dropped
+- **WHEN** a config file declares plugins `bad/plugin` and `valid-plugin`, both of a loaded type
+- **THEN** `GET /v1/admin/config/file/plugins` lists `valid-plugin` and not `bad/plugin`, and
+  `GET /v1/admin/health/config` lists no skipped entity for it
 
 ### Requirement: Periodic reload keeps the last good config
 Core SHALL re-read the config files every `config.reload` ms (default `60000`) and then rebuild the merged config
@@ -79,13 +84,18 @@ SHALL answer `500` and keep the previous config.
 
 ### Requirement: Merged sources
 Core SHALL serve the union of the file config and the blobs of the `platform` bucket for `models`, `interceptors`,
-`translators`, `routers`, `roles`, `keys`, `routes`, `schemas`, `catalog_schemas`, `applications`, `toolsets`,
-`policies` and `policy_assignments`, plus the `settings/platform/global` overlay. `public`-bucket applications and
-toolsets SHALL NOT enter the merged config.
+`translators`, `routers`, `plugins`, `roles`, `keys`, `routes`, `schemas`, `catalog_schemas`, `applications`,
+`toolsets`, `policies` and `policy_assignments`, plus the `settings/platform/global` overlay. `public`-bucket
+applications and toolsets SHALL NOT enter the merged config.
 
 #### Scenario: Blob model is a deployment
 - **WHEN** an admin sends `PUT /v1/models/platform/m1` with `{"type":"chat","endpoint":"http://host/chat"}`
 - **THEN** `m1` resolves as a deployment for the next request, next to the file-defined models
+
+#### Scenario: Blob plugin next to the file plugins
+- **WHEN** the file declares plugin `file-plugin` and an admin sends `PUT /v1/plugins/platform/p1` with a valid
+  declaration, then `POST /v1/ops/config/reload`
+- **THEN** the reload answers `200` with a `plugins` object holding both `file-plugin` and `p1`
 
 #### Scenario: Blob router survives a reload
 - **WHEN** an admin sends `PUT /v1/routers/platform/r-blob` with a valid router and then `POST /v1/ops/config/reload`
@@ -93,9 +103,9 @@ toolsets SHALL NOT enter the merged config.
 
 ### Requirement: Blob wins on a name clash
 A blob entity SHALL replace, as a whole, the file entity of the same type with the same short name (models,
-interceptors, translators, routers, roles, applications, toolsets) or, for schemas, the same `$id`; no field of the
-file entity SHALL survive. Requests and references resolve those types by that name, so the rebuild puts the blob
-entity at the file entity's map key and replaces it there.
+interceptors, translators, routers, plugins, roles, applications, toolsets) or, for schemas, the same `$id`; no field
+of the file entity SHALL survive. Requests and references resolve those types by that name, so the rebuild puts the
+blob entity at the file entity's map key and replaces it there.
 
 #### Scenario: Blob model shadows the file model
 - **WHEN** the file defines model `test-model-v1` and a blob `models/platform/test-model-v1` declares
@@ -106,6 +116,11 @@ entity at the file entity's map key and replaces it there.
 #### Scenario: Blob schema shadows the file schema by $id
 - **WHEN** a blob `schemas/platform/blob-schema-1` declares the `$id` of a file-defined application type schema
 - **THEN** the merged schema for that `$id` is the blob's, and no key `schemas/platform/blob-schema-1` exists
+
+#### Scenario: Blob plugin shadows the file plugin
+- **WHEN** the file declares plugin `file-plugin` with `settings.greeting: "hi"` and a blob
+  `plugins/platform/file-plugin` declares `settings.greeting: "hello"`, and the config reloads
+- **THEN** `POST /v1/ops/config/reload` answers a `plugins.file-plugin` whose `settings.greeting` is `hello`, once
 
 #### Scenario: Blob router shadows the file router
 - **WHEN** the file defines router `r1` with `userRoles: ["analysts"]` and an admin writes
@@ -376,7 +391,8 @@ changes the `$id` of an existing blob or uses a `$id` another schema of that typ
 A config `PUT` SHALL answer `422` `{"validationWarnings": [{"field": ..., "message": ...}]}` and write nothing when a
 model breaks a rebuild invariant (pricing, interfaces, translator refs, catalog properties) or, unless soft mode is
 on, references an interceptor absent from the merged config; when a router breaks a write rule of router-deployment;
-and when a translator or an `overridePaths` entry is invalid, whatever the mode.
+when a translator or an `overridePaths` entry is invalid, whatever the mode; and when a plugin declaration fails as
+plugin-registry defines.
 
 #### Scenario: Unknown interceptor
 - **WHEN** an admin sends `PUT /v1/models/platform/cr-unknown` with `interceptors: ["unknown-interceptor"]` and no
@@ -387,6 +403,11 @@ and when a translator or an `overridePaths` entry is invalid, whatever the mode.
 #### Scenario: Two unknown interceptors
 - **WHEN** the model references two missing interceptors
 - **THEN** the warnings are `interceptors[0]` and `interceptors[1]`
+
+#### Scenario: Plugin with rejected settings
+- **WHEN** an admin sends `PUT /v1/plugins/platform/p1` with settings its loaded provider rejects
+- **THEN** Core answers `422` with a warning whose `field` starts with `settings`, and `GET` on the plugin answers
+  `404`
 
 #### Scenario: Router with interceptors rejected on write
 - **WHEN** an admin sends `PUT /v1/routers/platform/r-bad` with `{"baseUrl": "http://localhost:4848", "interfaces":
@@ -554,7 +575,7 @@ string`) or kind `Bundle` SHALL answer `400`; a non-admin `403`. An unknown kind
 
 ### Requirement: Manifest names
 A manifest `name` SHALL be `<segment>/<bucket>/<name>` with segment `settings`, `schemas`, `catalog_schemas`,
-`interceptors`, `translators`, `routers`, `roles`, `keys`, `routes`, `models`, `toolsets`, `applications`,
+`plugins`, `interceptors`, `translators`, `routers`, `roles`, `keys`, `routes`, `models`, `toolsets`, `applications`,
 `policies` or `policy_assignments` matching `kind`; bucket `platform`, or `public` for `Application` and `ToolSet`;
 one segment matching the entity-name pattern (policies may add one folder). `Settings` SHALL be
 `settings/platform/global`.
@@ -563,19 +584,27 @@ one segment matching the entity-name pattern (policies may add one folder). `Set
 - **WHEN** a manifest has `kind: "Model"` and `name: "models/public/m"`
 - **THEN** that entry fails with `'name' bucket segment must be 'platform', got 'public'`
 
+#### Scenario: Plugin manifest
+- **WHEN** a manifest has `kind: "Plugin"` and `name: "plugins/platform/p1"` with a valid `spec`
+- **THEN** that entry is accepted
+
 #### Scenario: Router manifest in the public bucket
 - **WHEN** a manifest has `kind: "Router"` and `name: "routers/public/r"`
 - **THEN** that entry fails with `'name' bucket segment must be 'platform', got 'public'`
 
 ### Requirement: Batch dependency order
-Core SHALL process a batch in kind order `Settings`, `Schema`/`CatalogSchema`, `Translator`, `Interceptor`,
-`Router`, `Role`, `Key`, `Route`, `Model`, `ToolSet`, `Application`, `Policy`, `PolicyAssignment` (input order
-within a kind), report results in that order, and resolve each entry's references against the merged config plus
-the batch's earlier accepted entries.
+Core SHALL process a batch in kind order `Settings`, `Schema`/`CatalogSchema`, `Plugin`, `Translator`,
+`Interceptor`, `Router`, `Role`, `Key`, `Route`, `Model`, `ToolSet`, `Application`, `Policy`, `PolicyAssignment`
+(input order within a kind), report results in that order, and resolve each entry's references against the merged
+config plus the batch's earlier accepted entries.
 
 #### Scenario: Model before its interceptor in the input
 - **WHEN** a batch lists a `Model` referencing interceptor `i1` before the `Interceptor` `interceptors/platform/i1`
 - **THEN** both entries are accepted
+
+#### Scenario: Plugin reported before the translator
+- **WHEN** a batch lists a `Translator` before a `Plugin`
+- **THEN** the results list the `Plugin` entry first
 
 #### Scenario: Router applied with its in-batch translator
 - **WHEN** an admin applies, in this input order, a `Model`, then a `Router` `routers/platform/r-batch` with

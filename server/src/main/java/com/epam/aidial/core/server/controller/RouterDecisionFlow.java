@@ -12,6 +12,7 @@ import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.RouterDecisionClient;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -25,7 +26,6 @@ import io.opentelemetry.sdk.trace.IdGenerator;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -58,11 +58,13 @@ public class RouterDecisionFlow {
      * {@code type}, and stores it on the context. True when it decided: the caller then serves
      * {@code context.getDecision().current()} through its own resolve, as if the client had called it.
      *
-     * @param body the client's body bytes, read only when the router asks for them
+     * @param body the client's body bytes, read only when the router asks for them or the pass has no bytes of its own
+     * @param tree the client's body as the caller parsed it, not yet changed by any candidate; null where the caller
+     *             parses only after the decision (deployments-POST)
      * @param reenter serves the decision's current candidate from the start of the caller's flow, the resolve
      *                included: run for each candidate that replaces a failed one
      */
-    public Future<Boolean> decideIfRouter(InterfaceType type, Future<Buffer> body, Runnable reenter) {
+    public Future<Boolean> decideIfRouter(InterfaceType type, Future<Buffer> body, @Nullable ObjectNode tree, Runnable reenter) {
         if (!(context.getDeployment() instanceof Router router)) {
             return Future.succeededFuture(false);
         }
@@ -76,39 +78,82 @@ public class RouterDecisionFlow {
         return properties.compose(header -> {
             context.setRouterPropertiesHeader(header);
             return DeploymentEndpointUtil.decides(router, type)
-                    ? decideWith(router, type, body, reenter)
+                    ? decideWith(router, type, body, tree, reenter)
                     : Future.succeededFuture(false);
         });
     }
 
-    private Future<Boolean> decideWith(Router router, InterfaceType type, Future<Buffer> body, Runnable reenter) {
+    private Future<Boolean> decideWith(Router router, InterfaceType type, Future<Buffer> body, @Nullable ObjectNode tree, Runnable reenter) {
         // only a pass below this router's own decision has it in its path: a deployment it chose calls it back
         List<String> path = context.getApiKeyData().getExecutionPath();
         if (path != null && path.contains(router.getName())) {
             return Future.failedFuture(new HttpException(HttpStatus.BAD_GATEWAY, "Router %s re-entered".formatted(router.getName())));
         }
+        boolean bytesNeeded = RouterDecisionClient.withBody(router) || inProcessCall(tree);
         // the span first: calls the router makes with the decide key roll up into it, and the candidate's pass re-enters it
-        return (RouterDecisionClient.withBody(router) ? body : Future.<Buffer>succeededFuture(null))
+        return (bytesNeeded ? body : Future.<Buffer>succeededFuture(null))
                 .compose(bytes -> proxy.getTokenStatsTracker().startSpan(context)
-                        .compose(ignore -> proxy.getTaskExecutor().submit(() -> mintDecideKey(router, type, bytes)))
-                        .compose(key -> decide(router, type, bytes, key, reenter)));
+                        .compose(ignore -> proxy.getTaskExecutor().submit(() -> prepare(router, type, bytes, tree)))
+                        .compose(prepared -> decide(router, type, prepared, reenter)));
+    }
+
+    /**
+     * An origin plugin's in-process call on an API that names the deployment in the body: a pass with a tree and no
+     * bytes of its own.
+     */
+    private boolean inProcessCall(@Nullable ObjectNode tree) {
+        return tree != null && context.isChildPass();
+    }
+
+    /**
+     * What the first decide request carries, made off the event loop before any candidate changes the client's tree.
+     * An in-process call's tree is serialized once and stands in for the client's bytes from here on: the decide body,
+     * and the bytes every fallback candidate is served from.
+     */
+    @SneakyThrows
+    private Prepared prepare(Router router, InterfaceType type, @Nullable Buffer read, @Nullable ObjectNode tree) {
+        Buffer bytes = read;
+        if (inProcessCall(tree) && (bytes == null || bytes.length() == 0)) {
+            bytes = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+            context.setOriginalRequestBody(bytes);
+        }
+        if (!RouterDecisionClient.withBody(router)) {
+            return new Prepared(null, null, mintDecideKey(router, type, null));
+        }
+        // the caller's tree is still the client's here; deployments-POST has none yet and parses the bytes once
+        ObjectNode parsed = tree != null ? tree : parse(bytes);
+        ApiKeyData key = mintDecideKey(router, type, parsed);
+        boolean embedded = DeploymentEndpointUtil.resolvePlugin(router, type, context.getConfig().getTranslators()) != null;
+        // the plugin's own copy, which it may change: the caller's tree is the one the candidate is served from
+        ObjectNode pluginTree = !embedded ? null : tree != null ? tree.deepCopy() : parsed;
+        return new Prepared(bytes, pluginTree, key);
+    }
+
+    /**
+     * A decide request's body, the plugin's own copy of the parsed body when the router is embedded, and its key.
+     */
+    private record Prepared(@Nullable Buffer body, @Nullable ObjectNode tree, ApiKeyData key) {
+    }
+
+    private static ObjectNode parse(Buffer bytes) {
+        try {
+            return ProxyUtil.parseObject(bytes);
+        } catch (IOException e) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     /**
      * The key the router may call Core with while it decides: the caller's identity and rights, the router last in
      * its path, and read access to the files the request attaches when the router gets the body. It lives only as
      * long as the decide call, so it is not the context's proxy key.
+     *
+     * @param tree the client's body when the router gets it, read for the attachments; null otherwise
      */
-    private ApiKeyData mintDecideKey(Router router, InterfaceType type, @Nullable Buffer body) {
+    private ApiKeyData mintDecideKey(Router router, InterfaceType type, @Nullable ObjectNode tree) {
         ApiKeyData key = new ApiKeyData();
         ApiKeyData.initFromContext(key, context);
-        if (body != null) {
-            ObjectNode tree;
-            try {
-                tree = ProxyUtil.parseObject(body);
-            } catch (IOException e) {
-                throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
-            }
+        if (tree != null) {
             for (String attachment : requestObject(type, tree).collectAttachments()) {
                 CollectRequestAttachmentsFn.shareAttachment(proxy, context, attachment, key);
             }
@@ -125,12 +170,12 @@ public class RouterDecisionFlow {
         };
     }
 
-    private Future<Boolean> decide(Router router, InterfaceType type, Buffer bytes, ApiKeyData key, Runnable reenter) {
+    private Future<Boolean> decide(Router router, InterfaceType type, Prepared prepared, Runnable reenter) {
         long start = System.currentTimeMillis();
-        return askRouter(router, type, bytes, key, List.of())
+        return askRouter(router, type, prepared.body(), prepared.tree(), prepared.key(), List.of())
                 .map(candidates -> {
                     RouterDecision decision = new RouterDecision(router, type, candidates, System.currentTimeMillis() - start);
-                    decision.setFirstDecideKey(key);
+                    decision.setFirstDecideKey(prepared.key());
                     decision.setReenter(reenter);
                     decision.setHop(routerHop(router));
                     // Core's own headers (CORS, trace ids), restored when a candidate's half-copied answer is dropped
@@ -155,9 +200,9 @@ public class RouterDecisionFlow {
     /**
      * One decide request with its own key, invalidated when the call ends; a router named as a candidate fails it.
      */
-    private Future<List<String>> askRouter(Router router, InterfaceType type, Buffer bytes, ApiKeyData key,
-                                           List<RouterDecision.Attempt> attempts) {
-        return RouterDecisionClient.decide(context, router, type, bytes, key.getPerRequestKey(), attempts)
+    private Future<List<String>> askRouter(Router router, InterfaceType type, @Nullable Buffer bytes, @Nullable ObjectNode tree,
+                                           ApiKeyData key, List<RouterDecision.Attempt> attempts) {
+        return RouterDecisionClient.decide(context, router, type, bytes, tree, key, attempts)
                 .onComplete(ignore -> proxy.getApiKeyStore().invalidatePerRequestApiKey(key)
                         .onFailure(error -> log.error("error occurred on invalidating the decide request key", error)))
                 .map(candidates -> {
@@ -179,14 +224,19 @@ public class RouterDecisionFlow {
         RouterDecision decision = context.getDecision();
         Router router = decision.getRouter();
         Buffer bytes = RouterDecisionClient.withBody(router) ? context.getOriginalRequestBody() : null;
+        // the candidates changed the caller's tree: an embedded router's copy comes from the bytes, which nothing changes
+        boolean embedded = bytes != null
+                && DeploymentEndpointUtil.resolvePlugin(router, decision.getApi(), context.getConfig().getTranslators()) != null;
         long start = System.currentTimeMillis();
         proxy.getTokenStatsTracker().unnameSpan(context)
                 .recover(error -> {
                     log.warn("Router {} decides again in a span named after the failed candidate", decision.getRouterName(), error);
                     return Future.succeededFuture();
                 })
-                .compose(ignore -> proxy.getTaskExecutor().submit(() -> mintKeyLike(decision.getFirstDecideKey(), router)))
-                .compose(key -> askRouter(router, decision.getApi(), bytes, key, decision.getAttempts()))
+                .compose(ignore -> proxy.getTaskExecutor().submit(() -> new Prepared(bytes, embedded ? parse(bytes) : null,
+                        mintKeyLike(decision.getFirstDecideKey(), router))))
+                .compose(prepared -> askRouter(router, decision.getApi(), prepared.body(), prepared.tree(), prepared.key(),
+                        decision.getAttempts()))
                 .onComplete(result -> {
                     if (result.succeeded() && !context.getResponse().closed()) {
                         decision.redecided(result.result(), System.currentTimeMillis() - start);
@@ -263,6 +313,9 @@ public class RouterDecisionFlow {
             return error;
         }
         if (!context.getResponse().closed()) {
+            // the next candidate starts from the client's bytes, as after a failed call: for an in-process call, the
+            // serialization, not the call's tree the refused candidate may have changed
+            context.setRequestBody(context.getOriginalRequestBody());
             if (decision.hasNext()) {
                 log.warn("Candidate {} of router {} skipped: {}", decision.current(), decision.getRouterName(), error.getMessage());
                 decision.skip(status, reason);
@@ -293,7 +346,7 @@ public class RouterDecisionFlow {
         if (decision == null || response.headWritten() || response.closed()) {
             return false;
         }
-        HttpClientResponse answered = context.getProxyResponse();
+        ProxyResponse answered = context.getProxyResponse();
         // an answer counts as broken only when its 200 body never fully arrived; a background job's accepted job,
         // or a response mapping already saved, would keep running beside the next candidate's
         if (answered != null && (answered.statusCode() != HttpStatus.OK.getCode()
@@ -319,6 +372,8 @@ public class RouterDecisionFlow {
                     .onFailure(error -> log.error("error occurred on invalidating per-request key", error));
         }
         context.setProxyApiKeyData(null);
+        // an origin plugin's in-process calls carry the failed candidate's key without a lookup: they end with it
+        context.closeHostDelegates();
         context.setCacheBreakpointContext(null);
         context.setUpstreamBodyReceived(false);
         context.setSpanUsageStats(null);
@@ -342,7 +397,7 @@ public class RouterDecisionFlow {
      */
     void noticeRouter() {
         RouterDecision decision = context.getDecision();
-        HttpClientResponse answered = context.getProxyResponse();
+        ProxyResponse answered = context.getProxyResponse();
         List<RouterDecision.Attempt> attempts = new ArrayList<>(decision.getAttempts());
         attempts.add(new RouterDecision.Attempt(decision.current(), answered == null ? HttpStatus.BAD_GATEWAY.getCode() : answered.statusCode(),
                 "stream", true, true));

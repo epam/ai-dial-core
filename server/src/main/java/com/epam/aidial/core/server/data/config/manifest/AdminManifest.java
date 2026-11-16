@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
                 @ApiSubType(discriminatorValue = "Interceptor", type = AdminInterceptorManifest.class),
                 @ApiSubType(discriminatorValue = "Router", type = AdminRouterManifest.class),
                 @ApiSubType(discriminatorValue = "Translator", type = AdminTranslatorManifest.class),
+                @ApiSubType(discriminatorValue = "Plugin", type = AdminPluginManifest.class),
                 @ApiSubType(discriminatorValue = "Role", type = AdminRoleManifest.class),
                 @ApiSubType(discriminatorValue = "Key", type = AdminKeyManifest.class),
                 @ApiSubType(discriminatorValue = "Route", type = AdminRouteManifest.class),
