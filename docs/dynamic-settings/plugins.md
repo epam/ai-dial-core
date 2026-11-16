@@ -2,7 +2,7 @@
 
 A plugin is Java code that DIAL Core runs in process, instead of calling a service over HTTP. The code comes as a jar that Core loads at start; a `plugins` entry declares one instance of that code with its own settings.
 
-> **Preview.** Plugins are in preview. Until they are declared stable, a DIAL Core release may change them in a backward-incompatible way: the `plugins` entries, the `dial-plugin://` base URLs that name them, the plugin endpoints of the Configuration API (`x-preview` in the OpenAPI specification), and the `plugin-api` module a plugin jar compiles against. A plugin jar is built for one DIAL Core version; rebuild it when you upgrade.
+> **Preview.** Plugins are in preview. Until they are declared stable, a DIAL Core release may change them in a backward-incompatible way: the `plugins` entries, the `dial-plugin://` base URLs that name them, the plugin endpoints of the Configuration API (`x-preview` in the OpenAPI specification), and the `aidial-core-plugin-api` module (`com.epam.aidial:aidial-core-plugin-api`) a plugin jar compiles against. A plugin jar is built for one DIAL Core version; rebuild it when you upgrade.
 
 > In this version a plugin can answer a deployment interface in place of an HTTP origin: see [Origin plugins](#origin-plugins). Request and response filters come in a later version.
 
@@ -106,7 +106,7 @@ The module `plugin-samples` holds an origin plugin of type `forward`, with the s
 
 ## Plugin code
 
-DIAL Core loads plugin code once, at start, from the jars in the directory named by the static setting `plugins.dir` (default `plugins`, relative to the working directory; `/app/plugins` in the Docker image). A missing directory loads nothing. A jar registers its code in `META-INF/services/com.epam.aidial.core.plugin.PluginProvider`, and compiles against the `plugin-api` module of DIAL Core.
+DIAL Core loads plugin code once, at start, from the jars in the directory named by the static setting `plugins.dir` (default `plugins`, relative to the working directory; `/app/plugins` in the Docker image). A missing directory loads nothing. A jar registers its code in `META-INF/services/com.epam.aidial.core.plugin.PluginProvider`, and compiles against the `aidial-core-plugin-api` module of DIAL Core (`com.epam.aidial:aidial-core-plugin-api`).
 
 DIAL Core does not start when a jar in the directory cannot be opened, when its plugin code cannot be created, when two jars register the same plugin class (an old jar left beside its new version), or when two plugin classes declare the same type. New plugin code needs a restart of DIAL Core; the `plugins` entries and their settings reload with the rest of the config.
 
