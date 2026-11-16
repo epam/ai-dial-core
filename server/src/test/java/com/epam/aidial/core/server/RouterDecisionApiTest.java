@@ -223,6 +223,33 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void decideKeyReadsTheAttachmentsOnTheBodyAddressedApis() {
+        String file = "files/" + bucket + "/note.txt";
+        verify(upload(HttpMethod.PUT, "/v1/" + file, null, "hello"), 200);
+        // these controllers hand the flow their parsed tree: the attachments come from it, not from a second parse
+        String chat = "{\"model\":\"r3\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\",\"custom_content\":{\"attachments\":[{\"url\":\""
+                + file + "\"}]}}]}";
+        String responses = "{\"model\":\"r3\",\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_file\",\"file_url\":\""
+                + file + "\"}]}]}";
+        List<Integer> reads = new CopyOnWriteArrayList<>();
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (!isDecide(request)) {
+                return answer(request);
+            }
+            reads.add(send(HttpMethod.GET, "/v1/" + file, null, null, "api-key", request.getHeader("api-key")).status());
+            return TestWebServer.createResponse(200, verdict.get(), "content-type", "application/json");
+        })) {
+            verify(send(HttpMethod.POST, "/openai/v1/chat/completions", null, chat, "content-type", "application/json"), 200);
+            // gpt-4 allows one request an hour to this caller; m3 serves Responses without a limit
+            verdict.set("{\"candidates\": [\"m3\"]}");
+            verify(send(HttpMethod.POST, "/openai/v1/responses", null, responses, "content-type", "application/json"), 200);
+        }
+        assertEquals(List.of(200, 200), reads);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void decisionInterfaceIsNotProxied() {
         try (TestWebServer server = server()) {
             verify(sendChat("r1"), 200);

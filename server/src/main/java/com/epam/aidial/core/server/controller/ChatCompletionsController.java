@@ -86,9 +86,8 @@ public class ChatCompletionsController extends BaseChatCompletionController {
 
     private ChatCompletionRequest parseBody(Buffer body) {
         try {
-            context.setRequestBodyWithTimestamp(body);
             context.setOriginalRequestBody(body);
-            return new ChatCompletionRequest(ProxyUtil.parseObject(body));
+            return new ChatCompletionRequest(ProxyUtil.parseRequestBody(context, body));
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -119,7 +118,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                         return handleInterceptor(0);
                     }
                     return decisions.decideIfRouter(InterfaceType.OPENAI_CHAT_COMPLETIONS, Future.succeededFuture(context.getOriginalRequestBody()),
-                                    this::reenterWithCandidate)
+                                    request.getTree(), this::reenterWithCandidate)
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName, false));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));

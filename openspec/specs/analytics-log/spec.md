@@ -10,8 +10,8 @@ Core leaves the bodies out. Which passes write a row, and the usage and trace fi
 ### Requirement: Bodies in the analytics row
 For a key that is not `secured`, Core SHALL write the request body as `request.body` and the response body as
 `response.body`, a body over 4 MiB cut there and ending in `>>`, and, for a streamed response that Core assembled, the
-assembled response as `assembled_response`, except while the log writer is behind (see "Rows without bodies while the
-log writer is behind"). For a `secured` key, Core SHALL write none of these three fields.
+assembled response as `assembled_response`, except while the log writer is behind or in the row of an in-process child
+pass (see the two requirements on rows without bodies). For a `secured` key, Core SHALL write none of these three fields.
 
 #### Scenario: Key not secured
 - **WHEN** a pass with a key that is not `secured` writes its row
@@ -62,3 +62,14 @@ the row. Once the held bodies fall below the limit, new rows SHALL carry their b
 - **WHEN** the JVM's maximum heap is 40,000 bytes, `analytics.maxPendingBodyHeapPercent` is 10 (a limit of 4,000
   bytes), a row with a 2,000-byte request body is waiting to be written, and another pass writes its row
 - **THEN** that row has its `request.body` and `response.body`
+
+### Requirement: Rows without bodies for an in-process child pass
+Core SHALL write the row of a child pass it serves for an origin plugin's call without `request.body`,
+`response.body` and `assembled_response`, and with every other field, whatever the key and the writer's backlog. The
+row of the plugin's own pass SHALL carry its bodies as "Bodies in the analytics row" says.
+
+#### Scenario: Bodies logged once
+- **WHEN** plugin `p1` serving application `app` calls model `m` with a key that is not `secured`, and both passes
+  write their rows
+- **THEN** `m`'s row has no `request.body`, `response.body` or `assembled_response` and has its `deployment`,
+  `token_usage` and `trace`, and `app`'s row has its `request.body` and `response.body`

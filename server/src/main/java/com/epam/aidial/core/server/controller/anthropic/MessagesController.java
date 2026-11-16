@@ -32,6 +32,7 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
@@ -41,7 +42,6 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -187,7 +187,7 @@ public class MessagesController extends MessagesBaseController {
     /**
      * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
      */
-    private void putLimitHeaders(HttpServerResponse response, HttpClientResponse proxyResponse) {
+    private void putLimitHeaders(HttpServerResponse response, ProxyResponse proxyResponse) {
         AnthropicLimitResponses.stripUpstreamRateLimitHeaders(response.headers());
         if (proxyResponse.statusCode() == 200 && spendCaps != null && spendCaps.reported() != null) {
             AnthropicLimitResponses.putSpendHeaders(response.headers(), spendCaps.reported());
@@ -195,7 +195,7 @@ public class MessagesController extends MessagesBaseController {
     }
 
     @Override
-    protected void processResponse(HttpClientResponse proxyResponse) {
+    protected void processResponse(ProxyResponse proxyResponse) {
         if (!context.isStreamingRequest()) {
             proxyResponse.body()
                     .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
@@ -220,7 +220,7 @@ public class MessagesController extends MessagesBaseController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer upstreamBody) {
+    private Future<Void> handleNonStreamingResponse(ProxyResponse proxyResponse, Buffer upstreamBody) {
         // the one buffered answer Core does not otherwise re-serialize: a decided request pays a parse for the router name
         Buffer body = context.getDecision() != null && proxyResponse.statusCode() == 200
                 ? RouterModelFn.rewrite(upstreamBody, context.getDecision().getRouterName()) : upstreamBody;

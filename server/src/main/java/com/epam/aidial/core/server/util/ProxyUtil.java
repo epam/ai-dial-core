@@ -2,7 +2,9 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -15,8 +17,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -104,15 +104,11 @@ public class ProxyUtil {
         }
     }
 
-    public static void setOverrideNameHeader(HttpClientRequest request, Deployment deployment) {
-        setOverrideNameHeader(request.headers(), deployment);
-    }
-
     public static int contentLength(HttpServerRequest request, int defaultValue) {
         return contentLength(request.headers(), defaultValue);
     }
 
-    public static int contentLength(HttpClientResponse request, int defaultValue) {
+    public static int contentLength(ProxyResponse request, int defaultValue) {
         MultiMap header = request.headers();
         return contentLength(header, defaultValue);
     }
@@ -280,18 +276,33 @@ public class ProxyUtil {
         return socketAddress.host();
     }
 
-    public void copyResponse(HttpServerResponse response, HttpClientResponse proxyResponse) {
+    public void copyResponse(HttpServerResponse response, ProxyResponse proxyResponse) {
         response.setStatusCode(proxyResponse.statusCode());
         copyHeaders(proxyResponse.headers(), response.headers());
     }
 
-    public void handleChunkedResponse(HttpServerResponse response, HttpClientResponse proxyResponse) {
+    public void handleChunkedResponse(HttpServerResponse response, ProxyResponse proxyResponse) {
         response.setChunked(true);
         copyResponse(response, proxyResponse);
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (Strings.CI.contains(contentType, "text/event-stream")) {
             response.putHeader("X-Accel-Buffering", "no");
         }
+    }
+
+    /**
+     * Parses the request's body at a controller's parse site, and sets it as the request's body. A pass Core serves
+     * for an origin plugin's in-process call already has the tree: it is taken as it is, and only the body's timestamp
+     * is set, as the chain sets the body when it serialises the tree.
+     */
+    public ObjectNode parseRequestBody(ProxyContext context, Buffer body) throws IOException {
+        ObjectNode tree = context.getCallTree();
+        if (tree != null) {
+            context.setRequestBodyTimestamp(System.currentTimeMillis());
+            return tree;
+        }
+        context.setRequestBodyWithTimestamp(body);
+        return parseObject(body);
     }
 
     public ObjectNode parseObject(Buffer buffer) throws IOException {

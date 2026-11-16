@@ -295,6 +295,10 @@ public final class GenAiTraceAttributes {
             return;
         }
         context.getTracingAttributes().put(key.getKey(), value);
+        if (context.isChildPass()) {
+            // a pass served in process has no server span of its own: the current one is its plugin's pass
+            return;
+        }
         Span span = Span.current();
         if (span.isRecording()) {
             span.setAttribute(key, value);

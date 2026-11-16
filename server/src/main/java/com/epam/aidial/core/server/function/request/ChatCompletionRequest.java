@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -25,6 +26,7 @@ public class ChatCompletionRequest implements RequestObject {
     private static final String CUSTOM_FIELDS_NODE = "custom_fields";
     private static final String CACHE_BREAKPOINT_NODE = "cache_breakpoint";
 
+    @Getter
     private final ObjectNode tree;
 
     @Override
