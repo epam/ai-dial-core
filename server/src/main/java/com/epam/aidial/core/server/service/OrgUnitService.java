@@ -996,7 +996,7 @@ public class OrgUnitService {
      */
     private CallerUnitRoles personsRoles(ProxyContext context, OrgUnitList list) {
         OrgUnitRoles roleDefinitions = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> heldRolesByUnit = heldRolesByUnit(context, list.units());
+        Map<String, Set<String>> heldRolesByUnit = loadHeldRolesByUnit(context, list.units());
         return new CallerUnitRoles(roleDefinitions, key -> heldRolesByUnit.getOrDefault(key, Set.of()),
                 () -> CallerUnitRoles.unitsAboveHeldRoles(roleDefinitions, heldRolesByUnit));
     }
@@ -1009,10 +1009,10 @@ public class OrgUnitService {
         OrgUnitRoles roleDefinitions = OrgUnitRoles.of(context.getConfig());
         return new CallerUnitRoles(roleDefinitions,
                 key -> OrgUnitSubjects.rolesToReadWith(context, roleAssignmentsOf(key, units.get(key))),
-                () -> OrgUnitSubjects.isPerson(context) ? CallerUnitRoles.unitsAboveHeldRoles(roleDefinitions, heldRolesByUnit(context, units)) : Set.of());
+                () -> OrgUnitSubjects.isPerson(context) ? CallerUnitRoles.unitsAboveHeldRoles(roleDefinitions, loadHeldRolesByUnit(context, units)) : Set.of());
     }
 
-    private Map<String, Set<String>> heldRolesByUnit(ProxyContext context, Map<String, OrgUnit> units) {
+    private Map<String, Set<String>> loadHeldRolesByUnit(ProxyContext context, Map<String, OrgUnit> units) {
         Map<String, Set<String>> byUnit = new HashMap<>();
         roleAssignmentsOfAll(units).forEach((key, assignments) -> byUnit.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
         return byUnit;
