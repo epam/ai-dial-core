@@ -1,7 +1,10 @@
 package com.epam.aidial.core.storage.cache;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.Channel;
 import org.junit.jupiter.api.Test;
+import org.redisson.client.NettyHook;
 import org.redisson.config.Config;
 import org.redisson.config.SslVerificationMode;
 
@@ -79,6 +82,28 @@ class RedisConfigSupportTest {
         assertEquals(SslVerificationMode.NONE, config.getSslVerificationMode());
         assertEquals("user", config.getUsername());
         assertEquals("secret", config.getPassword());
+    }
+
+    @Test
+    void testClassFormObjectSetting() throws Exception {
+        Config config = parse("""
+                {"singleServerConfig": {"address": "redis://localhost:6379"},
+                 "nettyHook": {"class": "com.epam.aidial.core.storage.cache.RedisConfigSupportTest$TestNettyHook"}}
+                """);
+
+        assertTrue(config.getNettyHook() instanceof TestNettyHook);
+    }
+
+    public static class TestNettyHook implements NettyHook {
+        @Override
+        public void afterBoostrapInitialization(Bootstrap bootstrap) {
+            // no-op
+        }
+
+        @Override
+        public void afterChannelInitialization(Channel channel) {
+            // no-op
+        }
     }
 
     @Test
