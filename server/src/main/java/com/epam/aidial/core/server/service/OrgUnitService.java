@@ -215,17 +215,17 @@ public class OrgUnitService {
         }
         OrgUnitList list = getUnitList();
         CallerUnitRoles caller = personsRoles(context, list);
-        OrgUnitRoles roles = caller.roles();
+        OrgUnitRoles roleDefinitions = caller.roleDefinitions();
         List<UserOrgUnits.Unit> units = new ArrayList<>();
         for (Map.Entry<String, OrgUnit> entry : list.units().entrySet()) {
             String key = entry.getKey();
-            if (key.equals(SHARED_SPACE_KEY) || !admin && !caller.shows(key)) {
+            if (key.equals(SHARED_SPACE_KEY) || !admin && !caller.sees(key)) {
                 continue;
             }
-            List<String> roleNames = caller.at(key).stream().filter(roles::exists).sorted().toList();
+            List<String> knownRoles = caller.rolesAt(key).stream().filter(roleDefinitions::exists).sorted().toList();
             OrgUnitData.Summary unit = summary(key, entry.getValue());
-            units.add(new UserOrgUnits.Unit(unit.id(), unit.name(), unit.displayName(), unit.path(), unit.folder(), roleNames,
-                    admin ? OrgUnitRoles.ALL_PERMISSIONS : roles.resolvePermissions(roleNames)));
+            units.add(new UserOrgUnits.Unit(unit.id(), unit.name(), unit.displayName(), unit.path(), unit.folder(), knownRoles,
+                    admin ? OrgUnitRoles.ALL_PERMISSIONS : roleDefinitions.resolvePermissions(knownRoles)));
         }
         return units;
     }
@@ -987,7 +987,7 @@ public class OrgUnitService {
      */
     private Predicate<String> visibleTo(ProxyContext context, OrgUnitList list) {
         CallerUnitRoles caller = personsRoles(context, list);
-        return key -> list.units().containsKey(key) && caller.shows(key);
+        return key -> list.units().containsKey(key) && caller.sees(key);
     }
 
     /**
@@ -995,9 +995,10 @@ public class OrgUnitService {
      * holds any.
      */
     private CallerUnitRoles personsRoles(ProxyContext context, OrgUnitList list) {
-        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> held = heldRolesByUnit(context, list.units());
-        return new CallerUnitRoles(roles, key -> held.getOrDefault(key, Set.of()), () -> CallerUnitRoles.unitsAbove(roles, held));
+        OrgUnitRoles roleDefinitions = OrgUnitRoles.of(context.getConfig());
+        Map<String, Set<String>> heldRolesByUnit = heldRolesByUnit(context, list.units());
+        return new CallerUnitRoles(roleDefinitions, key -> heldRolesByUnit.getOrDefault(key, Set.of()),
+                () -> CallerUnitRoles.unitsAboveHeldRoles(roleDefinitions, heldRolesByUnit));
     }
 
     /**
@@ -1005,16 +1006,16 @@ public class OrgUnitService {
      * them. Only a person's roles show units above, so nobody else's decisions read every unit's assignments for them.
      */
     CallerUnitRoles callerRoles(ProxyContext context, Map<String, OrgUnit> units) {
-        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        return new CallerUnitRoles(roles,
+        OrgUnitRoles roleDefinitions = OrgUnitRoles.of(context.getConfig());
+        return new CallerUnitRoles(roleDefinitions,
                 key -> OrgUnitSubjects.rolesToReadWith(context, roleAssignmentsOf(key, units.get(key))),
-                () -> OrgUnitSubjects.isPerson(context) ? CallerUnitRoles.unitsAbove(roles, heldRolesByUnit(context, units)) : Set.of());
+                () -> OrgUnitSubjects.isPerson(context) ? CallerUnitRoles.unitsAboveHeldRoles(roleDefinitions, heldRolesByUnit(context, units)) : Set.of());
     }
 
     private Map<String, Set<String>> heldRolesByUnit(ProxyContext context, Map<String, OrgUnit> units) {
-        Map<String, Set<String>> held = new HashMap<>();
-        roleAssignmentsOfAll(units).forEach((key, assignments) -> held.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
-        return held;
+        Map<String, Set<String>> byUnit = new HashMap<>();
+        roleAssignmentsOfAll(units).forEach((key, assignments) -> byUnit.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
+        return byUnit;
     }
 
     private static OrgUnitData toData(String key, OrgUnitList list, boolean recursive, Predicate<String> visible) {

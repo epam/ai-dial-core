@@ -15,55 +15,58 @@ import java.util.function.Supplier;
  */
 final class CallerUnitRoles {
 
-    private final OrgUnitRoles roles;
-    private final Function<String, Set<String>> lookup;
-    private final Supplier<Set<String>> lookupUnitsAbove;
-    private final Map<String, Set<String>> byUnit = new HashMap<>();
-    private Set<String> unitsAbove;
+    private final OrgUnitRoles roleDefinitions;
+    private final Function<String, Set<String>> loadRolesAt;
+    private final Supplier<Set<String>> loadUnitsAboveHeldRoles;
+    private final Map<String, Set<String>> rolesByUnit = new HashMap<>();
+    private Set<String> unitsAboveHeldRoles;
 
-    CallerUnitRoles(OrgUnitRoles roles, Function<String, Set<String>> lookup, Supplier<Set<String>> lookupUnitsAbove) {
-        this.roles = roles;
-        this.lookup = lookup;
-        this.lookupUnitsAbove = lookupUnitsAbove;
+    CallerUnitRoles(OrgUnitRoles roleDefinitions, Function<String, Set<String>> loadRolesAt, Supplier<Set<String>> loadUnitsAboveHeldRoles) {
+        this.roleDefinitions = roleDefinitions;
+        this.loadRolesAt = loadRolesAt;
+        this.loadUnitsAboveHeldRoles = loadUnitsAboveHeldRoles;
     }
 
-    OrgUnitRoles roles() {
-        return roles;
+    OrgUnitRoles roleDefinitions() {
+        return roleDefinitions;
     }
 
     /**
      * The role names assigned to the caller at the unit, known to core or not.
      */
-    Set<String> at(String unit) {
-        return byUnit.computeIfAbsent(unit, lookup);
+    Set<String> rolesAt(String unit) {
+        return rolesByUnit.computeIfAbsent(unit, loadRolesAt);
     }
 
     boolean holdsRoleAt(String unit) {
-        return at(unit).stream().anyMatch(roles::exists);
+        return rolesAt(unit).stream().anyMatch(roleDefinitions::exists);
     }
 
-    boolean seesChildrenOf(String unit) {
-        return roles.allows(at(unit), OrgUnitRoles.READ, OrgUnitRoles.ORG_UNITS);
+    boolean seesChildUnitsOf(String unit) {
+        return roleDefinitions.allows(rolesAt(unit), OrgUnitRoles.READ, OrgUnitRoles.ORG_UNITS);
     }
 
-    boolean isAboveHeldRole(String unit) {
-        if (unitsAbove == null) {
-            unitsAbove = lookupUnitsAbove.get();
+    /**
+     * Persons only; always false for applications and API keys.
+     */
+    boolean holdsRoleBelow(String unit) {
+        if (unitsAboveHeldRoles == null) {
+            unitsAboveHeldRoles = loadUnitsAboveHeldRoles.get();
         }
-        return unitsAbove.contains(unit);
+        return unitsAboveHeldRoles.contains(unit);
     }
 
-    boolean shows(String unit) {
-        return holdsRoleAt(unit) || seesChildrenOf(OrgUnitService.parentKey(unit)) || isAboveHeldRole(unit);
+    boolean sees(String unit) {
+        return holdsRoleAt(unit) || seesChildUnitsOf(OrgUnitService.parentKey(unit)) || holdsRoleBelow(unit);
     }
 
     /**
      * Every unit above one where a role core knows is held, from the role names held at each unit.
      */
-    static Set<String> unitsAbove(OrgUnitRoles roles, Map<String, Set<String>> heldByUnit) {
+    static Set<String> unitsAboveHeldRoles(OrgUnitRoles roleDefinitions, Map<String, Set<String>> heldRolesByUnit) {
         Set<String> above = new HashSet<>();
-        heldByUnit.forEach((unit, held) -> {
-            if (held.stream().noneMatch(roles::exists)) {
+        heldRolesByUnit.forEach((unit, heldRoles) -> {
+            if (heldRoles.stream().noneMatch(roleDefinitions::exists)) {
                 return;
             }
             for (String parent = OrgUnitService.parentKey(unit); !parent.equals(OrgUnitService.SHARED_SPACE_KEY);

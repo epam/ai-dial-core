@@ -67,7 +67,7 @@ public class OrgUnitGrants {
                 continue;
             }
             Set<ResourceAccessType> access = new HashSet<>(granted(caller, key, resource));
-            if (isUnitFolder(key, resource) && (caller.seesChildrenOf(key) || caller.isAboveHeldRole(key))) {
+            if (isUnitFolder(key, resource) && (caller.seesChildUnitsOf(key) || caller.holdsRoleBelow(key))) {
                 access.add(ResourceAccessType.READ);
             }
             if (readOnly) {
@@ -135,7 +135,7 @@ public class OrgUnitGrants {
                 continue;
             }
             boolean shown = isUnitFolder(key, resource)
-                    ? caller.shows(key)
+                    ? caller.sees(key)
                     : granted(caller, key, resource).contains(ResourceAccessType.READ);
             if (shown) {
                 visible.add(resource);
@@ -162,14 +162,14 @@ public class OrgUnitGrants {
      * Sharing itself is decided by bucket ownership, so SHARE lets no one share shared-space resources.
      */
     private static Set<ResourceAccessType> granted(CallerUnitRoles caller, String unit, ResourceDescriptor resource) {
-        OrgUnitRoles roles = caller.roles();
-        Set<String> held = caller.at(unit);
+        OrgUnitRoles roleDefinitions = caller.roleDefinitions();
+        Set<String> heldRoles = caller.rolesAt(unit);
         String namespace = resource.getType().group();
         Set<ResourceAccessType> access = new HashSet<>();
-        if (roles.allows(held, OrgUnitRoles.READ, namespace)) {
+        if (roleDefinitions.allows(heldRoles, OrgUnitRoles.READ, namespace)) {
             access.add(ResourceAccessType.READ);
         }
-        if (roles.allows(held, OrgUnitRoles.WRITE, namespace)) {
+        if (roleDefinitions.allows(heldRoles, OrgUnitRoles.WRITE, namespace)) {
             access.add(ResourceAccessType.WRITE);
             access.add(ResourceAccessType.SHARE);
         }
