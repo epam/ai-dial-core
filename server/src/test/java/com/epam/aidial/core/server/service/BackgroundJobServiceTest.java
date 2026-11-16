@@ -144,7 +144,7 @@ class BackgroundJobServiceTest {
                 .build();
         redisServer.start();
         ConfigSupport configSupport = new ConfigSupport();
-        org.redisson.config.Config redisClientConfig = configSupport.fromJSON(
+        org.redisson.config.Config redisClientConfig = configSupport.fromYAML(
                 "{\"singleServerConfig\":{\"address\":\"redis://localhost:16370\"}}",
                 org.redisson.config.Config.class);
         redissonClient = Redisson.create(redisClientConfig);

@@ -6,7 +6,6 @@ import lombok.experimental.UtilityClass;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
-import org.redisson.config.ConfigSupport;
 import org.redisson.config.CredentialsResolver;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
@@ -32,8 +31,7 @@ public class CacheClientFactory {
             };
         }
 
-        ConfigSupport support = new RedisConfigSupport();
-        Config config = support.fromJSON(conf.toString(), Config.class);
+        Config config = RedisConfigSupport.parse(conf);
         if (credentialsResolver != null) {
             if (config.isClusterConfig()) {
                 config.useClusterServers().setCredentialsResolver(credentialsResolver);
