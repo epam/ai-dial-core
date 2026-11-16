@@ -47,8 +47,9 @@ public class OrgUnitGrants {
     }
 
     /**
-     * The access per resource. Reads the unit tree at most once and each unit's policy at most once, and nothing at
-     * all when no resource is shared-space content.
+     * The access per resource. Reads the unit tree at most once and each unit's policy at most once, every unit's
+     * policy only for a unit folder the caller's roles there don't open, and nothing at all when no resource is
+     * shared-space content.
      */
     public Map<ResourceDescriptor, Set<ResourceAccessType>> access(ProxyContext context, Set<ResourceDescriptor> resources) {
         List<ResourceDescriptor> candidates = candidates(context, resources);
@@ -57,19 +58,16 @@ public class OrgUnitGrants {
         }
 
         Map<String, OrgUnit> units = orgUnits.getUnitList().units();
-        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> heldByUnit = new HashMap<>();
+        CallerUnitRoles caller = orgUnits.callerRoles(context, units);
         boolean readOnly = !OrgUnitSubjects.isPerson(context);
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
-        Map<ResourceDescriptor, String> unreadUnitFolders = new HashMap<>();
         for (ResourceDescriptor resource : candidates) {
             String key = OrgUnitService.ownerOf(units, resource);
             if (key.equals(OrgUnitService.SHARED_SPACE_KEY)) {
                 continue;
             }
-            Set<String> held = held(context, units, heldByUnit, key);
-            Set<ResourceAccessType> access = new HashSet<>(granted(roles, held, resource));
-            if (isUnitFolder(key, resource) && roles.allows(held, OrgUnitRoles.READ, OrgUnitRoles.ORG_UNITS)) {
+            Set<ResourceAccessType> access = new HashSet<>(granted(caller, key, resource));
+            if (isUnitFolder(key, resource) && (caller.seesChildrenOf(key) || caller.isAboveHeldRole(key))) {
                 access.add(ResourceAccessType.READ);
             }
             if (readOnly) {
@@ -78,19 +76,6 @@ public class OrgUnitGrants {
             if (!access.isEmpty()) {
                 result.put(resource, Set.copyOf(access));
             }
-            if (!access.contains(ResourceAccessType.READ) && isUnitFolder(key, resource)) {
-                unreadUnitFolders.put(resource, key);
-            }
-        }
-        if (!unreadUnitFolders.isEmpty()) {
-            Set<String> above = orgUnits.unitsAbovePersonsRoles(context, units, roles);
-            unreadUnitFolders.forEach((folder, key) -> {
-                if (above.contains(key)) {
-                    Set<ResourceAccessType> access = new HashSet<>(result.getOrDefault(folder, Set.of()));
-                    access.add(ResourceAccessType.READ);
-                    result.put(folder, Set.copyOf(access));
-                }
-            });
         }
         return result;
     }
@@ -111,9 +96,8 @@ public class OrgUnitGrants {
             return true;
         }
 
-        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> heldByUnit = new HashMap<>();
-        return spanned.stream().allMatch(key -> granted(roles, held(context, units, heldByUnit, key), folder).contains(ResourceAccessType.READ));
+        CallerUnitRoles caller = orgUnits.callerRoles(context, units);
+        return spanned.stream().allMatch(key -> granted(caller, key, folder).contains(ResourceAccessType.READ));
     }
 
     /**
@@ -143,51 +127,21 @@ public class OrgUnitGrants {
         }
 
         Map<String, OrgUnit> units = orgUnits.getUnitList().units();
-        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> heldByUnit = new HashMap<>();
+        CallerUnitRoles caller = orgUnits.callerRoles(context, units);
         Set<ResourceDescriptor> visible = new HashSet<>();
-        Map<ResourceDescriptor, String> hiddenUnitFolders = new HashMap<>();
         for (ResourceDescriptor resource : candidates) {
             String key = OrgUnitService.ownerOf(units, resource);
             if (key.equals(OrgUnitService.SHARED_SPACE_KEY)) {
                 continue;
             }
-            boolean unitFolder = isUnitFolder(key, resource);
-            boolean shown;
-            if (unitFolder) {
-                shown = showsUnit(roles, held(context, units, heldByUnit, key),
-                        held(context, units, heldByUnit, OrgUnitService.parentKey(key)));
-            } else {
-                shown = granted(roles, held(context, units, heldByUnit, key), resource).contains(ResourceAccessType.READ);
-            }
+            boolean shown = isUnitFolder(key, resource)
+                    ? caller.shows(key)
+                    : granted(caller, key, resource).contains(ResourceAccessType.READ);
             if (shown) {
                 visible.add(resource);
-            } else if (unitFolder) {
-                hiddenUnitFolders.put(resource, key);
             }
         }
-        if (!hiddenUnitFolders.isEmpty()) {
-            Set<String> above = orgUnits.unitsAbovePersonsRoles(context, units, roles);
-            hiddenUnitFolders.forEach((folder, key) -> {
-                if (above.contains(key)) {
-                    visible.add(folder);
-                }
-            });
-        }
         return visible;
-    }
-
-    /**
-     * Whether the caller sees a unit, in the unit list and in its parent's listing: they hold a role there, or
-     * {@code read} on {@code org-units} at the unit above it.
-     */
-    public static boolean showsUnit(OrgUnitRoles roles, Set<String> heldThere, Set<String> heldAbove) {
-        return heldThere.stream().anyMatch(roles::exists) || roles.allows(heldAbove, OrgUnitRoles.READ, OrgUnitRoles.ORG_UNITS);
-    }
-
-    private Set<String> held(ProxyContext context, Map<String, OrgUnit> units, Map<String, Set<String>> heldByUnit, String key) {
-        return heldByUnit.computeIfAbsent(key,
-                unit -> OrgUnitSubjects.rolesToReadWith(context, orgUnits.roleAssignmentsOf(unit, units.get(unit))));
     }
 
     private static boolean isUnitFolder(String key, ResourceDescriptor resource) {
@@ -207,7 +161,9 @@ public class OrgUnitGrants {
      * WRITE comes with SHARE, so that a move and organisation credentials, which ask for every permission, work.
      * Sharing itself is decided by bucket ownership, so SHARE lets no one share shared-space resources.
      */
-    private static Set<ResourceAccessType> granted(OrgUnitRoles roles, Set<String> held, ResourceDescriptor resource) {
+    private static Set<ResourceAccessType> granted(CallerUnitRoles caller, String unit, ResourceDescriptor resource) {
+        OrgUnitRoles roles = caller.roles();
+        Set<String> held = caller.at(unit);
         String namespace = resource.getType().group();
         Set<ResourceAccessType> access = new HashSet<>();
         if (roles.allows(held, OrgUnitRoles.READ, namespace)) {

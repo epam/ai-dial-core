@@ -53,10 +53,7 @@ public abstract class CollectRequestAttachmentsFn extends BaseRequestFunction<Re
         String resourceUrl = resource.getUrl();
         ApiKeyData sourceApiKeyData = context.getApiKeyData();
         AccessService accessService = proxy.getAccessService();
-        boolean readable = resource.isFolder()
-                ? accessService.hasReadAccessToEverythingUnder(resource, context)
-                : accessService.hasReadAccess(resource, context);
-        if (sourceApiKeyData.getAttachedFiles().containsKey(resourceUrl) || readable) {
+        if (sourceApiKeyData.getAttachedFiles().containsKey(resourceUrl) || accessService.hasReadAccessToAllOf(resource, context)) {
             if (resource.isFolder()) {
                 destApiKeyData.getAttachedFolders().put(resourceUrl, new AutoSharedData(ResourceAccessType.READ_ONLY));
             } else {

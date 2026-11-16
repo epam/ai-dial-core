@@ -157,6 +157,13 @@ public class AccessService {
     }
 
     /**
+     * Read on a file, or on a folder and everything below it: what handing a resource to an application needs.
+     */
+    public boolean hasReadAccessToAllOf(ResourceDescriptor resource, ProxyContext context) {
+        return resource.isFolder() ? hasReadAccessToEverythingUnder(resource, context) : hasReadAccess(resource, context);
+    }
+
+    /**
      * Read on a folder and everything below it, as attaching a folder hands it all to an application. A folder the
      * caller already received attached was checked when it was attached; otherwise a public folder needs its part under
      * no unit read through the rules and its part in units read through roles at each of them.
