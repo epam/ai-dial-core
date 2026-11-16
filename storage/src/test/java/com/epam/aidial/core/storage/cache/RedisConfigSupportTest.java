@@ -107,6 +107,17 @@ class RedisConfigSupportTest {
     }
 
     @Test
+    void testSpecialCharactersInValues() throws Exception {
+        Config config = parse("""
+                {"singleServerConfig": {"address": "redis://localhost:6379",
+                  "password": "p: #a, {b} [c] \\"q\\" 'x' !y &z *w\\nline", "clientName": "true"}}
+                """);
+
+        assertEquals("p: #a, {b} [c] \"q\" 'x' !y &z *w\nline", config.useSingleServer().getPassword());
+        assertEquals("true", config.useSingleServer().getClientName());
+    }
+
+    @Test
     void testProviderBlockIsNotPassedToRedisson() throws Exception {
         Config config = parse("""
                 {"singleServerConfig": {"address": "rediss://localhost:6379"},

@@ -1,12 +1,18 @@
 package com.epam.aidial.core.storage.cache;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.experimental.UtilityClass;
 import org.redisson.config.Config;
 import org.redisson.config.ConfigSupport;
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.nodes.Tag;
+import org.yaml.snakeyaml.representer.Representer;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -52,42 +58,52 @@ public class RedisConfigSupport {
     }
 
     private static String toYaml(JsonNode node) {
-        StringBuilder yaml = new StringBuilder();
-        appendYaml(node, yaml);
-        return yaml.toString();
+        DumperOptions options = new DumperOptions();
+        options.setDefaultFlowStyle(DumperOptions.FlowStyle.FLOW);
+        return new Yaml(new TaggedMapRepresenter(options), options).dump(toObject(node));
     }
 
-    private static void appendYaml(JsonNode node, StringBuilder yaml) {
+    private static Object toObject(JsonNode node) {
         if (node.isObject()) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            for (Map.Entry<String, JsonNode> field : node.properties()) {
+                map.put(field.getKey(), toObject(field.getValue()));
+            }
             JsonNode className = node.get(CLASS_KEY);
             if (className != null && className.isTextual()) {
-                yaml.append("!!").append(className.asText()).append(' ');
+                map.remove(CLASS_KEY);
+                return new TaggedMap(className.asText(), map);
             }
-            yaml.append('{');
-            boolean first = true;
-            for (Map.Entry<String, JsonNode> field : node.properties()) {
-                if (field.getValue() == className && className != null && className.isTextual()) {
-                    continue;
-                }
-                if (!first) {
-                    yaml.append(',');
-                }
-                first = false;
-                yaml.append(JsonNodeFactory.instance.textNode(field.getKey())).append(':');
-                appendYaml(field.getValue(), yaml);
-            }
-            yaml.append('}');
-        } else if (node.isArray()) {
-            yaml.append('[');
-            for (int i = 0; i < node.size(); i++) {
-                if (i > 0) {
-                    yaml.append(',');
-                }
-                appendYaml(node.get(i), yaml);
-            }
-            yaml.append(']');
-        } else {
-            yaml.append(node);
+            return map;
+        }
+        if (node.isArray()) {
+            List<Object> list = new ArrayList<>();
+            node.forEach(item -> list.add(toObject(item)));
+            return list;
+        }
+        if (node.isNull()) {
+            return null;
+        }
+        if (node.isNumber()) {
+            return node.numberValue();
+        }
+        if (node.isBoolean()) {
+            return node.booleanValue();
+        }
+        return node.asText();
+    }
+
+    private record TaggedMap(String className, Map<String, Object> map) {
+    }
+
+    private static class TaggedMapRepresenter extends Representer {
+
+        TaggedMapRepresenter(DumperOptions options) {
+            super(options);
+            representers.put(TaggedMap.class, data -> {
+                TaggedMap tagged = (TaggedMap) data;
+                return representMapping(new Tag(Tag.PREFIX + tagged.className()), tagged.map(), DumperOptions.FlowStyle.FLOW);
+            });
         }
     }
 
