@@ -217,9 +217,11 @@ class UserBudgetsApiTest extends ResourceBaseTest {
                 ["gpt-4o", "claude-opus"]""");
         putAssignment("projA/m1", "listed", MANAGER);
 
-        JsonNode budget = userStats("/v1/user/limits").get("budgets").get(0);
+        for (String path : List.of("/v1/user/limits", "/v1/user/usage")) {
+            JsonNode budget = userStats(path).get("budgets").get(0);
 
-        assertEquals("[\"claude-opus\",\"gpt-4o\"]", budget.get("object").toString());
+            assertEquals("[\"claude-opus\",\"gpt-4o\"]", budget.get("object").toString(), path);
+        }
     }
 
     private void putPolicy(String name, int day, int month) {

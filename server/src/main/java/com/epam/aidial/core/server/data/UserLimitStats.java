@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.data;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import lombok.Data;
 
 import java.util.ArrayList;
@@ -29,10 +30,8 @@ public class UserLimitStats {
     private CostItemLimitStats dayCostStats;
     private CostItemLimitStats weekCostStats;
     private CostItemLimitStats monthCostStats;
-    /**
-     * The cost object whose budgets the caller's model calls are charged to; absent when spending limits are off or the
-     * caller is an API key.
-     */
+    @JsonPropertyDescription("The cost object whose budgets the caller's model calls are charged to: only the `budgets` entries"
+            + " with this `costObject` can be charged. Absent when spending limits are off or the caller is an API key.")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String costObject;
     /**
