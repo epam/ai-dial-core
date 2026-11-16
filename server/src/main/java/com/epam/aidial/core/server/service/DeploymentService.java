@@ -9,9 +9,9 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.alias.AliasService;
 import com.epam.aidial.core.server.data.ApiKeyData;
-import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -130,8 +130,8 @@ public class DeploymentService {
     /**
      * Whether the request is the target pass of an alias call for {@code deployment}: its per-request key carries a
      * lent grant for the deployment's name. The key is kept by Core and sent only to Core itself.
-     * <p>
-     * Also checks the legacy {@code lentDeployment} field for PRKs written before the migration (rolling-upgrade compat).
+     *
+     * <p>Also checks the legacy {@code lentDeployment} field for PRKs written before the migration (rolling-upgrade compat).
      */
     public static boolean isLent(ProxyContext context, RoleBasedEntity deployment) {
         ApiKeyData apiKeyData = context.getApiKeyData();
