@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
@@ -60,9 +61,12 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class ApplicationService {
+
+    public static final String ONLY_ADMINS_SET_INTERCEPTORS = "Only admins are allowed to set interceptors";
 
     private static final String DEPLOYMENTS_NAME = "deployments";
 
@@ -270,6 +274,7 @@ public class ApplicationService {
             prepareApplicationFunction(resource, application, existing);
             if (inheritForwardAuthToken) {
                 application.setForwardAuthToken(existing != null && existing.isForwardAuthToken());
+                requireSameInterceptors(application, existing);
             }
             List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
             purgeableExternalServices.setValue(externalServices);
@@ -291,6 +296,22 @@ public class ApplicationService {
         externalServiceService.purgeApplicationCredentials(resource, purgeableExternalServices.get());
 
         return Pair.of(meta, toStore.getValue());
+    }
+
+    /**
+     * The application's own interceptors, none when it has no application or the body sent none.
+     */
+    public static List<String> interceptorsOf(@Nullable Application application) {
+        return application == null || application.getInterceptors() == null ? List.of() : application.getInterceptors();
+    }
+
+    /**
+     * Only DIAL admins set interceptors: anyone else writes an application with exactly the ones it has.
+     */
+    public static void requireSameInterceptors(Application application, @Nullable Application existing) {
+        if (!interceptorsOf(existing).equals(interceptorsOf(application))) {
+            throw new PermissionDeniedException(ONLY_ADMINS_SET_INTERCEPTORS);
+        }
     }
 
     // app_identity and allow_user_external_services are admin-managed: a field the mode does not honor is
@@ -528,7 +549,7 @@ public class ApplicationService {
 
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;
         consumer.accept(application);
-        requireRenderableOverridePaths(application);
+        requireValidInterfaces(destination, application);
         application.setName(destination.getUrl());
 
         boolean isPublicOrReview = isPublicOrReview(destination);
@@ -804,21 +825,47 @@ public class ApplicationService {
     }
 
     /**
-     * An {@code overridePaths} entry Core cannot render is refused before the application is written,
-     * so the blob never holds config the next config rebuild would drop.
+     * Interfaces the next config rebuild would drop (an {@code overridePaths} entry Core cannot render, a plugin url
+     * with no name or where no plugin serves) are refused before the application is written to {@code resource}, so the
+     * blob never holds them. So is a plugin url in its {@code baseUrl}, an interface or an inline translator outside the
+     * platform bucket: a plugin runs platform code, possibly with the pod's credentials, so only the platform config may
+     * name one.
      */
-    private static void requireRenderableOverridePaths(Application application) {
+    private static void requireValidInterfaces(ResourceDescriptor resource, Application application) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validateOverridePaths(application, warnings);
+        ConfigPostProcessor.validateInterfaces(application, warnings);
         if (!warnings.isEmpty()) {
             ValidationWarning warning = warnings.get(0);
             throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, warning.getField() + ": " + warning.getMessage());
         }
+        String pluginError = pluginOutsidePlatformError(resource.getBucketName(), application);
+        if (pluginError != null) {
+            throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, pluginError);
+        }
+    }
+
+    /**
+     * The error of an application outside the platform bucket that names a plugin, null for any other; checked by every
+     * write and by {@code /v1/admin/validate}.
+     */
+    public static String pluginOutsidePlatformError(String bucket, Application application) {
+        return !ResourceDescriptor.PLATFORM_BUCKET.equals(bucket) && hasEmbeddedInterface(application)
+                ? "A plugin is reserved for platform deployments" : null;
+    }
+
+    private static boolean hasEmbeddedInterface(Application application) {
+        if (DeploymentEndpointUtil.isPluginUrl(application.getBaseUrl())) {
+            return true;
+        }
+        Map<String, DeploymentInterface> interfaces = application.getInterfaces();
+        return interfaces != null && interfaces.values().stream()
+                .anyMatch(declared -> declared != null && (DeploymentEndpointUtil.isPluginUrl(declared.getBaseUrl())
+                        || ConfigPostProcessor.hasInlineTranslatorPlugin(declared)));
     }
 
     private void prepareApplication(ResourceDescriptor resource, Application application, boolean preserveForwardAuthToken) {
         verifyApplication(resource);
-        requireRenderableOverridePaths(application);
+        requireValidInterfaces(resource, application);
         boolean platformBucket = ResourceDescriptor.PLATFORM_BUCKET.equals(resource.getBucketName());
         // platform hosts migrated config-file apps (and future API-managed equivalents), which are
         // inherently endpoint-based; function-type apps have no legitimate reason to live there, and

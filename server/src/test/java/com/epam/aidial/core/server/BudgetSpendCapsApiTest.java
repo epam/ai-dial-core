@@ -846,6 +846,14 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
         assertAmount("0", userUsage(USER_A).get("budgets").get(0).get("day").get("used"));
     }
 
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testUserUsageNamesTheCostObject() {
+        budget("projA/a1", 10, "10", null);
+
+        assertEquals("projA", userUsage(USER_A).get("costObject").asText());
+    }
+
     // --- helpers ------------------------------------------------------------------------------------------------------------------
 
     // an API key stays on the role cost limit in every mode, so it reaches the models whatever the budgets

@@ -5,6 +5,10 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.log.AnalyticsSettings;
+import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -61,10 +65,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -126,6 +132,8 @@ public class ResourceBaseTest {
     CloseableHttpClient client;
     String bucket;
     long time = 0;
+    // every analytics row this test's Core wrote, in order
+    final List<AnalyticsLogContext> analyticsRows = new CopyOnWriteArrayList<>();
     long id = 123;
 
     int serverPort;
@@ -238,7 +246,16 @@ public class ResourceBaseTest {
                         return Future.failedFuture("Not authorized");
                     });
 
-            dial = new AiDial();
+            dial = new AiDial() {
+                @Override
+                protected LogStore createLogStore(AnalyticsSettings analyticsSettings) {
+                    LogStore store = super.createLogStore(analyticsSettings);
+                    return logContext -> {
+                        analyticsRows.add(logContext);
+                        store.save(logContext);
+                    };
+                }
+            };
             dial.setSettings(settings);
             dial.setGenerator(this::generate);
             dial.setClock(() -> time);
@@ -369,11 +386,46 @@ public class ResourceBaseTest {
     }
 
     /**
+     * The analytics rows written so far, once there are at least {@code count}. Core writes a row after it has
+     * answered, so a test that reads rows right after its request waits for them, up to five seconds.
+     */
+    List<AnalyticsLogContext> awaitAnalyticsRows(int count) {
+        awaitCondition(() -> analyticsRows.size() >= count);
+        return List.copyOf(analyticsRows);
+    }
+
+    /**
+     * Waits up to five seconds for {@code condition}, and fails the test when it does not hold by then.
+     */
+    @SneakyThrows
+    static void awaitCondition(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("The condition did not hold within five seconds");
+            }
+            Thread.sleep(10);
+        }
+    }
+
+    /**
      * Override in subclasses to inject additional settings overrides before {@code dial.start()}.
      * Default returns an empty JsonObject. Merged into the runtime settings via {@code mergeIn(true)}.
      */
     protected JsonObject additionalSettingsOverrides() {
         return new JsonObject();
+    }
+
+    /**
+     * Shares {@code url}, which "admin" owns, with "user" through an accepted invitation link.
+     */
+    protected void shareWithUser(String url, String permissions) {
+        Response response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                {"invitationType": "link", "resources": [{"url": "%s", "permissions": %s}]}
+                """.formatted(url, permissions), "authorization", "admin");
+        verify(response, 200);
+        InvitationLink link = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        verify(send(HttpMethod.GET, link.invitationLink(), "accept=true", null, "authorization", "user"), 200);
     }
 
     static void verify(Response response, int status) {

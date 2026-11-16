@@ -18,6 +18,8 @@ import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSe
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -26,11 +28,8 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -44,7 +43,7 @@ import java.util.List;
  * {@link MessagesCountTokensController}): the whole {@link #handle()} flow — body parsing,
  * deployment resolution + the {@code anthropicMessages} 503 gate, the enhancement chain,
  * upstream-route preparation and the send/retry loop. Subclasses implement
- * {@link #processResponse(HttpClientResponse)} and may override {@link #verifyLimit()}.
+ * {@link #processResponse(ProxyResponse)} and may override {@link #verifyLimit()}.
  */
 @Slf4j
 abstract class MessagesBaseController extends BaseDeploymentPostController {
@@ -79,7 +78,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                     String model = request.getModel();
                     return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
                             .compose(ignore -> decisions.decideIfRouter(InterfaceType.ANTHROPIC_MESSAGES,
-                                    Future.succeededFuture(context.getOriginalRequestBody()), this::reenterWithCandidate))
+                                    Future.succeededFuture(context.getOriginalRequestBody()), request.getTree(), this::reenterWithCandidate))
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request))
                             .otherwise(error -> handleRequestError(model, error));
                 })
@@ -138,10 +137,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     protected MessagesApiRequest parseBody(Buffer body) {
         log.info("Received body from client. Length: {}", body.length());
         try {
-            context.setRequestBodyWithTimestamp(body);
             context.setOriginalRequestBody(body);
-            ObjectNode tree = ProxyUtil.parseObject(body);
-            return new MessagesApiRequest(tree);
+            return new MessagesApiRequest(ProxyUtil.parseRequestBody(context, body));
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -190,7 +187,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         // Enhancement functions update the api key, and it should be saved after that
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-        context.setRequestBody(Buffer.buffer(request.serialize()));
+        setProcessedRequestBody(request, true, InterfaceType.ANTHROPIC_MESSAGES);
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
@@ -216,7 +213,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         }
     }
 
-    private void handleProxyRequest(HttpClientRequest proxyRequest) {
+    private void handleProxyRequest(ProxyRequest proxyRequest) {
         context.setProxyRequest(proxyRequest);
         context.setProxyConnectTimestamp(System.currentTimeMillis());
 
@@ -225,11 +222,12 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 .onFailure(this::handleProxyResponseError);
     }
 
-    private void handleProxyResponse(HttpClientResponse proxyResponse) {
+    private void handleProxyResponse(ProxyResponse proxyResponse) {
         UpstreamRoute upstreamRoute = context.getUpstreamRoute();
         int responseStatusCode = proxyResponse.statusCode();
         if (isRetriableError(responseStatusCode)) {
             upstreamRoute.fail(proxyResponse);
+            proxyResponse.discard();
             sendRequest(); // try next
             return;
         }
@@ -252,7 +250,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         context.getUpstreamRoute().fail(HttpStatus.BAD_GATEWAY);
         log.warn("Proxy failed to receive response header from origin. Deployment: {}. Address: {}. Error:",
                 context.getDeployment().getName(),
-                context.getProxyRequest().connection().remoteAddress(),
+                context.getProxyRequest().remoteAddress(),
                 error);
 
         sendRequest(); // try next
@@ -261,7 +259,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     /**
      * Route-specific response handling, invoked after the shared retry/succeed/fail bookkeeping.
      */
-    protected abstract void processResponse(HttpClientResponse proxyResponse);
+    protected abstract void processResponse(ProxyResponse proxyResponse);
 
     protected Void handleRequestError(String deploymentId, Throwable error) {
         error = decisions.nextCandidateOrError(error, e -> handleRequestError(deploymentId, e));

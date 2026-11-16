@@ -45,6 +45,9 @@
       "softValidation": false
     }
   },
+  "plugins": {
+    "dir": "plugins"
+  },
   "identityProviders": {
   },
   "storage": {

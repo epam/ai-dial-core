@@ -17,6 +17,9 @@
       "displayVersion": "0613",
       "description": "The internal GPT-4 deployment.",
       "iconUrl": "http://icons/gpt-4.svg",
+      "provider": "Azure",
+      "deprecationDate": "2027-06-30",
+      "endOfService": "2027-12-31",
       "pricing": {"unit": "token", "prompt": "0.01", "completion": "0.02"}
     },
     "closed-model": {
