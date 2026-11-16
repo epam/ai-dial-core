@@ -1,12 +1,9 @@
 package com.epam.aidial.core.server.data.permission;
 
 import com.epam.aidial.core.config.ResourceAccessType;
-import com.epam.aidial.core.server.data.ApiKeyData;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -67,36 +64,5 @@ class PerRequestSharedDataTest {
         PerRequestSharedData decoded = mapper.readValue(legacyJson, PerRequestSharedData.class);
         assertFalse(decoded.lent(), "legacy JSON must deserialise with lent=false");
         assertEquals(Set.of(ResourceAccessType.READ), decoded.permissions());
-    }
-
-    @Test
-    void bakeLentGrantCreatesLentEntry() {
-        Map<String, PerRequestSharedData> grants = new HashMap<>();
-        ApiKeyData.bakeLentGrant(grants, "gpt-4");
-        PerRequestSharedData data = grants.get("gpt-4");
-        assertTrue(data.lent());
-        assertTrue(data.permissions().contains(ResourceAccessType.READ));
-    }
-
-    @Test
-    void bakeLentGrantMergesIntoExistingEntry() {
-        Map<String, PerRequestSharedData> grants = new HashMap<>();
-        // pre-existing regular READ from a resource dependency
-        grants.put("gpt-4", new PerRequestSharedData(Set.of(ResourceAccessType.READ), false));
-        ApiKeyData.bakeLentGrant(grants, "gpt-4");
-        PerRequestSharedData merged = grants.get("gpt-4");
-        assertTrue(merged.lent(), "merge must set lent=true");
-        assertTrue(merged.permissions().contains(ResourceAccessType.READ));
-    }
-
-    @Test
-    void bakeLentGrantDoesNotMutateExistingEntry() {
-        Map<String, PerRequestSharedData> grants = new HashMap<>();
-        PerRequestSharedData existing = new PerRequestSharedData(Set.of(ResourceAccessType.READ), false);
-        grants.put("gpt-4", existing);
-        ApiKeyData.bakeLentGrant(grants, "gpt-4");
-        // the original object must not have been mutated
-        assertFalse(existing.lent(), "original entry must not be mutated (copy-on-write)");
-        assertNotSame(existing, grants.get("gpt-4"), "must replace with a fresh object");
     }
 }

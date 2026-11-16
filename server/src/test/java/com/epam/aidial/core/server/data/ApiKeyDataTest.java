@@ -61,9 +61,9 @@ class ApiKeyDataTest {
     }
 
     @Test
-    void interceptorOfAResourceTargetCarriesTheLending() {
+    void interceptorOfResourceTargetCarriesTheLending() {
         ApiKeyData incoming = perRequestKey();
-        ApiKeyData.bakeLentGrant(incoming.getPerRequestSharedResources(), RESOURCE_TARGET);
+        incoming.getPerRequestSharedResources().put(RESOURCE_TARGET, new PerRequestSharedData(ResourceAccessType.READ_ONLY, true));
         // a plain grant on the same url shared to the interceptor must not replace the carried lent grant
         incoming.getPerRequestReceivers().put("interceptor", sharing(RESOURCE_TARGET, ResourceAccessType.READ_ONLY));
         Model interceptor = new Model();

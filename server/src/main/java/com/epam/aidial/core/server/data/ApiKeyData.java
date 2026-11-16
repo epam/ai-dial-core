@@ -141,26 +141,17 @@ public class ApiKeyData {
         if (context.getDeployment() instanceof AliasPass pass) {
             // Grant the target pass the right to call the target: READ in perRequestSharedResources, lent=true so
             // that only this alias-authorized path bypasses accessibleByPerRequestKey and rate-limit role matching.
-            bakeLentGrant(grants, pass.getTargetName());
-            return;
+            grants.merge(pass.getTargetName(), new PerRequestSharedData(new HashSet<>(ResourceAccessType.READ_ONLY), true),
+                    PerRequestSharedData::merge);
+        } else {
+            // An interceptor in front of the target, or the target's own callback (e.g. a translator's), calls
+            // Core back for the same target: carry the lent grant forward so the target remains reachable.
+            ApiKeyData apiKeyData = context.getApiKeyData();
+            String lentKey = findLentGrantKey(apiKeyData, receiver, context.getInitialDeployment());
+            if (lentKey != null) {
+                grants.merge(lentKey, apiKeyData.getPerRequestSharedResources().get(lentKey), PerRequestSharedData::merge);
+            }
         }
-        // An interceptor in front of the target, or the target's own callback (e.g. a translator's), calls
-        // Core back for the same target: carry the lent grant forward so the target remains reachable.
-        ApiKeyData apiKeyData = context.getApiKeyData();
-        String lentKey = findLentGrantKey(apiKeyData, receiver, context.getInitialDeployment());
-        if (lentKey != null) {
-            grants.merge(lentKey, apiKeyData.getPerRequestSharedResources().get(lentKey), PerRequestSharedData::merge);
-        }
-    }
-
-    /**
-     * Writes a lent grant for {@code targetName} into {@code grants}, merging into any existing entry so that
-     * copy-on-write semantics are preserved: the entry returned is always a fresh object when it carries {@code lent=true}.
-     */
-    public static void bakeLentGrant(Map<String, PerRequestSharedData> grants, String targetName) {
-        grants.merge(targetName,
-                new PerRequestSharedData(new HashSet<>(ResourceAccessType.READ_ONLY), true),
-                PerRequestSharedData::merge);
     }
 
     /**

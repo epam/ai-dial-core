@@ -29,7 +29,7 @@ class DeploymentServiceLentTest {
 
         // lent grant without a per-request key must not count
         Map<String, PerRequestSharedData> grants = new HashMap<>();
-        ApiKeyData.bakeLentGrant(grants, "gpt-4");
+        grants.put("gpt-4", new PerRequestSharedData(ResourceAccessType.READ_ONLY, true));
         apiKeyData.setPerRequestSharedResources(grants);
         assertFalse(DeploymentService.isLent(context, target), "a lending without a per-request key");
 
