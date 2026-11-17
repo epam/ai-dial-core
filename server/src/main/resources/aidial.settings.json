@@ -46,7 +46,9 @@
     }
   },
   "plugins": {
-    "dir": "plugins"
+    "dir": "plugins",
+    "include": ["*"],
+    "exclude": []
   },
   "identityProviders": {
   },

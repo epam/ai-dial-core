@@ -3,13 +3,9 @@
 ### Requirement: Plugin providers loaded at start
 Core SHALL load plugin providers once at start: those on its own classpath and those of the plugin directories under
 the directory named by the static setting `plugins.dir` (built-in default `plugins`, relative to the working
-directory; a missing directory adds none). A plugin directory is `<plugins.dir>/<group>/<plugin>`, identified by
-`<group>/<plugin>`, and holds the plugin's jars. Each plugin directory SHALL be loaded apart from the others: its code
-sees its own jars and Core's classes, with Core's copy of a class winning, and not the jars of another plugin
-directory. Core SHALL fail to start when a jar in a plugin directory cannot be loaded, two jars of one plugin
-directory register the same provider class, two providers declare the same `type`, a loaded plugin directory registers
-no provider, or a jar lies directly in `plugins.dir` or directly in a group directory. Providers do not reload while
-Core runs.
+directory). A plugin directory is `<plugins.dir>/<group>/<plugin>`, identified by `<group>/<plugin>`, and holds the
+plugin's jars; a group or plugin directory whose name starts with `.`, or is `lost+found`, is ignored. Providers do
+not reload while Core runs.
 
 #### Scenario: Jar in the directory
 - **WHEN** `<plugins.dir>/custom/echo/` holds a jar whose provider declares type `jar-echo`
@@ -18,6 +14,27 @@ Core runs.
 #### Scenario: Missing directory
 - **WHEN** Core starts with `plugins.dir` pointing to a directory that does not exist
 - **THEN** Core starts, and only the providers of its own classpath are loaded
+
+#### Scenario: Filesystem directories ignored
+- **WHEN** `<plugins.dir>/custom/echo/` holds a jar whose provider declares type `jar-echo`, and the empty directories
+  `<plugins.dir>/lost+found/`, `<plugins.dir>/custom/lost+found/` and `<plugins.dir>/custom/.cache/` exist
+- **THEN** Core starts and serves type `jar-echo`
+
+## ADDED Requirements
+
+### Requirement: Plugin directories loaded apart
+Each plugin directory SHALL be loaded apart from the others: its code sees its own jars and Core's classes, with
+Core's copy of a class winning, and not the jars of another plugin directory.
+
+#### Scenario: Two plugins with their own copy of a class
+- **WHEN** `<plugins.dir>/custom/a/` and `<plugins.dir>/custom/b/` each hold a provider and a different class of the
+  same name
+- **THEN** Core starts, and each provider's code gets the class of its own directory
+
+### Requirement: Plugin load errors stop the start
+Core SHALL fail to start when a jar in a plugin directory cannot be loaded, two jars of one plugin directory register
+the same provider class, two providers declare the same `type`, a loaded plugin directory registers no provider, or a
+jar lies directly in `plugins.dir` or directly in a group directory.
 
 #### Scenario: Duplicate provider type
 - **WHEN** `<plugins.dir>/builtin/echo/` and `<plugins.dir>/custom/echo/` each hold a jar whose provider declares
@@ -36,13 +53,6 @@ Core runs.
 #### Scenario: Plugin directory without a provider
 - **WHEN** `<plugins.dir>/custom/empty/` holds no jar that registers a provider
 - **THEN** Core does not start, with a message naming `custom/empty`
-
-#### Scenario: Two plugins with their own copy of a class
-- **WHEN** `<plugins.dir>/custom/a/` and `<plugins.dir>/custom/b/` each hold a provider and a different class of the
-  same name
-- **THEN** Core starts, and each provider's code gets the class of its own directory
-
-## ADDED Requirements
 
 ### Requirement: Plugin directories included and excluded
 Core SHALL load a plugin directory only when its id `<group>/<plugin>` matches a pattern of the static setting

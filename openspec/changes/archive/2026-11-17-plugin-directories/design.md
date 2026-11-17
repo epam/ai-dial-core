@@ -100,3 +100,50 @@ to measure.
 ## Open Questions
 
 - None for this change.
+
+## Implementation notes
+
+- **Code drift.** None: since ccc370e47 only 33d8e210a (CI and docs of the plugin API publish) landed, and it does not
+  touch `PluginRegistry`, `AiDial.start`, the settings or the `Dockerfile`. The spec delta still starts from the
+  current text of "Plugin providers loaded at start".
+- **`load(JsonObject settings)`, not `load(Path, List, List)` plus a helper in `AiDial` (D5, D6).** `AiDial.start`
+  passes `settings("plugins")`, as it does for `FileConfigStore` (`settings("config")`) and
+  `ApplicationOperatorService` (`settings("applications")`). `PluginRegistry` reads `dir`, `include` and `exclude`
+  with their code defaults (`plugins`, `*`, none) and parses the array or comma-separated string form, so
+  `PluginRegistryTest` tests the string form through the real path, and `AiDial` gains no package-private helper. The
+  two tests that loaded only the classpath providers (`ConfigPostProcessorTest`, `PluginManagerTest`) now pass
+  `{"dir": "no-plugins-dir"}`.
+- **A plugin directory keeps the providers its jars register, by class name, not by class loader (D4).** The test
+  jars carry only the registration; the provider classes stay on the test classpath, so under parent-first loading
+  Core's class loader defines them and a filter on `getClass().getClassLoader() == loader` would drop every one.
+  `listJars` already reads each jar's registrations for the duplicate-class check; `load` keeps, from the plugin
+  directory's `ServiceLoader`, the providers whose class name one of those jars registers, and filters before
+  creating them, so the classpath's providers are not created again per plugin directory. In production the provider
+  classes are in the plugin's jars, and both filters keep the same providers. One edge differs: a jar that registers a
+  class of Core's classpath that the classpath also registers now fails the start with a duplicate type naming "the
+  classpath" and the plugin directory, where the loader filter would drop it silently.
+- **Duplicate type message.** It names both providers with their origin, `plugin directory <group>/<plugin>` or `the
+  classpath`: "Plugin providers A of plugin directory builtin/echo and B of plugin directory custom/echo both declare
+  type 'jar-echo'".
+- **A misplaced jar fails the start whatever `exclude` says.** Exclusion applies to plugin directories; a jar directly
+  in `plugins.dir` or in a group directory belongs to none, and the spec rule is unconditional.
+- **Pattern check.** A pattern is `*` or `<name>/<name>`, where a name is `*` or has no `/`, `*`, whitespace,
+  bracket, quote or comma: `builtin`, `builtin/`, `/echo`, `a/b/c`, `built*/echo`, `" builtin/echo"` and
+  `'builtin/echo'` stop the start with a message naming the pattern and the setting. The refused characters come from
+  the review: `aidial.plugins.exclude=[builtin/echo]` is not JSON, reaches Core as a string, and with a looser name
+  would split into `[builtin/echo` and match nothing, leaving the plugin loaded. Array items are taken as given; the
+  string form drops blank parts and strips spaces around each part.
+- **Dot directories and `lost+found` are ignored (added after the review).** A formatted volume mounted at `custom`
+  carries `custom/lost+found`, empty or unreadable; as a plugin directory it would stop the start ("registers no
+  plugin provider" or a listing error), and at the top level no `exclude` could skip it, since a group is listed before
+  any pattern applies. `listPluginDirs` skips a group or plugin directory whose name starts with `.` or is
+  `lost+found`; the spec delta and the docs' Layout section say so, and `testDotAndLostAndFoundDirectoriesAreIgnored`
+  covers it.
+- **Isolation test.** "Two plugins with their own copy of a class" needs classes that are not on the test classpath,
+  since a class there always wins under parent-first loading. `PluginRegistryTest.writeIsolatedPlugin` compiles two
+  small classes per plugin directory at test time with the JDK compiler (`javax.tools.ToolProvider`) and packs them
+  into the jar; `JarEchoPluginProvider.writeJar` stays as it is.
+- **Test names.** Checkstyle's abbreviation rule refuses "APlugin" and "AMounted": the tests are
+  `testJarOutsidePluginDirectoryFailsTheLoad` and `testExcludedBuiltInIsReplacedByMountedBuild`. One test beyond the
+  tasks, `testCommaSeparatedPatternsAreEachApplied`, covers a string of several patterns with spaces and a trailing
+  comma.
