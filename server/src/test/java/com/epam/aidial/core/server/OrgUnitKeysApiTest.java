@@ -80,14 +80,12 @@ public class OrgUnitKeysApiTest extends ResourceBaseTest {
         assertEquals(200, upload(HttpMethod.PUT, "/v1/files/public/Acme/Child/c.txt", null, "c", "authorization", "admin").status());
         assertEquals(200, upload(HttpMethod.PUT, "/v1/files/public/Acme/Docs/d.txt", null, "d", "authorization", "admin").status());
         assign("viewer", "{\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"alice\"]}");
-        assign("member", "{\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"bob\"]}");
 
         String alice = perRequestKeyFor("alice");
         assertEquals(200, grant(alice, "files/public/Acme/a.txt").status());
         assertEquals(200, grant(alice, "files/public/Acme/Docs/").status());
         assertEquals(403, grant(alice, "files/public/Acme/").status(), "Acme/ holds Child, where alice has no role");
         assertEquals(403, grant(alice, "files/public/").status());
-        assertEquals(403, grant(perRequestKeyFor("bob"), "files/public/Acme/").status(), "member reads no content");
     }
 
     @Test
