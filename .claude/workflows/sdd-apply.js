@@ -17,7 +17,7 @@ const id = typeof args === 'string' ? args : args && args.id
 if (!id) throw new Error('args: a change id')
 const CHANGE = `openspec/changes/${id}`
 
-const CHECKS = `From the repository root in Git Bash, with JAVA_HOME pointing at a JDK 21 (CLAUDE.md "Checks"):
+const CHECKS = `From the repository root in Git Bash, with JAVA_HOME pointing at a JDK 25 (CLAUDE.md "Checks"):
 1. ./gradlew checkstyleMain checkstyleTest   (must pass)
 2. ./gradlew :server:test --tests "<each test class the change adds or touches>" (and :config:test or :storage:test when
    those modules change). Not the full suite: it runs in CI after the push. List the classes you ran.
