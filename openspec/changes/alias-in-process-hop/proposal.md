@@ -3,37 +3,49 @@
 ## Why
 
 Core serves the target of an alias in a second pass that it reaches over HTTP to its own address
-(`backgroundJob.localBaseUrl`). For every alias call Core writes the body as an HTTP client, reads it back as an HTTP
-server, parses it again, and looks the per-request key up in Redis again. A chain such as tier alias, then a router in
-decision mode, then an alias of the chosen model, makes two such calls per user request.
+(`backgroundJob.localBaseUrl`). For every alias call Core serializes the body, writes it as an HTTP client, reads it
+back as an HTTP server, parses it again, and looks the per-request key up in Redis again. A chain such as tier alias,
+then a router in decision mode, then an alias of the chosen model, makes two such calls per user request. Every pass
+of that chain also logs the same request and response bodies in its analytics row.
 
-Core already runs a pass in process for an origin plugin's call (`embedded-call`). The A/B in that change's review
-measured a Core-to-Core hop served in process at 16.6 ms less Core CPU per user request than the same hop over HTTP
-(Anthropic Messages, 383 KB requests). The alias hop can reuse that machinery: the target pass stays a pass of its
-own, only the HTTP request to Core's own address goes away.
+Core already runs a pass in process for an origin plugin's call (`embedded-call`). The review of that change
+estimated such a child pass at about 11 to 17 ms less Core CPU than the HTTP pass it replaced, at 383 KB requests.
+The alias hop can reuse that machinery: the target pass stays a pass of its own, only the HTTP request to Core's own
+address goes away.
 
 ## What Changes
 
-- For chat completions, completions, embeddings, Responses (not in background) and Messages, the alias pass hands its
-  request to the target pass in process: an in-memory request dispatched by Core's own controller selection,
-  authenticated by the alias pass's per-request key record, with the parsed body handed over as a tree. No HTTP
-  request reaches Core's own address for these calls.
-- An alias pass that hands its body over as a tree no longer serializes it. Its analytics row then holds the request
-  body as the alias pass received it; today it holds the body with the target's name in `model`.
-- Everything else an alias forwards keeps going over HTTP to Core's own address, unchanged: MCP
-  (`/v1/deployments/<alias>/mcp`, `/v1/toolset/<alias>/mcp`), the feature endpoints (`tokenize`, `truncate_prompt`,
-  `configuration`, `rate`), Responses with `background: true`, and the stored-response operations.
-- Everything the alias spec says about an alias call stays as it is: two passes, the execution path
-  `[alias, target]`, one token-stats span and one analytics row per pass, limits and cost charged by the target pass
-  only, the target's answer relayed, access granted to the target pass only.
+- For chat completions, completions, embeddings, Responses (`/openai/v1/responses` and `/openai/responses`, not in
+  background) and Messages (not `count_tokens`), the alias pass hands its request to the target pass in process: an
+  in-memory request dispatched by Core's own controller selection, authenticated by the alias pass's per-request key
+  record, with the parsed body handed over as a tree. No HTTP request reaches Core's own address for these calls, and
+  the alias pass no longer serializes the body.
+- The analytics row of an alias pass has no `request.body`, `response.body` or `assembled_response`, whatever the
+  transport. The target pass's row keeps its bodies, also when it runs in process, so a chain logs the bodies once, in
+  the target's row. **Behaviour change** for analytics consumers that read bodies from alias rows.
+- The target pass of an in-process alias call has no HTTP server span. It writes its span attributes (`gen_ai.*`,
+  usage, cost) and its log-line enrichment on the alias pass's server span, which then shows the target's values.
+- Deliberate differences, all toward what a direct call of the target does:
+  - The target's origin no longer receives the alias pass's `X-DIAL-OVERRIDE-NAME`.
+  - The caller's answer no longer carries the target pass's copies of `Access-Control-Allow-Origin`,
+    `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID` next to the alias pass's own.
+  - A file the target pass shares with the alias pass from its answer is shared on with the alias's caller, as on a
+    direct call. Over HTTP the alias pass never saw that grant.
+  - A client gone before the answer cancels the target pass at once.
+- Everything else an alias forwards keeps going over HTTP to Core's own address, unchanged: MCP, the feature
+  endpoints (`tokenize`, `truncate_prompt`, `configuration`, `rate`), Messages `count_tokens`, Responses with
+  `background: true`, and the stored-response operations.
+- Unchanged: two passes, the execution path `[alias, target]`, one token-stats span and one analytics row per pass,
+  limits and cost charged by the target pass only, the target's answer relayed, access granted to the target pass only.
 
 Out of scope, each a later change if wanted:
 
-- Serving MCP, the feature endpoints and background Responses of an alias in process.
+- Serving MCP, the feature endpoints, `count_tokens` and background Responses of an alias in process.
 - Keeping the alias pass's per-request key out of Redis. The alias pass still stores it (one write) and deletes it
   (one delete), because the target pass's attachment grants update the stored key.
 - Serving an alias call in one pass (no alias pass at all).
-- Changing what other in-process passes (origin plugin calls) serialize.
+- An OTel span of its own for an in-process target pass.
+- Changing what origin plugin calls serialize or log.
 
 ## Capabilities
 
@@ -43,21 +55,27 @@ None.
 
 ### Modified Capabilities
 
-- `deployment-aliases`: one ADDED requirement: the target pass of an alias call is served in process for the
-  create operations, with no HTTP request to Core's own address, and the alias pass's analytics row holds the body
-  it received. The existing requirements are unchanged.
+- `deployment-aliases`: ADDED requirements: the target pass served in process for the create operations; the
+  headers of an in-process alias call; attachments shared on through an alias.
+- `analytics-log`: ADDED "Rows without bodies for an alias pass"; MODIFIED "Bodies in the analytics row" (the alias
+  exception) and "Rows without bodies for an in-process child pass" (the target pass of an alias call is not such a
+  child pass).
+- `router-deployment`: MODIFIED "Decide request of an in-process call", which now also covers a decision router that
+  is the target of an in-process alias call.
 
 ## Impact
 
-- Code: `server` module. The alias pass's request (`BaseDeploymentPostController`), the origin client
-  (`ProxyClient`), and the embedded request classes it reuses (`EmbeddedProxyRequest`, `VertxHostDelegate`).
-  No config, settings or API change. `backgroundJob.localBaseUrl` keeps its meaning for background polling and for the
-  alias requests that stay on HTTP.
-- Records: per alias call, one HTTP request into Core fewer, one Redis GET fewer (the target pass's key lookup), one
-  JSON parse and one serialize of the body fewer. The alias row's `request.body` changes as described above.
-- Observability: the target pass no longer has an HTTP server span of its own; it is traced under the alias pass's
-  span, as an origin plugin's call is. Token-stats spans and analytics rows are unchanged.
-- Motivation: the A/B in `openspec/changes/archive/2026-11-03-embedded-call/review.md` (task 7.1), which measured the
-  in-process hop. It covers the create operations of an alias; MCP, features and background Responses are left out.
-  There is no GitHub issue yet; one is needed before the PR leaves draft.
+- Code: `server` module. The alias pass's request and body (`BaseDeploymentPostController`), the origin client
+  (`ProxyClient`), the embedded classes it reuses (`EmbeddedProxyRequest`, `VertxHostDelegate`), and the child-pass
+  checks in the analytics row, the assembled response, span attributes and log enrichment. No config, settings or
+  API change. `backgroundJob.localBaseUrl` keeps its meaning for background polling and for the alias requests that
+  stay on HTTP.
+- Records, per in-process alias call: one HTTP request into Core fewer and one Redis GET fewer (the target pass's key
+  lookup); one parse fewer, and one serialize fewer when the target is not a decision router (a decision router serializes
+  the tree once to stand in for the client's bytes). Analytics: the alias row carries no bodies.
+- Observability: one HTTP server span fewer per in-process alias hop; the target row's `span_id` has no OTel span of
+  its own, as an origin plugin's call has. A dashboard that counts passes by server spans counts fewer.
+- Motivation: the A/B and its estimate in `openspec/changes/archive/2026-11-03-embedded-call/review.md` (task 7.1).
+  This change covers the create operations of an alias; MCP, features, `count_tokens` and background Responses are
+  left out. There is no GitHub issue yet; one is needed before the PR leaves draft.
 - Dependencies: none open. Builds on `embedded-call`, `embedded-decision` and `alias-router-target`, all merged.
