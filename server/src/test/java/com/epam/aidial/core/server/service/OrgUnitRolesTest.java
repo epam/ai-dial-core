@@ -13,7 +13,6 @@ import java.util.Set;
 
 import static com.epam.aidial.core.server.service.OrgUnitRoles.ADMIN;
 import static com.epam.aidial.core.server.service.OrgUnitRoles.EDITOR;
-import static com.epam.aidial.core.server.service.OrgUnitRoles.MEMBER;
 import static com.epam.aidial.core.server.service.OrgUnitRoles.ORG_UNITS;
 import static com.epam.aidial.core.server.service.OrgUnitRoles.PUBLICATIONS;
 import static com.epam.aidial.core.server.service.OrgUnitRoles.READ;
@@ -32,7 +31,7 @@ class OrgUnitRolesTest {
     void testBuiltInRoles() {
         OrgUnitRoles roles = OrgUnitRoles.of(new Config());
 
-        assertEquals(List.of(ADMIN, EDITOR, VIEWER, MEMBER), List.copyOf(roles.roles().keySet()));
+        assertEquals(List.of(ADMIN, EDITOR, VIEWER), List.copyOf(roles.roles().keySet()));
         for (String namespace : OrgUnitRoles.CONTENT_NAMESPACES) {
             for (String role : List.of(ADMIN, EDITOR)) {
                 assertTrue(roles.allows(List.of(role), READ, namespace), role + " " + namespace);
@@ -47,14 +46,13 @@ class OrgUnitRolesTest {
         for (String namespace : OrgUnitRoles.CONTENT_NAMESPACES) {
             assertTrue(roles.allows(List.of(VIEWER), READ, namespace), namespace);
             assertFalse(roles.allows(List.of(VIEWER), WRITE, namespace), namespace);
-            assertFalse(roles.allows(List.of(MEMBER), READ, namespace), namespace);
         }
-        for (String role : List.of(ADMIN, EDITOR, VIEWER, MEMBER)) {
+        for (String role : List.of(ADMIN, EDITOR, VIEWER)) {
             assertTrue(roles.allows(List.of(role), READ, ORG_UNITS), role);
             assertFalse(roles.allows(List.of(role), WRITE, ORG_UNITS), role);
         }
-        assertTrue(roles.covers(List.of(ADMIN), MEMBER));
-        assertFalse(roles.covers(List.of(MEMBER), VIEWER));
+        assertTrue(roles.covers(List.of(ADMIN), VIEWER));
+        assertFalse(roles.covers(List.of(VIEWER), EDITOR));
     }
 
     @Test
@@ -84,7 +82,7 @@ class OrgUnitRolesTest {
 
         OrgUnitRoles roles = OrgUnitRoles.of(config);
 
-        assertEquals(List.of(ADMIN, EDITOR, VIEWER, MEMBER, "auditor"), List.copyOf(roles.roles().keySet()));
+        assertEquals(List.of(ADMIN, EDITOR, VIEWER, "auditor"), List.copyOf(roles.roles().keySet()));
         assertTrue(roles.allows(List.of(EDITOR), WRITE, "files"));
         assertFalse(roles.allows(List.of(EDITOR), READ, "files"));
         assertFalse(roles.allows(List.of(EDITOR), WRITE, "prompts"));
@@ -104,9 +102,9 @@ class OrgUnitRolesTest {
         assertEquals(Map.of("files", Set.of(READ), "prompts", Set.of(READ, WRITE)), roles.resolvePermissions(List.of("auditor")));
         assertEquals(List.of("files", "prompts"), List.copyOf(roles.resolvePermissions(List.of("auditor")).keySet()));
         assertEquals(List.of(READ, WRITE), List.copyOf(roles.resolvePermissions(List.of("auditor")).get("prompts")));
-        assertEquals(Map.of(ORG_UNITS, Set.of(READ)), roles.resolvePermissions(List.of(MEMBER)));
-        assertEquals(Set.of(READ, WRITE), roles.resolvePermissions(List.of(MEMBER, "auditor", VIEWER)).get("prompts"));
-        assertEquals(Set.of(READ), roles.resolvePermissions(List.of(MEMBER, "auditor", VIEWER)).get("files"));
+        assertEquals(Map.of(), roles.resolvePermissions(List.of("member")), "no longer built in");
+        assertEquals(Set.of(READ, WRITE), roles.resolvePermissions(List.of("member", "auditor", VIEWER)).get("prompts"));
+        assertEquals(Set.of(READ), roles.resolvePermissions(List.of("member", "auditor", VIEWER)).get("files"));
         assertEquals(Set.of(READ, WRITE), roles.resolvePermissions(List.of(ADMIN)).get(ROLE_ASSIGNMENTS));
         assertEquals(Map.of(), roles.resolvePermissions(List.of("approver")));
         assertEquals(Map.of(), roles.resolvePermissions(List.of()));

@@ -76,7 +76,7 @@ configured, nobody creates units.
 
 | Call | Who | What |
 |---|---|---|
-| `GET /v1/org-units/public[/{unit}…][?recursive=true]` | anyone | The shared space or a unit with the units directly below it in `items`; with `recursive`, `items` holds every unit below, parents before children. Admins see every unit; others see a unit where they hold a role, and the units directly below one where they hold `read org-units/**`, as long as they see every unit above it too. Like publications, a unit carries its `author`'s display name and `createdAt` in epoch milliseconds. |
+| `GET /v1/org-units/public[/{unit}…][?recursive=true]` | anyone | The shared space or a unit with the units directly below it in `items`; with `recursive`, `items` holds every unit below, parents before children. Admins see every unit; others see a unit where they hold a role, every unit above one, and the units directly below one where they hold `read org-units/**`, as long as they see every unit above it too. Like publications, a unit carries its `author`'s display name and `createdAt` in epoch milliseconds. |
 | `POST /v1/org-units/public[/{unit}…]` `{"name": "US Risk", "displayName": "…"}` | admins | Creates a unit under the shared space or a unit; it needs no read rule, as rules grant nothing inside it, and removes the read rules on and under its folder. The body takes only `name` and `displayName`; any other field is refused with 400 naming it. A name follows core's folder-name rule (no control characters or `/ { } "`) and can't start with "." or end with a space or "."; it is unique among sibling units ignoring case; `roles`, `role-assignments` and `rate` are reserved (`rate` would clash with `/v1/{deployment}/rate`). `displayName` has at most 128 characters and no control characters; without one, the unit shows its name. The unit's folder path, with the marker, must fit core's path-size limit in every type tree (400 otherwise), and the parent must be the shared space or an existing unit (404 otherwise). Answers 200 with the unit. Units go at most 4 levels deep: organization, pillar, department, business unit. |
 | `PATCH /v1/org-units/public/{unit}…` `{"displayName": "US Risk Department"}` | admins | Changes what clients show for the unit and answers 200 with the unit, as `GET` does. `displayName` is the only field it takes, with the same limits as on create; a blank one falls back to the unit's name. The name and folder never change, so `name` and any other field are refused with 400 naming the field. |
 | `DELETE /v1/org-units/public/{unit}…[?recursive=true]` | admins | Removes an empty unit; with `recursive`, every unit below it too, deepest first, and they must all be empty. A unit is empty when its folder holds nothing but `.dial_folder` markers in the files tree, empty grouping folders in the skills and projects trees and nothing at all in the other type trees (a deleted skill or project no longer counts); otherwise 409 names up to three items it holds. Without `recursive`, a unit that has units below it is refused with 409. Answers 200 with `{"removed": [<paths, deepest first>]}`. The tree entries, their policies and the markers go, and so do any read rules left in the subtree. To remove a unit that holds content, delete or move the content first. |
@@ -120,7 +120,7 @@ A unit is named two ways. `path` is its address in this API, decoded, without a 
 
 ## Roles
 
-Every unit offers the same roles. Four are built in; `orgUnitRoles` in the dynamic config files can replace any
+Every unit offers the same roles. Three are built in; `orgUnitRoles` in the dynamic config files can replace any
 by name or add more, and changes apply on the next config reload. Units can't change them, and the settings API
 doesn't carry them. A role grants only in the unit it
 is assigned at: a resource belongs to the nearest unit above it, so units below are not covered. Roles are given at a unit
@@ -131,11 +131,10 @@ by role assignments, below.
 | `admin` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills`, `projects`, `publications` and `role-assignments`; `read` on `org-units` |
 | `editor` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects`; `read` on `org-units` |
 | `viewer` | `read` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects`; `read` on `org-units` |
-| `member` | `read` on `org-units` |
 
 `read` and `write publications/**` decide publication requests into the unit; `write role-assignments/**` manages its
 assignments. `read org-units/**` shows the units directly below in the unit list and in the unit folder's listing,
-by name only: `member` lets someone find a unit deeper down without reading anything on the way. `org-units` takes
+by name only. `org-units` takes
 only `read`, as only DIAL admins change units. A role body uses the DIAL 2.0 design's grammar; core evaluates `actions` of `read` and `write` on
 `pathPattern`s of the form `<namespace>/**` with the namespaces above, relative to the unit. A config with anything
 else fails to load, so a reload keeps the previous config. For example:
@@ -211,7 +210,12 @@ don't reach the units below it; what lies under no unit keeps its read rules.
 Listings of shared-space folders show items under no unit as the read rules let the caller see them, and a unit's
 items as its roles do. A child unit's folder shows in its parent's listing when the caller holds a role in the child,
 or `read org-units/**` in the parent; a holder of only that lists the parent's folder with nothing but its child
-units in it. A unit is also reached by its path directly: roles there open it without any role above it.
+units in it.
+
+A person who holds a role in a unit also sees every unit above it, with no assignment there: in the unit list, and in
+listings, where each unit above holds only the child unit on the way down, not its other child units or any content.
+Taking the role away hides them again. Applications acting for the person and API keys don't get this; they reach a
+unit by its path.
 
 Applications and toolsets are edited like any content, every field included, with these limits for anyone who isn't
 a DIAL admin:
@@ -251,6 +255,7 @@ Rules sent with a request into a unit are dropped when it is created or updated,
 Chat's empty list, the rules the admin panel copies onto a moved folder and a cleared rules list all pass. A request
 that held only rules approves to nothing. `POST /v1/ops/publication/rule/list` on a folder inside a unit answers its
 rules, none, to anyone who reads that folder through roles, as Chat asks when a folder is picked to publish into.
+A role in a unit below doesn't count: it opens the folder only to list the way down.
 
 To review, a holder of `read publications/**` in every touched unit may `get` such a request, read (not change) its
 review copies while it is pending, and `list` `publications/public/` to see the pending requests whose `targetFolder`
@@ -267,7 +272,7 @@ menus and buttons without trying calls:
   "adminAccess": "NONE",
   "items": [
     {"id": "0123", "name": "Acme", "displayName": "Acme", "path": "public/Acme", "folder": "public/Acme/",
-     "roles": ["member"], "permissions": {"org-units": ["read"]}},
+     "roles": [], "permissions": {}},
     {"id": "0124", "name": "Risk", "displayName": "Risk", "path": "public/Acme/Risk", "folder": "public/Acme/Risk/",
      "roles": ["editor"], "permissions": {"applications": ["read", "write"], "files": ["read", "write"], "org-units": ["read"]}}
   ]
@@ -276,10 +281,10 @@ menus and buttons without trying calls:
 
 - `adminAccess` is `FULL` when the admin rules match the caller and `NONE` otherwise, also when no admin rules are
   configured.
-- `items` holds the units the caller sees, as `GET /v1/org-units` shows them, and those they hold a role in but reach
-  only by path, without the units above them; parents come before children. A DIAL admin gets every unit.
+- `items` holds the units the caller sees, as `GET /v1/org-units` shows them; parents come before children. A DIAL
+  admin gets every unit.
 - `roles` names the configured roles the caller holds at the unit; a unit seen through `read org-units/**` at its
-  parent has none.
+  parent, or only because the caller holds a role below it, has none.
 - `permissions` maps each namespace to the actions the roles there grant, as roles name them; a DIAL admin gets both
   actions on every namespace. Since roles alone decide inside a unit, these are the caller's rights on everything the
   unit owns: content belongs to the nearest unit above it.
