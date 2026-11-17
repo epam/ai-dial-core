@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.storage.util.UrlUtil;
@@ -130,6 +131,8 @@ public class AliasPasses {
             case MODEL -> modelView(target);
             case APPLICATION -> applicationView(target);
             case TOOLSET -> toolSetView(target);
+            // the target is a router (AliasTargets.validateFields): an entry of the router listings
+            case ROUTER -> new Router();
         };
         copyOperational(target, view);
         copyDisplay(alias, view);

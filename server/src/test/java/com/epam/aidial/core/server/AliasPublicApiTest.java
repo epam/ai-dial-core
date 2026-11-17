@@ -131,6 +131,8 @@ class AliasPublicApiTest extends ResourceBaseTest {
     void publicAliasCannotPointToRouter() {
         String routerAlias = "{\"presentAs\":\"model\",\"userRoles\":[\"default-user\"],\"target\":{\"path\":\"routers/r1\"}}";
         assertBadRequest(routerAlias);
+        // the type router needs a router target, which a public alias cannot have
+        assertBadRequest("{\"presentAs\":\"router\",\"target\":{\"path\":\"applications/public/app\"}}");
         // a platform alias joins the config, where a router target is allowed
         assertEquals(200, admin(HttpMethod.PUT, "/v1/aliases/platform/tier-v1", routerAlias).status());
 

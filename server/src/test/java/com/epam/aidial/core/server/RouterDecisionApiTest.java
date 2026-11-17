@@ -7,8 +7,13 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.service.BackgroundJobService;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
@@ -734,6 +739,110 @@ class RouterDecisionApiTest extends ResourceBaseTest {
                     "X-DIAL-ROUTER-TIER", "hi-end", "content-type", "application/json"), 200);
         }
         assertEquals(List.of("hi-end"), single(this::isDecide).getHeaders().values("X-DIAL-ROUTER-TIER"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerTypeAliasListedAsRouter() throws Exception {
+        Response routers = send(HttpMethod.GET, "/v1/routers", null, null);
+        verify(routers, 200);
+        assertEquals("router", entry(routers, "tier").getString("object"));
+        Response single = send(HttpMethod.GET, "/v1/routers/tier", null, null);
+        verify(single, 200);
+        assertEquals("tier", new JsonObject(single.body()).getString("id"));
+
+        assertEquals("router", entry(send(HttpMethod.GET, "/v1/deployments", null, null), "tier").getString("object"));
+        Response info = send(HttpMethod.GET, "/v1/deployments/tier", null, null);
+        verify(info, 200);
+        assertEquals("router", new JsonObject(info.body()).getString("object"));
+        Response names = send(HttpMethod.GET, "/v1/deployment-names", "type=router", null);
+        verify(names, 200);
+        assertTrue(ProxyUtil.MAPPER.readTree(names.body()).toString().contains("{\"id\":\"tier\",\"object\":\"router\"}"), names.body());
+
+        for (String listing : List.of("/openai/models", "/openai/deployments", "/anthropic/v1/models")) {
+            Response response = send(HttpMethod.GET, listing, null, "");
+            verify(response, 200);
+            assertFalse(response.body().contains("\"tier\""), listing + ": " + response.body());
+        }
+        // its router is missing
+        assertFalse(routers.body().contains("tier-broken"), routers.body());
+        assertFalse(send(HttpMethod.GET, "/v1/deployments", null, null).body().contains("tier-broken"));
+        assertFalse(names.body().contains("tier-broken"), names.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void platformAliasOfTypeRouter() throws Exception {
+        verify(send(HttpMethod.PUT, "/v1/aliases/platform/tier-v2", null,
+                "{\"userRoles\":[\"analysts\"],\"target\":{\"path\":\"routers/r-tier\"}}", "authorization", "admin"), 200);
+
+        Response single = send(HttpMethod.GET, "/v1/routers/tier-v2", null, null);
+        verify(single, 200);
+        assertEquals("router", new JsonObject(single.body()).getString("object"));
+        assertEquals("router", entry(send(HttpMethod.GET, "/v1/routers", null, null), "tier-v2").getString("object"));
+        assertFalse(send(HttpMethod.GET, "/openai/models", null, "").body().contains("\"tier-v2\""));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void messagesThroughRouterTypeAlias() throws Exception {
+        verdict.set("{\"candidates\": [\"claude\"]}");
+        Response response;
+        try (TestWebServer server = upstreamAnswering(MESSAGE.replace("\"role\":\"assistant\",", "\"role\":\"assistant\",\"model\":\"claude-real\","),
+                "application/json")) {
+            response = sendMessages("tier");
+            verify(response, 200);
+        }
+        assertEquals("tier", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+        assertEquals("claude", single(request -> !isDecide(request)).getHeader(DEPLOYMENT_ID));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerTypeAliasFilteredByInterface() {
+        assertTrue(send(HttpMethod.GET, "/v1/deployments", "interface_type=chat", null).body().contains("\"tier\""));
+        assertFalse(send(HttpMethod.GET, "/v1/deployments", "interface_type=embedding", null).body().contains("\"tier\""));
+        assertFalse(send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp", null).body().contains("\"tier\""));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void modelTypeAliasOverRouterIsNoRouterEntry() {
+        assertFalse(send(HttpMethod.GET, "/v1/routers", null, null).body().contains("\"strong\""));
+        verify(send(HttpMethod.GET, "/v1/routers/strong", null, null), 404);
+        assertFalse(send(HttpMethod.GET, "/v1/deployment-names", "type=router", null).body().contains("\"strong\""));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerTypeAliasListedByRole() {
+        assertFalse(send(HttpMethod.GET, "/v1/routers", null, null, "api-key", "plainKey1").body().contains("\"tier\""));
+        verify(send(HttpMethod.GET, "/v1/routers/tier", null, null, "api-key", "plainKey1"), 403);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void onlyConfigAliasesAnswerAsRouters() {
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
+                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, "x");
+        dial.getProxy().getResourceService().putResource(descriptor,
+                "{\"presentAs\":\"model\",\"target\":{\"path\":\"models/gpt-4\"}}", EtagHeader.ANY, "test", false);
+        verify(send(HttpMethod.GET, "/v1/routers/aliases%2Fpublic%2Fx", null, null), 404);
+        // its router is missing
+        verify(send(HttpMethod.GET, "/v1/routers/tier-broken", null, null), 404);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerTypeAliasCalled() throws Exception {
+        Response response;
+        try (TestWebServer server = upstreamAnswering(MODEL_COMPLETION, "application/json")) {
+            response = sendChat("tier");
+            verify(response, 200);
+        }
+        assertEquals("tier", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+        assertEquals("/openai/deployments/gpt-4-real/chat/completions", single(request -> !isDecide(request)).getPath());
+        assertEquals(List.of("tier"), single(this::isDecide).getHeaders().values("X-DIAL-ROUTER-TIER"));
     }
 
     /**
@@ -1593,6 +1702,16 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     private boolean isDecide(RecordedRequest request) {
         return request.getPath().endsWith("/decide");
+    }
+
+    /**
+     * The entry {@code id} of a listing: {@code {"data": [...]}}, or a bare array as {@code /v1/deployments} answers.
+     */
+    private static JsonObject entry(Response listing, String id) {
+        String body = listing.body().strip();
+        JsonArray items = body.startsWith("[") ? new JsonArray(body) : new JsonObject(body).getJsonArray("data");
+        return items.stream().map(JsonObject.class::cast)
+                .filter(item -> id.equals(item.getString("id"))).findFirst().orElseThrow(() -> new AssertionError(listing.body()));
     }
 
     private RecordedRequest single(Predicate<RecordedRequest> filter) {

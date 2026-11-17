@@ -113,9 +113,17 @@ class ConfigPostProcessorAliasTest {
     }
 
     @Test
-    void routerTargetWithoutTypeIsRefused() {
-        assertRefused("\"strong\": {\"target\": {\"path\": \"routers/r1\"}}", "An alias to a router must state presentAs");
-        assertRefused("\"strong\": {\"target\": {\"path\": \"routers/missing\"}}", "An alias to a router must state presentAs");
+    void routerTypeByDefault() {
+        Config config = load("\"tier\": {\"target\": {\"path\": \"routers/r1\"}}");
+        ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY);
+
+        assertEquals(AliasPresentation.ROUTER, config.getAliases().get("tier").getEffectivePresentation());
+    }
+
+    @Test
+    void routerTypeOverModelIsRefused() {
+        assertRefused(alias("tier", "router", "models/gpt-4-internal"), "An alias shown as router must point to routers/<name>");
+        assertRefused(alias("tier", "router", "models/missing"), "An alias shown as router must point to routers/<name>");
     }
 
     @Test

@@ -127,7 +127,8 @@
       "limits": {
         "gpt-4": {"requestHour": 1}
       }
-    }
+    },
+    "plain": {}
   },
   "aliases": {
     "alias-m1": {
@@ -139,10 +140,20 @@
       "userRoles": ["analysts"],
       "defaultHeaders": {"X-DIAL-ROUTER-TIER": "strong"},
       "target": {"path": "routers/r-tier"}
+    },
+    "tier": {
+      "userRoles": ["analysts"],
+      "defaultHeaders": {"X-DIAL-ROUTER-TIER": "tier"},
+      "target": {"path": "routers/r-tier"}
+    },
+    "tier-broken": {
+      "userRoles": ["analysts"],
+      "target": {"path": "routers/missing"}
     }
   },
   "keys": {
     "proxyKey1": {"project": "p1", "role": "analysts"},
-    "securedKey1": {"project": "p1", "role": "analysts", "secured": true}
+    "securedKey1": {"project": "p1", "role": "analysts", "secured": true},
+    "plainKey1": {"project": "p1", "role": "plain"}
   }
 }

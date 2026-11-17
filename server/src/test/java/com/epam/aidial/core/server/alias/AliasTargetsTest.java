@@ -78,6 +78,10 @@ class AliasTargetsTest {
         assertTrue(AliasTargets.fits(AliasPresentation.APPLICATION, new Model()));
         assertTrue(AliasTargets.fits(AliasPresentation.MODEL, new Router()));
         assertTrue(AliasTargets.fits(AliasPresentation.APPLICATION, new Router()));
+        assertTrue(AliasTargets.fits(AliasPresentation.ROUTER, new Router()));
+        assertFalse(AliasTargets.fits(AliasPresentation.ROUTER, new Model()));
+        assertFalse(AliasTargets.fits(AliasPresentation.ROUTER, new Application()));
+        assertFalse(AliasTargets.fits(AliasPresentation.ROUTER, new ToolSet()));
         assertFalse(AliasTargets.fits(AliasPresentation.TOOLSET, new Router()));
         assertTrue(AliasTargets.fits(AliasPresentation.TOOLSET, new ToolSet()));
         assertTrue(AliasTargets.fits(AliasPresentation.TOOLSET, mcpApp));
@@ -106,11 +110,19 @@ class AliasTargetsTest {
     }
 
     @Test
-    void routerTargetNeedsPresentAs() {
-        assertEquals("presentAs", AliasTargets.validateFields(alias(null, "routers/r1")).getFirst().getField());
+    void routerTargetIsOfTypeRouterByDefault() {
+        assertEquals(AliasPresentation.ROUTER, alias(null, "routers/r1").getEffectivePresentation());
+        assertTrue(AliasTargets.validateFields(alias(null, "routers/r1")).isEmpty());
+        assertTrue(AliasTargets.validateFields(alias(AliasPresentation.ROUTER, "routers/r1")).isEmpty());
         assertTrue(AliasTargets.validateFields(alias(AliasPresentation.MODEL, "routers/r1")).isEmpty());
-        // refused without the router in the config too, so no later check sees an alias without a type
-        assertEquals("presentAs", AliasTargets.validate(alias(null, "routers/r1"), new Config()).getFirst().getField());
+    }
+
+    @Test
+    void routerTypeNeedsRouterPath() {
+        // refused on the fields, whether the target exists, is missing or is a resource
+        assertEquals("presentAs", AliasTargets.validateFields(alias(AliasPresentation.ROUTER, "models/x")).getFirst().getField());
+        assertEquals("presentAs", AliasTargets.validate(alias(AliasPresentation.ROUTER, "models/missing"), new Config()).getFirst().getField());
+        assertEquals("presentAs", AliasTargets.validateFields(alias(AliasPresentation.ROUTER, "applications/bucket/app")).getFirst().getField());
     }
 
     private static Alias alias(AliasPresentation presentation, String path) {

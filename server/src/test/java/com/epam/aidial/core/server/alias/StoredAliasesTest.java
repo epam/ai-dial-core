@@ -113,5 +113,9 @@ class StoredAliasesTest {
         assertNull(publicAlias.alias());
         assertEquals("target.path", publicAlias.warnings().getFirst().getField());
         assertNotNull(StoredAliases.parse(router, false).alias());
+        String routerType = "{\"presentAs\":\"router\",\"target\":{\"path\":\"routers/r1\"}}";
+        assertNull(StoredAliases.parse(routerType, true).alias());
+        assertNotNull(StoredAliases.parse(routerType, false).alias());
+        assertNull(StoredAliases.parse("{\"presentAs\":\"router\",\"target\":{\"path\":\"applications/public/app\"}}", true).alias());
     }
 }

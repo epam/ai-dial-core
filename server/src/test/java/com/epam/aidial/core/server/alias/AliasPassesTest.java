@@ -13,6 +13,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.ResourceAuthSettings;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import org.junit.jupiter.api.Test;
@@ -220,6 +221,23 @@ class AliasPassesTest {
         mcp.setAllowedTools(List.of("search"));
         target.setMcp(mcp);
         return target;
+    }
+
+    @Test
+    void routerViewIsRouterWithTheAliasNameAndTheTargetInterfaces() {
+        Router target = new Router();
+        target.setName("r1");
+        target.setBaseUrl("http://router");
+        target.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
+        target.setDefaultHeaders(Map.of("x-secret", "1"));
+
+        Router view = (Router) AliasPasses.view(alias(AliasPresentation.ROUTER), AliasPresentation.ROUTER, target);
+
+        assertEquals("assistant", view.getName());
+        assertEquals(LocalizedValue.of("Assistant"), view.getDisplayName());
+        assertEquals(Set.of("default-user"), view.getUserRoles());
+        assertTrue(DeploymentEndpointUtil.isInterfaceDeclared(view, InterfaceType.OPENAI_CHAT_COMPLETIONS));
+        assertEquals(Map.of(), view.getDefaultHeaders());
     }
 
     private static Alias alias(AliasPresentation presentation) {

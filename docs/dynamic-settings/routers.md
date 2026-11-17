@@ -100,7 +100,10 @@ They have their own listing too:
 * `GET /v1/routers`: `{"data": [...]}` with one entry per router the caller's roles allow.
 * `GET /v1/routers/{router_name}`: that entry; `404` for an unknown name, `403` when the caller's roles do not allow it.
 
-Routers do not appear in the model listings: `GET /openai/models`, `/openai/deployments`, `/openai/applications` and `/anthropic/v1/models`. To list a router under a model name, point an [alias](aliases.md) to it.
+An [alias](aliases.md) of type `router` (`presentAs: router`, or over a router without `presentAs`) is listed with the routers, here and in
+`/v1/deployments` and `/v1/deployment-names`, under its own name.
+
+Routers do not appear in the model listings: `GET /openai/models`, `/openai/deployments`, `/openai/applications` and `/anthropic/v1/models`. To list a router under a model name, point an [alias](aliases.md) with `presentAs: model` to it.
 
 An entry carries `id`, `object: "router"`, `display_name`, `display_version`, `icon_url`, `description`, `intro`, `reference`, `features`, `defaults`, `description_keywords`, `interfaces` (`chat` and `embedding` as above, then the declared interface types), `created_at` and `updated_at`. It never carries the router's url.
 

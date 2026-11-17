@@ -79,12 +79,14 @@ public class AliasTargets {
 
     /**
      * Whether an alias shown as {@code presentation} can stand for {@code target}: a model, an application or a router
-     * for {@code model} and {@code application}, a toolset or an application with {@code mcp} for {@code toolset}.
+     * for {@code model} and {@code application}, a toolset or an application with {@code mcp} for {@code toolset}, a
+     * router for {@code router}.
      */
     public boolean fits(AliasPresentation presentation, Deployment target) {
         return switch (presentation) {
             case MODEL, APPLICATION -> target instanceof Model || target instanceof Application || target instanceof Router;
             case TOOLSET -> target instanceof ToolSet || target instanceof Application app && app.getMcp() != null;
+            case ROUTER -> target instanceof Router;
         };
     }
 
@@ -99,8 +101,9 @@ public class AliasTargets {
 
     /**
      * The problems of the alias's own fields: a {@code target} with a {@code path} that names a deployment of the config
-     * or an application or toolset resource, and not another alias, and a {@code presentAs} when the path names no type
-     * (a router). The target itself is not looked up.
+     * or an application or toolset resource, and not another alias; for the type {@code router}, a {@code routers/}
+     * path, whatever the target, so that such an alias never has a resource or a missing type of target. The target
+     * itself is not looked up.
      */
     public List<ValidationWarning> validateFields(Alias alias) {
         List<ValidationWarning> warnings = new ArrayList<>();
@@ -119,8 +122,9 @@ public class AliasTargets {
         } else if (parse(path) == null) {
             warnings.add(new ValidationWarning(PATH_FIELD,
                     "target.path must be models/<name>, applications/<name>, toolsets/<name>, routers/<name> or a resource url: " + path));
-        } else if (alias.getEffectivePresentation() == null) {
-            warnings.add(new ValidationWarning("presentAs", "An alias to a router must state presentAs: " + path));
+        }
+        if (warnings.isEmpty() && alias.getEffectivePresentation() == AliasPresentation.ROUTER && !isRouterPath(path)) {
+            warnings.add(new ValidationWarning("presentAs", "An alias shown as router must point to routers/<name>: " + path));
         }
         return warnings;
     }
