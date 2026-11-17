@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -33,7 +34,7 @@ public class AliasTargets {
 
     /**
      * The target path as a config deployment reference, or null when the path is not
-     * {@code <models|applications|toolsets>/<name>}.
+     * {@code <models|applications|toolsets|routers>/<name>}.
      */
     @Nullable
     public TargetRef parse(@Nullable String path) {
@@ -49,8 +50,17 @@ public class AliasTargets {
             case "models" -> new TargetRef(ResourceTypes.MODEL, name);
             case "applications" -> new TargetRef(ResourceTypes.APPLICATION, name);
             case "toolsets" -> new TargetRef(ResourceTypes.TOOL_SET, name);
+            case "routers" -> new TargetRef(ResourceTypes.ROUTER, name);
             default -> null;
         };
+    }
+
+    /**
+     * Whether the target path names a config router.
+     */
+    public boolean isRouterPath(@Nullable String path) {
+        TargetRef ref = parse(path);
+        return ref != null && ref.type() == ResourceTypes.ROUTER;
     }
 
     /**
@@ -62,17 +72,18 @@ public class AliasTargets {
             case MODEL -> config.getModels().get(ref.name());
             case APPLICATION -> config.getApplications().get(ref.name());
             case TOOL_SET -> config.getToolsets().get(ref.name());
+            case ROUTER -> config.getRouters().get(ref.name());
             default -> null;
         };
     }
 
     /**
-     * Whether an alias shown as {@code presentation} can stand for {@code target}: a model or an application for
-     * {@code model} and {@code application}, a toolset or an application with {@code mcp} for {@code toolset}.
+     * Whether an alias shown as {@code presentation} can stand for {@code target}: a model, an application or a router
+     * for {@code model} and {@code application}, a toolset or an application with {@code mcp} for {@code toolset}.
      */
     public boolean fits(AliasPresentation presentation, Deployment target) {
         return switch (presentation) {
-            case MODEL, APPLICATION -> target instanceof Model || target instanceof Application;
+            case MODEL, APPLICATION -> target instanceof Model || target instanceof Application || target instanceof Router;
             case TOOLSET -> target instanceof ToolSet || target instanceof Application app && app.getMcp() != null;
         };
     }
@@ -88,7 +99,8 @@ public class AliasTargets {
 
     /**
      * The problems of the alias's own fields: a {@code target} with a {@code path} that names a deployment of the config
-     * or an application or toolset resource, and not another alias. The target itself is not looked up.
+     * or an application or toolset resource, and not another alias, and a {@code presentAs} when the path names no type
+     * (a router). The target itself is not looked up.
      */
     public List<ValidationWarning> validateFields(Alias alias) {
         List<ValidationWarning> warnings = new ArrayList<>();
@@ -106,7 +118,9 @@ public class AliasTargets {
             }
         } else if (parse(path) == null) {
             warnings.add(new ValidationWarning(PATH_FIELD,
-                    "target.path must be models/<name>, applications/<name>, toolsets/<name> or a resource url: " + path));
+                    "target.path must be models/<name>, applications/<name>, toolsets/<name>, routers/<name> or a resource url: " + path));
+        } else if (alias.getEffectivePresentation() == null) {
+            warnings.add(new ValidationWarning("presentAs", "An alias to a router must state presentAs: " + path));
         }
         return warnings;
     }

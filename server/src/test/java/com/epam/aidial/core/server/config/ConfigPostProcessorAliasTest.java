@@ -28,6 +28,7 @@ class ConfigPostProcessorAliasTest {
               "mcp-app": {"mcp": {"endpoint": "http://localhost/mcp"}}
             },
             "toolsets": {"search": {"endpoint": "http://localhost/search"}},
+            "routers": {"r1": {"baseUrl": "http://localhost/router", "mode": "decision", "interfaces": {"openaiChatCompletions": {}}}},
             """;
 
     @Test
@@ -99,6 +100,26 @@ class ConfigPostProcessorAliasTest {
         assertRefused(alias("assistant", "model", "toolsets/search"), "An alias shown as model cannot point to toolsets/search");
         assertRefused(alias("tools", "toolset", "applications/plain-app"),
                 "An alias shown as toolset cannot point to applications/plain-app");
+    }
+
+    @Test
+    void routerTargetIsLoaded() {
+        Config config = load(alias("strong", "model", "routers/r1") + "," + alias("strong-app", "application", "routers/r1"));
+        ConfigPostProcessor.process(config, null);
+
+        assertEquals(AliasPresentation.MODEL, config.getAliases().get("strong").getEffectivePresentation());
+        assertTrue(config.getAliases().containsKey("strong-app"));
+    }
+
+    @Test
+    void routerTargetWithoutTypeIsRefused() {
+        assertRefused("\"strong\": {\"target\": {\"path\": \"routers/r1\"}}", "An alias to a router must state presentAs");
+        assertRefused("\"strong\": {\"target\": {\"path\": \"routers/missing\"}}", "An alias to a router must state presentAs");
+    }
+
+    @Test
+    void routerShownAsToolsetIsRefused() {
+        assertRefused(alias("strong", "toolset", "routers/r1"), "An alias shown as toolset cannot point to routers/r1");
     }
 
     @Test

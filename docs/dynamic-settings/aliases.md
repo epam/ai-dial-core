@@ -1,7 +1,7 @@
 # Dynamic Setting for Aliases
 
 An alias is a deployment of its own, with its own name, catalog entry and `userRoles`, that forwards every call to a
-target deployment: a model, an application or a toolset. Aliases are managed by admins only, in the config file
+target deployment: a model, an application, a toolset or a [router](#an-alias-over-a-router). Aliases are managed by admins only, in the config file
 or [in public storage](#aliases-in-public-storage). A caller who may use
 the alias may call the target through it, even without any rights on the target; it does not let the caller read
 the target's definition or credentials.
@@ -17,22 +17,28 @@ A map of aliases and their [parameters](#aliasesalias_name):
 ### aliases.<alias_name>
 
 * `target`: The deployment the alias forwards to. Required.
-  * `path`: `models/<name>`, `applications/<name>` or `toolsets/<name>` for a deployment of the config, or
-    `applications/<bucket>/<path>` or `toolsets/<bucket>/<path>` for an application or toolset resource, for example
-    `applications/public/assistant`. The first segment is the target's type. It cannot name another alias.
+  * `path`: `models/<name>`, `applications/<name>`, `toolsets/<name>` or `routers/<name>` for a deployment of the
+    config, or `applications/<bucket>/<path>` or `toolsets/<bucket>/<path>` for an application or toolset resource,
+    for example `applications/public/assistant`. The first segment is the target's type, except for `routers`, which
+    names none. It cannot name another alias.
 * `presentAs`: The type the alias is listed and called as: `model`, `application` or `toolset`. Optional; by
-  default, the type of the target. It must fit the target:
+  default, the type of the target. Required for a router target. It must fit the target:
 
-  | `presentAs` ↓ / target → | model | application                     | toolset |
-  |--------------------------|-------|---------------------------------|---------|
-  | `model`                  | yes   | yes                             | no      |
-  | `application`            | yes   | yes                             | no      |
-  | `toolset`                | no    | yes, if the application has `mcp` | yes   |
+  | `presentAs` ↓ / target → | model | application                     | toolset | router |
+  |--------------------------|-------|---------------------------------|---------|--------|
+  | `model`                  | yes   | yes                             | no      | yes    |
+  | `application`            | yes   | yes                             | no      | yes    |
+  | `toolset`                | no    | yes, if the application has `mcp` | yes   | no     |
 
   Changing `presentAs` changes where the alias is listed and which endpoints serve it, not its name.
 * `userRoles`: The roles that may use the alias. If not defined, the alias takes the target's: the `userRoles` of a
   config target, or, for a resource target, read access to the resource. An alias never opens its target to more
   callers than the admin listed.
+* `defaultHeaders`: Headers the alias sets on each call under every name the client did not send, as a deployment's
+  `defaultHeaders` do; a value the client sent wins. The target pass sees them as headers the client sent, so they
+  reach the target and, for a router target, the decide request. Only for an alias of type `model` or `application`.
+  They travel on to the deployment that serves the call, so they must not hold secrets. Before this version they
+  were accepted and ignored: an existing alias that declares them starts sending them.
 * `displayName`, `description`, `iconUrl`, `intro`, `descriptionKeywords`: Shown in listings. When not set, the
   target's are shown, read on every listing, so they follow changes of the target.
 * `displayVersion`, `author`, `createdAt`, `updatedAt`, `catalogSchemaId`, `catalogProperties`: Shown in listings.
@@ -42,8 +48,8 @@ A map of aliases and their [parameters](#aliasesalias_name):
 Other deployment fields (`endpoint`, `interfaces`, `features`, `pricing`, ...) are ignored on an alias: listings
 show the target's features, pricing, limits, defaults and interfaces, so they never drift from it.
 
-A config whose alias has no `target.path`, points to an alias, or has a `presentAs` that does not fit a config target
-does not load. A config target that does not exist only logs a warning: the rest of the config loads, calls of the
+A config whose alias has no `target.path`, points to an alias, points to a router without `presentAs`, or has a
+`presentAs` that does not fit a config target does not load. A config target that does not exist only logs a warning: the rest of the config loads, calls of the
 alias answer `503` and listings leave it out. A resource target is read on every call, so a missing one is found
 then, and the call answers `503`. `/v1/admin/health/config` reports both as `aliases/<alias_name>` with reason
 `alias_target_missing`, or `alias_target_incompatible` when the target no longer fits the alias's type; it reads
@@ -109,8 +115,53 @@ is not reachable on `localhost`. The second pass:
 * is not refused by `accessibleByPerRequestKey: false` on the target.
 
 The alias relays the target's answer, error statuses included, so an error of the target pass may name the target.
-Answers keep the target's `model` value. The caller's `Authorization` header is not forwarded through an alias, so a
+Answers keep the target's `model` value, except an answer a router in decision mode chose, which names the alias
+where the router would name itself (see [Decision mode](routers.md#decision-mode)). The caller's `Authorization` header is not forwarded through an alias, so a
 target with `forwardAuthToken` does not receive it.
+
+## An alias over a router
+
+An alias with target `routers/<name>` publishes a router under a model name: routers are absent from
+`/openai/models` and `/anthropic/v1/models`, the alias is listed there (with `presentAs: model`), as a chat model
+without pricing or limits. Several aliases may point to one router, each telling it what it stands for through its
+`defaultHeaders`, for example `X-DIAL-ROUTER-TIER`.
+
+* A call of the alias is served as a call of the router by the same caller: a router in
+  [decision mode](routers.md#decision-mode) decides, a router in proxy mode receives the request.
+* The alias grants the right to call the router only. A deployment the router chooses is checked against the
+  caller's own rights, as on a direct call of the router.
+* The answer's `model` is the alias's name, also when a stored response is read back.
+* An alias over a router cannot be a routing candidate, as a router cannot (`502`).
+* An alias without `userRoles` takes the router's: a router with `userRoles: []`, open to no caller directly, makes
+  such an alias unreachable. Give every alias over a hidden router its own `userRoles`.
+* A Core of an earlier version does not load a config with a `routers/` target. In a rolling upgrade, add such
+  aliases only after every pod runs this version.
+* An alias stored in public storage cannot point to a router (`400` on `PUT`). A stored alias takes no
+  `defaultHeaders`, so aliases that tell one router apart by a header are aliases of the config file.
+
+```json
+{
+  "routers": {
+    "tier-router": {
+      "baseUrl": "http://router:8080",
+      "mode": "decision",
+      "userRoles": [],
+      "interfaces": { "openaiChatCompletions": {}, "anthropicMessages": {} }
+    }
+  },
+  "aliases": {
+    "strong": {
+      "presentAs": "model",
+      "userRoles": ["default-user"],
+      "defaultHeaders": { "X-DIAL-ROUTER-TIER": "strong" },
+      "target": { "path": "routers/tier-router" }
+    }
+  }
+}
+```
+
+A client of `strong` may send its own `X-DIAL-ROUTER-TIER`, which wins over the alias's; what it reaches is still
+limited by its rights on the deployments the router chooses.
 
 ## Signing in to a toolset through an alias
 
@@ -182,8 +233,8 @@ another `name` answers `400`).
 
 * the rules of the config load (`target.path` present and of a supported form, no alias as target, a `presentAs`
   that fits a config target): `400` with `validationWarnings`;
-* the target is a config deployment or a resource in the `public` bucket, such as `applications/public/assistant`;
-  a resource in any other bucket answers `400`;
+* the target is a config deployment other than a router, or a resource in the `public` bucket, such as
+  `applications/public/assistant`; a router or a resource in any other bucket answers `400`;
 * a resource target that exists must fit `presentAs` too: `400`. A target that does not exist is accepted; the alias
   is broken until it exists, calls of it answer `503`, listings leave it out, and `/v1/admin/health/config` reports
   `aliases/public/<alias_name>` with reason `alias_target_missing` (or `alias_target_incompatible`). An alias of the

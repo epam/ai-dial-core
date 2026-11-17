@@ -39,6 +39,12 @@
       "mode": "decision",
       "decision": {"maxDecisions": 2},
       "interfaces": {"openaiChatCompletions": {}}
+    },
+    "r-tier": {
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "userRoles": [],
+      "interfaces": {"openaiChatCompletions": {}, "openaiResponses": {}, "anthropicMessages": {}}
     }
   },
   "models": {
@@ -127,6 +133,12 @@
     "alias-m1": {
       "presentAs": "model",
       "target": {"path": "models/m1"}
+    },
+    "strong": {
+      "presentAs": "model",
+      "userRoles": ["analysts"],
+      "defaultHeaders": {"X-DIAL-ROUTER-TIER": "strong"},
+      "target": {"path": "routers/r-tier"}
     }
   },
   "keys": {

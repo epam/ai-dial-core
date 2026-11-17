@@ -1,9 +1,11 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasTargets;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.function.CollectRequestAttachmentsFn;
@@ -12,6 +14,7 @@ import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.RouterDecisionClient;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -133,6 +136,7 @@ public class RouterDecisionFlow {
                     decision.setFirstDecideKey(key);
                     decision.setReenter(reenter);
                     decision.setHop(routerHop(router));
+                    decision.setAnswerName(aliasCalled(router));
                     // Core's own headers (CORS, trace ids), restored when a candidate's half-copied answer is dropped
                     decision.setResponseHeaders(MultiMap.caseInsensitiveMultiMap().addAll(context.getResponse().headers()));
                     context.setDecision(decision);
@@ -153,7 +157,28 @@ public class RouterDecisionFlow {
     }
 
     /**
-     * One decide request with its own key, invalidated when the call ends; a router named as a candidate fails it.
+     * The alias the client called when this pass is its target pass, lent the router by it: the last name of the
+     * incoming path that is not an interceptor in front of the router, the alias pass's own. Null otherwise.
+     */
+    @Nullable
+    private String aliasCalled(Router router) {
+        ApiKeyData key = context.getApiKeyData();
+        List<String> path = key.getExecutionPath();
+        if (!DeploymentService.isLent(context, router) || path == null) {
+            return null;
+        }
+        List<String> interceptors = key.getInterceptors() == null ? List.of() : key.getInterceptors();
+        for (String name : path.reversed()) {
+            if (!interceptors.contains(name)) {
+                return name;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * One decide request with its own key, invalidated when the call ends; a router, or an alias over one, named as a
+     * candidate fails it.
      */
     private Future<List<String>> askRouter(Router router, InterfaceType type, Buffer bytes, ApiKeyData key,
                                            List<RouterDecision.Attempt> attempts) {
@@ -162,7 +187,9 @@ public class RouterDecisionFlow {
                         .onFailure(error -> log.error("error occurred on invalidating the decide request key", error)))
                 .map(candidates -> {
                     for (String candidate : candidates) {
-                        if (context.getConfig().getRouters().containsKey(candidate)) {
+                        Alias alias = context.getConfig().getAliases().get(candidate);
+                        if (context.getConfig().getRouters().containsKey(candidate)
+                                || alias != null && AliasTargets.isRouterPath(alias.getTarget().getPath())) {
                             throw new HttpException(HttpStatus.BAD_GATEWAY, "A router cannot be a routing candidate: " + candidate);
                         }
                     }

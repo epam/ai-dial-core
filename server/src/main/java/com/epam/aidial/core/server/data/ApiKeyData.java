@@ -117,9 +117,10 @@ public class ApiKeyData {
                     // lets the target pass read the target resource, as access checks of resources expect
                     proxyApiKeyData.getAttachedDeployments().put(pass.getTargetName(), new AutoSharedData(ResourceAccessType.READ_ONLY));
                 }
-            } else if (isLentTo(apiKeyData, receiver, context.getInitialDeployment())) {
+            } else if (context.getDecision() == null && isLentTo(apiKeyData, receiver, context.getInitialDeployment())) {
                 // an interceptor in front of the target, and the target's own callback such as a translator's, call
-                // Core back for the same target; the lending goes with them and covers that target only
+                // Core back for the same target; the lending goes with them and covers that target only. A lent
+                // router's choice is checked against the caller's own rights, so the lending stops at the decision
                 String lent = apiKeyData.getLentDeployment();
                 proxyApiKeyData.setLentDeployment(lent);
                 AutoSharedData attached = apiKeyData.getAttachedDeployments().get(lent);

@@ -1750,7 +1750,7 @@ public class ConfigResourceController implements Controller {
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
                 ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
                 etag.validate(existing == null ? null : existing.getEtag());
-                checkAliasTarget(alias);
+                checkAliasTarget(alias, isPlatform);
                 ResourceItemMetadata meta = resourceService.putResource(descriptor,
                         StoredAliases.toJson(alias).toString(), EtagHeader.ANY, author, false);
                 if (isPlatform) {
@@ -1786,13 +1786,13 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * The checks of the alias's own fields and of a target it can resolve. Reads a resource target from storage, so it
-     * runs on the task executor.
+     * The checks of the alias's own fields and of a target it can resolve; a public alias cannot point to a router.
+     * Reads a resource target from storage, so it runs on the task executor.
      */
-    private void checkAliasTarget(Alias alias) {
+    private void checkAliasTarget(Alias alias, boolean isPlatform) {
         Config snapshot = mergedConfigStore.get();
         // no config yet: the fields are checked, a config target is not
-        List<ValidationWarning> warnings = StoredAliases.validateFields(alias);
+        List<ValidationWarning> warnings = isPlatform ? StoredAliases.validateFields(alias) : StoredAliases.validatePublicFields(alias);
         if (warnings.isEmpty() && snapshot != null) {
             warnings = AliasTargets.validate(alias, snapshot);
         }
@@ -1826,13 +1826,14 @@ public class ConfigResourceController implements Controller {
             return Future.succeededFuture();
         }
         ResourceDescriptor descriptor = descriptorFor(ResourceTypes.ALIAS);
+        boolean isPublic = ResourceDescriptor.PUBLIC_BUCKET.equals(descriptor.getBucketName());
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         taskExecutor.submit(() -> {
             Pair<ResourceItemMetadata, String> existing = resourceService.getResourceWithMetadata(descriptor, etag);
             if (existing == null) {
                 return null;
             }
-            StoredAliases.Stored stored = StoredAliases.parse(existing.getValue());
+            StoredAliases.Stored stored = StoredAliases.parse(existing.getValue(), isPublic);
             ObjectNode node;
             if (stored.alias() != null) {
                 node = StoredAliases.toJson(stored.alias());

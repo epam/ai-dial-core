@@ -534,7 +534,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         String upstreamId = idNode.asText();
         if (context.getDecision() != null) {
-            RouterModelFn.rewrite(object, context.getDecision().getRouterName());
+            RouterModelFn.rewrite(object, context.getDecision().getAnswerName());
         }
         Upstream upstream = context.getUpstreamRoute().get();
         if (EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
@@ -550,7 +550,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 .upstreamKey(upstream.getId())
                 .deploymentName(context.getDeployment().getName())
                 .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
-                .router(context.getDecision() == null ? null : context.getDecision().getRouterName())
+                .router(context.getDecision() == null ? null : context.getDecision().getAnswerName())
                 .build();
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))

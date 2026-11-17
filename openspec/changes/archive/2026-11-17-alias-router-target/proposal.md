@@ -45,9 +45,10 @@ No GitHub issue yet; one is to be opened before this leaves draft. Motivation: o
 names (for example quality tiers), each name telling the router which tier it stands for through a header, with the
 names visible in the model listings harnesses read.
 
-Touches `AliasTargets`, `StoredAliases`, `AliasPasses`, `AliasService`, the default-settings step of the alias pass,
-`RouterDecision` and the answer-name rewrite (`RouterModelFn` call sites, `ReplaceResponseIdFn`), the candidate check
-of `RouterDecisionFlow`, and their tests. No new endpoint, setting or dependency.
+Touches `AliasTargets`, `AliasPasses`, `StoredAliases` (the public-bucket check) and its callers, the
+default-settings step of the alias pass, `RouterDecision` and the answer-name rewrite (`RouterModelFn` call sites,
+`ReplaceResponseIdFn`), the candidate check of `RouterDecisionFlow`, the lend in `ApiKeyData`, and their tests. No new
+endpoint, setting or dependency.
 
 This change is the first of a series; the next ones (granting a router's chosen deployments to the caller, and
 serving an alias in one pass) are separate changes that build on it.

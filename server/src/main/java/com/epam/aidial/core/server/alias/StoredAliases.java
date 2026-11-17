@@ -109,10 +109,10 @@ public class StoredAliases {
     }
 
     /**
-     * Reads a stored blob as calls and listings use it: an alias whose fields {@link #validateFields} accepts, or none
-     * with the reasons.
+     * Reads a stored blob as calls and listings use it: an alias whose fields {@link #validateFields} accepts (for a
+     * blob of the public bucket, {@link #validatePublicFields}), or none with the reasons.
      */
-    public Stored parse(String body) {
+    public Stored parse(String body, boolean publicBucket) {
         JsonNode node;
         try {
             node = BLOB_MAPPER.readTree(body);
@@ -125,7 +125,7 @@ public class StoredAliases {
         } catch (Exception e) {
             return new Stored(null, List.of(new ValidationWarning("body", e.getMessage())), node);
         }
-        List<ValidationWarning> warnings = validateFields(alias);
+        List<ValidationWarning> warnings = publicBucket ? validatePublicFields(alias) : validateFields(alias);
         return new Stored(warnings.isEmpty() ? alias : null, warnings, node);
     }
 
@@ -134,6 +134,15 @@ public class StoredAliases {
      * platform bucket. A stored alias is open to the callers of its {@code userRoles}, so it must not point to a
      * resource in a user's bucket, whose owner could change it at any time.
      */
+    public List<ValidationWarning> validatePublicFields(Alias alias) {
+        List<ValidationWarning> warnings = validateFields(alias);
+        if (warnings.isEmpty() && AliasTargets.isRouterPath(alias.getTarget().getPath())) {
+            // a platform alias joins the config and may; a public one, called by its url, is not served over a router
+            warnings.add(new ValidationWarning("target.path", "A public alias cannot point to a router: " + alias.getTarget().getPath()));
+        }
+        return warnings;
+    }
+
     public List<ValidationWarning> validateFields(Alias alias) {
         List<ValidationWarning> warnings = AliasTargets.validateFields(alias);
         if (warnings.isEmpty()) {

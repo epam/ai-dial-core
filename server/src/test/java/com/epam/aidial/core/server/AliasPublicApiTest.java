@@ -128,6 +128,24 @@ class AliasPublicApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void publicAliasCannotPointToRouter() {
+        String routerAlias = "{\"presentAs\":\"model\",\"userRoles\":[\"default-user\"],\"target\":{\"path\":\"routers/r1\"}}";
+        assertBadRequest(routerAlias);
+        // a platform alias joins the config, where a router target is allowed
+        assertEquals(200, admin(HttpMethod.PUT, "/v1/aliases/platform/tier-v1", routerAlias).status());
+
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
+                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, "hand-v1");
+        dial.getProxy().getResourceService().putResource(descriptor, routerAlias, EtagHeader.ANY, "test", false);
+        assertEquals(404, chat("aliases/public/hand-v1", "default-key").status());
+        assertFalse(ids(models("default-key")).contains("aliases/public/hand-v1"));
+        Response read = admin(HttpMethod.GET, ALIAS_URL + "hand-v1", null);
+        assertEquals("invalid", new JsonObject(read.body()).getString("status"), read.body());
+        assertEquals("valid", new JsonObject(admin(HttpMethod.GET, "/v1/aliases/platform/tier-v1", null).body()).getString("status"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void listedIdIsTheIdThatIsCalled() {
         // the url encoding changes these names, so their listed id could not be called back
         assertEquals(400, putAlias("x%5B1%5D", MODEL_ALIAS).status());

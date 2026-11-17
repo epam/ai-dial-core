@@ -52,17 +52,18 @@ application target that has `mcp`.
 - **THEN** the config file load fails
 
 ### Requirement: Target of a stored alias
-A stored alias SHALL target a config deployment other than a router, or a resource in the `public` bucket. A `PUT`
-with a `routers/` target or a resource target in another bucket SHALL answer `400`, and a stored blob with one SHALL
-be ignored by calls and listings.
+A stored alias of the public bucket SHALL target a config deployment other than a router, or a resource in the
+`public` bucket. A `PUT` with a `routers/` target or a resource target in another bucket SHALL answer `400`, and a
+stored blob with one SHALL be ignored by calls and listings and read back with `status: invalid`.
 
 #### Scenario: Target in a user bucket
 - **WHEN** an admin stores an alias whose target is `applications/<user bucket>/app` or `toolsets/<user bucket>/tools`
 - **THEN** the answer is `400`
 
 #### Scenario: Router target of a stored alias
-- **WHEN** an admin stores an alias with `presentAs: model` whose target is `routers/r1`
-- **THEN** the answer is `400`
+- **WHEN** an admin stores an alias with `presentAs: model` whose target is `routers/r1` under `/v1/aliases/public/`
+- **THEN** the answer is `400`; a blob with that target written around the API answers `404` to a call and
+  `status: invalid` to `GET`
 
 ## ADDED Requirements
 

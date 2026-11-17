@@ -23,8 +23,9 @@ What the code on `development` does today:
   stored response's mapping, and `ResponseItemController.java` renames the read-back with it (requirement "Router
   name in the answer").
 - `RouterDecisionFlow.java:askRouter` refuses a candidate that is in `config.getRouters()` with `502`.
-- `StoredAliases.java:validateFields` checks a stored alias with `AliasTargets.validateFields`, so what that accepts,
-  a stored alias accepts.
+- `StoredAliases.java:validateFields` checks an alias written through `/v1/aliases/{public|platform}/<name>` with
+  `AliasTargets.validateFields`, so what that accepts, both accept. A platform alias joins the config
+  (`MergedConfigStore` runs the same check); a public one is read on each call (`AliasService.java:parseStored`).
 
 ## Goals / Non-Goals
 
@@ -38,8 +39,12 @@ Non-goals: one-pass alias serving; granting the router's chosen deployments; sto
    `ResourceTypes.ROUTER`, `resolve` reads `config.getRouters()`, `fits` admits a `Router` for `model` and
    `application`. Rejected: publishing the router itself in the model listings. It would change
    "Routers absent from other listings" for every router and still give one name per router.
-   `StoredAliases.validateFields` refuses a `routers/` target, so a stored alias stays out of scope (`400` on `PUT`,
-   a stored blob with one ignored).
+   A public alias with a `routers/` target is refused by `StoredAliases.validatePublicFields`, which the public
+   `PUT`, the read for calls and listings and the `GET` (`status: invalid`) use, so it stays out of scope. A platform
+   alias may point to a router, as it joins the config like an alias of the config file. Drift from the proposal
+   draft, which put the refusal in `StoredAliases.validateFields`: that method gates platform aliases too, so it
+   would have refused router aliases managed through the admin API. A stored alias takes no `defaultHeaders`
+   (`StoredAliases` keeps a fixed field list), so tier aliases that differ by a header are config-file aliases.
 
 2. **No default type for a router target.** `getEffectivePresentation` is not changed: the type is `presentAs`
    or the type the path names, and `routers` names none of the three, so the alias must state `presentAs`.
@@ -53,10 +58,12 @@ Non-goals: one-pass alias serving; granting the router's chosen deployments; sto
    chat model without pricing or limits for a target that is not a `Model`.
 
 4. **The answer names the alias, and the target pass does the rename.** The target pass already rewrites `model`
-   for a decided request. `RouterDecision` gets an answer name: when the pass was lent by an alias (`lentDeployment`
-   equals the router's name), the last name of the incoming execution path that is neither the router nor one of
-   its interceptors, which is the alias pass's own name whoever called the alias; else the router's name. The
-   `RouterModelFn` call sites and the mapping `ReplaceResponseIdFn` stores use the answer name, so a stored response
+   for a decided request. `RouterDecision` gets an answer name, set by `RouterDecisionFlow` when it decides: when the
+   pass was lent by an alias (`DeploymentService.isLent` for the router), the last name of the incoming execution
+   path that is neither the router nor one of its interceptors, which is the alias pass's own name whoever called
+   the alias; else the router's name. The
+   `RouterModelFn` call sites and the mappings `ReplaceResponseIdFn` and `ResponsesController` store use the answer
+   name, so a stored response
    read back names the alias too. `getRouterName` keeps naming the router for the execution path, the analytics
    rows and the re-entry check. Rejected: rewriting in the alias pass, which today relays the body untouched and
    would have to parse every chunk a second time; taking the first name of the path, which is the calling
@@ -78,6 +85,13 @@ Non-goals: one-pass alias serving; granting the router's chosen deployments; sto
 8. **An alias over a router is not a routing candidate.** `askRouter` refuses a candidate that is an alias whose
    target is `routers/<name>` with `502`, as it refuses a router. Without it a router could reach another router's
    decision through an alias, which "Candidate is a router" forbids.
+
+9. **The lend of a router stops at the decision.** The lend goes on to the interceptors in front of the target and
+   the target's callbacks (`ApiKeyData.initFromContext`, through `initialDeployment`). Behind a global interceptor
+   the decided pass has the router as `initialDeployment`, so the key of the chosen deployment would carry the lend
+   of the router too. `initFromContext` does not pass the lend on from a decided pass: the chosen deployment is
+   checked against the caller's own rights. Before this change no lent pass was a router pass, so nothing else
+   changes. Found in review.
 
 Deliberate differences from today's behaviour: an alias's `defaultHeaders`, ignored until now, are sent; a decided
 answer reached through an alias names the alias.

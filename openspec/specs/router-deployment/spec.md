@@ -674,3 +674,27 @@ a buffered legacy completion and a buffered answer relayed through interceptors 
 #### Scenario: Undecided answer unchanged
 - **WHEN** a client calls `gpt-4` directly and it answers with `"model": "gpt-4-real"`
 - **THEN** the client receives `"model": "gpt-4-real"`
+
+### Requirement: Alias name in the answer
+When the router was called through an alias, Core SHALL put the alias's name where "Router name in the answer" puts
+the router's, a stored response read back included.
+
+#### Scenario: Answer through an alias names the alias
+- **WHEN** the alias `strong` targets `routers/r1`, a client sends a chat completion to `strong`, `r1` answers
+  `{"candidates": ["gpt-4"]}` and `gpt-4` answers, buffered or streamed, with `"model": "gpt-4-real"`
+- **THEN** the client receives `"model": "strong"` in the answer or in every chunk
+
+#### Scenario: Answer through an alias called by an application names the alias
+- **WHEN** the application `app` calls the alias `strong`, which targets `routers/r1`, with its per-request key, and
+  `gpt-4` answers with `"model": "gpt-4-real"`
+- **THEN** `app` receives `"model": "strong"`
+
+#### Scenario: Stored Responses answer through an alias read back names the alias
+- **WHEN** a client creates a response through `strong` with `"store": true`, `gpt-4` answers with
+  `"model": "gpt-4-real"`, and the client then sends `GET /openai/v1/responses/{id}`
+- **THEN** the answer to the `GET` has `"model": "strong"`
+
+#### Scenario: Messages answer through an alias names the alias
+- **WHEN** a client streams `POST /anthropic/v1/messages` with `"model": "strong"`, and `claude`'s `message_start`
+  event carries `"message": {"model": "claude-real"}`
+- **THEN** the client's `message_start` event carries `"message": {"model": "strong"}`

@@ -56,6 +56,8 @@ public class AliasPasses {
 
         AliasApplicationPass pass = new AliasApplicationPass(alias, targetName, resourceTarget);
         pass.setName(alias.getName());
+        // set on the request where the client sent none, so the target pass reads them as the client's
+        pass.setDefaultHeaders(alias.getDefaultHeaders());
         // the target is named in the body of a Responses or Messages request, which EnhanceDeploymentRequestFn sets to
         // it; a body names a resource by its decoded url, the form the router hands to the deployment lookup
         pass.setOverrideName(resourceTarget ? UrlUtil.decodePath(targetName) : targetName);
