@@ -34,10 +34,11 @@ See proposal.md (Why) for the motivation. The code this change touches or relies
   `ProxyContext.java:closeHostDelegates`, which cancels open child answers.
 - **What a child pass does differently.** `isChildPass()` is read at six places. Two are about the missing bytes:
   `DeploymentPostController.java:285` (an empty body read as the tree) and `RouterDecisionFlow.java:108` (a decision
-  router serializes the tree once as a stand-in for the client's bytes). Four are about a pass whose bodies the plugin's
-  own row logs and whose span is the plugin's: `AnalyticsLogContext.java:140` (row without bodies),
-  `BaseChatCompletionController.java:293` (no assembled response), `GenAiTraceAttributes.java:set` (no span attributes)
-  and `AutoEnrichedOtelJsonLayout.java:84` (no span enrichment of log lines).
+  router serializes the tree once as a stand-in for the client's bytes). Two are about bodies, which the plugin's own
+  row logs (analytics-log, "Rows without bodies for an in-process child pass"): `AnalyticsLogContext.java:140` (row
+  without bodies) and `BaseChatCompletionController.java:293` (no assembled response). Two are about the span, which is
+  the plugin's: `GenAiTraceAttributes.java:set` (no span attributes) and `AutoEnrichedOtelJsonLayout.java:84` (no span
+  enrichment of log lines).
 - **Attachment grants.** `CollectResponseAttachmentsFn.java:apply` grants the files of an answer to the caller's stored
   key and to the caller's key record; `processAttachedFile` checks access with the pass's own proxy record.
 
@@ -47,13 +48,14 @@ See proposal.md (Why) for the motivation. The code this change touches or relies
 
 - No HTTP request from Core to itself for the create operations of an alias.
 - No second parse and no serialize of a body the alias pass only forwards.
-- Bodies logged once per alias chain, in the target's row.
+- Bodies logged once per alias chain, in the target's row; whether a row carries bodies depends on the deployment
+  (an alias) and the key, not on the transport.
 - Reuse the in-process call machinery; no second copy of client watching, cancelling or answer conversion.
 
 **Non-Goals:**
 
 - Changing what the target pass checks, limits, charges or retries.
-- Changing the in-process calls of origin plugins.
+- Changing how origin plugin calls are served; only their rows change (D4).
 
 ## Decisions
 
@@ -111,25 +113,33 @@ fallback restores the pass's bytes from `originalRequestBody`, as today.
 
 Rejected: **serializing as today.** One full serialize per hop for bytes nobody reads.
 
-### D4. Bodies: none in the alias row, kept in the target row
+### D4. Bodies: an alias pass's row has none; every other row has them, in process or not
 
-The alias pass's row is written with `withoutBodies()`, the path a `secured` key uses, whatever the transport, and a
-streamed alias pass does not build its assembled response. The target pass of an in-process hop keeps its bodies and
-builds its assembled response (D5).
+Leaving the bodies out becomes a property of the alias pass, not of the transport. `AnalyticsLogContext.java:140`
+writes the row with `withoutBodies()`, the path a `secured` key uses, when the deployment is an `AliasPass`, instead
+of when the pass is a child pass. `BaseChatCompletionController.java:293` skips the assembled response on the same
+condition. So the target pass of an alias call keeps its bodies whatever the transport, and so does a pass an origin
+plugin calls in process: the analytics-log requirement "Rows without bodies for an in-process child pass" is removed.
 
 Rejected:
 
-- **The plugin child-pass rule for the target row (no bodies).** The target row is the one with the model, its usage
-  and cost; it would lose prompt and completion for every aliased call, and an alias chain would log its bodies only in
-  the first alias's row.
-- **Bodies in both rows, as today.** The tier chain logs the same bodies three times, and the log writer holds them on
-  the heap until they are written.
+- **Keep the plugin child-pass rule and exempt the alias target pass from it.** Two rules for one question ("does this
+  row carry bodies"), one keyed on the transport and one on the deployment, and a marker to tell them apart.
+- **The plugin child-pass rule for the alias target row too (no bodies).** The target row is the one with the model,
+  its usage and cost; it would lose prompt and completion for every aliased call.
+- **Bodies in the alias row, as today.** The tier chain logs the same bodies three times, and the log writer holds
+  them on the heap until they are written.
 
-### D5. The target pass of an alias hop is marked, and four child-pass rules skip it
+Cost for plugin calls: a plugin's call now writes the bodies in the child row too (log writer copies and heap until
+written). The embedded-call A/B was measured without them.
 
-The host the alias hop creates marks the child passes it serves as alias target passes. The four rules about bodies
-and spans (Context, "What a child pass does differently") apply to a child pass that is not marked. The two rules
-about the missing bytes apply to both, since the target pass has no bytes either.
+### D5. The target pass of an alias hop is marked, and the two span rules skip it
+
+The two child-pass rules about spans (`GenAiTraceAttributes.java:set`, `AutoEnrichedOtelJsonLayout.java:84`) stay
+for an origin plugin's call: its child pass must not write over its plugin's span. The host the alias hop creates
+marks the child passes it serves as alias target passes, and these two rules skip a marked pass (D6). The two rules
+about the missing bytes (`DeploymentPostController.java:285`, `RouterDecisionFlow.java:108`) apply to both, since the
+target pass has no bytes either.
 
 Rejected: **deriving the mark from the key record's `lentDeployment`.** The record of a lent application's pass also
 carries it, so a plugin's call under such a pass would be taken for an alias target.
@@ -213,6 +223,9 @@ and the alias row drops them. It is an expectation, not a measurement. Task 4.1 
   target pass in process.
 - [Analytics consumers read bodies from alias rows] → stated as a behaviour change in the proposal and in
   `docs/dynamic-settings/aliases.md`; the target row has them.
+- [Plugin calls log their bodies twice, in the plugin's row and in the target's row] → as an HTTP application's call
+  to a model does; stated in `docs/dynamic-settings/plugins.md`. The log writer's heap cap
+  (`analytics.maxPendingBodyHeapPercent`) still bounds the backlog.
 - [Traces lose one server span per alias hop; the target row's `span_id` matches no OTel span] → documented in
   `docs/tracing.md`, as for plugin calls.
 - [No idle timeout on the hop: over HTTP the client's idle timeout bounded it] → the target pass's own origin timeouts
@@ -225,5 +238,5 @@ and the alias row drops them. It is an expectation, not a measurement. Task 4.1 
 ## Migration Plan
 
 None. No config or settings change. `backgroundJob.localBaseUrl` is still used by background polling and by the alias
-requests that stay on HTTP. Analytics consumers that read bodies from alias rows read the target's row instead.
-Rollback is a revert.
+requests that stay on HTTP. Analytics consumers that read bodies from alias rows read the target's row instead; rows
+of plugin calls carry bodies from this version on. Rollback is a revert.

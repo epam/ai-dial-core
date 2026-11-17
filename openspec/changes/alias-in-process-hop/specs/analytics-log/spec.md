@@ -22,9 +22,9 @@ alias's target pass SHALL carry its bodies as "Bodies in the analytics row" says
 ### Requirement: Bodies in the analytics row
 For a key that is not `secured`, Core SHALL write the request body as `request.body` and the response body as
 `response.body`, a body over 4 MiB cut there and ending in `>>`, and, for a streamed response that Core assembled, the
-assembled response as `assembled_response`, except while the log writer is behind, in the row of an in-process child
-pass, or in the row of an alias pass (see the three requirements on rows without bodies). For a `secured` key, Core
-SHALL write none of these three fields.
+assembled response as `assembled_response`, except while the log writer is behind or in the row of an alias pass (see
+the two requirements on rows without bodies). This holds for a pass Core serves in process too. For a `secured` key,
+Core SHALL write none of these three fields.
 
 #### Scenario: Key not secured
 - **WHEN** a pass with a key that is not `secured` writes its row
@@ -34,14 +34,17 @@ SHALL write none of these three fields.
 - **WHEN** a pass with a `secured` key writes its row
 - **THEN** the row has no `request.body`, `response.body` or `assembled_response`, and has every other field
 
-### Requirement: Rows without bodies for an in-process child pass
-Core SHALL write the row of a child pass it serves for an origin plugin's call without `request.body`,
-`response.body` and `assembled_response`, and with every other field, whatever the key and the writer's backlog. The
-row of the plugin's own pass SHALL carry its bodies as "Bodies in the analytics row" says. The target pass of an alias
-call, which Core also serves in process (deployment-aliases), is not such a child pass: its row carries its bodies.
-
-#### Scenario: Bodies logged once
+#### Scenario: Call from an origin plugin
 - **WHEN** plugin `p1` serving application `app` calls model `m` with a key that is not `secured`, and both passes
   write their rows
-- **THEN** `m`'s row has no `request.body`, `response.body` or `assembled_response` and has its `deployment`,
-  `token_usage` and `trace`, and `app`'s row has its `request.body` and `response.body`
+- **THEN** `app`'s row and `m`'s row each have their `request.body` and `response.body`
+
+## REMOVED Requirements
+
+### Requirement: Rows without bodies for an in-process child pass
+**Reason**: Leaving the bodies out is now a property of an alias pass, not of the way Core serves a pass. A pass an
+origin plugin calls in process logs its bodies as a pass called over HTTP does, as an application's call to a model
+does today.
+**Migration**: None for Core config. An analytics consumer that read a plugin call's bodies from the plugin's row
+finds them in the row of the called deployment too; a plugin that changes the body before the call now has the
+changed body logged in the target's row.

@@ -16,12 +16,13 @@
   (the application's per-request key taken from the request its origin receives, as the existing application tests
   do); verify it fails on `development`.
 - [ ] 1.5 Add the analytics-log scenarios "Messages through an alias" and "Streamed chat completion through an alias"
-  to `AliasInProcessApiTest`; verify both fail on `development` (the alias row has bodies). "Bodies logged once" keeps
-  its test in `EmbeddedCallApiTest`.
-- [ ] 1.6 Add the router-deployment scenario "Alias over a decision router that wants the body" to
+  to `AliasInProcessApiTest`; verify both fail on `development` (the alias row has bodies).
+- [ ] 1.6 Rewrite `EmbeddedCallApiTest.testBodiesLoggedOnce` as the scenario "Call from an origin plugin" (both rows
+  have `request.body` and `response.body`, the child row is not `bodiesOmitted`); verify it fails on `development`.
+- [ ] 1.7 Add the router-deployment scenario "Alias over a decision router that wants the body" to
   `RouterDecisionApiTest` (with a fixture router with `decision: {"body": true}` behind an alias if none exists);
   verify it passes on `development` (the body reaches the router over HTTP today).
-- [ ] 1.7 Run `./gradlew checkstyleMain checkstyleTest`; verify it succeeds (the new tests fail as stated above until
+- [ ] 1.8 Run `./gradlew checkstyleMain checkstyleTest`; verify it succeeds (the new tests fail as stated above until
   group 2).
 
 ## 2. In-process hop
@@ -34,10 +35,13 @@
 - [ ] 2.3 Use the same check in `setProcessedRequestBody`: keep the tree, skip the serialize, empty buffer when the
   pass has no bytes (design D3); verify 1.1 still passes and `count_tokens` through an alias answers `200` with the
   default `backgroundJob.localBaseUrl` (a case in `MessagesApiTest`).
-- [ ] 2.4 Mark the child passes the alias hop's host creates, and make the four body and span rules skip a marked pass
-  (`AnalyticsLogContext`, `BaseChatCompletionController`, `GenAiTraceAttributes`, `AutoEnrichedOtelJsonLayout`;
-  design D5, D6); verify the target-row parts of 1.5 pass and `EmbeddedCallApiTest` still passes.
-- [ ] 2.5 Write the alias pass's row without bodies and skip its assembled response (design D4); verify 1.5 passes.
+- [ ] 2.4 Key the row's bodies and the assembled response on the alias pass instead of the child pass
+  (`AnalyticsLogContext`, `BaseChatCompletionController`; design D4); verify 1.5 and 1.6 pass and the rest of
+  `EmbeddedCallApiTest` still passes.
+- [ ] 2.5 Mark the child passes the alias hop's host creates, and make the two span rules skip a marked pass
+  (`GenAiTraceAttributes`, `AutoEnrichedOtelJsonLayout`; design D5, D6); add a test that the model's `gen_ai` usage
+  attributes land on the alias pass's server span (span exporter as the existing tracing tests use, or the
+  `tracingAttributes` the pass records if no exporter is wired in tests); verify it passes.
 - [ ] 2.6 Verify 1.3 and 1.4 pass with no further code (design D7, D9); if not, record the drift in design.md before
   changing code.
 - [ ] 2.7 Add a test that a client gone during a streamed chat completion through an alias cancels the target pass's
@@ -57,7 +61,9 @@
 - [ ] 3.3 `docs/tracing.md`: a section next to "Calls from an origin plugin" for the target pass of an alias call: no
   server span, attributes and log enrichment on the alias pass's span, row span id without an OTel span. Verify
   against design D6.
-- [ ] 3.4 Run `./gradlew checkstyleMain checkstyleTest` and
+- [ ] 3.4 `docs/dynamic-settings/plugins.md` line 81: the row of a plugin's call carries its bodies, as an HTTP call's
+  does, so a plugin call logs them in two rows. Verify against the analytics-log delta.
+- [ ] 3.5 Run `./gradlew checkstyleMain checkstyleTest` and
   `npx -y @fission-ai/openspec@1.14.3 validate alias-in-process-hop --strict`; verify both succeed.
 
 ## 4. Measurement

@@ -23,6 +23,9 @@ address goes away.
 - The analytics row of an alias pass has no `request.body`, `response.body` or `assembled_response`, whatever the
   transport. The target pass's row keeps its bodies, also when it runs in process, so a chain logs the bodies once, in
   the target's row. **Behaviour change** for analytics consumers that read bodies from alias rows.
+- Leaving the bodies out is an alias property only, not a property of serving a pass in process: the row of a pass an
+  origin plugin calls in process carries its bodies again, as a pass called over HTTP does. **Behaviour change** for
+  plugin calls: their bodies are logged in the plugin's row and in the target's row.
 - The target pass of an in-process alias call has no HTTP server span. It writes its span attributes (`gen_ai.*`,
   usage, cost) and its log-line enrichment on the alias pass's server span, which then shows the target's values.
 - Deliberate differences, all toward what a direct call of the target does:
@@ -45,7 +48,7 @@ Out of scope, each a later change if wanted:
   (one delete), because the target pass's attachment grants update the stored key.
 - Serving an alias call in one pass (no alias pass at all).
 - An OTel span of its own for an in-process target pass.
-- Changing what origin plugin calls serialize or log.
+- Changing what origin plugin calls serialize.
 
 ## Capabilities
 
@@ -58,21 +61,22 @@ None.
 - `deployment-aliases`: ADDED requirements: the target pass served in process for the create operations; the
   headers of an in-process alias call; attachments shared on through an alias.
 - `analytics-log`: ADDED "Rows without bodies for an alias pass"; MODIFIED "Bodies in the analytics row" (the alias
-  exception) and "Rows without bodies for an in-process child pass" (the target pass of an alias call is not such a
-  child pass).
+  exception, and in-process passes logged as others); REMOVED "Rows without bodies for an in-process child pass".
 - `router-deployment`: MODIFIED "Decide request of an in-process call", which now also covers a decision router that
   is the target of an in-process alias call.
 
 ## Impact
 
 - Code: `server` module. The alias pass's request and body (`BaseDeploymentPostController`), the origin client
-  (`ProxyClient`), the embedded classes it reuses (`EmbeddedProxyRequest`, `VertxHostDelegate`), and the child-pass
-  checks in the analytics row, the assembled response, span attributes and log enrichment. No config, settings or
+  (`ProxyClient`), the embedded classes it reuses (`EmbeddedProxyRequest`, `VertxHostDelegate`), the analytics row
+  and assembled response (keyed on the alias pass instead of the child pass), and the child-pass checks in span
+  attributes and log enrichment. No config, settings or
   API change. `backgroundJob.localBaseUrl` keeps its meaning for background polling and for the alias requests that
   stay on HTTP.
 - Records, per in-process alias call: one HTTP request into Core fewer and one Redis GET fewer (the target pass's key
   lookup); one parse fewer, and one serialize fewer when the target is not a decision router (a decision router serializes
-  the tree once to stand in for the client's bytes). Analytics: the alias row carries no bodies.
+  the tree once to stand in for the client's bytes). Analytics: the alias row carries no bodies; the row of a plugin's
+  in-process call carries them again.
 - Observability: one HTTP server span fewer per in-process alias hop; the target row's `span_id` has no OTel span of
   its own, as an origin plugin's call has. A dashboard that counts passes by server spans counts fewer.
 - Motivation: the A/B and its estimate in `openspec/changes/archive/2026-11-03-embedded-call/review.md` (task 7.1).
