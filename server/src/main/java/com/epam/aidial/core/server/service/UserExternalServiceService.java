@@ -83,10 +83,10 @@ public class UserExternalServiceService {
         PersistedSecret persisted = new PersistedSecret();
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             ExternalService existing = json == null ? null : ProxyUtil.convertToObject(json, ExternalService.class);
-            decryptSecret(aad, bucket, existing);
+            boolean existingSecretUnreadable = !tryDecryptSecretOrDrop(aad, bucket, existing);
             ExternalServiceValidation.validate(serviceId, service, existing == null, existing);
             clearAuthStatuses(service);
-            preserveOmittedSecret(service, existing);
+            ExternalServiceService.preserveOmittedSecret(serviceId, service, existing, existingSecretUnreadable);
             persisted.capture(service);
             encryptSecret(aad, bucket, service);
             result.setValue(service);
@@ -173,17 +173,13 @@ public class UserExternalServiceService {
         }
     }
 
-    private static boolean hasSecret(ExternalService service) {
-        return service != null && service.getAuthSettings() != null && service.getAuthSettings().getClientSecret() != null;
+    /** Returns {@code false} when the stored secret could not be decrypted and was dropped. */
+    private boolean tryDecryptSecretOrDrop(String aad, BucketInfo bucket, ExternalService service) {
+        return !hasSecret(service) || secretEncryptionService.tryDecryptOrDropSecrets(aad, bucket, service.getAuthSettings());
     }
 
-    private static void preserveOmittedSecret(ExternalService service, ExternalService existing) {
-        if (existing == null || existing.getAuthSettings() == null || service.getAuthSettings() == null) {
-            return;
-        }
-        if (service.getAuthSettings().getClientSecret() == null && existing.getAuthSettings().getClientSecret() != null) {
-            service.getAuthSettings().setClientSecret(existing.getAuthSettings().getClientSecret());
-        }
+    private static boolean hasSecret(ExternalService service) {
+        return service != null && service.getAuthSettings() != null && service.getAuthSettings().getClientSecret() != null;
     }
 
     private static void clearAuthStatuses(ExternalService service) {

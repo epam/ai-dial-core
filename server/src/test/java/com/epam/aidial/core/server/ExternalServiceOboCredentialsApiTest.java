@@ -213,6 +213,69 @@ public class ExternalServiceOboCredentialsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredServiceWriteWithUnreadableSecret() {
+        String put = "/v1/applications/user-services-app/external-services/myoauth";
+        String body = """
+                {
+                    "display_name": "My OAuth",
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        %s
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token",
+                        "redirect_uri": "http://localhost:3000/cb"
+                    }
+                }
+                """;
+        assertEquals(200, send(HttpMethod.PUT, put, null, body.formatted("\"client_secret\": \"shh-secret-1234\","),
+                "authorization", "user").status());
+        corruptStoredAuthSettings(dial.getProxy().getUserExternalServiceService().descriptor("user", "user-services-app", "myoauth"),
+                "/auth_settings");
+
+        Response refused = send(HttpMethod.PUT, put, null, body.formatted(""), "authorization", "user");
+        assertEquals(400, refused.status(), () -> refused.body());
+        assertTrue(refused.body().contains("myoauth") && refused.body().contains("can't be decrypted"), refused::body);
+
+        Response replaced = send(HttpMethod.PUT, put, null, body.formatted("\"client_secret\": \"shh-secret-5678\","),
+                "authorization", "user");
+        assertEquals(200, replaced.status(), () -> replaced.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
+    void testUserAuthoredServiceTypeChangeWithUnreadableSecret() {
+        String put = "/v1/applications/user-services-app/external-services/myoauth";
+        assertEquals(200, send(HttpMethod.PUT, put, null, """
+                {
+                    "display_name": "My OAuth",
+                    "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "cid",
+                        "client_secret": "shh-secret-1234",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token",
+                        "redirect_uri": "http://localhost:3000/cb"
+                    }
+                }
+                """, "authorization", "user").status());
+        corruptStoredAuthSettings(dial.getProxy().getUserExternalServiceService().descriptor("user", "user-services-app", "myoauth"),
+                "/auth_settings");
+
+        Response changed = send(HttpMethod.PUT, put, null, """
+                {
+                    "display_name": "My OAuth",
+                    "auth_settings": {
+                        "authentication_type": "API_KEY",
+                        "api_key_header": "X-Key"
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, changed.status(), () -> changed.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-obo.json")
     void testUserAuthoredOauthServiceSecretStrippedAndResolvable() throws Exception {
         String put = "/v1/applications/user-services-app/external-services/myoauth";
         String scope = "applications/user-services-app/external_services/myoauth";

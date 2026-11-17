@@ -208,8 +208,8 @@ public class AdminApplyApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testApplyAcceptsModelWithInBatchTranslator() {
-        // Manifest lists the Model first on purpose: DEPENDENCY_ORDER_COMPARATOR sorts Translator (2)
-        // ahead of Model (8), and mutateScratch stages each success, so the translator is in scratch
+        // Manifest lists the Model first on purpose: DEPENDENCY_ORDER_COMPARATOR sorts Translator (3)
+        // ahead of Model (9), and mutateScratch stages each success, so the translator is in scratch
         // by the time the model is validated. Author order must not matter.
         String body = """
                 {
@@ -249,8 +249,39 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyReportsPluginBeforeTranslator() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Translator",
+                      "name": "translators/platform/apply-order-translator",
+                      "spec": {
+                        "in": "anthropicMessages",
+                        "out": "openaiChatCompletions",
+                        "baseUrl": "http://localhost:7001/translate"
+                      }
+                    },
+                    {
+                      "kind": "Plugin",
+                      "name": "plugins/platform/apply-order-plugin",
+                      "spec": {"type": "test-echo", "settings": {"greeting": "hi"}}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertEquals("plugins/platform/apply-order-plugin", results.get(0).get("entityId").asText(), response::body);
+        assertEquals("translators/platform/apply-order-translator", results.get(1).get("entityId").asText(), response::body);
+        verify(send(HttpMethod.GET, "/v1/plugins/platform/apply-order-plugin", null, "", "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyRouterWithItsInBatchTranslator() {
-        // input order model, router, translator; processing order translator (2), router (4), model (8)
+        // input order model, router, translator; processing order translator (3), router (5), model (9)
         String body = """
                 {"manifests": [
                   {"kind": "Model", "name": "models/platform/apply-order-model",
@@ -1165,6 +1196,54 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyToolSetWithoutSecretFailsWhenStoredSecretIsUnreadable() {
+        String toolSetPath = "toolsets/platform/apply-toolset-unreadable";
+        String manifest = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "ToolSet",
+                      "name": "%s",
+                      "spec": {
+                        "transport": "http",
+                        "endpoint": "http://localhost:9876/mcp",
+                        "display_name": "Apply Toolset",
+                        "auth_settings": {
+                          "authentication_type": "OAUTH",
+                          "client_id": "my-client-id",
+                          %s
+                          "redirect_uri": "http://admin/callback",
+                          "authorization_endpoint": "http://localhost:9876/authorize",
+                          "token_endpoint": "http://localhost:9876/token"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            Response created = send(HttpMethod.POST, "/v1/admin/apply", null,
+                    manifest.formatted(toolSetPath, "\"client_secret\": \"my-client-secret\","), "authorization", "admin");
+            verify(created, 200);
+            assertEquals(1, ProxyUtil.MAPPER.readTree(created.body()).get("applied").asInt(), created.body());
+
+            corruptStoredToolSetSecrets(toolSetPath);
+            String storedBefore = readStoredBlob(toolSetPath);
+
+            Response response = send(HttpMethod.POST, "/v1/admin/apply", null,
+                    manifest.formatted(toolSetPath, ""), "authorization", "admin");
+            verify(response, 200);
+            JsonNode result = ProxyUtil.MAPPER.readTree(response.body()).get("results").get(0);
+            assertEquals("FAILED", result.get("status").asText(), response.body());
+            assertTrue(result.get("error").asText().contains("can't be decrypted"), response.body());
+            assertEquals(storedBefore, readStoredBlob(toolSetPath));
+        }
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyRejectsOutOfContractEntityName() {
         // /v1/admin/apply must enforce the same entity-name contract as the single-entity PUT —
         // it must not be a back door that lets a name PUT would reject slip into blob storage.
@@ -1600,6 +1679,23 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     () -> "Body: " + response.body());
             verify(send(HttpMethod.GET, "/v1/models/platform/apply-soft-unserved", null, "",
                     "authorization", "admin"), 404);
+        }
+
+        @Test
+        @SneakyThrows
+        void testApplyAdmitsPluginOfUnknownTypeAsInvalid() {
+            String body = """
+                    {
+                      "precheck": false,
+                      "manifests": [
+                        {"kind": "Plugin", "name": "plugins/platform/apply-soft-plugin", "spec": {"type": "missing"}}
+                      ]
+                    }
+                    """;
+            Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+            verify(response, 200);
+            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals("APPLIED_INVALID", parsed.get("results").get(0).get("status").asText(), response::body);
         }
 
         @Test

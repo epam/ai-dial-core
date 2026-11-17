@@ -6,6 +6,9 @@ import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.log.AnalyticsSettings;
+import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -13,6 +16,10 @@ import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.security.IdpNotFoundException;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -50,6 +57,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -57,10 +65,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -122,6 +132,8 @@ public class ResourceBaseTest {
     CloseableHttpClient client;
     String bucket;
     long time = 0;
+    // every analytics row this test's Core wrote, in order
+    final List<AnalyticsLogContext> analyticsRows = new CopyOnWriteArrayList<>();
     long id = 123;
 
     int serverPort;
@@ -234,7 +246,16 @@ public class ResourceBaseTest {
                         return Future.failedFuture("Not authorized");
                     });
 
-            dial = new AiDial();
+            dial = new AiDial() {
+                @Override
+                protected LogStore createLogStore(AnalyticsSettings analyticsSettings) {
+                    LogStore store = super.createLogStore(analyticsSettings);
+                    return logContext -> {
+                        analyticsRows.add(logContext);
+                        store.save(logContext);
+                    };
+                }
+            };
             dial.setSettings(settings);
             dial.setGenerator(this::generate);
             dial.setClock(() -> time);
@@ -325,6 +346,63 @@ public class ResourceBaseTest {
 
     protected String generate() {
         return "0" + id++;
+    }
+
+    // Structurally valid Base64 that no key decrypts, standing in for a secret whose key is lost.
+    protected static final String CORRUPTED_CIPHERTEXT = Base64.getEncoder().encodeToString(new byte[64]);
+
+    protected String readStoredBlob(String url) {
+        return dial.getProxy().getResourceService().getResource(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService));
+    }
+
+    // Overwrites a stored toolset's secrets, bypassing the API's encrypt path, as a lost key or a copied blob would.
+    protected void corruptStoredToolSetSecrets(String url) {
+        corruptStoredAuthSettings(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService), "/auth_settings");
+    }
+
+    // Replaces an encrypted field of a stored config entity (model, key, route) with an envelope no key decrypts.
+    @SneakyThrows
+    protected void corruptStoredEnvelope(ResourceDescriptor descriptor, String parentPointer, String fieldName) {
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        JsonNode blob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ((ObjectNode) blob.at(parentPointer)).put(fieldName, "ENC[" + CORRUPTED_CIPHERTEXT + "]");
+        resourceService.putResource(descriptor, blob.toString(), EtagHeader.ANY, null, false);
+    }
+
+    // The same for the auth_settings object found at authSettingsPointer (a JSON pointer) in the stored blob.
+    @SneakyThrows
+    protected void corruptStoredAuthSettings(ResourceDescriptor descriptor, String authSettingsPointer) {
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        JsonNode blob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ObjectNode authSettings = (ObjectNode) blob.at(authSettingsPointer);
+        authSettings.put("client_secret", CORRUPTED_CIPHERTEXT);
+        if (authSettings.has("code_verifier")) {
+            authSettings.put("code_verifier", CORRUPTED_CIPHERTEXT);
+        }
+        resourceService.putResource(descriptor, blob.toString(), EtagHeader.ANY, null, false);
+    }
+
+    /**
+     * The analytics rows written so far, once there are at least {@code count}. Core writes a row after it has
+     * answered, so a test that reads rows right after its request waits for them, up to five seconds.
+     */
+    List<AnalyticsLogContext> awaitAnalyticsRows(int count) {
+        awaitCondition(() -> analyticsRows.size() >= count);
+        return List.copyOf(analyticsRows);
+    }
+
+    /**
+     * Waits up to five seconds for {@code condition}, and fails the test when it does not hold by then.
+     */
+    @SneakyThrows
+    static void awaitCondition(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("The condition did not hold within five seconds");
+            }
+            Thread.sleep(10);
+        }
     }
 
     /**

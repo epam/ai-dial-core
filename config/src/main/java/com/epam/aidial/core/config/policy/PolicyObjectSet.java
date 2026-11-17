@@ -1,5 +1,7 @@
 package com.epam.aidial.core.config.policy;
 
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import lombok.EqualsAndHashCode;
@@ -11,6 +13,10 @@ import java.util.Set;
 /**
  * What a policy covers: every deployment ({@code "*"}) or an explicit list of deployments.
  */
+@ApiSchema(
+        oneOf = {String.class},
+        oneOfTypes = {@ApiSchemaType(implementation = List.class, typeArguments = {String.class})}
+)
 @EqualsAndHashCode
 @ToString
 public final class PolicyObjectSet {

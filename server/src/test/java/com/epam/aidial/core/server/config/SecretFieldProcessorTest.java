@@ -552,6 +552,45 @@ class SecretFieldProcessorTest {
     // --- transitive descent (Application.routes[].upstreams[].key/secretExtraData) ------------
 
     @Test
+    void findUnreadableFields_reportsOnlyUndecryptableEnvelopesWithTheirPaths() {
+        Upstream unreadable = new Upstream();
+        unreadable.setKey(validEnvelope("bad-key"));
+        Upstream readable = new Upstream();
+        readable.setKey(validEnvelope("good-key"));
+        readable.setSecretExtraData("plain-extra-data");
+        UpstreamInterface unreadableInterface = new UpstreamInterface();
+        unreadableInterface.setKey(validEnvelope("bad-interface-key"));
+        Upstream withInterface = new Upstream();
+        withInterface.setInterfaces(Map.of("chat", unreadableInterface));
+        Model model = new Model();
+        model.setUpstreams(List.of(unreadable, readable, withInterface));
+        when(encryptionService.decrypt(eq(BUCKET), any(byte[].class), any(byte[].class)))
+                .thenAnswer(inv -> {
+                    byte[] in = inv.getArgument(1);
+                    if (new String(in, StandardCharsets.UTF_8).startsWith("bad")) {
+                        throw new IllegalStateException("tag mismatch");
+                    }
+                    return in;
+                });
+
+        assertEquals(List.of("upstreams[0].key", "upstreams[2].interfaces.chat.key"),
+                processor.findUnreadableFields(model, descriptor));
+        assertEquals(validEnvelope("bad-key"), unreadable.getKey());
+    }
+
+    @Test
+    void findUnreadableFields_reportsKeyFieldAndIgnoresPlaintext() {
+        Key unreadableKey = new Key();
+        unreadableKey.setKey("ENC[!!!]");
+        Key plaintextKey = new Key();
+        plaintextKey.setKey("plain-secret");
+
+        assertEquals(List.of("key"), processor.findUnreadableFields(unreadableKey, descriptor));
+        assertEquals(List.of(), processor.findUnreadableFields(plaintextKey, descriptor));
+        verify(encryptionService, never()).decrypt(any(), any(), any());
+    }
+
+    @Test
     void decryptFields_walksTransitivelyIntoApplicationRoutes() {
         // Route itself carries no @EncryptedField — only reachable transitively via Upstream.
         Upstream up = new Upstream();

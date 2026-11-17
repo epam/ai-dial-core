@@ -6,6 +6,9 @@ COPY --chown=gradle:gradle . /home/gradle/src
 WORKDIR /home/gradle/src
 RUN --mount=type=secret,id=GPR_USERNAME,env=GPR_USERNAME --mount=type=secret,id=GPR_PASSWORD,env=GPR_PASSWORD gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
 RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.tar --strip-components=1 -C /build
+# The sample plugins go into the image's plugins directory only on request: --build-arg SAMPLE_PLUGINS=true
+ARG SAMPLE_PLUGINS=false
+RUN if [ "$SAMPLE_PLUGINS" = "true" ]; then mkdir -p /build/plugins && cp /home/gradle/src/plugin-samples/build/libs/*.jar /build/plugins/; fi
 
 FROM eclipse-temurin:21-jdk-alpine
 
