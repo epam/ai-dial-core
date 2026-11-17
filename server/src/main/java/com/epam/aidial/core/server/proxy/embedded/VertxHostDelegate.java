@@ -21,7 +21,8 @@ import java.util.Set;
 import javax.annotation.Nullable;
 
 /**
- * Serves the in-process calls a plugin makes while it answers one attempt of an embedded pass. Each call is a
+ * Serves the in-process calls a plugin makes while it answers one attempt of an embedded pass, and the target pass of
+ * an alias call that Core serves in process through its built-in forward plugin ({@link #forAliasHop}). Each call is a
  * child pass: an in-memory request routed by Core's own controller selection, authenticated by the per-request key
  * record of the plugin's pass, so it is checked, limited, charged and logged as a request with that key, with no HTTP
  * request into Core and no key lookup.
@@ -47,7 +48,7 @@ public final class VertxHostDelegate implements HostDelegate {
     private final ContextInternal pluginContext;
     // the key record the calls carry; null for the parent pass's proxy key, read at each call
     private final ApiKeyData callKey;
-    // the calls serve the target pass of an alias call: their rows and spans are those of a pass of its own
+    // the calls serve the target pass of an alias call, which may write on the alias pass's span
     private final boolean aliasHop;
     private final Promise<Void> cancelled;
     /**
@@ -91,6 +92,15 @@ public final class VertxHostDelegate implements HostDelegate {
      */
     public static VertxHostDelegate forAliasHop(Proxy proxy, ProxyContext parent, ContextInternal pluginContext) {
         return new VertxHostDelegate(proxy, parent, pluginContext, null, false, true);
+    }
+
+    /**
+     * Whether the target pass of an alias hop under {@code aliasPass} may write on the current span: the alias pass has
+     * a server span of its own, or is itself such a target pass (an alias candidate of a router behind an alias). An
+     * alias that an origin plugin's call reached runs under the plugin's span, which its target must not write over.
+     */
+    static boolean writesOnAliasSpan(ProxyContext aliasPass) {
+        return !aliasPass.isChildPass() || aliasPass.isAliasTargetPass();
     }
 
     /**
@@ -140,7 +150,7 @@ public final class VertxHostDelegate implements HostDelegate {
         ProxyContext child = new ProxyContext(proxy, request, key, null, null,
                 IdGenerator.random().generateSpanId(), parent.getTraceFlags());
         child.setCallTree(call.body());
-        child.setAliasTargetPass(aliasHop);
+        child.setAliasTargetPass(aliasHop && writesOnAliasSpan(parent));
         responses.add(response);
         response.finished().onSuccess(ignored -> {
             // once closed, close() owns the set: cancelling an answer may finish it while close() goes through the set

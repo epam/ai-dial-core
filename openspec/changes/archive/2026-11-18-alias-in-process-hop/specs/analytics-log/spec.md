@@ -5,7 +5,8 @@
 ### Requirement: Rows without bodies for an alias pass
 Core SHALL write the row of an alias pass without `request.body`, `response.body` and `assembled_response`, and with
 every other field, whatever the key, the interface and whether the target pass runs in process. The row of the
-alias's target pass SHALL carry its bodies as "Bodies in the analytics row" says.
+alias's target pass SHALL carry its bodies as "Bodies in the analytics row" says; a target pass that refuses the call
+before its origin writes no row, as on a direct call.
 
 #### Scenario: Messages through an alias
 - **WHEN** a caller with a key that is not `secured` sends `/anthropic/v1/messages` with `model: multi-alias`, and
@@ -23,8 +24,7 @@ alias's target pass SHALL carry its bodies as "Bodies in the analytics row" says
 For a key that is not `secured`, Core SHALL write the request body as `request.body` and the response body as
 `response.body`, a body over 4 MiB cut there and ending in `>>`, and, for a streamed response that Core assembled, the
 assembled response as `assembled_response`, except while the log writer is behind or in the row of an alias pass (see
-the two requirements on rows without bodies). This holds for a pass Core serves in process too. For a `secured` key,
-Core SHALL write none of these three fields.
+the two requirements on rows without bodies). For a `secured` key, Core SHALL write none of these three fields.
 
 #### Scenario: Key not secured
 - **WHEN** a pass with a key that is not `secured` writes its row

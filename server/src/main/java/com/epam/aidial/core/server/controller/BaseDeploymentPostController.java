@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
@@ -57,7 +56,6 @@ import org.apache.commons.lang3.Strings;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -141,10 +139,11 @@ public class BaseDeploymentPostController {
     /**
      * Sets the request's body once the chain has run: {@code request} serialised, when the chain changed it or the
      * pass has no body yet, as the pass of an in-process call has not. For an interface served by a plugin the tree stays on the
-     * context too, and its plugin gets it as {@code bodyTree} instead of parsing the body again.
+     * context too, and its plugin gets it as {@code bodyTree} instead of parsing the body again. An alias pass whose
+     * target pass runs in process keeps the tree and does not serialize ({@link #isInProcessAliasHop}).
      */
     protected void setProcessedRequestBody(RequestObject request, boolean changed, InterfaceType type) throws JsonProcessingException {
-        if (inProcessAliasBaseUrl(type, requestUri(type)) != null) {
+        if (isInProcessAliasHop()) {
             // the target pass takes the tree, and the alias row has no bodies: no one reads serialized bytes. A pass
             // with none (itself served in process) gets an empty buffer for the Content-Length the send sets
             context.setRequestTree(request.getTree());
@@ -476,42 +475,30 @@ public class BaseDeploymentPostController {
     }
 
     protected Future<ProxyRequest> createProxyRequest(InterfaceType type) {
-        String uri = requestUri(type);
-        String aliasBaseUrl = inProcessAliasBaseUrl(type, uri);
-        if (aliasBaseUrl != null) {
-            context.setProxyRequestUri(uri);
-            return proxy.getProxyClient().aliasTarget(context, context.getRequest().method(), aliasBaseUrl, uri);
-        }
-        return createProxyRequest(uri, DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), type, context.getConfig().getTranslators()));
-    }
-
-    private String requestUri(InterfaceType type) {
         HttpServerRequest request = context.getRequest();
-        return DeploymentEndpointUtil.resolveRequestUri(context.getDeployment(), type, context.getConfig().getTranslators(),
+        Deployment deployment = context.getDeployment();
+        String uri = DeploymentEndpointUtil.resolveRequestUri(deployment, type, context.getConfig().getTranslators(),
                 request.path(), request.query());
+        if (isInProcessAliasHop()) {
+            context.setProxyRequestUri(uri);
+            // the base the uri was resolved on: the alias pass's interface base url, Core's own address
+            String baseUrl = DeploymentEndpointUtil.resolveServingEndpoint(deployment, type, context.getConfig().getTranslators());
+            return proxy.getProxyClient().aliasTarget(context, request.method(), baseUrl, uri);
+        }
+        return createProxyRequest(uri, DeploymentEndpointUtil.resolvePlugin(deployment, type, context.getConfig().getTranslators()));
     }
 
     /**
-     * The base url of the alias pass's interface {@code type} when its request to the target, {@code uri}, is served in
-     * process; null when it goes over HTTP to Core's own address. In process when the deployment is an alias pass, the
-     * pass is not a background job, and the target's path is one an in-process call serves (Messages
-     * {@code count_tokens} is not). The send and the body follow this one check: an HTTP send of bytes the alias pass
-     * did not serialize from the tree would name the alias in {@code model} and reach the alias again.
+     * Whether the alias pass's request to its target is served in process; otherwise it goes over HTTP to Core's own
+     * address. In process when the deployment is an alias pass, the pass is not a background job, and the request's
+     * path is one an in-process call serves (Messages {@code count_tokens} is not). The request's path classifies as the
+     * target's does: an override path keeps the action, and {@code count_tokens} stays {@code count_tokens}. The send and
+     * the body follow this one check: an HTTP send of bytes the alias pass did not serialize from the tree would name
+     * the alias in {@code model} and reach the alias again.
      */
-    @Nullable
-    private String inProcessAliasBaseUrl(InterfaceType type, String uri) {
-        if (!(context.getDeployment() instanceof AliasPass) || context.isBackgroundJob()) {
-            return null;
-        }
-        Map<String, DeploymentInterface> interfaces = context.getDeployment().getInterfaces();
-        DeploymentInterface declared = interfaces == null ? null : interfaces.get(type.getValue());
-        String base = declared == null ? null : declared.getBaseUrl();
-        if (base == null || !uri.startsWith(base)) {
-            return null;
-        }
-        String rest = uri.substring(base.length());
-        int question = rest.indexOf('?');
-        return VertxHostDelegate.servesCall(question < 0 ? rest : rest.substring(0, question)) ? base : null;
+    private boolean isInProcessAliasHop() {
+        return context.getDeployment() instanceof AliasPass && !context.isBackgroundJob()
+                && VertxHostDelegate.servesCall(context.getRequest().path());
     }
 
     protected Future<ProxyResponse> sendProxyRequest(ProxyRequest proxyRequest, InterfaceType type) {

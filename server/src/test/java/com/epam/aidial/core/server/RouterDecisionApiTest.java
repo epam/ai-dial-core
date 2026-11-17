@@ -24,12 +24,15 @@ import org.redisson.api.RedissonClient;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -597,6 +600,32 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertEquals("/body/decide", decide.getPath());
         assertTrue(decide.getBody().readUtf8().contains("\"messages\""));
         single(request -> request.getPath().equals("/openai/deployments/m1/chat/completions"));
+    }
+
+    // alias-in-process-hop design D8: the client leaves before an alias candidate's target answers; the router row is
+    // still written ("Decision record"), as when the hop went over HTTP
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void clientGoneBeforeAliasCandidateAnswersKeepsTheRouterRow() {
+        verdict.set("{\"candidates\": [\"alias-m1\"]}");
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            MockResponse answer = answer(request);
+            return isDecide(request) ? answer : answer.setHeadersDelay(2, TimeUnit.SECONDS);
+        })) {
+            byte[] body = CHAT_BODY.getBytes(StandardCharsets.UTF_8);
+            try (Socket socket = new Socket("localhost", serverPort)) {
+                OutputStream out = socket.getOutputStream();
+                out.write(("POST /openai/deployments/r1/chat/completions HTTP/1.1\r\nHost: localhost\r\napi-key: proxyKey1\r\n"
+                        + "content-type: application/json\r\ncontent-length: " + body.length + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                out.write(body);
+                out.flush();
+                awaitCondition(() -> received.stream().anyMatch(request -> request.getPath().equals("/openai/deployments/m1/chat/completions")));
+            }
+            awaitCondition(() -> analyticsRows.stream().anyMatch(row -> row.getDecision() != null));
+        }
     }
 
     @Test

@@ -123,11 +123,12 @@ public class ProxyContext {
     private final Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
     // the merged chat completions body, or the terminal Responses frame - whichever surface streamed
     private String assembledStreamingResponse;
-    // the body an origin plugin passed to its in-process call, on the child pass Core serves for that call
+    // the body of the in-process call this child pass serves: an origin plugin's call, or an alias pass's to its target
     private ObjectNode callTree;
     /**
-     * Whether this child pass is the target pass of an alias call, served in process: it writes its span attributes
-     * and log enrichment on the current span, the alias pass's, which an origin plugin's call does not.
+     * Whether this child pass is the target pass of an alias call, served in process under an alias whose span is a
+     * server span of the alias chain (not an origin plugin's): it writes its span attributes and log enrichment on the
+     * current span, the alias pass's, which an origin plugin's call does not.
      */
     private boolean aliasTargetPass;
     // the tree the chain serialised into requestBody, kept for the plugin of an embedded interface until it is called

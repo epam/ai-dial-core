@@ -92,8 +92,8 @@ public class AnalyticsLogContext {
     }
 
     /**
-     * The row of a pass. A pass Core serves in process for an origin plugin's call has no bodies in its row: the
-     * plugin's own pass logs them once for the trace.
+     * The row of a pass. An alias pass has no bodies in its row: it relays its target's answer, and the target pass's
+     * row logs them once. Every other pass, one Core serves in process included, logs its bodies.
      */
     public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse) {
         Buffer responseBody = context.getResponseBody();

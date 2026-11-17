@@ -148,8 +148,12 @@ carries it, so a plugin's call under such a pass would be taken for an alias tar
 
 The target pass runs on a duplicate of the alias pass's Vert.x context with the alias pass's OTel context
 (`VertxHostDelegate.call`). It has no server span; it writes its span attributes and log-line enrichment on the
-current span, the alias pass's server span, where attributes both passes set end with the target's values. Its HTTP
-origin calls keep their client spans under that span. Its row and token-stats span have a span id of their own with
+current span, the alias pass's server span. Its request, operation and usage attributes replace the alias's there.
+The alias pass writes after the target has answered, so its `dial.latency.*`, `dial.upstream.attempts`, Responses
+`gen_ai.response.id` and later log-line keys stay; no span attribute carries cost. When the alias pass is itself an
+origin plugin's call, the current span is the plugin's, and the target pass writes nothing on it
+(`VertxHostDelegate.writesOnAliasSpan`: the alias pass is not a child pass, or is itself a marked target pass, as an
+alias candidate of a router behind an alias is). Its HTTP origin calls keep their client spans under that span. Its row and token-stats span have a span id of their own with
 the alias pass's span as parent, as an origin plugin's call does; that id has no OTel span.
 
 Rejected:
@@ -181,6 +185,11 @@ pass; a reset discards the answer and cancels the call. Two differences from the
 answer cancels the target pass at once (`EmbeddedProxyRequest.java:onClientGone`), where over HTTP it ran until the
 alias first wrote to the client; and the depth limit of 32 applies, which an alias chain cannot reach (an alias
 cannot target an alias, so a chain adds at most alias, router, alias).
+
+For a plugin's attempt, a failure after its client left ends the pass with no finalize. An alias hop does not take
+that branch: its failure goes to the alias pass's connect-failure path, which tries no other candidate for a closed
+client (`RouterDecisionFlow.retryWithNextCandidate`) and whose finalize writes the router row ("Decision record"),
+ends the span and deletes the key. Over HTTP the router row was written too (`handleResponseError`).
 
 ### D9. Headers
 

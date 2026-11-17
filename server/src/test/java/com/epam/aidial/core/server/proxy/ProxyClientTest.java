@@ -66,7 +66,8 @@ class ProxyClientTest {
 
     @Test
     void testAliasTargetDoesNotCheckTheDeployment() throws Exception {
-        // the alias pass of a stored alias is no platform application: Core's own forward serves it, not a plugin entry
+        // no platform check, unlike a plugin entry: here a user's custom application, and a stored alias's pass is no
+        // platform application either
         ProxyRequest request = await(client.aliasTarget(context, HttpMethod.POST, "http://localhost:8080",
                 "http://localhost:8080/openai/deployments/m1/chat/completions"));
 

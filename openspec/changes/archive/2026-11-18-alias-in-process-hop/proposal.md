@@ -22,12 +22,15 @@ address goes away.
   the alias pass no longer serializes the body.
 - The analytics row of an alias pass has no `request.body`, `response.body` or `assembled_response`, whatever the
   transport. The target pass's row keeps its bodies, also when it runs in process, so a chain logs the bodies once, in
-  the target's row. **Behaviour change** for analytics consumers that read bodies from alias rows.
+  the target's row. A target that refuses the call before its origin writes no row, as on a direct call, so such a
+  call logs no bodies. **Behaviour change** for analytics consumers that read bodies from alias rows.
 - Leaving the bodies out is an alias property only, not a property of serving a pass in process: the row of a pass an
   origin plugin calls in process carries its bodies again, as a pass called over HTTP does. **Behaviour change** for
   plugin calls: their bodies are logged in the plugin's row and in the target's row.
-- The target pass of an in-process alias call has no HTTP server span. It writes its span attributes (`gen_ai.*`,
-  usage, cost) and its log-line enrichment on the alias pass's server span, which then shows the target's values.
+- The target pass of an in-process alias call has no HTTP server span. It writes its request, operation and usage
+  span attributes and its log-line enrichment on the alias pass's server span, which then shows the target's model and
+  usage (latency, attempts and the response id stay the alias's). Under an origin plugin's call it writes none, as the
+  plugin's call does not.
 - Deliberate differences, all toward what a direct call of the target does:
   - The target's origin no longer receives the alias pass's `X-DIAL-OVERRIDE-NAME`.
   - The caller's answer no longer carries the target pass's copies of `Access-Control-Allow-Origin`,
