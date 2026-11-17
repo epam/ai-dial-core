@@ -53,6 +53,21 @@ class AliasApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void aliasDefaultHeaderReachesTheTarget() {
+        AtomicReference<String> team = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", request -> {
+                team.set(request.getHeader("X-Team"));
+                return TestWebServer.createResponse(200, CHAT_RESPONSE, "Content-Type", "application/json");
+            });
+            Response response = chat("assistant", "default-key");
+            assertEquals(200, response.status(), response.body());
+        }
+        assertEquals("a", team.get());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void callerWithoutTheAliasRoleIsRefused() {
         Response response = chat("assistant", "power-key");
         assertEquals(403, response.status(), response.body());

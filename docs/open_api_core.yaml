@@ -17590,6 +17590,7 @@ components:
       - model
       - application
       - toolset
+      - router
     AliasTarget:
       type: object
       properties:

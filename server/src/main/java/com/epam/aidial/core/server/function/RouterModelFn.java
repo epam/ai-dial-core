@@ -12,9 +12,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Puts the router's name in the {@code model} of a decided request's answer, so the client sees the deployment it
- * called; the analytics rows name the one that served in {@code deployment}. Replaces a textual {@code model} on the root, on {@code response}
- * (Responses events) and on {@code message} (Messages {@code message_start}), and adds none.
+ * Puts the router's name, or that of the alias it was called through, in the {@code model} of a decided request's
+ * answer, so the client sees the deployment it called; the analytics rows name the one that served in
+ * {@code deployment}. Replaces a textual {@code model} on the root, on {@code response} (Responses events) and on
+ * {@code message} (Messages {@code message_start}), and adds none.
  */
 public class RouterModelFn extends BaseResponseFunction {
 
@@ -35,7 +36,7 @@ public class RouterModelFn extends BaseResponseFunction {
      * The stream functions with this one first when the request was decided, so the others see what the client gets.
      */
     public static List<BaseResponseFunction> withRouterModel(Proxy proxy, ProxyContext context, List<BaseResponseFunction> functions) {
-        return withRouterModel(proxy, context, context.getDecision() == null ? null : context.getDecision().getRouterName(), functions);
+        return withRouterModel(proxy, context, context.getDecision() == null ? null : context.getDecision().getAnswerName(), functions);
     }
 
     /**

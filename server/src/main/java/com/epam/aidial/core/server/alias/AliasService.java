@@ -108,7 +108,7 @@ public class AliasService {
 
     @Nullable
     private static Alias parseStored(ResourceDescriptor resource, String body) {
-        StoredAliases.Stored stored = StoredAliases.parse(body);
+        StoredAliases.Stored stored = StoredAliases.parse(body, true);
         if (stored.alias() == null) {
             log.warn("Ignoring the stored alias {}: {}", resource.getUrl(), stored.warnings());
             return null;

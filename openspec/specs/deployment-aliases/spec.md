@@ -9,9 +9,10 @@ the call chain they record, sign-in to a toolset target, listings and the health
 
 ### Requirement: Alias in the config
 Core SHALL read aliases from the top-level `aliases` config section, keyed by the alias's name. An alias SHALL
-have a `target` with a `path` of the form `models/<name>`, `applications/<name>` or `toolsets/<name>` for a config
-deployment, or `applications/<bucket>/<path>` or `toolsets/<bucket>/<path>` for a resource. It MAY have `presentAs`
-(`model`, `application` or `toolset`), `userRoles` and the display fields of a deployment.
+have a `target` with a `path` of the form `models/<name>`, `applications/<name>`, `toolsets/<name>` or
+`routers/<name>` for a config deployment, or `applications/<bucket>/<path>` or `toolsets/<bucket>/<path>` for a
+resource. It MAY have `presentAs` (`model`, `application`, `toolset` or `router`), `userRoles`, `defaultHeaders` and
+the display fields of a deployment.
 
 #### Scenario: Alias loaded
 - **WHEN** the config has an alias `assistant` with target path `models/gpt-4-internal`
@@ -20,6 +21,10 @@ deployment, or `applications/<bucket>/<path>` or `toolsets/<bucket>/<path>` for 
 #### Scenario: Bad target refused
 - **WHEN** an alias has no `target.path`, or a path that is not one of these forms
 - **THEN** the config file load fails, as for a duplicate deployment name
+
+#### Scenario: Router target loaded
+- **WHEN** the config has a router `r1` and an alias `strong` with `presentAs: model` and target path `routers/r1`
+- **THEN** the config loads and `strong` can be called
 
 ### Requirement: Alias names share the deployment namespace
 An alias name SHALL NOT be the name of a model, application, toolset, interceptor or other alias.
@@ -30,13 +35,18 @@ An alias name SHALL NOT be the name of a model, application, toolset, intercepto
 
 ### Requirement: Alias type
 The type an alias is listed and called as SHALL be its `presentAs`, or the type the first segment of its target path
-names when `presentAs` is not set. Core SHALL refuse an alias whose target path starts with `aliases/`, and an alias
-whose type does not fit a config target: `model` and `application` fit a model or an application target, `toolset`
-fits a toolset target or an application target that has `mcp`.
+names when `presentAs` is not set, `router` for `routers/`. Core SHALL refuse an alias whose target path starts with
+`aliases/`, and an alias whose type does not fit a config target: `model` and `application` fit a model, an
+application or a router target, `toolset` fits a toolset target or an application target that has `mcp`, `router`
+fits a router target.
 
 #### Scenario: Type of the target by default
 - **WHEN** an alias without `presentAs` targets `models/gpt-4-internal`
 - **THEN** `/openai/models` lists it with `object` `model`
+
+#### Scenario: Router type by default
+- **WHEN** an alias `tier` without `presentAs` targets `routers/r1`
+- **THEN** the config loads, `/v1/routers` lists `tier` and `/openai/models` does not
 
 #### Scenario: Alias to an alias
 - **WHEN** an alias's target path is `aliases/other`
@@ -44,6 +54,14 @@ fits a toolset target or an application target that has `mcp`.
 
 #### Scenario: Toolset shown as a model
 - **WHEN** an alias with `presentAs: model` targets `toolsets/search`
+- **THEN** the config file load fails
+
+#### Scenario: Router shown as a model
+- **WHEN** an alias with `presentAs: model` targets `routers/r1`, which declares `openaiChatCompletions` and `anthropicMessages`
+- **THEN** `/openai/models` and `/anthropic/v1/models` list the alias with `object` `model`, and neither lists `r1`
+
+#### Scenario: Router shown as a toolset
+- **WHEN** an alias with `presentAs: toolset` targets `routers/r1`
 - **THEN** the config file load fails
 
 ### Requirement: Missing alias target
@@ -95,10 +113,10 @@ endpoints SHALL apply the same rule.
 - **THEN** a caller with `power-user` calls the alias and sees it in `/openai/models`, and a caller with only `default-user` gets `403` and does not see it
 
 ### Requirement: Endpoints of an alias
-An alias SHALL be called by its name. An alias of type `model` or `application` SHALL be callable through the
-deployments-POST endpoints, `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages`, and
-through `/v1/deployments/<alias>/mcp` when the target has `mcp`. An alias of type `toolset` SHALL be callable through
-`/v1/toolset/<alias>/mcp`.
+An alias SHALL be called by its name. An alias of type `model`, `application` or `router` SHALL be callable through
+the deployments-POST endpoints, `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages`,
+and through `/v1/deployments/<alias>/mcp` when the target has `mcp`. An alias of type `toolset` SHALL be callable
+through `/v1/toolset/<alias>/mcp`.
 
 #### Scenario: Responses and Messages
 - **WHEN** a caller sends `/openai/v1/responses` or `/anthropic/v1/messages` with `model: assistant`
@@ -109,10 +127,10 @@ through `/v1/deployments/<alias>/mcp` when the target has `mcp`. An alias of typ
 - **THEN** the request reaches the application's MCP endpoint, and a chat completion to the alias answers as one to the toolset does
 
 ### Requirement: Features, stored responses and consent through an alias
-For an alias of type `model` or `application`, Core SHALL serve `tokenize`, `truncate_prompt`, `configuration` and
-`rate` by the target in a target pass, and SHALL serve `GET`, `DELETE` and `cancel` of a response stored through the
-alias by the alias. Consent to the alias SHALL cover its target: the review SHALL list both, and the accepted consent
-SHALL let the caller call the alias without rights on the target.
+For an alias of type `model`, `application` or `router`, Core SHALL serve `tokenize`, `truncate_prompt`,
+`configuration` and `rate` by the target in a target pass, and SHALL serve `GET`, `DELETE` and `cancel` of a response
+stored through the alias by the alias. Consent to the alias SHALL cover its target: the review SHALL list both, and
+the accepted consent SHALL let the caller call the alias without rights on the target.
 
 #### Scenario: Stored response
 - **WHEN** a caller stores a response through `multi-alias` and reads `/openai/v1/responses/<id>`
@@ -177,9 +195,10 @@ carry the target's auth settings, without secrets, with the caller's auth status
 
 ### Requirement: Aliases in listings
 Core SHALL list an alias the caller may call with the deployments of its type in `/openai/models`,
-`/openai/deployments`, `/anthropic/v1/models`, `/openai/applications`, `/openai/toolsets`, `/v1/deployments` and
-`/v1/deployment-names`, a config alias by its name and a stored alias by its url, and SHALL answer for that name on
-their single-item endpoints. An alias whose target is missing SHALL be left out of all of them.
+`/openai/deployments`, `/anthropic/v1/models`, `/openai/applications`, `/openai/toolsets`, `/v1/routers`,
+`/v1/deployments` and `/v1/deployment-names`, a config alias by its name and a stored alias by its url, and SHALL
+answer for that name on their single-item endpoints. An alias whose target is missing SHALL be left out of all of
+them.
 
 #### Scenario: Broken alias not named
 - **WHEN** a caller lists `/v1/deployment-names`
@@ -196,6 +215,24 @@ their single-item endpoints. An alias whose target is missing SHALL be left out 
 #### Scenario: Anthropic listing
 - **WHEN** stored aliases target a model with the Messages interface and a model without it
 - **THEN** `/anthropic/v1/models` lists the first only, and `/anthropic/v1/models/<url of the second>` answers `404`
+
+#### Scenario: Router entry
+- **WHEN** the alias `tier` of type `router` targets `routers/r1`, which declares `openaiChatCompletions`, and a
+  caller who may use `tier` lists the deployments
+- **THEN** `/v1/routers` and `/v1/deployments` hold an entry with `id: "tier"` and `object: "router"`,
+  `/v1/deployment-names?type=router` holds `{"id": "tier", "object": "router"}`, `/v1/routers/tier` and
+  `/v1/deployments/tier` answer `200` with `object: "router"`, and `/openai/models`, `/openai/deployments` and
+  `/anthropic/v1/models` do not list `tier`
+
+#### Scenario: Router entry by interface
+- **WHEN** the target of `tier` declares `openaiChatCompletions` and not `openaiEmbeddings`, and a caller sends
+  `GET /v1/deployments?interface_type=chat`, then `?interface_type=embedding`, then `?interface_type=mcp`
+- **THEN** the first answer holds `tier` and the other two do not
+
+#### Scenario: Model-type alias over a router not a router entry
+- **WHEN** the alias `strong` with `presentAs: model` targets `routers/r1`
+- **THEN** `/v1/routers` does not list `strong`, `/v1/routers/strong` answers `404` and
+  `/v1/deployment-names?type=router` does not name it
 
 ### Requirement: Listings without storage
 When storage cannot list or read the stored aliases, a listing SHALL answer without them rather than fail.
@@ -326,12 +363,18 @@ that exists (a config deployment or a resource). A target that does not exist SH
 - **THEN** the answer is `400`
 
 ### Requirement: Target of a stored alias
-A stored alias SHALL target a config deployment or a resource in the `public` bucket. A `PUT` with a resource target in
-another bucket SHALL answer `400`, and a stored blob with one SHALL be ignored by calls and listings.
+A stored alias of the public bucket SHALL target a config deployment other than a router, or a resource in the
+`public` bucket. A `PUT` with a `routers/` target or a resource target in another bucket SHALL answer `400`, and a
+stored blob with one SHALL be ignored by calls and listings and read back with `status: invalid`.
 
 #### Scenario: Target in a user bucket
 - **WHEN** an admin stores an alias whose target is `applications/<user bucket>/app` or `toolsets/<user bucket>/tools`
 - **THEN** the answer is `400`
+
+#### Scenario: Router target of a stored alias
+- **WHEN** an admin stores an alias with `presentAs: model` whose target is `routers/r1` under `/v1/aliases/public/`
+- **THEN** the answer is `400`; a blob with that target written around the API answers `404` to a call and
+  `status: invalid` to `GET`
 
 ### Requirement: Broken stored alias reported
 Core SHALL accept a stored alias whose target does not exist, answer `503` to a call of it, leave it out of listings,
@@ -356,3 +399,76 @@ A manifest of `/v1/admin/validate` or `/v1/admin/apply` naming a model like an a
 #### Scenario: Manifest named like a config alias
 - **WHEN** the config file has alias `assistant` and an admin sends a `Model` manifest `models/platform/assistant` to `/v1/admin/validate` and to `/v1/admin/apply` with `precheck: false`
 - **THEN** the entry is `FAILED` on both and no model `assistant` is written
+
+### Requirement: Alias to a router
+A call of an alias whose target is a router SHALL be served as a call of that router by the same caller is, in the
+target pass: the router decides in decision mode, or receives the request in the other modes. The alias SHALL grant
+the caller the right to call the router only; a deployment the router chooses SHALL be checked against the caller's
+own rights, as on a direct call of the router.
+
+#### Scenario: Decision through an alias
+- **WHEN** `strong` targets `routers/r1`, `r1` is in decision mode and answers `{"candidates": ["gpt-4"]}`, and a
+  caller who may call `strong` and `gpt-4` but not `r1` sends a chat completion to `strong`
+- **THEN** the answer is `200` with the answer of `gpt-4`, and the same caller gets `403` from `r1` directly
+
+#### Scenario: Chosen deployment the caller may not call
+- **WHEN** the same call is made by a caller who may call `strong` but not `gpt-4`, and `gpt-4` is the only candidate
+- **THEN** the candidate is skipped with reason `forbidden`, as on a direct call of `r1`
+
+#### Scenario: Messages through an alias
+- **WHEN** a client sends `POST /anthropic/v1/messages` with `"model": "strong"` and `r1` answers
+  `{"candidates": ["claude"]}`
+- **THEN** `claude` receives the request and the client receives its answer
+
+### Requirement: Alias over a router is not a candidate
+An alias whose target is a router SHALL NOT be a routing candidate: Core SHALL answer it as a router named as a
+candidate.
+
+#### Scenario: Alias over a router as a candidate
+- **WHEN** the router `r2` answers `{"candidates": ["strong"]}` and `strong` targets `routers/r1`
+- **THEN** Core answers `502` and sends nothing to `strong` or `r1`
+
+### Requirement: Default headers of an alias
+For an alias of type `model`, `application` or `router`, the alias pass SHALL set each header of the alias's
+`defaultHeaders` that the client did not send on the request it forwards to the target, as for a deployment's default
+headers. The target pass SHALL treat them as headers the client sent.
+
+#### Scenario: Header reaches the decide request
+- **WHEN** `strong` targets `routers/r1` and has `defaultHeaders: {"X-DIAL-ROUTER-TIER": "strong"}`, and a client
+  calls `strong` without that header
+- **THEN** the decide request `r1` receives has `X-DIAL-ROUTER-TIER: strong`
+
+#### Scenario: Client value kept
+- **WHEN** a client calls the same alias with `X-DIAL-ROUTER-TIER: hi-end`
+- **THEN** the decide request has `X-DIAL-ROUTER-TIER: hi-end` and no other value of that header
+
+#### Scenario: Header reaches a model target
+- **WHEN** `assistant` targets `models/gpt-4-internal` and has `defaultHeaders: {"X-Team": "a"}`, and a client calls
+  `assistant` without that header
+- **THEN** the upstream of `gpt-4-internal` receives `X-Team: a`
+
+#### Scenario: Direct call unaffected
+- **WHEN** a client who may call `r1` calls it directly with `X-DIAL-ROUTER-TIER: hi-end`
+- **THEN** the decide request has `X-DIAL-ROUTER-TIER: hi-end`
+
+#### Scenario: Header of a router-type alias
+- **WHEN** the alias `tier` without `presentAs` targets `routers/r1` and has
+  `defaultHeaders: {"X-DIAL-ROUTER-TIER": "tier"}`, and a client calls `tier` without that header
+- **THEN** the decide request `r1` receives has `X-DIAL-ROUTER-TIER: tier`
+
+### Requirement: Alias of type router
+An alias of type `router` SHALL target `routers/<name>`: Core SHALL refuse one with any other target path, whether or
+not that target exists, a resource included, on the config load and on a stored alias's `PUT`.
+
+#### Scenario: Router type over a model
+- **WHEN** an alias with `presentAs: router` targets `models/gpt-4-internal`, or `models/missing`
+- **THEN** the config file load fails
+
+#### Scenario: Router type over a resource
+- **WHEN** an admin stores an alias with `presentAs: router` whose target is `applications/public/app`
+- **THEN** the answer is `400`
+
+#### Scenario: Router type called
+- **WHEN** the alias `tier` of type `router` targets `routers/r1` in decision mode, `r1` answers
+  `{"candidates": ["gpt-4"]}` and a client sends a chat completion to `tier`
+- **THEN** `gpt-4` serves it and the client's answer has `"model": "tier"`
