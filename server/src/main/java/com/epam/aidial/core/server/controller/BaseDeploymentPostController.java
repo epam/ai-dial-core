@@ -108,22 +108,44 @@ public class BaseDeploymentPostController {
 
     protected Future<?> respond(HttpStatus status, String errorMessage) {
         finalizeRequest();
-        return context.respond(status, errorMessage);
+        Future<?> answered = context.respond(status, errorMessage);
+        if (writesErrorRows()) {
+            proxy.getLogStore().saveErrorResponse(context);
+        }
+        return answered;
     }
 
     protected void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
+        if (writesErrorRows()) {
+            proxy.getLogStore().saveErrorResponse(context);
+        }
     }
 
     protected void respond(HttpStatus status) {
         finalizeRequest();
         context.respond(status);
+        if (writesErrorRows()) {
+            proxy.getLogStore().saveErrorResponse(context);
+        }
     }
 
     protected void respond(HttpStatus status, Object result) {
         finalizeRequest();
         context.respond(status, result);
+        if (writesErrorRows()) {
+            proxy.getLogStore().saveErrorResponse(context);
+        }
+    }
+
+    /**
+     * Whether an error answer of this pass also writes a row with {@code analytics.errorRows} on. The call to an interceptor does
+     * not, and neither does the pass of a router in decision mode that has not decided yet: their specs say they write no row.
+     */
+    protected boolean writesErrorRows() {
+        return !(context.getDeployment() instanceof Router router && router.getMode() == Router.Mode.DECISION
+                && context.getDecision() == null);
     }
 
     /**
@@ -220,7 +242,10 @@ public class BaseDeploymentPostController {
         if (deployment instanceof Model) {
             // make sure we collect token usage in case if client accidentally closed the connection
             responseStream.endStreamFuture()
-                    .onFailure(ignore -> context.getProxyRequest().reset()) // drop connection to stop origin response
+                    .onFailure(ignore -> {
+                        context.getProxyRequest().reset(); // drop connection to stop origin response
+                        saveBrokenStreamRow();
+                    })
                     .compose(ignore -> {
                         Buffer responseBody = responseStream.getContent();
                         context.setResponseBody(responseBody);
@@ -232,8 +257,16 @@ public class BaseDeploymentPostController {
         } else {
             // drop connection to stop application responding
             context.getProxyRequest().reset();
+            saveBrokenStreamRow();
             // the pass keeps its key and span to their TTLs, but the router row is written
             decisions.writeRouterRow().onFailure(e -> log.warn("Router row is not written", e));
+        }
+    }
+
+    // a background job's terminal row is written by BackgroundJobService, once the job ends
+    private void saveBrokenStreamRow() {
+        if (writesErrorRows() && !context.isBackgroundJob()) {
+            proxy.getLogStore().saveErrorRow(context);
         }
     }
 

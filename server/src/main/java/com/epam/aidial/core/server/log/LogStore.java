@@ -1,6 +1,43 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.server.ProxyContext;
+import org.slf4j.LoggerFactory;
+
 public interface LogStore {
 
     void save(AnalyticsLogContext logContext);
+
+    /**
+     * Whether an error answer that Core gives itself, or a stream that broke, also writes a row, from {@code analytics.errorRows}.
+     */
+    default boolean errorRows() {
+        return false;
+    }
+
+    /**
+     * Saves the row of a pass that ended in an error, when {@code analytics.errorRows} is on. It never throws: the client already
+     * has its answer, and the row is an addition to it.
+     */
+    default void saveErrorRow(ProxyContext context) {
+        // only POST requests write rows, which GfLogStore.save checks too, but only after the row is built
+        if (!errorRows() || !"POST".equals(context.getRequest().method().name())) {
+            return;
+        }
+        try {
+            save(AnalyticsLogContext.from(context, null));
+        } catch (RuntimeException e) {
+            LoggerFactory.getLogger(LogStore.class).warn("Error row is not written", e);
+        }
+    }
+
+    /**
+     * Saves the row of an error answer that Core gave itself, when {@code analytics.errorRows} is on and the status of the response is
+     * outside 200-299: the answers that {@code ProxyContext.respond} logs at WARN. Call it right after {@code respond(...)}.
+     */
+    default void saveErrorResponse(ProxyContext context) {
+        int statusCode = context.getResponse().getStatusCode();
+        if (statusCode < 200 || statusCode >= 300) {
+            saveErrorRow(context);
+        }
+    }
 }

@@ -112,6 +112,51 @@ A request served by a global route or by an application route records which rout
 The route is published regardless of `genAiSpanAttributes`. Metric labels, `http.route` and trace/span ids
 are unchanged.
 
+## Error rows in the analytics log
+
+Core logs an error answer at WARN (`Responding with error`) and a stream that breaks at WARN (`Can't send response to client`), but a
+row of the analytics log is written only when a relay ended. With the static setting `analytics.errorRows` (env
+`aidial.analytics.errorRows`, default `false`) Core also writes a row for these events. Nothing changes while the setting is off: the
+same rows, the same fields.
+
+With the setting on, one row is written for:
+
+- every error answer Core gives itself on the LLM surfaces (chat completions, embeddings, Responses, Messages and applications), on a
+  deployment's feature calls (tokenize, truncate and rate; `configuration` is a GET, and a request that is not a POST writes no row), on the MCP proxy and on routes: every answer with a status
+  outside `200`-`299` that goes through their `respond(...)` helpers, which is every answer that logs `Responding with error`. That includes a request that used up its upstreams, a connection that could not be made (refused,
+  DNS), an origin that sent no response headers, Core's own rate limit `429`, `403`, `404`, `415` and `400`;
+- a stream that breaks after its headers on the LLM surfaces: an origin that closes the connection, or an application whose relay
+  breaks (a `Model` whose origin breaks had no row; an application had none by design). A Responses request with `background: true`
+  is the exception: the row of a background job is written when the job ends.
+
+A row has the fields every row has and none that others lack:
+
+| Field in the row            | Value                                                                                          |
+|-----------------------------|------------------------------------------------------------------------------------------------|
+| `response.status`           | the status the **client** got; for a broken stream, the `200` Core had set                     |
+| `response.body`             | empty for an answer Core gave itself: the text is in the WARN line                             |
+| `token_usage`               | absent                                                                                         |
+| `response.upstream_uri`     | absent when the upstreams were used up, present for a connection that failed                   |
+
+`response.status` is not the status the origin sent, which the row does not carry (the INFO line `Received header from origin` has
+it). Core never relays a retriable status. When no attempt is left it answers `503 Service is not available` if **every** upstream of
+the model is at `429`, and `502 No route` otherwise, so an origin `502`, `503` or `504` gives the client `502`, and an origin `429`
+gives `503` only when no other upstream of the model failed with something else.
+
+A broken stream is a row with status `200` and no tokens, like the row of a client that left a `Model` mid-stream. It is told apart
+only by having no tokens.
+
+An origin's error answer that Core relays keeps its one row, on every surface: the setting adds none. On the MCP proxy that is the
+case even though the same answer logs `Responding with error`. A request that is not a POST writes no row, as for every row.
+
+These events still write **no** row, with the setting on or off: `401` and `413` (Core logs nothing for them), the call to an
+interceptor and the pass of a router that fails before it decides (their specs say no row), a stream that breaks on a feature call, an
+MCP request or a route (another code path), WebSocket and background jobs, and an origin's error answer that Core relays. A consumer must not read
+`analytics.errorRows` as "every failure has a row".
+
+An analytics consumer that sums requests from the rows counts these requests too, with a status of `4xx` or `5xx`. During an outage of
+every upstream that is one row per failed request.
+
 ## Storage and rate-limit spans
 
 Core adds child spans for the storage, Redis, identity and key-management work a request does. They are emitted

@@ -72,7 +72,7 @@ abstract class BaseRouteController implements Controller {
         return hasRequiredPermissions(route.getPermissions()).compose(result -> {
             if (!result) {
                 // the route has no required permissions
-                context.respond(HttpStatus.FORBIDDEN, "Forbidden route");
+                respond(HttpStatus.FORBIDDEN, "Forbidden route");
                 return Future.succeededFuture();
             }
             Route.Response response = route.getResponse();
@@ -274,16 +274,19 @@ abstract class BaseRouteController implements Controller {
     void respond(HttpStatus status, String result) {
         finalizeRequest();
         context.respond(status, result);
+        proxy.getLogStore().saveErrorResponse(context);
     }
 
     void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
+        proxy.getLogStore().saveErrorResponse(context);
     }
 
     void respond(HttpStatus status) {
         finalizeRequest();
         context.respond(status);
+        proxy.getLogStore().saveErrorResponse(context);
     }
 
     void finalizeRequest() {

@@ -36,6 +36,17 @@ public class AnalyticsSettingsTest {
     }
 
     @Test
+    public void testErrorRowsDefaultsToFalse() {
+        assertFalse(AnalyticsSettings.from(new JsonObject()).errorRows());
+        assertFalse(AnalyticsSettings.from(new JsonObject().put("errorRows", false)).errorRows());
+    }
+
+    @Test
+    public void testErrorRowsRead() {
+        assertTrue(AnalyticsSettings.from(new JsonObject().put("errorRows", true)).errorRows());
+    }
+
+    @Test
     public void testClaimPathsAreSplitAndKeptInOrder() {
         AnalyticsSettings settings = claims("email", "resource_access.roles");
 

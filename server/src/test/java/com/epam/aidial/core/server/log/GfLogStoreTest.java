@@ -1001,6 +1001,37 @@ public class GfLogStoreTest {
         assertTrue(AnalyticsLogContext.from(record, result, null).getOperationDurationMs() >= 600_000);
     }
 
+    @SneakyThrows
+    @Test
+    public void testRowWithoutResponseBodyHasEmptyBody() {
+        // an error answer Core gives itself: a request body, a status, no response body and no tokens
+        AnalyticsLogContext context = AnalyticsLogContext.builder()
+                .deploymentName("m")
+                .traceId("trace-m")
+                .requestBody(Buffer.buffer("{\"messages\":[]}"))
+                .responseStatusCode(403)
+                .build();
+
+        String line = line(context);
+        JsonNode row = ProxyUtil.MAPPER.readTree(line);
+
+        assertEquals("{\"messages\":[]}", row.get("request").get("body").asText());
+        assertEquals("403", row.get("response").get("status").asText());
+        assertEquals("", row.get("response").get("body").asText());
+        assertFalse(row.get("response").has("upstream_uri"));
+        assertFalse(row.has("token_usage"));
+        assertFalse(row.has("error"));
+        // the line ends exactly as the line of any row did before this setting existed
+        assertTrue(line.endsWith("\"response\":{\"status\":\"403\",\"body\":\"\"}}"), line);
+    }
+
+    @SneakyThrows
+    private static String line(AnalyticsLogContext context) {
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+        return buffer.toString();
+    }
+
     /**
      * Writes a whole log line for the given usage and returns its "token_usage" member, so the
      * surrounding line has to stay parseable too. Field order is preserved by the parser.

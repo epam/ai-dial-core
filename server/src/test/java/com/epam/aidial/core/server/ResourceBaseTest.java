@@ -250,9 +250,17 @@ public class ResourceBaseTest {
                 @Override
                 protected LogStore createLogStore(AnalyticsSettings analyticsSettings) {
                     LogStore store = super.createLogStore(analyticsSettings);
-                    return logContext -> {
-                        analyticsRows.add(logContext);
-                        store.save(logContext);
+                    return new LogStore() {
+                        @Override
+                        public void save(AnalyticsLogContext logContext) {
+                            analyticsRows.add(logContext);
+                            store.save(logContext);
+                        }
+
+                        @Override
+                        public boolean errorRows() {
+                            return store.errorRows();
+                        }
                     };
                 }
             };

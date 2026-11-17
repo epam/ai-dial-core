@@ -550,6 +550,7 @@ public class McpProxyController implements Controller {
         finalizeRequest();
     }
 
+    // relays the origin's answer, whatever its status, and its callers save the row after it: no row is written here
     private void respond(int status, Buffer result) {
         finalizeRequest();
         context.respond(status, result);
@@ -558,11 +559,13 @@ public class McpProxyController implements Controller {
     private void respond(HttpStatus status, String result) {
         finalizeRequest();
         context.respond(status, result);
+        logStore.saveErrorResponse(context);
     }
 
     private void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
+        logStore.saveErrorResponse(context);
     }
 
     protected void finalizeRequest() {
