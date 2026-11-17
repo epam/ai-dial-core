@@ -51,7 +51,7 @@ info:
     The value is a JSON object with the features of the deployment: the flags configured in `features` of the model or application in the DIAL Core config.
 
     DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
-  version: 0.50.0
+  version: 0.50.1
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
@@ -19306,6 +19306,8 @@ components:
           type: array
           items:
             type: string
+        deprecationDate:
+          type: string
         description:
           type: string
         descriptionKeywords:
@@ -19318,6 +19320,8 @@ components:
           type: string
         embeddingDimensions:
           type: integer
+        endOfService:
+          type: string
         endpoint:
           type: string
         features:
@@ -19350,6 +19354,8 @@ components:
           type: string
         pricing:
           $ref: "#/components/schemas/Pricing"
+        provider:
+          type: string
         reference:
           type: string
         responsesDefaults:
@@ -19394,6 +19400,8 @@ components:
           type: integer
         defaults:
           $ref: "#/components/schemas/MapStringObject"
+        deprecation_date:
+          type: string
         description:
           type: string
         description_keywords:
@@ -19406,6 +19414,8 @@ components:
           type: string
         embedding_dimensions:
           type: integer
+        end_of_service:
+          type: string
         features:
           $ref: "#/components/schemas/FeaturesData"
         icon_url:
@@ -19436,6 +19446,8 @@ components:
           type: string
         pricing:
           $ref: "#/components/schemas/PricingData"
+        provider:
+          type: string
         reference:
           type: string
         responses_defaults:
