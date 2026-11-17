@@ -100,7 +100,7 @@ They have their own listing too:
 * `GET /v1/routers`: `{"data": [...]}` with one entry per router the caller's roles allow.
 * `GET /v1/routers/{router_name}`: that entry; `404` for an unknown name, `403` when the caller's roles do not allow it.
 
-Routers do not appear in the model listings: `GET /openai/models`, `/openai/deployments`, `/openai/applications` and `/anthropic/v1/models`. To list a router under a model name, point an [alias](aliases.md#an-alias-over-a-router) to it.
+Routers do not appear in the model listings: `GET /openai/models`, `/openai/deployments`, `/openai/applications` and `/anthropic/v1/models`. To list a router under a model name, point an [alias](aliases.md) to it.
 
 An entry carries `id`, `object: "router"`, `display_name`, `display_version`, `icon_url`, `description`, `intro`, `reference`, `features`, `defaults`, `description_keywords`, `interfaces` (`chat` and `embedding` as above, then the declared interface types), `created_at` and `updated_at`. It never carries the router's url.
 
@@ -167,7 +167,7 @@ DIAL Core ignores other fields. A body without a non-empty `candidates` array, `
 
 DIAL Core serves the first usable candidate as if the client had called it: the caller's roles, consent and per-request-key access to it, its limits against the caller, its interceptors, one per-request key, its `defaultHeaders`, `defaults` and `overrideName`. On `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages` (`count_tokens` included) DIAL Core sets the body `model` to the candidate's name before applying its `overrideName`, and sends the candidate's name in `X-DIAL-DEPLOYMENT-ID` on Messages.
 
-The client sees the router's name in the answer's `model`, or the alias's name when it called the router through an [alias](aliases.md#an-alias-over-a-router): DIAL Core replaces the `model` of chat completions, Responses and Messages answers, streamed and buffered, with that name, and does the same when a stored response is read back. Analytics still names the deployment that served, in `deployment`. Embeddings, a buffered legacy completion and a buffered answer relayed through the chosen deployment's interceptors keep the upstream's `model`, because DIAL Core passes those bodies through unparsed.
+The client sees the router's name in the answer's `model`, or the alias's name when it called the router through an [alias](aliases.md): DIAL Core replaces the `model` of chat completions, Responses and Messages answers, streamed and buffered, with that name, and does the same when a stored response is read back. Analytics still names the deployment that served, in `deployment`. Embeddings, a buffered legacy completion and a buffered answer relayed through the chosen deployment's interceptors keep the upstream's `model`, because DIAL Core passes those bodies through unparsed.
 
 ### Fallback and re-decide
 
