@@ -584,6 +584,21 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertEquals("/openai/deployments/gpt-4-real/chat/completions", single(request -> !isDecide(request)).getPath());
     }
 
+    // router-deployment "Decide request of an in-process call", scenario "Alias over a decision router that wants the body"
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void aliasOverDecisionRouterThatWantsTheBody() {
+        verdict.set("{\"candidates\": [\"m1\"]}");
+        try (TestWebServer server = server()) {
+            verify(sendChat("body-tier"), 200);
+        }
+        RecordedRequest decide = single(this::isDecide);
+        assertEquals("/body/decide", decide.getPath());
+        assertTrue(decide.getBody().readUtf8().contains("\"messages\""));
+        single(request -> request.getPath().equals("/openai/deployments/m1/chat/completions"));
+    }
+
     @Test
     @DialConfigLocation(CONFIG)
     void chosenDeploymentTheCallerMayNotCallThroughAnAlias() {

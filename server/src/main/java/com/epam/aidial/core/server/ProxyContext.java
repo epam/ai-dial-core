@@ -125,6 +125,11 @@ public class ProxyContext {
     private String assembledStreamingResponse;
     // the body an origin plugin passed to its in-process call, on the child pass Core serves for that call
     private ObjectNode callTree;
+    /**
+     * Whether this child pass is the target pass of an alias call, served in process: it writes its span attributes
+     * and log enrichment on the current span, the alias pass's, which an origin plugin's call does not.
+     */
+    private boolean aliasTargetPass;
     // the tree the chain serialised into requestBody, kept for the plugin of an embedded interface until it is called
     private ObjectNode requestTree;
     // the hosts of the in-process calls this pass's plugin makes, one per attempt
@@ -387,7 +392,8 @@ public class ProxyContext {
     }
 
     /**
-     * Whether Core serves this pass in process, for an origin plugin's call.
+     * Whether Core serves this pass in process, for an origin plugin's call or as the target pass of an alias call
+     * ({@link #isAliasTargetPass}).
      */
     public boolean isChildPass() {
         return callTree != null;

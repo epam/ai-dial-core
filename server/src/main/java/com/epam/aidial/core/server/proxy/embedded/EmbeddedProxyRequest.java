@@ -44,6 +44,8 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     private final MultiMap headers = MultiMap.caseInsensitiveMultiMap();
     // set for a router's decide or notice request, null for a request to a deployment's interface
     private final RouterRequest router;
+    // the request of an alias pass to its target, served in process: its host marks the target pass
+    private boolean aliasHop;
     private EmbeddedProxyResponse response;
     // serves the calls the plugin makes while it answers this attempt; set when the attempt is sent
     private VertxHostDelegate host;
@@ -76,6 +78,18 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
         this.baseUrl = baseUrl;
         this.absoluteUri = absoluteUri;
         this.router = router;
+    }
+
+    /**
+     * The request of an alias pass ({@code proxyContext}) to its target, which {@code plugin} hands to the target pass
+     * in process. As a request to a deployment's interface, except that its host marks the target pass as an alias
+     * target pass ({@link VertxHostDelegate#forAliasHop}).
+     */
+    public static EmbeddedProxyRequest forAliasHop(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin,
+                                                   HttpMethod method, String baseUrl, String absoluteUri) {
+        EmbeddedProxyRequest request = new EmbeddedProxyRequest(context, proxyContext, plugin, method, baseUrl, absoluteUri);
+        request.aliasHop = true;
+        return request;
     }
 
     /**
@@ -123,9 +137,13 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
 
     private Future<ProxyResponse> send(Buffer body, @Nullable ObjectNode tree) {
         Promise<ProxyResponse> promise = context.promise();
-        host = router == null
-                ? new VertxHostDelegate(proxyContext.getProxy(), proxyContext, context)
-                : VertxHostDelegate.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey());
+        if (router != null) {
+            host = VertxHostDelegate.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey());
+        } else if (aliasHop) {
+            host = VertxHostDelegate.forAliasHop(proxyContext.getProxy(), proxyContext, context);
+        } else {
+            host = new VertxHostDelegate(proxyContext.getProxy(), proxyContext, context);
+        }
         // registered for a router request too: the pass's end closes an attempt nothing else closed
         proxyContext.addHostDelegate(host);
         if (router == null) {

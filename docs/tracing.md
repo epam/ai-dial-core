@@ -224,6 +224,16 @@ they do not land on the plugin's server span. Its HTTP origin requests keep thei
 server span, and send a `traceparent` of the client's trace. Its analytics row and token-stats span carry the trace id
 of the plugin's request, a span id of their own and the plugin's span as the parent.
 
+## Target pass of an alias call
+
+The target pass of an [alias](dynamic-settings/aliases.md) call that Core serves in process (chat completions,
+completions, embeddings, Responses not in background, Messages) has no server span of its own either. Unlike a
+plugin's call, it writes its span attributes and log-line enrichment on the current span, the alias's server span,
+where the attributes both passes set end with the target's values: the alias's span shows the target's `gen_ai.*`
+attributes, usage and cost. Its HTTP origin requests keep their client spans under that span. Its analytics row and
+token-stats span carry a span id of their own, which no OTel span has, with the alias's span as the parent. A trace
+therefore has one server span fewer per such alias.
+
 ## Background operations
 
 Periodic work that no request started has no trace of its own, so its log lines would carry no trace id. Core

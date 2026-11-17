@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.RouterDecision;
@@ -137,7 +138,8 @@ public class AnalyticsLogContext {
                 .usagePerModel(context.getUsagePerModel())
                 .operationDurationMs(context.calculateOperationDurationMs())
                 .build();
-        return context.isChildPass() ? row.withoutBodies() : row;
+        // an alias relays its target's answer: the target pass's row logs the bodies once
+        return context.getDeployment() instanceof AliasPass ? row.withoutBodies() : row;
     }
 
     public static AnalyticsLogContext from(BackgroundJobRecord record, ResponsesApiClient.TerminalResult result, List<UsagePerModel> usagePerModel) {

@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.DeploymentInterface;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
@@ -22,6 +23,7 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
+import com.epam.aidial.core.server.proxy.embedded.VertxHostDelegate;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
@@ -55,6 +57,7 @@ import org.apache.commons.lang3.Strings;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -141,6 +144,15 @@ public class BaseDeploymentPostController {
      * context too, and its plugin gets it as {@code bodyTree} instead of parsing the body again.
      */
     protected void setProcessedRequestBody(RequestObject request, boolean changed, InterfaceType type) throws JsonProcessingException {
+        if (inProcessAliasBaseUrl(type, requestUri(type)) != null) {
+            // the target pass takes the tree, and the alias row has no bodies: no one reads serialized bytes. A pass
+            // with none (itself served in process) gets an empty buffer for the Content-Length the send sets
+            context.setRequestTree(request.getTree());
+            if (context.getRequestBody() == null) {
+                context.setRequestBody(Buffer.buffer());
+            }
+            return;
+        }
         if (changed || context.getRequestBody() == null) {
             context.setRequestBody(Buffer.buffer(request.serialize()));
         }
@@ -464,16 +476,42 @@ public class BaseDeploymentPostController {
     }
 
     protected Future<ProxyRequest> createProxyRequest(InterfaceType type) {
+        String uri = requestUri(type);
+        String aliasBaseUrl = inProcessAliasBaseUrl(type, uri);
+        if (aliasBaseUrl != null) {
+            context.setProxyRequestUri(uri);
+            return proxy.getProxyClient().aliasTarget(context, context.getRequest().method(), aliasBaseUrl, uri);
+        }
+        return createProxyRequest(uri, DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), type, context.getConfig().getTranslators()));
+    }
+
+    private String requestUri(InterfaceType type) {
         HttpServerRequest request = context.getRequest();
-        return createProxyRequest(
-                DeploymentEndpointUtil.resolveRequestUri(
-                        context.getDeployment(),
-                        type, context.getConfig().getTranslators(),
-                        request.path(),
-                        request.query()
-                ),
-                DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), type, context.getConfig().getTranslators())
-        );
+        return DeploymentEndpointUtil.resolveRequestUri(context.getDeployment(), type, context.getConfig().getTranslators(),
+                request.path(), request.query());
+    }
+
+    /**
+     * The base url of the alias pass's interface {@code type} when its request to the target, {@code uri}, is served in
+     * process; null when it goes over HTTP to Core's own address. In process when the deployment is an alias pass, the
+     * pass is not a background job, and the target's path is one an in-process call serves (Messages
+     * {@code count_tokens} is not). The send and the body follow this one check: an HTTP send of bytes the alias pass
+     * did not serialize from the tree would name the alias in {@code model} and reach the alias again.
+     */
+    @Nullable
+    private String inProcessAliasBaseUrl(InterfaceType type, String uri) {
+        if (!(context.getDeployment() instanceof AliasPass) || context.isBackgroundJob()) {
+            return null;
+        }
+        Map<String, DeploymentInterface> interfaces = context.getDeployment().getInterfaces();
+        DeploymentInterface declared = interfaces == null ? null : interfaces.get(type.getValue());
+        String base = declared == null ? null : declared.getBaseUrl();
+        if (base == null || !uri.startsWith(base)) {
+            return null;
+        }
+        String rest = uri.substring(base.length());
+        int question = rest.indexOf('?');
+        return VertxHostDelegate.servesCall(question < 0 ? rest : rest.substring(0, question)) ? base : null;
     }
 
     protected Future<ProxyResponse> sendProxyRequest(ProxyRequest proxyRequest, InterfaceType type) {

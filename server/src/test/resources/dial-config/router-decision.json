@@ -149,6 +149,11 @@
     "tier-broken": {
       "userRoles": ["analysts"],
       "target": {"path": "routers/missing"}
+    },
+    "body-tier": {
+      "presentAs": "model",
+      "userRoles": ["analysts"],
+      "target": {"path": "routers/r3"}
     }
   },
   "keys": {
