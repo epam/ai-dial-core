@@ -127,13 +127,13 @@ public class DeploymentService {
     }
 
     /**
-     * Whether the request is the target pass of an alias call for {@code deployment}: its per-request key was made by
-     * the alias pass, which lends the right to call the target. The key is kept by Core and sent only to Core itself.
+     * Whether the request is the target pass of an alias call for {@code deployment}: its per-request key carries a
+     * lent grant for the deployment's name. The key is kept by Core and sent only to Core itself.
      */
     public static boolean isLent(ProxyContext context, RoleBasedEntity deployment) {
         ApiKeyData apiKeyData = context.getApiKeyData();
-        String lentDeployment = apiKeyData.getLentDeployment();
-        return apiKeyData.getPerRequestKey() != null && lentDeployment != null && lentDeployment.equals(deployment.getName());
+        return apiKeyData.getPerRequestKey() != null
+                && ApiKeyData.hasLentGrant(apiKeyData.getPerRequestSharedResources(), deployment.getName());
     }
 
     /**
