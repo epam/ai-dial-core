@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.storage.util.UrlUtil;
@@ -56,6 +57,8 @@ public class AliasPasses {
 
         AliasApplicationPass pass = new AliasApplicationPass(alias, targetName, resourceTarget);
         pass.setName(alias.getName());
+        // set on the request where the client sent none, so the target pass reads them as the client's
+        pass.setDefaultHeaders(alias.getDefaultHeaders());
         // the target is named in the body of a Responses or Messages request, which EnhanceDeploymentRequestFn sets to
         // it; a body names a resource by its decoded url, the form the router hands to the deployment lookup
         pass.setOverrideName(resourceTarget ? UrlUtil.decodePath(targetName) : targetName);
@@ -128,6 +131,8 @@ public class AliasPasses {
             case MODEL -> modelView(target);
             case APPLICATION -> applicationView(target);
             case TOOLSET -> toolSetView(target);
+            // the target is a router (AliasTargets.validateFields): an entry of the router listings
+            case ROUTER -> new Router();
         };
         copyOperational(target, view);
         copyDisplay(alias, view);

@@ -100,7 +100,10 @@ They have their own listing too:
 * `GET /v1/routers`: `{"data": [...]}` with one entry per router the caller's roles allow.
 * `GET /v1/routers/{router_name}`: that entry; `404` for an unknown name, `403` when the caller's roles do not allow it.
 
-Routers do not appear in the model listings: `GET /openai/models`, `/openai/deployments`, `/openai/applications` and `/anthropic/v1/models`.
+An [alias](aliases.md) of type `router` (`presentAs: router`, or over a router without `presentAs`) is listed with the routers, here and in
+`/v1/deployments` and `/v1/deployment-names`, under its own name.
+
+Routers do not appear in the model listings: `GET /openai/models`, `/openai/deployments`, `/openai/applications` and `/anthropic/v1/models`. To list a router under a model name, point an [alias](aliases.md) with `presentAs: model` to it.
 
 An entry carries `id`, `object: "router"`, `display_name`, `display_version`, `icon_url`, `description`, `intro`, `reference`, `features`, `defaults`, `description_keywords`, `interfaces` (`chat` and `embedding` as above, then the declared interface types), `created_at` and `updated_at`. It never carries the router's url.
 
@@ -165,13 +168,13 @@ A `200` answer with a JSON body naming the candidates in order of preference, on
 {"candidates": ["gpt-4", "claude"]}
 ```
 
-DIAL Core ignores other fields. A body without a non-empty `candidates` array, `{"deployment": "gpt-4"}` included, is an invalid verdict (`502`). A candidate must not be a router.
+DIAL Core ignores other fields. A body without a non-empty `candidates` array, `{"deployment": "gpt-4"}` included, is an invalid verdict (`502`). A candidate must not be a router or an alias over one.
 
 ### Serving the chosen deployment
 
 DIAL Core serves the first usable candidate as if the client had called it: the caller's roles, consent and per-request-key access to it, its limits against the caller, its interceptors, one per-request key, its `defaultHeaders`, `defaults` and `overrideName`. On `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages` (`count_tokens` included) DIAL Core sets the body `model` to the candidate's name before applying its `overrideName`, and sends the candidate's name in `X-DIAL-DEPLOYMENT-ID` on Messages.
 
-The client sees the router's name in the answer's `model`, as with an alias: DIAL Core replaces the `model` of chat completions, Responses and Messages answers, streamed and buffered, with the router's name, and does the same when a stored response is read back. Analytics still names the deployment that served, in `deployment`. Embeddings, a buffered legacy completion and a buffered answer relayed through the chosen deployment's interceptors keep the upstream's `model`, because DIAL Core passes those bodies through unparsed.
+The client sees the router's name in the answer's `model`, or the alias's name when it called the router through an [alias](aliases.md): DIAL Core replaces the `model` of chat completions, Responses and Messages answers, streamed and buffered, with that name, and does the same when a stored response is read back. Analytics still names the deployment that served, in `deployment`. Embeddings, a buffered legacy completion and a buffered answer relayed through the chosen deployment's interceptors keep the upstream's `model`, because DIAL Core passes those bodies through unparsed.
 
 ### Fallback and re-decide
 
@@ -200,7 +203,7 @@ Three ways to use it:
 | The router is unreachable, or answers `5xx` | `502` |
 | The `200` body is not a verdict | `502` |
 | The router answers `4xx` | The router's status and body |
-| The verdict names a router, or its last usable candidate does not exist | `502` |
+| The verdict names a router or an alias over one, or its last usable candidate does not exist | `502` |
 | A deployment the router chose calls the router back | `502` |
 
 These are the answers to the first decide request; in each case DIAL Core sends nothing to any candidate and writes no analytics row. A later decide request that fails ends the walk with the last candidate's failure instead.

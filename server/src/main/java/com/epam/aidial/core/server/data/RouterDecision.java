@@ -72,6 +72,9 @@ public class RouterDecision {
     private MultiMap responseHeaders;
     // the router row is written, or left to the poller of the background job this request started
     private boolean rowTaken;
+    // the name the answer's model carries: the alias the router was called through, null for the router's own
+    @Setter
+    private String answerName;
 
     public RouterDecision(Router router, InterfaceType api, List<String> candidates, long decideMs) {
         this.router = router;
@@ -82,6 +85,10 @@ public class RouterDecision {
 
     public String getRouterName() {
         return router.getName();
+    }
+
+    public String getAnswerName() {
+        return answerName == null ? router.getName() : answerName;
     }
 
     public String current() {

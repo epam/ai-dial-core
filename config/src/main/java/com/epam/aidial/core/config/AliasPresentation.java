@@ -9,7 +9,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum AliasPresentation {
     MODEL("model"),
     APPLICATION("application"),
-    TOOLSET("toolset");
+    TOOLSET("toolset"),
+    ROUTER("router");
 
     private final String value;
 

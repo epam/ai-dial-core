@@ -75,13 +75,13 @@ class StoredAliasesTest {
 
     @Test
     void parseKeepsTheReasonsCallsIgnoreBlob() {
-        assertEquals("models/gpt-4", StoredAliases.parse("{\"target\":{\"path\":\"models/gpt-4\"}}").alias().getTarget().getPath());
+        assertEquals("models/gpt-4", StoredAliases.parse("{\"target\":{\"path\":\"models/gpt-4\"}}", true).alias().getTarget().getPath());
 
-        StoredAliases.Stored noTarget = StoredAliases.parse("{\"displayName\":\"x\"}");
+        StoredAliases.Stored noTarget = StoredAliases.parse("{\"displayName\":\"x\"}", true);
         assertNull(noTarget.alias());
         assertEquals("target.path", noTarget.warnings().getFirst().getField());
 
-        StoredAliases.Stored notJson = StoredAliases.parse("{");
+        StoredAliases.Stored notJson = StoredAliases.parse("{", true);
         assertNull(notJson.alias());
         assertNull(notJson.body());
     }
@@ -93,16 +93,29 @@ class StoredAliasesTest {
 
     @Test
     void targetMustBeConfigDeploymentOrPublicOrPlatformResource() {
-        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"models/gpt-4\"}}").alias());
-        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"applications/public/folder/app\"}}").alias());
-        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"toolsets/public/search\"}}").alias());
-        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"applications/platform/my-app\"}}").alias());
-        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"toolsets/platform/my-tools\"}}").alias());
+        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"models/gpt-4\"}}", true).alias());
+        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"applications/public/folder/app\"}}", true).alias());
+        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"toolsets/public/search\"}}", true).alias());
+        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"applications/platform/my-app\"}}", true).alias());
+        assertNotNull(StoredAliases.parse("{\"target\":{\"path\":\"toolsets/platform/my-tools\"}}", true).alias());
 
-        StoredAliases.Stored userBucket = StoredAliases.parse("{\"target\":{\"path\":\"applications/3R4ac3QT6AZjujjrzHhd8M/app\"}}");
+        StoredAliases.Stored userBucket = StoredAliases.parse("{\"target\":{\"path\":\"applications/3R4ac3QT6AZjujjrzHhd8M/app\"}}", true);
         assertNull(userBucket.alias());
         assertTrue(userBucket.warnings().getFirst().getMessage().startsWith("The target of a stored alias must be"),
                 userBucket.warnings().toString());
-        assertNull(StoredAliases.parse("{\"target\":{\"path\":\"toolsets/publicity/search\"}}").alias());
+        assertNull(StoredAliases.parse("{\"target\":{\"path\":\"toolsets/publicity/search\"}}", true).alias());
+    }
+
+    @Test
+    void onlyPublicAliasRefusesRouterTarget() {
+        String router = "{\"presentAs\":\"model\",\"target\":{\"path\":\"routers/r1\"}}";
+        StoredAliases.Stored publicAlias = StoredAliases.parse(router, true);
+        assertNull(publicAlias.alias());
+        assertEquals("target.path", publicAlias.warnings().getFirst().getField());
+        assertNotNull(StoredAliases.parse(router, false).alias());
+        String routerType = "{\"presentAs\":\"router\",\"target\":{\"path\":\"routers/r1\"}}";
+        assertNull(StoredAliases.parse(routerType, true).alias());
+        assertNotNull(StoredAliases.parse(routerType, false).alias());
+        assertNull(StoredAliases.parse("{\"presentAs\":\"router\",\"target\":{\"path\":\"applications/public/app\"}}", true).alias());
     }
 }

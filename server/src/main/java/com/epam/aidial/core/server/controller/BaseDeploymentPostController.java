@@ -425,7 +425,7 @@ public class BaseDeploymentPostController {
             return body;
         }
         if (context.getDecision() != null) {
-            RouterModelFn.rewrite(object, context.getDecision().getRouterName());
+            RouterModelFn.rewrite(object, context.getDecision().getAnswerName());
         }
         List<UsagePerModel> usagePerModel = context.getUsagePerModel();
         if (usagePerModel == null || usagePerModel.isEmpty()) {
