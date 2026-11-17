@@ -13,10 +13,10 @@ import java.net.URI;
 import java.util.Map;
 
 /**
- * A deployment that picks the deployment serving a request. Apart from how it serves its interfaces and an optional
- * app-type schema with the properties it validates, it declares no field of its own: the fields of another deployment
- * kind ({@code upstreams}, {@code limits}, {@code pricing}) are rejected by the config mapper because this class does
- * not declare them.
+ * A deployment that picks the deployment serving a request. Apart from how it serves its interfaces, an optional
+ * app-type schema with the properties it validates and the url of its admin UI, it declares no field of its own: the
+ * fields of another deployment kind ({@code upstreams}, {@code limits}, {@code pricing}) are rejected by the config
+ * mapper because this class does not declare them.
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -30,6 +30,13 @@ public class Router extends Deployment {
     @JsonAlias({"applicationProperties", "application_properties"})
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Map<String, Object> applicationProperties;
+
+    /**
+     * The url of the router's admin UI, which DIAL Admin embeds. Returned by the Configuration API, never listed.
+     */
+    @JsonAlias({"editorUrl", "editor_url"})
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String editorUrl;
 
     /**
      * How the router serves every interface it declares. Absent means {@link Mode#PROXY}.
