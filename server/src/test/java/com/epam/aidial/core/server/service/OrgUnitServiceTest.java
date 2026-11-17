@@ -777,15 +777,16 @@ class OrgUnitServiceTest {
 
         List<UserOrgUnits.Unit> units = service.unitsOf(caller(null), false);
 
-        assertEquals(List.of("public/Acme", "public/Acme/Risk", "public/Acme/Risk/Basel", "public/Beta/Deep"),
+        assertEquals(List.of("public/Acme", "public/Acme/Risk", "public/Acme/Risk/Basel", "public/Beta", "public/Beta/Deep"),
                 units.stream().map(UserOrgUnits.Unit::path).toList());
-        assertEquals(new UserOrgUnits.Unit("a", "Acme", "Acme Corp", "public/Acme", "public/Acme/", List.of("member"),
-                Map.of("org-units", Set.of("read"))), units.get(0));
+        assertEquals(new UserOrgUnits.Unit("a", "Acme", "Acme Corp", "public/Acme", "public/Acme/", List.of(), Map.of()), units.get(0),
+                "a role core doesn't know is left out");
         assertEquals(List.of("editor"), units.get(1).roles());
         assertEquals(ROLES.resolvePermissions(List.of("editor")), units.get(1).permissions());
         assertEquals(List.of(), units.get(2).roles());
         assertEquals(Map.of(), units.get(2).permissions());
-        assertEquals(List.of("viewer"), units.get(3).roles());
+        assertEquals(List.of(), units.get(3).roles());
+        assertEquals(List.of("viewer"), units.get(4).roles());
     }
 
     @Test
@@ -794,7 +795,7 @@ class OrgUnitServiceTest {
 
         assertEquals(List.of("public/Acme", "public/Acme/Risk", "public/Acme/Risk/Basel", "public/Beta", "public/Beta/Deep", "public/Gamma"),
                 units.stream().map(UserOrgUnits.Unit::path).toList());
-        assertEquals(List.of("member"), units.get(0).roles());
+        assertEquals(List.of("editor"), units.get(1).roles());
         units.forEach(unit -> assertEquals(OrgUnitRoles.ALL_PERMISSIONS, unit.permissions(), unit.path()));
     }
 

@@ -140,6 +140,9 @@ public class ProxyContext {
     // the client's body bytes as they arrived, kept while a decision may still fall back to another candidate
     private Buffer originalRequestBody;
 
+    // the org units above those where the person holds a role, read at most once per request
+    private Set<String> unitsAboveHeldRoles;
+
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
         this.proxy = proxy;
