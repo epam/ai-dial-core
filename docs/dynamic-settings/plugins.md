@@ -106,9 +106,29 @@ The module `plugin-samples` holds an origin plugin of type `forward`, with the s
 
 ## Plugin code
 
-DIAL Core loads plugin code once, at start, from the jars in the directory named by the static setting `plugins.dir` (default `plugins`, relative to the working directory; `/app/plugins` in the Docker image). A missing directory loads nothing. A jar registers its code in `META-INF/services/com.epam.aidial.core.plugin.PluginProvider`, and compiles against the `aidial-core-plugin-api` module of DIAL Core (`com.epam.aidial:aidial-core-plugin-api`). The module is not published to a Maven repository yet: build its jar from a DIAL Core checkout with `./gradlew :aidial-core-plugin-api:jar`.
+DIAL Core loads plugin code once, at start, from the jars in the directory named by the static setting `plugins.dir` (default `plugins`, relative to the working directory; `/app/plugins` in the Docker image). A missing directory loads nothing. A jar registers its code in `META-INF/services/com.epam.aidial.core.plugin.PluginProvider`, and compiles against the `aidial-core-plugin-api` module of DIAL Core (`com.epam.aidial:aidial-core-plugin-api`). See [Building a plugin](#building-a-plugin).
 
 DIAL Core does not start when a jar in the directory cannot be opened, when its plugin code cannot be created, when two jars register the same plugin class (an old jar left beside its new version), or when two plugin classes declare the same type. New plugin code needs a restart of DIAL Core; the `plugins` entries and their settings reload with the rest of the config.
+
+### Building a plugin
+
+The plugin API is published to the GitHub Packages Maven registry of this repository as `com.epam.aidial:aidial-core-plugin-api`:
+
+```groovy
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/epam/ai-dial-core")
+        credentials {
+            username = System.getenv("GPR_USERNAME")
+            password = System.getenv("GPR_PASSWORD") // a token with the read:packages scope
+        }
+    }
+}
+
+dependencies {
+    compileOnly("com.epam.aidial:aidial-core-plugin-api:<DIAL Core version>")
+}
+```
 
 ## Configuration API
 
