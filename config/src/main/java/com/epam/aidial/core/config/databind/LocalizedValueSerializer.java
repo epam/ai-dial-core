@@ -27,10 +27,6 @@ public class LocalizedValueSerializer extends JsonSerializer<LocalizedValue> {
             return;
         }
 
-        gen.writeStartObject();
-        for (var entry : value.getLocaleMap().entrySet()) {
-            gen.writeStringField(entry.getKey(), entry.getValue());
-        }
-        gen.writeEndObject();
+        serializers.defaultSerializeValue(value.getLocaleMap(), gen);
     }
 }

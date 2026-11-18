@@ -62,8 +62,8 @@ public final class FieldSelection {
     }
 
     /**
-     * A value written by a custom serializer, such as a localized value or a decision-tree pricing rate, is returned
-     * whole. A selection caches while it serializes, so one instance is not for concurrent use.
+     * A custom serializer has to write its nested members through the {@code SerializerProvider}, or its value is
+     * returned whole. A selection caches while it serializes, so one instance is not for concurrent use.
      */
     @SneakyThrows
     public String serialize(Object value) {

@@ -5589,7 +5589,7 @@ paths:
         schema:
           type: string
         example: "display_name,features(rate,tokenize)"
-        description: "Return only the listed fields of each deployment, as comma-separated names of the response. Top-level names are snake_case; names inside a nested object are the ones that object has, such as `rewritePath` in `routes`. Parentheses select inside a field: `features(rate,tokenize)`; `*` stands for every key of a map: `interface_configs(*(features))`. `id` and `object` are always returned. A name that no field has is ignored. A value written in a custom form, such as a localized value or a decision-tree pricing rate, is returned whole. At most 1024 bytes and 5 levels. Without it, all fields are returned."
+        description: "Return only the listed fields of each deployment, as comma-separated names of the response. Top-level names are snake_case; names inside a nested object are the ones that object has, such as `rewritePath` in `routes`. Parentheses select inside a field: `features(rate,tokenize)`; `*` stands for every key of a map: `interface_configs(*(features))`. `id` and `object` are always returned. A name that no field has is ignored. At most 1024 bytes and 5 levels. Without it, all fields are returned."
       responses:
         "200":
           description: Success

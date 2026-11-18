@@ -138,17 +138,17 @@ public class FieldSelectionTest {
     }
 
     @Test
-    void valueWrittenByCustomSerializerIsNotNarrowed() {
+    void localeOfLocalizedValueCanBeSelected() {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", "x");
         row.put("display_name", LocalizedValue.of(new LinkedHashMap<>(Map.of("en", "a", "de", "b"))));
 
-        assertEquals(read("{\"id\": \"x\", \"display_name\": {\"en\": \"a\", \"de\": \"b\"}}"),
+        assertEquals(read("{\"id\": \"x\", \"display_name\": {\"en\": \"a\"}}"),
                 read(parse("display_name(en)").serialize(row)));
     }
 
     @Test
-    void decisionTreePricingRateIsReturnedWhole() throws Exception {
+    void decisionTreePricingRateMembersCanBeSelected() throws Exception {
         PricingRate tree = new PricingRate();
         Condition condition = new Condition();
         condition.setField("prompt_tokens");
@@ -164,10 +164,12 @@ public class FieldSelectionTest {
         model.setPricing(pricing);
 
         JsonNode expectedTree = ProxyUtil.MAPPER.valueToTree(tree);
-        for (String fields : List.of("*", "pricing", "pricing(prompt)", "pricing(prompt(test))")) {
+        for (String fields : List.of("*", "pricing", "pricing(prompt)")) {
             JsonNode prompt = read(parse(fields).serialize(List.of(model))).get(0).get("pricing").get("prompt");
             assertEquals(expectedTree, prompt, fields);
         }
+        JsonNode narrowed = read(parse("pricing(prompt(test(field),ifTrue))").serialize(List.of(model))).get(0).get("pricing").get("prompt");
+        assertEquals(read("{\"test\": {\"field\": \"prompt_tokens\"}, \"ifTrue\": \"1\"}"), narrowed);
         assertEquals(read(ProxyUtil.MAPPER.writeValueAsString(List.of(model))), read(parse("*").serialize(List.of(model))));
     }
 
@@ -211,14 +213,16 @@ public class FieldSelectionTest {
 
     @Test
     void selectionOverTheLengthLimitIsRejected() {
-        assertThrows(IllegalArgumentException.class, () -> parse("a".repeat(FieldSelection.MAX_LENGTH + 1)));
+        String repeat = "a".repeat(FieldSelection.MAX_LENGTH + 1);
+        assertThrows(IllegalArgumentException.class, () -> parse(repeat));
         parse("a".repeat(FieldSelection.MAX_LENGTH));
     }
 
     @Test
     void lengthLimitCountsBytes() {
         String twoByteCharacter = Character.toString(0xE9);
-        assertThrows(IllegalArgumentException.class, () -> parse(twoByteCharacter.repeat(FieldSelection.MAX_LENGTH / 2 + 1)));
+        String repeat = twoByteCharacter.repeat(FieldSelection.MAX_LENGTH / 2 + 1);
+        assertThrows(IllegalArgumentException.class, () -> parse(repeat));
         parse(twoByteCharacter.repeat(FieldSelection.MAX_LENGTH / 2));
     }
 

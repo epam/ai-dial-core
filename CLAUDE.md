@@ -91,6 +91,11 @@ Read [docs/CODE_STYLE.md](docs/CODE_STYLE.md) before writing or changing Java in
 It covers naming, Vert.x event-loop rules, scope discipline, error handling, completing
 cross-cutting changes, tests, and documentation.
 
+A response type with a custom Jackson serializer has to write its nested members through the `SerializerProvider`
+(`defaultSerializeValue`, `defaultSerializeField`), not with `gen.writeObject*` or by writing members straight to the
+generator. `FieldSelection` (the `fields` parameter of `GET /v1/deployments`) filters while it serializes, so a value
+written the other way is returned whole. See `LocalizedValueSerializer` and `PricingRateSerializer`.
+
 ## Process: spec-driven with OpenSpec 1.14.3
 
 `openspec/specs/` is the behaviour reference for the parts of Core it covers; read the relevant capability before

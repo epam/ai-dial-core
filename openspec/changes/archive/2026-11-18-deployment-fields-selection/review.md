@@ -52,8 +52,8 @@ still cost what they cost today because `fields` does not skip building a field.
   design.
 - After the PR review the tree version was replaced by the Jackson property filter (design D3, D4, D5): the listing is
   serialized once with the filter on the event loop, `DeploymentController` no longer uses the task executor for it, and
-  `FieldSelection` exposes `serialize(Object)` instead of a tree projection. A value written by a custom serializer (a
-  localized value with several locales) is returned whole; the spec says so.
+  `FieldSelection` exposes `serialize(Object)` instead of a tree projection. A custom serializer has to write its nested
+  members through the serializer provider for the filter to reach them (noted in CLAUDE.md).
 - After the PR review: `FieldSelection` takes the always-kept names from the caller (`parse(text, alwaysKept)`); the
   union of a name and `*` is cached per node in a plain map (a selection is parsed and used on the event loop, so no thread shares it), because merging it at parse time would copy the
   wildcard subtree into every named sibling at every level; `MAX_LENGTH` is 1,024 UTF-8 bytes, so that a selection
@@ -62,7 +62,10 @@ still cost what they cost today because `fields` does not skip building a field.
 - A later review found that a model with a decision-tree pricing rate made every `fields` request fail: `PricingRate`
   writes its `test` condition through the mapper, which had no filter provider for the mixin. The mapper copy now has a
   tolerant default provider, a failure while serializing the filtered body answers `500`, and `FieldSelectionTest`
-  covers a decision-tree rate.
+  covers a decision-tree rate. `LocalizedValueSerializer` and `PricingRateSerializer` (module `config`) now write
+  through the serializer provider, so a nested selection reaches inside a localized value and a decision-tree rate
+  instead of returning them whole; their output without a selection is unchanged (`LocalizedValueTest`,
+  `PricingRateTest`).
 - design.md named the measurement task as `4.2`; it is `3.1`. Corrected.
 - `docs/open_api_core.yaml` was regenerated with `./gradlew replaceSpec`; the diff was the one new parameter
   (7 lines). `SpecMerger` keeps the committed `description` of a parameter that already exists, so regenerating does not

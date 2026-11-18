@@ -92,10 +92,12 @@ the runtime subtype and the encrypted-field rule give the same members and the s
 Order is kept. `id` and `object` are kept at the top level (the always-kept names the caller passes) in addition to
 the selection. An array applies the selection to each object element and writes a non-object element as it is; a
 selection below a value with no members (a string, a number, an array of strings) leaves the value as it is, so a
-nested name on a scalar is not an error and not a loss. A value written by a custom serializer (a `LocalizedValue`
-with several locales, a `PricingRate` that is a decision tree) is not narrowed and is returned whole. The mapper copy
-has a default filter provider that tolerates the filter id, so a serializer that writes a nested value through the
-mapper (`PricingRate` writes its `test` condition that way) writes it without the filter instead of failing.
+nested name on a scalar is not an error and not a loss. `LocalizedValueSerializer` and `PricingRateSerializer` write their members through the
+serializer provider, as a map, so the filter reaches inside a localized value (its locales) and a decision-tree rate
+(`test`, `ifTrue`, `ifFalse`). A custom serializer that writes straight to the generator or through the mapper is not
+narrowed and its value is returned whole; the mapper copy has a default filter provider that tolerates the filter id,
+so such a value is written without the filter and does not fail. A new custom serializer of a response type has to
+write its nested members through the provider (CLAUDE.md).
 
 The first version converted the list to a JSON tree and pruned it. A spike on 5,000 synthetic rows (review.md) showed
 the filter doing the same work in a fraction of the time and memory: 5 to 60 ms and 1 to 6 MB against 45 to 130 ms
@@ -137,9 +139,10 @@ value. The parameter text is a new constant in `OpenApiDescriptions` (module `op
 - [The filtered text differs from the full serialization] → Both come from a copy of `ProxyUtil.MAPPER`, and
   `FieldSelectionTest` and the integration test assert that `fields=*` equals the unselected listing on the existing
   fixtures.
-- [A value written by a custom serializer, such as a localized value or a decision-tree pricing rate, is returned
-  whole] → Stated in the spec; it returns more than asked, never less, and `@EncryptedField` values stay hidden because the filter
-  runs on a copy of the same mapper.
+- [A custom serializer that writes straight to the generator or through the mapper is not narrowed] → Its value is
+  returned whole: more than asked, never less, and `@EncryptedField` values stay hidden because the filter runs on a
+  copy of the same mapper. The two such serializers of the listing (`LocalizedValueSerializer`,
+  `PricingRateSerializer`) write through the provider, and CLAUDE.md says new ones must.
 - [The filter relies on a mixin on `Object.class` of a separate mapper] → The default mapper is not touched, and the
   copy is used only by `FieldSelection`.
 - [A key with `,`, `(` or `)` in a free-form map cannot be named] → `*(...)` reaches it; no such key exists in the
