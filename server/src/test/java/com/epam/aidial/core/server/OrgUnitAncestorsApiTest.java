@@ -154,24 +154,10 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/org-unit-navigator-role.json")
-    void testUnitAdminManagesRolesReadingOrgUnits() {
+    void testBuiltInAdminCantGiveRolesReadingOrgUnits() {
         assign("public/Acme", "admin");
         String body = "{\"roleName\": \"navigator\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", "
                 + "\"targets\": [\"carol\"]}}";
-
-        Response given = send(HttpMethod.POST, "/v1/org-units/public/Acme/role-assignments", null, body, "authorization", BOB);
-        assertEquals(200, given.status(), given.body());
-        String id = new JsonObject(given.body()).getString("id");
-        Response removed = send(HttpMethod.DELETE, "/v1/org-units/public/Acme/role-assignments/" + id, null, null, "authorization", BOB);
-        assertEquals(200, removed.status(), removed.body());
-    }
-
-    @Test
-    @DialConfigLocation("dial-config/org-unit-navigator-role.json")
-    void testAssignerWithoutOrgUnitsCantGiveRolesReadingThem() {
-        assign("public/Acme", "assigner");
-        String body = "{\"roleName\": \"navigator\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", "
-                + "\"targets\": [\"bob\"]}}";
 
         Response given = send(HttpMethod.POST, "/v1/org-units/public/Acme/role-assignments", null, body, "authorization", BOB);
         assertEquals(403, given.status(), given.body());

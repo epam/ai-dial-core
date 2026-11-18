@@ -21,18 +21,6 @@
           "pathPattern": "org-units/**"
         }
       ]
-    },
-    "assigner": {
-      "description": "Manages the unit's role assignments only",
-      "permissions": [
-        {
-          "actions": [
-            "read",
-            "write"
-          ],
-          "pathPattern": "role-assignments/**"
-        }
-      ]
     }
   }
 }

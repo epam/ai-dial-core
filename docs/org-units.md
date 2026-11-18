@@ -164,10 +164,10 @@ grants apply as described in Editing a unit, `role-assignments` below and `publi
 
 Besides DIAL admins, a holder of `read role-assignments/**` at a unit — by default its `admin` — lists its roles and
 assignments, and a holder of `write role-assignments/**` adds and removes them, in that unit only. They give or remove
-only roles whose permissions their own roles there hold together, so nobody hands out more than they have.
-The built-in roles, unless the config redefines them, still count as holding `read org-units/**` for this, so a unit
-admin gives and removes a role that shows the units below. An
-assignment of a role that no longer exists can be removed. A unit admin may remove their own assignment, and so lose
+only roles whose permissions their own roles there hold together, so nobody hands out more than they have; an
+assignment of a role that no longer exists can be removed. No built-in role holds `read org-units/**`, so a role
+that grants it is given only by DIAL admins and by holders of a role that grants it too: a config that adds it to
+`editor` or `viewer` adds it to `admin` as well, or unit admins can no longer give them. A unit admin may remove their own assignment, and so lose
 the power. To anyone else the calls answer 403, also for a path that names no unit.
 
 | Call | Who | What |
