@@ -12,6 +12,33 @@ child pass with no HTTP request, no key lookup and no body bytes, and hands the 
 pass writes a row without bodies and writes nothing on the current span, because both belong to the plugin. This
 change sends the alias hop the same way.
 
+Today:
+
+```mermaid
+sequenceDiagram
+    Client->>Alias pass: POST, model = alias
+    Alias pass->>Redis: store the per-request key
+    Alias pass->>Target pass: HTTP to Core's own address
+    Target pass->>Redis: read the key
+    Target pass->>Model: parse again, check, send
+    Model-->>Target pass: answer
+    Target pass-->>Alias pass: answer
+    Alias pass-->>Client: answer
+```
+
+After:
+
+```mermaid
+sequenceDiagram
+    Client->>Alias pass: POST, model = alias
+    Alias pass->>Redis: store the per-request key
+    Alias pass->>Target pass: in-process call, body as a tree
+    Target pass->>Model: check, send
+    Model-->>Target pass: answer
+    Target pass-->>Alias pass: answer
+    Alias pass-->>Client: answer
+```
+
 ## Decisions
 
 ### D1. The hop is an embedded origin with a built-in forward plugin, not a new kind of request

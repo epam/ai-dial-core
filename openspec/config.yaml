@@ -49,6 +49,10 @@ rules:
       Effect per request, Risks / Trade-offs, Migration Plan, Code map. No Goals / Non-Goals (the proposal has the
       scope) and no Open Questions in a change that is ready to apply.
     - Context is at most eight sentences on how the affected flow works today, in words, with no citations.
+    - 'When the change alters who calls whom or the order of steps across passes or services, Context ends with a
+      Mermaid sequenceDiagram of the flow after the change, and one of today when the comparison is the point. At most
+      five participants and ten arrows each, labels in plain words, no styling. Otherwise no diagram. The diagram
+      illustrates; the text and the spec deltas win.'
     - 'Each decision is "### D<n>. <the choice, not the topic>" ("The body goes over as a tree, not as bytes", not
       "Body"): the reason in a few lines, then one "**Rejected: <alternative>** - <why>" line per alternative. A
       decision is a choice between options; a list of what changes is not one.'
