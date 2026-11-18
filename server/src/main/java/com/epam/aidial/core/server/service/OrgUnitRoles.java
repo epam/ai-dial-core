@@ -169,13 +169,14 @@ public final class OrgUnitRoles {
 
     /**
      * Whether the roles together grant everything the role does: who holds them may give or take it at the unit.
+     * {@code org-units} is left out: it shows only the names of the units below, and no built-in role holds it.
      */
     public boolean covers(Collection<String> roleNames, @Nullable String roleName) {
         Map<String, Set<String>> wanted = roleName == null ? null : grants.get(roleName);
         if (wanted == null) {
             return roleName != null && !roles.containsKey(roleName);
         }
-        return wanted.entrySet().stream().allMatch(entry -> entry.getValue().stream()
+        return wanted.entrySet().stream().filter(entry -> !ORG_UNITS.equals(entry.getKey())).allMatch(entry -> entry.getValue().stream()
                 .allMatch(action -> allows(roleNames, action, entry.getKey())));
     }
 

@@ -153,6 +153,20 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
     }
 
     @Test
+    @DialConfigLocation("dial-config/org-unit-navigator-role.json")
+    void testUnitAdminManagesRolesReadingOrgUnits() {
+        assign("public/Acme", "admin");
+        String body = "{\"roleName\": \"navigator\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", "
+                + "\"targets\": [\"carol\"]}}";
+
+        Response given = send(HttpMethod.POST, "/v1/org-units/public/Acme/role-assignments", null, body, "authorization", BOB);
+        assertEquals(200, given.status(), given.body());
+        String id = new JsonObject(given.body()).getString("id");
+        Response removed = send(HttpMethod.DELETE, "/v1/org-units/public/Acme/role-assignments/" + id, null, null, "authorization", BOB);
+        assertEquals(200, removed.status(), removed.body());
+    }
+
+    @Test
     void testApplicationsActingForThePersonDontSeeTheUnitsAbove() {
         ApiKeyData key = new ApiKeyData();
         key.setExtractedClaims(createWorkloadClaims("bob"));

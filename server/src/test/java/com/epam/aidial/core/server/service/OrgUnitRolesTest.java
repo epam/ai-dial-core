@@ -138,8 +138,12 @@ class OrgUnitRolesTest {
     void testCovers() {
         Config config = new Config();
         config.setOrgUnitRoles(Map.of("manager", role(new OrgUnitPermission(List.of(READ, WRITE), "role-assignments/**"),
-                new OrgUnitPermission(List.of(READ, WRITE), "files/**"))));
+                new OrgUnitPermission(List.of(READ, WRITE), "files/**")),
+                "navigator", role(new OrgUnitPermission(List.of(READ), "org-units/**"), new OrgUnitPermission(List.of(READ), "files/**"))));
         OrgUnitRoles roles = OrgUnitRoles.of(config);
+
+        assertTrue(roles.covers(List.of(ADMIN), "navigator"), "org-units is not compared");
+        assertFalse(roles.covers(List.of(), "navigator"), "the content it grants still is");
 
         assertTrue(roles.covers(List.of(ADMIN), ADMIN));
         assertTrue(roles.covers(List.of(ADMIN), EDITOR));
