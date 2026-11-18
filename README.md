@@ -30,7 +30,7 @@
 
 > [!NOTE]
 > HTTP Proxy provides unified API to different chat completion and embedding models and applications.
-> Written in Java 21 and built on top of [Eclipse Vert.x](https://vertx.io/).
+> Written in Java 25 and built on top of [Eclipse Vert.x](https://vertx.io/).
 
 ![ai-dial-core](./dial-core.png)
 
@@ -86,7 +86,7 @@ repositories {
 > 
 > See more details [here](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) to generate personal access token in GitHub.
 
-Build the project with Gradle and Java 21:
+Build the project with Gradle and Java 25:
 
 ```
 ./gradlew build

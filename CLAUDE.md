@@ -37,7 +37,7 @@ At runtime, set `AIDIAL_SETTINGS` env var pointing to a JSON settings file (see 
 
 ## Architecture
 
-AI DIAL Core is an **HTTP reverse proxy / API gateway** for LLMs built on **Java 21** + **Eclipse Vert.x** (reactive, non-blocking). It exposes an OpenAI-compatible API and routes requests to backend AI providers (Azure OpenAI, AWS, GCP, etc.).
+AI DIAL Core is an **HTTP reverse proxy / API gateway** for LLMs built on **Java 25** + **Eclipse Vert.x** (reactive, non-blocking). It exposes an OpenAI-compatible API and routes requests to backend AI providers (Azure OpenAI, AWS, GCP, etc.).
 
 ### Gradle Modules
 
@@ -75,7 +75,7 @@ See `sample/` for examples of both files; `server/src/main/resources/aidial.sett
 
 ### Tech Stack
 
-- **Java 21**, **Gradle 8**, **Lombok** (via `io.freefair.lombok` plugin)
+- **Java 25**, **Gradle 9**, **Lombok** (via `io.freefair.lombok` plugin)
 - **Eclipse Vert.x 4.5** — async HTTP server/client (event-loop model)
 - **Apache JClouds** — multi-cloud blob storage
 - **Redisson** — Redis client (caching, distributed locks)
@@ -111,10 +111,10 @@ The workflows in `.claude/workflows/` (`sdd-baseline` for specs of existing beha
 
 ## Checks (Git Bash, from the repo root)
 
-Gradle 8.10 needs a JDK 21 as `JAVA_HOME`; a newer default JDK fails with "Unsupported class file major version".
+Use a JDK 25 as `JAVA_HOME`: the toolchain targets Java 25, and Gradle runs on the same JDK.
 
 ```bash
-export JAVA_HOME="<path to a JDK 21>"
+export JAVA_HOME="<path to a JDK 25>"
 ./gradlew checkstyleMain checkstyleTest
 ./gradlew :server:test --tests "com.epam.aidial.core.server.SomeApiTest"     # the classes the change touches
 npx -y @fission-ai/openspec@1.14.3 validate --all --strict

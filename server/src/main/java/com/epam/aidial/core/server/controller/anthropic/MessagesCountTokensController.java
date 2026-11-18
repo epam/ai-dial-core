@@ -54,8 +54,7 @@ public class MessagesCountTokensController extends MessagesBaseController {
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 503)
-                    }
-            )
+                    })
     })
     @Override
     public Future<?> handle() {
