@@ -128,7 +128,7 @@ public class ResourceOperationController {
                     Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
                             accessService.lookupPermissions(resources, context);
 
-                    if (!permissions.get(source).containsAll(ResourceAccessType.ALL)) {
+                    if (!permissions.get(source).containsAll(ResourceAccessType.READ_WRITE_SHARE)) {
                         throw new PermissionDeniedException("No read and write access to source resource");
                     }
 

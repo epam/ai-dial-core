@@ -335,4 +335,15 @@ class ShareServiceTest {
         assertNotNull(dto.getLimits());
         assertTrue(dto.getLimits().isEmpty());
     }
+
+    @Test
+    void testSharedResourcesToMapMergesRepeatedUrl() {
+        String url = "files/bucket/file.txt";
+
+        Map<String, Set<ResourceAccessType>> permissions = ShareService.sharedResourcesToMap(List.of(
+                new SharedResource(url, null, null, Set.of(ResourceAccessType.READ)),
+                new SharedResource(url, null, null, Set.of(ResourceAccessType.SHARE, ResourceAccessType.SHARE_LIST))));
+
+        assertEquals(Map.of(url, Set.of(ResourceAccessType.READ, ResourceAccessType.SHARE, ResourceAccessType.SHARE_LIST)), permissions);
+    }
 }

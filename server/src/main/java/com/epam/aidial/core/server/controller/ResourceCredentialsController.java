@@ -215,7 +215,7 @@ public class ResourceCredentialsController {
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = accessService.lookupPermissions(Set.of(resourceDescriptor), context);
 
         if (credentialsLevel.equals(CredentialsLevel.GLOBAL)
-                && !permissions.get(resourceDescriptor).containsAll(ResourceAccessType.ALL)) {
+                && !permissions.get(resourceDescriptor).containsAll(ResourceAccessType.READ_WRITE_SHARE)) {
             throw new PermissionDeniedException("No read and write access to Resource");
         }
 
