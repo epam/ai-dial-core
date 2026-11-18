@@ -36,6 +36,7 @@ An object containing the routers and their [parameters](#routersrouter_name).
 * `displayName`, `displayVersion`, `iconUrl`, `description`, `intro`, `reference`, `descriptionKeywords`, `author`, `createdAt`, `updatedAt`: Display fields, as for a model.
 * `features`, `defaults`, `defaultHeaders`, `overrideName`, `forwardAuthToken`, `maxRetryAttempts`: As for a model.
 * `applicationTypeSchemaId`, `applicationProperties`: An app-type schema and the properties it validates, as for a schema-rich application. Set both or neither. See [Type schema and properties](#type-schema-and-properties).
+* `editorUrl` (or `editor_url`): The URL of the router's admin UI, which DIAL Admin can embed on the router's page. DIAL Core does not validate it and never calls it. It is returned with the router by the [Configuration API](#configuration-api) and the file config endpoints, and not by the [listings](#listing). A DIAL Core version without this field rejects a router that sets it, so remove the field before a downgrade.
 
 A router declares nothing of another deployment kind. DIAL Core rejects a router that has `upstreams`, `limits`, `pricing`, any other application field, `interceptors` (`A router declares no interceptors`), or `endpoint` / `responsesEndpoint` (`A router declares interfaces, not endpoint`).
 
@@ -105,7 +106,7 @@ An [alias](aliases.md) of type `router` (`presentAs: router`, or over a router w
 
 Routers do not appear in the model listings: `GET /openai/models`, `/openai/deployments`, `/openai/applications` and `/anthropic/v1/models`. To list a router under a model name, point an [alias](aliases.md) with `presentAs: model` to it.
 
-An entry carries `id`, `object: "router"`, `display_name`, `display_version`, `icon_url`, `description`, `intro`, `reference`, `features`, `defaults`, `description_keywords`, `interfaces` (`chat` and `embedding` as above, then the declared interface types), `created_at` and `updated_at`. It never carries the router's url.
+An entry carries `id`, `object: "router"`, `display_name`, `display_version`, `icon_url`, `description`, `intro`, `reference`, `features`, `defaults`, `description_keywords`, `interfaces` (`chat` and `embedding` as above, then the declared interface types), `created_at` and `updated_at`. It never carries the router's url or its `editorUrl`.
 
 ## Identity
 
