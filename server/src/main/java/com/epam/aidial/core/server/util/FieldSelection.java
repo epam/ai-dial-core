@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFilter;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonStreamContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.ser.PropertyWriter;
 import com.fasterxml.jackson.databind.ser.impl.SimpleBeanPropertyFilter;
@@ -11,10 +12,10 @@ import com.fasterxml.jackson.databind.ser.impl.SimpleFilterProvider;
 import lombok.SneakyThrows;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 
 /**
@@ -33,10 +34,12 @@ public final class FieldSelection {
 
     private final Node root;
     private final Set<String> alwaysKept;
+    private final ObjectWriter writer;
 
     private FieldSelection(Node root, Set<String> alwaysKept) {
         this.root = root;
         this.alwaysKept = alwaysKept;
+        this.writer = FILTERING_MAPPER.writer(new SimpleFilterProvider().addFilter(FILTER_ID, new MemberFilter()));
     }
 
     /**
@@ -57,35 +60,12 @@ public final class FieldSelection {
     }
 
     /**
-     * Members written by a custom serializer, such as a localized value, are not narrowed.
+     * Members written by a custom serializer, such as a localized value, are not narrowed. A selection caches while
+     * it serializes, so one instance is not for concurrent use.
      */
     @SneakyThrows
     public String serialize(Object value) {
-        return FILTERING_MAPPER.writer(new SimpleFilterProvider().addFilter(FILTER_ID, new MemberFilter())).writeValueAsString(value);
-    }
-
-    private boolean selects(JsonStreamContext object, String name) {
-        Node node = nodeOf(object);
-        if (node == null) {
-            return false;
-        }
-        if (node.whole || node.select(name) != null) {
-            return true;
-        }
-        return enclosingObject(object.getParent()) == null && alwaysKept.contains(name);
-    }
-
-    @Nullable
-    private Node nodeOf(JsonStreamContext object) {
-        JsonStreamContext outer = enclosingObject(object.getParent());
-        if (outer == null) {
-            return root;
-        }
-        Node outerNode = nodeOf(outer);
-        if (outerNode == null) {
-            return null;
-        }
-        return outerNode.whole ? WHOLE : outerNode.select(outer.getCurrentName());
+        return writer.writeValueAsString(value);
     }
 
     @Nullable
@@ -120,12 +100,36 @@ public final class FieldSelection {
                 writer.serializeAsOmittedField(pojo, generator, provider);
             }
         }
+
+        private boolean selects(JsonStreamContext object, String name) {
+            Node node = nodeOf(object);
+            if (node == null) {
+                return false;
+            }
+            if (node.whole || node.select(name) != null) {
+                return true;
+            }
+            return enclosingObject(object.getParent()) == null && alwaysKept.contains(name);
+        }
+
+        @Nullable
+        private Node nodeOf(JsonStreamContext object) {
+            JsonStreamContext outer = enclosingObject(object.getParent());
+            if (outer == null) {
+                return root;
+            }
+            Node outerNode = nodeOf(outer);
+            if (outerNode == null) {
+                return null;
+            }
+            return outerNode.whole ? WHOLE : outerNode.select(outer.getCurrentName());
+        }
     }
 
     private static final class Node {
         private final boolean whole;
         private final Map<String, Node> members = new LinkedHashMap<>();
-        private final Map<String, Node> unions = new ConcurrentHashMap<>();
+        private Map<String, Node> unions;
 
         private Node(boolean whole) {
             this.whole = whole;
@@ -138,7 +142,13 @@ public final class FieldSelection {
             if (named == null) {
                 return any;
             }
-            return any == null ? named : unions.computeIfAbsent(name, key -> union(named, any));
+            if (any == null) {
+                return named;
+            }
+            if (unions == null) {
+                unions = new HashMap<>();
+            }
+            return unions.computeIfAbsent(name, key -> union(named, any));
         }
     }
 

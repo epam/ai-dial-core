@@ -55,7 +55,7 @@ still cost what they cost today because `fields` does not skip building a field.
   `FieldSelection` exposes `serialize(Object)` instead of a tree projection. A value written by a custom serializer (a
   localized value with several locales) is returned whole; the spec says so.
 - After the PR review: `FieldSelection` takes the always-kept names from the caller (`parse(text, alwaysKept)`); the
-  union of a name and `*` is cached per node in a concurrent map, because merging it at parse time would copy the
+  union of a name and `*` is cached per node in a plain map (a selection is parsed and used on the event loop, so no thread shares it), because merging it at parse time would copy the
   wildcard subtree into every named sibling at every level; `MAX_LENGTH` is 1,024 UTF-8 bytes, so that a selection
   whose bytes are all percent-encoded still fits the 4,096-byte request line. The proposal says that a request
   already sending an unrelated `fields` parameter is read as a selection.

@@ -9,14 +9,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -147,21 +143,13 @@ public class FieldSelectionTest {
     }
 
     @Test
-    void oneSelectionServesConcurrentSerializations() throws Exception {
-        FieldSelection selection = parse("features(rate),*(tokenize),interface_configs(*(features))");
-        String expected = selection.serialize(rows());
-        ExecutorService pool = Executors.newFixedThreadPool(8);
-        try {
-            List<Future<String>> results = new ArrayList<>();
-            for (int i = 0; i < 64; i++) {
-                results.add(pool.submit(() -> selection.serialize(rows())));
-            }
-            for (Future<String> result : results) {
-                assertEquals(expected, result.get());
-            }
-        } finally {
-            pool.shutdown();
-        }
+    void unionOfNameAndWildcardServesEveryRow() {
+        Map<String, Object> row = rows().get(0);
+
+        JsonNode projected = read(parse("features(rate),*(tokenize)").serialize(List.of(row, row)));
+
+        assertEquals(List.of("rate", "tokenize"), names(projected.get(0).get("features")));
+        assertEquals(projected.get(0), projected.get(1));
     }
 
     @Test
