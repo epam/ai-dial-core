@@ -31,10 +31,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -61,7 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ConfigPostProcessorTest {
 
     // test-echo, from the test classpath
-    private static final PluginRegistry PLUGINS = PluginRegistry.load(Path.of("no-plugins-dir"));
+    private static final PluginRegistry PLUGINS = PluginRegistry.load(new JsonObject().put("dir", "no-plugins-dir"));
 
     @Test
     void testOrgUnitRolesCoreCannotEvaluateFailTheLoad() {
