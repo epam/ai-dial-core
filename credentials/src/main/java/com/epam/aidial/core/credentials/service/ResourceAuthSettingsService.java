@@ -9,6 +9,7 @@ import com.epam.aidial.core.credentials.data.credentials.CredentialsDescriptor;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
+import com.epam.aidial.core.credentials.service.registration.RegistrationPolicy;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
 import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
 import com.epam.aidial.core.credentials.util.UnreadableSecretMessage;
@@ -57,31 +58,57 @@ public class ResourceAuthSettingsService {
             throw new IllegalArgumentException("ResourceAuthSettings is not defined for Resource: " + updatedResource.getName());
         }
 
-        // Statuses and the secret hint are computed per read; a client echoing them back must not persist them.
-        resourceAuthSettings.clearComputedFields();
+        // A toolset discovers from its own endpoint, which is also where its traffic goes.
+        if (resourceAuthSettings.getDiscoveryUrl() != null) {
+            throw new IllegalArgumentException("discovery_url is not supported for Resource: " + updatedResource.getName());
+        }
 
         if (updatedResource.isForwardPerRequestKey() && resourceAuthSettings.getAuthenticationType() == AuthenticationType.API_KEY) {
             throw new IllegalArgumentException("Forward per request API key can't be along with authentication type %s"
                     .formatted(AuthenticationType.API_KEY.name()));
         }
 
-        boolean requiresClientRegistration = requiresClientRegistration(updatedResource, existingResource);
+        processResourceAuthSettings(updatedResource.getName(), updatedResource.getEndpoint(), resourceAuthSettings,
+                existingResource == null ? null : existingResource.getAuthSettings(), existingSecretUnreadable,
+                RegistrationPolicy.TOOLSET);
+    }
+
+    /**
+     * Same as {@link #processResourceAuthSettings(SecuredResource, SecuredResource, boolean)} for a resource that is not a
+     * {@code SecuredResource}. A null {@code existingResourceAuthSettings} means a create. A static client of a
+     * resource without an endpoint has nothing to discover from, so it is stored as sent; a dynamic one is rejected.
+     */
+    public void processResourceAuthSettings(String resourceId,
+                                            String resourceEndpoint,
+                                            ResourceAuthSettings resourceAuthSettings,
+                                            ResourceAuthSettings existingResourceAuthSettings,
+                                            boolean existingSecretUnreadable,
+                                            RegistrationPolicy policy) {
+        // Statuses and the secret hint are computed per read; a client echoing them back must not persist them.
+        resourceAuthSettings.clearComputedFields();
+
+        boolean requiresClientRegistration = requiresClientRegistration(resourceAuthSettings, existingResourceAuthSettings);
         boolean requiresDynamicClientRegistration = requiresDynamicClientRegistration(resourceAuthSettings);
 
         ResourceAuthSettingsChangeMode resourceAuthSettingsChangeMode = getResourceAuthSettingsChangeMode(
                 requiresClientRegistration, requiresDynamicClientRegistration);
         validateResourceAuthSettings(resourceAuthSettings, resourceAuthSettingsChangeMode,
-                existingResource == null || existingResource.getAuthSettings() == null
-                        ? null : existingResource.getAuthSettings().getClientSecret());
+                existingResourceAuthSettings == null ? null : existingResourceAuthSettings.getClientSecret());
 
         if (resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT
                 || resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT) {
-            enrichResourceAuthSettings(updatedResource.getName(), updatedResource.getEndpoint(), resourceAuthSettings, requiresDynamicClientRegistration);
+            if (resourceEndpoint != null) {
+                enrichResourceAuthSettings(resourceId, resourceEndpoint, resourceAuthSettings,
+                        requiresDynamicClientRegistration, policy);
+            } else if (requiresDynamicClientRegistration) {
+                throw new IllegalArgumentException(
+                        "Dynamic client registration for Resource: %s requires discovery_url".formatted(resourceId));
+            } else {
+                setCodeChallengeProperties(resourceAuthSettings, resourceAuthSettings.getCodeChallengeMethod());
+            }
             resourceAuthSettings.setDynamicallyRegistered(requiresDynamicClientRegistration);
         } else if (AuthenticationType.OAUTH.equals(resourceAuthSettings.getAuthenticationType())
-                && existingResource != null
-                && existingResource.getAuthSettings() != null) {
-            ResourceAuthSettings existingResourceAuthSettings = existingResource.getAuthSettings();
+                && existingResourceAuthSettings != null) {
 
             // Capture before clientSecret is filled in from existing: only a PUT that explicitly
             // supplies both clientId and clientSecret signals intentional DCR→static conversion.
@@ -92,7 +119,7 @@ public class ResourceAuthSettingsService {
             // do not re-write clientSecret with null values
             if (resourceAuthSettings.getClientSecret() == null) {
                 if (existingSecretUnreadable) {
-                    throw new IllegalArgumentException(UnreadableSecretMessage.of(updatedResource.getName(), "client_secret"));
+                    throw new IllegalArgumentException(UnreadableSecretMessage.of(resourceId, "client_secret"));
                 }
                 resourceAuthSettings.setClientSecret(existingResourceAuthSettings.getClientSecret());
             }
@@ -107,6 +134,11 @@ public class ResourceAuthSettingsService {
                 resourceAuthSettings.setResource(existingResourceAuthSettings.getResource());
             } else if (StringUtils.isBlank(resourceAuthSettings.getResource())) {
                 resourceAuthSettings.setResource(null);
+            }
+            if (resourceAuthSettings.getDiscoveryUrl() == null) {
+                resourceAuthSettings.setDiscoveryUrl(existingResourceAuthSettings.getDiscoveryUrl());
+            } else if (StringUtils.isBlank(resourceAuthSettings.getDiscoveryUrl())) {
+                resourceAuthSettings.setDiscoveryUrl(null);
             }
 
             resolveCodeChallengeSettings(resourceAuthSettings, existingResourceAuthSettings, existingSecretUnreadable);
@@ -163,13 +195,15 @@ public class ResourceAuthSettingsService {
      * @param resourceEndpoint The resource endpoint (URL)
      * @param resourceAuthSettings The `ResourceAuthSettings` being enriched
      * @param oauthDynamicClientRegistrationRequired Whether dynamic client registration is needed
+     * @param policy What the registration may take from the resource itself
      */
     private void enrichResourceAuthSettings(String resourceId,
                                             String resourceEndpoint,
                                             ResourceAuthSettings resourceAuthSettings,
-                                            boolean oauthDynamicClientRegistrationRequired) {
+                                            boolean oauthDynamicClientRegistrationRequired,
+                                            RegistrationPolicy policy) {
         ClientRegistration clientRegistration = resourceRegistrationService.register(
-                resourceId, resourceEndpoint, resourceAuthSettings, oauthDynamicClientRegistrationRequired);
+                resourceId, resourceEndpoint, resourceAuthSettings, oauthDynamicClientRegistrationRequired, policy);
 
         resourceAuthSettings.setClientId(clientRegistration.getClientId());
         resourceAuthSettings.setClientSecret(clientRegistration.getClientSecret());
@@ -279,9 +313,14 @@ public class ResourceAuthSettingsService {
         setCodeChallengeProperties(authSettings, registration.getCodeChallengeMethod());
     }
 
+    // A blank method is how a client says "no PKCE", as a blank resource clears the indicator.
     private void setCodeChallengeProperties(ResourceAuthSettings resourceAuthSettings,
                                             String codeChallengeMethod) {
-        if (codeChallengeMethod != null) {
+        if (codeChallengeMethod != null && codeChallengeMethod.isBlank()) {
+            resourceAuthSettings.setCodeChallengeMethod(null);
+            resourceAuthSettings.setCodeChallenge(null);
+            resourceAuthSettings.setCodeVerifier(null);
+        } else if (codeChallengeMethod != null) {
             CodeVerifier codeVerifier = new CodeVerifier();
             CodeChallengeMethod parsedCodeChallengeMethod = CodeChallengeMethod.parse(codeChallengeMethod);
             CodeChallenge codeChallenge = CodeChallenge.compute(parsedCodeChallengeMethod, codeVerifier);
@@ -293,34 +332,26 @@ public class ResourceAuthSettingsService {
     }
 
     /**
-     * Determines whether client registration is required for the given SecuredResource.
+     * Determines whether client registration is required.
      *
      * <p>Client registration is required in the following cases:
      * <ul>
-     *     <li>If the authentication type is `OAUTH` and no SecuredResource exists</li>
+     *     <li>If the authentication type is `OAUTH` and the resource is created</li>
      *     <li>If the authentication type changes from non-OAUTH to OAUTH</li>
      * </ul>
      *
-     * @param securedResource The new `SecuredResource` configuration being saved
-     * @param existing The existing `SecuredResource` configuration, or null if creating a new SecuredResource
+     * @param newResourceAuthSettings The auth settings being saved
+     * @param existingResourceAuthSettings The stored auth settings, or null if the resource is created
      * @return true if client registration is required, false otherwise
      */
-    private boolean requiresClientRegistration(SecuredResource securedResource, SecuredResource existing) {
-        ResourceAuthSettings newResourceAuthSettings = securedResource.getAuthSettings();
-
-        // Do not register client for non-OAUTH auth types
+    private boolean requiresClientRegistration(ResourceAuthSettings newResourceAuthSettings,
+                                               ResourceAuthSettings existingResourceAuthSettings) {
         if (!AuthenticationType.OAUTH.equals(newResourceAuthSettings.getAuthenticationType())) {
             return false;
         }
-
-        // Always register client when creating a new SecuredResource with OAUTH auth type
-        if (existing == null) {
+        if (existingResourceAuthSettings == null) {
             return true;
         }
-
-        ResourceAuthSettings existingResourceAuthSettings = existing.getAuthSettings();
-
-        // Ensure client registration applies only if the auth type was changed to OAUTH
         return !AuthenticationType.OAUTH.equals(existingResourceAuthSettings.getAuthenticationType());
     }
 

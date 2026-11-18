@@ -11,5 +11,6 @@ public enum ResourceAuthSettingsField {
     CODE_CHALLENGE_METHOD,
     SCOPES_SUPPORTED,
     API_KEY_HEADER,
-    RESOURCE
+    RESOURCE,
+    DISCOVERY_URL
 }

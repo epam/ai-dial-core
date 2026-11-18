@@ -12,6 +12,7 @@ import com.epam.aidial.core.credentials.service.metadata.AuthorizationServerMeta
 import com.epam.aidial.core.credentials.service.metadata.ProtectedResourceMetadataService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.hc.core5.http.ContentType;
 
 import java.util.ArrayList;
@@ -43,6 +44,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
     private final ResourceAuthorizationClient resourceAuthorizationClient;
     private final ProtectedResourceMetadataService protectedResourceMetadataService;
     private final List<String> allowedRedirectUris;
+    private final RegistrationPolicy policy;
 
     /**
      * Registers a protected resource dynamically using the authorization server's dynamic client registration
@@ -64,6 +66,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
     @Override
     public ClientRegistration register(String resourceId, String resourceEndpoint, ResourceAuthSettings resourceAuthSettings) {
         log.info("Start dynamic registration for Resource: {}", resourceId);
+        List<String> redirectUris = collectRedirectUris(resourceAuthSettings);
 
         AuthorizationServerProtectedResourceMetadata protectedResourceMetadata =
                 protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint);
@@ -75,7 +78,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
 
         ClientRegistrationRequest clientRegistrationRequest = ClientRegistrationRequest.builder()
                 .clientName(resourceId)
-                .redirectUris(collectRedirectUris(resourceAuthSettings))
+                .redirectUris(redirectUris)
                 .build();
 
         ClientRegistrationResponse clientRegistrationResponse = resourceAuthorizationClient.executePost(
@@ -100,7 +103,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
                 .redirectUri(clientRegistrationResponse.getRedirectUris().getFirst())
                 .authorizationEndpoint(authServerMetadata.getAuthorizationEndpoint())
                 .tokenEndpoint(authServerMetadata.getTokenEndpoint())
-                .resource(resolveResource(protectedResourceMetadata, resourceEndpoint))
+                .resource(resolveResource(protectedResourceMetadata, policy.endpointAsResource() ? resourceEndpoint : null))
                 .scopesSupported(supportedScopes)
                 .tokenEndpointAuthMethod(tokenEndpointAuthMethod)
                 .build();
@@ -113,22 +116,30 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
     }
 
     /**
-     * The RFC 8707 resource indicator. The server's own metadata is authoritative; the endpoint stands in when it
-     * publishes none, which is safe here because an authorization server offering DCR to an MCP client follows the
-     * MCP authorization spec.
+     * The RFC 8707 resource indicator. The server's own metadata is authoritative; for an MCP server the endpoint
+     * stands in when it publishes none, which is safe because an authorization server offering DCR to an MCP client
+     * follows the MCP authorization spec. Other resources pass no fallback: their endpoint may be the issuer itself.
      */
     private static String resolveResource(AuthorizationServerProtectedResourceMetadata protectedResourceMetadata,
-                                          String resourceEndpoint) {
+                                          String fallback) {
         return Optional.ofNullable(protectedResourceMetadata)
                 .map(AuthorizationServerProtectedResourceMetadata::getResource)
-                .orElse(resourceEndpoint);
+                .orElse(fallback);
     }
 
     private List<String> collectRedirectUris(ResourceAuthSettings resourceAuthSettings) {
         List<String> uris = new ArrayList<>(allowedRedirectUris);
         String resourceRedirectUri = resourceAuthSettings.getRedirectUri();
-        if (resourceRedirectUri != null && !uris.contains(resourceRedirectUri)) {
+        if (StringUtils.isNotBlank(resourceRedirectUri) && !uris.contains(resourceRedirectUri)) {
+            if (!policy.anyResourceRedirectUri()) {
+                throw new IllegalArgumentException(
+                        "redirect_uri %s is not in toolsets.security.allowedRedirectUris".formatted(resourceRedirectUri));
+            }
             uris.add(resourceRedirectUri);
+        }
+        if (uris.isEmpty() && !policy.anyResourceRedirectUri()) {
+            throw new IllegalArgumentException(
+                    "Dynamic client registration requires toolsets.security.allowedRedirectUris to be configured");
         }
         return uris;
     }

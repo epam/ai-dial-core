@@ -35,9 +35,18 @@ public class ResourceRegistrationService {
                                        String resourceEndpoint,
                                        ResourceAuthSettings resourceAuthSettings,
                                        boolean oauthDynamicClientRegistrationRequired) {
+        return register(resourceId, resourceEndpoint, resourceAuthSettings, oauthDynamicClientRegistrationRequired,
+                RegistrationPolicy.TOOLSET);
+    }
+
+    public ClientRegistration register(String resourceId,
+                                       String resourceEndpoint,
+                                       ResourceAuthSettings resourceAuthSettings,
+                                       boolean oauthDynamicClientRegistrationRequired,
+                                       RegistrationPolicy policy) {
         ResourceRegistrationStrategy strategy = oauthDynamicClientRegistrationRequired
-                ? new DynamicResourceRegistrationStrategy(
-                        authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, allowedRedirectUris)
+                ? new DynamicResourceRegistrationStrategy(authorizationServerMetadataService, resourceAuthorizationClient,
+                        protectedResourceMetadataService, allowedRedirectUris, policy)
                 : new StaticResourceRegistrationStrategy(
                         authorizationServerMetadataService, protectedResourceMetadataService);
 

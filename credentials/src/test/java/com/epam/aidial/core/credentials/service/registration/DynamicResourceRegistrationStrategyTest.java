@@ -21,6 +21,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +31,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,7 +51,7 @@ class DynamicResourceRegistrationStrategyTest {
     @BeforeEach
     void setUp() {
         resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(
-                authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, List.of());
+                authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, List.of(), RegistrationPolicy.TOOLSET);
     }
 
     @Test
@@ -144,6 +146,51 @@ class DynamicResourceRegistrationStrategyTest {
         ClientRegistration result = runRegistration("client_secret_basic", null);
 
         assertEquals("https://test.endpoint.com", result.getResource());
+    }
+
+    @Test
+    void testRegister_noPublishedResource_externalServicePolicy_hasNoResource() {
+        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(
+                authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, List.of("https://redirect.uri"),
+                RegistrationPolicy.EXTERNAL_SERVICE);
+
+        ClientRegistration result = runRegistration("client_secret_basic", null);
+
+        assertNull(result.getResource());
+    }
+
+    @Test
+    void testRegister_publishedResource_externalServicePolicy_usesMetadata() {
+        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(
+                authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, List.of("https://redirect.uri"),
+                RegistrationPolicy.EXTERNAL_SERVICE);
+
+        ClientRegistration result = runRegistration("client_secret_basic", "https://test.endpoint.com/mcp");
+
+        assertEquals("https://test.endpoint.com/mcp", result.getResource());
+    }
+
+    @Test
+    void testRegister_externalServicePolicy_unlistedRedirectUriRejectedBeforeAnyRequest() {
+        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(authorizationServerMetadataService,
+                resourceAuthorizationClient, protectedResourceMetadataService, List.of("https://chat/callback"),
+                RegistrationPolicy.EXTERNAL_SERVICE);
+        ResourceAuthSettings settings = mock(ResourceAuthSettings.class);
+        when(settings.getRedirectUri()).thenReturn("https://attacker.example/cb");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> resourceRegistrationStrategy.register("testResource", "https://test.endpoint.com", settings));
+        verifyNoInteractions(protectedResourceMetadataService, authorizationServerMetadataService, resourceAuthorizationClient);
+    }
+
+    @Test
+    void testRegister_externalServicePolicy_noAllowedRedirectUriRejectedBeforeAnyRequest() {
+        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(authorizationServerMetadataService,
+                resourceAuthorizationClient, protectedResourceMetadataService, List.of(), RegistrationPolicy.EXTERNAL_SERVICE);
+
+        assertThrows(IllegalArgumentException.class, () -> resourceRegistrationStrategy.register(
+                "testResource", "https://test.endpoint.com", mock(ResourceAuthSettings.class)));
+        verifyNoInteractions(protectedResourceMetadataService, authorizationServerMetadataService, resourceAuthorizationClient);
     }
 
     private ClientRegistration runRegistrationWithResponseMethod(String responseMethod) {

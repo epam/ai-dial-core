@@ -1,0 +1,43 @@
+{
+  "applications": {
+    "config-dcr-app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "Config DCR App",
+      "external_services": {
+        "crm": {
+          "display_name": "CRM without a client",
+          "auth_settings": {
+            "authentication_type": "OAUTH",
+            "discovery_url": "http://localhost:9876/api"
+          }
+        },
+        "billing-api": {
+          "display_name": "Billing API",
+          "auth_settings": {
+            "authentication_type": "API_KEY",
+            "api_key_header": "X-API-Key"
+          }
+        }
+      }
+    },
+    "user-services-app": {
+      "endpoint": "http://localhost:7001/openai/deployments/10k/chat/completions",
+      "displayName": "User Services App",
+      "allow_user_external_services": true
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  },
+  "roles": {
+    "default": {
+      "limits": {
+        "config-dcr-app": {},
+        "user-services-app": {}
+      }
+    }
+  }
+}

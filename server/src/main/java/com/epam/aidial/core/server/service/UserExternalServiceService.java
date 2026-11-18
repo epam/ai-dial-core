@@ -1,9 +1,9 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.ExternalService;
-import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
+import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -41,6 +41,7 @@ public class UserExternalServiceService {
     private final ResourceService resourceService;
     private final ResourceAuthSettingsEncryptionService secretEncryptionService;
     private final EncryptionService bucketEncryptionService;
+    private final ResourceAuthSettingsService resourceAuthSettingsService;
 
     public ResourceDescriptor descriptor(String ownerUserId, String appPart, String serviceId) {
         requireOwner(ownerUserId);
@@ -84,9 +85,10 @@ public class UserExternalServiceService {
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             ExternalService existing = json == null ? null : ProxyUtil.convertToObject(json, ExternalService.class);
             boolean existingSecretUnreadable = !tryDecryptSecretOrDrop(aad, bucket, existing);
-            ExternalServiceValidation.validate(serviceId, service, existing == null, existing);
-            clearAuthStatuses(service);
-            ExternalServiceService.preserveOmittedSecret(serviceId, service, existing, existingSecretUnreadable);
+            ExternalServiceValidation.validate(serviceId, service);
+            // Registered under the URL, not the AAD: the client name reaches the provider, the raw user id must not.
+            ExternalServiceAuthSettings.setUp(resourceAuthSettingsService, resource.getUrl(), serviceId, service, existing,
+                    existingSecretUnreadable);
             persisted.capture(service);
             encryptSecret(aad, bucket, service);
             result.setValue(service);
@@ -179,13 +181,6 @@ public class UserExternalServiceService {
     }
 
     private static boolean hasSecret(ExternalService service) {
-        return service != null && service.getAuthSettings() != null && service.getAuthSettings().getClientSecret() != null;
-    }
-
-    private static void clearAuthStatuses(ExternalService service) {
-        ResourceAuthSettings authSettings = service.getAuthSettings();
-        if (authSettings != null) {
-            authSettings.clearComputedFields();
-        }
+        return ExternalServiceAuthSettings.hasSecret(service);
     }
 }
