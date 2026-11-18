@@ -17590,6 +17590,7 @@ components:
       - model
       - application
       - toolset
+      - router
     AliasTarget:
       type: object
       properties:
@@ -21537,6 +21538,8 @@ components:
           $ref: "#/components/schemas/RouterDecision"
         mode:
           $ref: "#/components/schemas/RouterMode"
+        editorUrl:
+          type: string
     RouterData:
       type: object
       properties:

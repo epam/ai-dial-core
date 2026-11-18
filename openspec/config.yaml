@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Service: AI DIAL Core, an HTTP reverse proxy and API gateway for LLMs (Java 21, Eclipse Vert.x 4.5, Gradle 8;
+  Service: AI DIAL Core, an HTTP reverse proxy and API gateway for LLMs (Java 25, Eclipse Vert.x 4.5, Gradle 9;
   modules config / storage / credentials / server, see CLAUDE.md). It serves the OpenAI chat completions,
   embeddings and Responses interfaces and the Anthropic Messages interface, and routes to models (upstreams behind
   adapters), applications, interceptors and translators.

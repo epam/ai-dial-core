@@ -29,7 +29,6 @@ public class OrgUnitUserOrgUnitsApiTest extends ResourceBaseTest {
         assertEquals(200, send(HttpMethod.POST, "/v1/org-units/public/Acme", null, "{\"name\": \"Risk\"}", "authorization", "admin").status());
         assertEquals(200, send(HttpMethod.POST, "/v1/org-units/public", null, "{\"name\": \"Beta\"}", "authorization", "admin").status());
         assertEquals(200, send(HttpMethod.POST, "/v1/org-units/public/Beta", null, "{\"name\": \"Deep\"}", "authorization", "admin").status());
-        assign("public/Acme", "member", "alice");
         assign("public/Acme/Risk", "editor", "alice");
         assign("public/Acme/Risk", "admin", "alice");
         assign("public/Beta/Deep", "viewer", "carol");
@@ -45,8 +44,8 @@ public class OrgUnitUserOrgUnitsApiTest extends ResourceBaseTest {
         JsonObject acme = items.getJsonObject(0);
         assertEquals("Acme", acme.getString("name"));
         assertEquals("public/Acme/", acme.getString("folder"));
-        assertEquals(List.of("member"), acme.getJsonArray("roles").getList());
-        assertEquals(new JsonObject().put("org-units", new JsonArray().add("read")), acme.getJsonObject("permissions"));
+        assertEquals(List.of(), acme.getJsonArray("roles").getList(), "shown only on the way to Risk");
+        assertEquals(new JsonObject(), acme.getJsonObject("permissions"));
 
         JsonObject risk = items.getJsonObject(1);
         assertEquals(List.of("admin", "editor"), risk.getJsonArray("roles").getList());
@@ -58,10 +57,11 @@ public class OrgUnitUserOrgUnitsApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testUnitReachedOnlyByPathComesWithoutItsParent() {
+    void testUnitsAboveTheRoleComeWithoutRoles() {
         JsonArray items = units("azp:carol").getJsonArray("items");
-        assertEquals(List.of("public/Beta/Deep"), paths(items));
-        assertEquals(List.of("viewer"), items.getJsonObject(0).getJsonArray("roles").getList());
+        assertEquals(List.of("public/Beta", "public/Beta/Deep"), paths(items));
+        assertEquals(List.of(), items.getJsonObject(0).getJsonArray("roles").getList());
+        assertEquals(List.of("viewer"), items.getJsonObject(1).getJsonArray("roles").getList());
     }
 
     @Test

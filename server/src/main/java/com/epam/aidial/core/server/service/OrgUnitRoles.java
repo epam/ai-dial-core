@@ -20,17 +20,17 @@ import javax.annotation.Nullable;
 
 /**
  * The roles that can be assigned at an org unit. Every unit has the same ones: the built-in {@code admin},
- * {@code editor}, {@code viewer} and {@code member}, as overridden or extended by the dynamic config's
+ * {@code editor} and {@code viewer}, as overridden or extended by the dynamic config's
  * {@code orgUnitRoles}. A role grants only in the unit it is assigned at; a resource belongs to the nearest unit above
  * it, so child units are not covered. {@code read} on {@code org-units} shows the unit and the names of its child units,
- * never their content.
+ * never their content. A role anywhere also shows a person the units above it by name, each with only the child unit on
+ * the way down.
  */
 public final class OrgUnitRoles {
 
     public static final String ADMIN = "admin";
     public static final String EDITOR = "editor";
     public static final String VIEWER = "viewer";
-    public static final String MEMBER = "member";
 
     public static final String READ = "read";
     public static final String WRITE = "write";
@@ -71,8 +71,6 @@ public final class OrgUnitRoles {
                 + " and manages its role assignments", permissions(readWrite, List.of(PUBLICATIONS, ROLE_ASSIGNMENTS))));
         defaults.put(EDITOR, new OrgUnitRole("Reads and changes everything in the unit", permissions(readWrite, List.of())));
         defaults.put(VIEWER, new OrgUnitRole("Reads everything in the unit", permissions(read, List.of())));
-        defaults.put(MEMBER, new OrgUnitRole("Sees the unit and its child units, not their content",
-                List.of(new OrgUnitPermission(read, ORG_UNITS + ANY_BELOW))));
         DEFAULTS = Collections.unmodifiableMap(defaults);
     }
 

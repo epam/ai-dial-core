@@ -16,6 +16,7 @@ import java.util.Set;
 
 /**
  * Collects attached files from the chat completion request and puts the result to API key data.
+ *
  * <p>
  *     Note. The function assigns a per-request key in the end of the processing.
  * </p>
@@ -53,10 +54,7 @@ public abstract class CollectRequestAttachmentsFn extends BaseRequestFunction<Re
         String resourceUrl = resource.getUrl();
         ApiKeyData sourceApiKeyData = context.getApiKeyData();
         AccessService accessService = proxy.getAccessService();
-        boolean readable = resource.isFolder()
-                ? accessService.hasReadAccessToEverythingUnder(resource, context)
-                : accessService.hasReadAccess(resource, context);
-        if (sourceApiKeyData.getAttachedFiles().containsKey(resourceUrl) || readable) {
+        if (sourceApiKeyData.getAttachedFiles().containsKey(resourceUrl) || accessService.hasReadAccessToContentOf(resource, context)) {
             if (resource.isFolder()) {
                 destApiKeyData.getAttachedFolders().put(resourceUrl, new AutoSharedData(ResourceAccessType.READ_ONLY));
             } else {

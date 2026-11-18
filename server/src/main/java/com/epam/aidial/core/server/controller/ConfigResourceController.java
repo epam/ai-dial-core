@@ -16,6 +16,7 @@ import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
+import com.epam.aidial.core.credentials.util.UnreadableSecretMessage;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiHeader;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -170,8 +171,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/models/{bucket}/{path}",
@@ -199,8 +199,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/models/{bucket}/{path}",
@@ -222,8 +221,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             // Interceptors
             @ApiOperation(
                     method = "GET",
@@ -250,8 +248,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/interceptors/{bucket}/{path}",
@@ -279,8 +276,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/interceptors/{bucket}/{path}",
@@ -302,8 +298,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             // Routers
             @ApiOperation(
                     method = "GET",
@@ -330,8 +325,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/routers/{bucket}/{path}",
@@ -359,8 +353,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/routers/{bucket}/{path}",
@@ -382,8 +375,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             // Translators
             @ApiOperation(
                     method = "GET",
@@ -410,8 +402,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/translators/{bucket}/{path}",
@@ -439,8 +430,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/translators/{bucket}/{path}",
@@ -462,8 +452,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             // Plugins
             @ApiOperation(
                     method = "GET",
@@ -490,8 +479,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/plugins/{bucket}/{path}",
@@ -519,8 +507,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/plugins/{bucket}/{path}",
@@ -542,8 +529,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             // Roles
             @ApiOperation(
                     method = "GET",
@@ -570,8 +556,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/roles/{bucket}/{path}",
@@ -599,8 +584,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/roles/{bucket}/{path}",
@@ -622,8 +606,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             // Keys
             @ApiOperation(
                     method = "GET",
@@ -650,8 +633,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/keys/{bucket}/{path}",
@@ -679,8 +661,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/keys/{bucket}/{path}",
@@ -702,8 +683,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             // Routes
             @ApiOperation(
                     method = "GET",
@@ -730,8 +710,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/routes/{bucket}/{path}",
@@ -759,8 +738,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/routes/{bucket}/{path}",
@@ -782,8 +760,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             // Schemas
             @ApiOperation(
                     method = "GET",
@@ -799,8 +776,7 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"ApplicationTypeSchema"}, allOf = {EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the schema", required = true)
-                                    }
-                            ),
+                                    }),
                             @ApiResponse(code = 304),
                             @ApiResponse(code = 400),
                             @ApiResponse(code = 403),
@@ -811,8 +787,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/schemas/{bucket}/{path}",
@@ -840,8 +815,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/schemas/{bucket}/{path}",
@@ -863,8 +837,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             // Catalog Schemas
             @ApiOperation(
                     method = "GET",
@@ -880,8 +853,7 @@ public class ConfigResourceController implements Controller {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOfSchemaRefs = {"CatalogSchema"}, allOf = {EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the catalog schema", required = true)
-                                    }
-                            ),
+                                    }),
                             @ApiResponse(code = 304),
                             @ApiResponse(code = 400),
                             @ApiResponse(code = 403),
@@ -892,8 +864,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/catalog_schemas/{bucket}/{path}",
@@ -921,8 +892,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/catalog_schemas/{bucket}/{path}",
@@ -944,8 +914,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             // Global Settings
             @ApiOperation(
                     method = "GET",
@@ -969,8 +938,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/settings/{bucket}/{path}",
@@ -998,8 +966,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/settings/{bucket}/{path}",
@@ -1021,8 +988,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             // Applications (platform bucket only — this is a distinct, admin-only, config-managed
             // contract from ResourceController's generic /v1/applications/{bucket}/{application_path};
             // the literal "platform" segment here (rather than a {bucket} template) is deliberate so
@@ -1052,8 +1018,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/applications/platform/{path}",
@@ -1080,8 +1045,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/applications/platform/{path}",
@@ -1102,8 +1066,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             // Toolsets (platform bucket only — same rationale as Applications above)
             @ApiOperation(
                     method = "GET",
@@ -1129,8 +1092,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/toolsets/platform/{path}",
@@ -1157,8 +1119,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/toolsets/platform/{path}",
@@ -1179,8 +1140,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             // Aliases in public storage (admin only, every method; the bucket must be public)
             @ApiOperation(
                     method = "GET",
@@ -1206,8 +1166,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "PUT",
                     path = "/v1/aliases/{bucket}/{path}",
@@ -1235,8 +1194,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/v1/aliases/{bucket}/{path}",
@@ -1257,8 +1215,7 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            )
+                    })
     })
     public Future<?> handle() throws Exception {
         if (!EntityBucketBinding.isAllowed(entityType, bucket)) {
@@ -1835,7 +1792,7 @@ public class ConfigResourceController implements Controller {
             return taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS, () -> {
                 ResourceItemMetadata existing = resourceService.getResourceMetadata(descriptor);
                 etag.validate(existing == null ? null : existing.getEtag());
-                checkAliasTarget(alias);
+                checkAliasTarget(alias, isPlatform);
                 ResourceItemMetadata meta = resourceService.putResource(descriptor,
                         StoredAliases.toJson(alias).toString(), EtagHeader.ANY, author, false);
                 if (isPlatform) {
@@ -1871,13 +1828,13 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * The checks of the alias's own fields and of a target it can resolve. Reads a resource target from storage, so it
-     * runs on the task executor.
+     * The checks of the alias's own fields and of a target it can resolve; a public alias cannot point to a router.
+     * Reads a resource target from storage, so it runs on the task executor.
      */
-    private void checkAliasTarget(Alias alias) {
+    private void checkAliasTarget(Alias alias, boolean isPlatform) {
         Config snapshot = mergedConfigStore.get();
         // no config yet: the fields are checked, a config target is not
-        List<ValidationWarning> warnings = StoredAliases.validateFields(alias);
+        List<ValidationWarning> warnings = isPlatform ? StoredAliases.validateFields(alias) : StoredAliases.validatePublicFields(alias);
         if (warnings.isEmpty() && snapshot != null) {
             warnings = AliasTargets.validate(alias, snapshot);
         }
@@ -1911,13 +1868,14 @@ public class ConfigResourceController implements Controller {
             return Future.succeededFuture();
         }
         ResourceDescriptor descriptor = descriptorFor(ResourceTypes.ALIAS);
+        boolean isPublic = ResourceDescriptor.PUBLIC_BUCKET.equals(descriptor.getBucketName());
         EtagHeader etag = ProxyUtil.etag(context.getRequest());
         taskExecutor.submit(() -> {
             Pair<ResourceItemMetadata, String> existing = resourceService.getResourceWithMetadata(descriptor, etag);
             if (existing == null) {
                 return null;
             }
-            StoredAliases.Stored stored = StoredAliases.parse(existing.getValue());
+            StoredAliases.Stored stored = StoredAliases.parse(existing.getValue(), isPublic);
             ObjectNode node;
             if (stored.alias() != null) {
                 node = StoredAliases.toJson(stored.alias());
@@ -1941,6 +1899,18 @@ public class ConfigResourceController implements Controller {
             }
         }).onFailure(this::handleWriteError);
         return Future.succeededFuture();
+    }
+
+    /**
+     * What the merge kept from the stored blob must still decrypt, or the entity could only be saved as unusable.
+     * Checked before anything is written.
+     */
+    private void rejectUnreadableSecrets(Object entity, ResourceDescriptor descriptor) {
+        List<String> unreadableSecrets = secretFieldProcessor.findUnreadableFields(entity, descriptor);
+        if (!unreadableSecrets.isEmpty()) {
+            throw new HttpException(HttpStatus.BAD_REQUEST,
+                    UnreadableSecretMessage.of(descriptor.getName(), String.join(", ", unreadableSecrets)));
+        }
     }
 
     /**
@@ -1995,7 +1965,8 @@ public class ConfigResourceController implements Controller {
                                 "Request body must be a JSON object");
                     }
                     JsonNode source;
-                    if (spec.hasEncryptedFields() && existingBody != null) {
+                    boolean mergedWithStoredSecrets = spec.hasEncryptedFields() && existingBody != null;
+                    if (mergedWithStoredSecrets) {
                         // Update arm with secret fields — preserve omitted/sentinel-masked
                         // ciphertext from the prior blob (see SecretFieldProcessor).
                         JsonNode existingBlobNode;
@@ -2030,6 +2001,9 @@ public class ConfigResourceController implements Controller {
                         source = requestNode;
                     }
                     entity = ConfigEntityCodec.treeToEntity(source, spec.entityClass());
+                    if (mergedWithStoredSecrets) {
+                        rejectUnreadableSecrets(entity, descriptor);
+                    }
                     if (entity instanceof Model m) {
                         checkModel(m);
                     } else if (entity instanceof Interceptor interceptor) {

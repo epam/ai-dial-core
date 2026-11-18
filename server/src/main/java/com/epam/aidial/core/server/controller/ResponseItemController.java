@@ -76,8 +76,7 @@ public class ResponseItemController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "POST",
                     path = "/openai/v1/responses/{response_id}/cancel",
@@ -96,8 +95,7 @@ public class ResponseItemController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/openai/v1/responses/{response_id}",
@@ -116,8 +114,7 @@ public class ResponseItemController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            )
+                    })
     })
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(this::loadMapping)

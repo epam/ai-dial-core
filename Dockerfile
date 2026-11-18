@@ -1,4 +1,4 @@
-FROM gradle:8.10-jdk21-alpine AS builder
+FROM gradle:9.9.1-jdk25-alpine AS builder
 
 #COPY --from=cache /cache /home/gradle/.gradle
 COPY --chown=gradle:gradle . /home/gradle/src
@@ -6,11 +6,11 @@ COPY --chown=gradle:gradle . /home/gradle/src
 WORKDIR /home/gradle/src
 RUN --mount=type=secret,id=GPR_USERNAME,env=GPR_USERNAME --mount=type=secret,id=GPR_PASSWORD,env=GPR_PASSWORD gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
 RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.tar --strip-components=1 -C /build
-# The sample plugins go into the image's plugins directory only on request: --build-arg SAMPLE_PLUGINS=true
+# The sample plugins go into the plugin directory samples/forward only on request: --build-arg SAMPLE_PLUGINS=true
 ARG SAMPLE_PLUGINS=false
-RUN if [ "$SAMPLE_PLUGINS" = "true" ]; then mkdir -p /build/plugins && cp /home/gradle/src/plugin-samples/build/libs/*.jar /build/plugins/; fi
+RUN if [ "$SAMPLE_PLUGINS" = "true" ]; then mkdir -p /build/plugins/samples/forward && cp /home/gradle/src/plugin-samples/build/libs/*.jar /build/plugins/samples/forward/; fi
 
-FROM eclipse-temurin:21-jdk-alpine
+FROM eclipse-temurin:25-jdk-alpine
 
 ENV OTEL_TRACES_EXPORTER="none"
 ENV OTEL_METRICS_EXPORTER="none"

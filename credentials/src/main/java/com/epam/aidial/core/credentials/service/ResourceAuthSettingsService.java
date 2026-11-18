@@ -11,6 +11,7 @@ import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
 import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
+import com.epam.aidial.core.credentials.util.UnreadableSecretMessage;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.ClientSecretValidation;
@@ -19,6 +20,7 @@ import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
 import com.nimbusds.oauth2.sdk.pkce.CodeVerifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
@@ -42,10 +44,13 @@ public class ResourceAuthSettingsService {
      *
      * @param updatedResource The new `SecuredResource` configuration being saved
      * @param existingResource The existing `SecuredResource` configuration, or null if creating a new `SecuredResource`
-     * @throws IllegalArgumentException if `ResourceAuthSettings` is not defined
+     * @param existingSecretUnreadable Whether the stored `clientSecret` could not be decrypted and was cleared
+     * @throws IllegalArgumentException if `ResourceAuthSettings` is not defined, or if the update omits `clientSecret`
+     *         and would have kept a stored one that is unreadable
      */
     public void processResourceAuthSettings(SecuredResource updatedResource,
-                                            SecuredResource existingResource) {
+                                            SecuredResource existingResource,
+                                            boolean existingSecretUnreadable) {
         ResourceAuthSettings resourceAuthSettings = updatedResource.getAuthSettings();
 
         if (resourceAuthSettings == null) {
@@ -86,6 +91,9 @@ public class ResourceAuthSettingsService {
 
             // do not re-write clientSecret with null values
             if (resourceAuthSettings.getClientSecret() == null) {
+                if (existingSecretUnreadable) {
+                    throw new IllegalArgumentException(UnreadableSecretMessage.of(updatedResource.getName(), "client_secret"));
+                }
                 resourceAuthSettings.setClientSecret(existingResourceAuthSettings.getClientSecret());
             }
 
@@ -101,7 +109,7 @@ public class ResourceAuthSettingsService {
                 resourceAuthSettings.setResource(null);
             }
 
-            resolveCodeChallengeSettings(resourceAuthSettings, existingResourceAuthSettings);
+            resolveCodeChallengeSettings(resourceAuthSettings, existingResourceAuthSettings, existingSecretUnreadable);
 
             if (explicitlyConvertingToStatic && Boolean.TRUE.equals(existingResourceAuthSettings.getDynamicallyRegistered())) {
                 resourceAuthSettings.setDynamicallyRegistered(false);
@@ -113,18 +121,22 @@ public class ResourceAuthSettingsService {
 
     /**
      * Preserves existing auto-generated codeChallenge/codeVerifier when codeChallengeMethod is unchanged (or omitted),
-     * otherwise regenerates the pair under the new method.
+     * otherwise regenerates the pair under the new method. An unreadable stored secret takes its verifier with it,
+     * so the pair is regenerated then too, under the stored method when the update names none.
      */
     private void resolveCodeChallengeSettings(ResourceAuthSettings resourceAuthSettings,
-                                              ResourceAuthSettings existingResourceAuthSettings) {
+                                              ResourceAuthSettings existingResourceAuthSettings,
+                                              boolean existingSecretUnreadable) {
         String newCodeChallengeMethod = resourceAuthSettings.getCodeChallengeMethod();
         String existingCodeChallengeMethod = existingResourceAuthSettings.getCodeChallengeMethod();
-        if (newCodeChallengeMethod == null || newCodeChallengeMethod.equals(existingCodeChallengeMethod)) {
+        boolean keepPair = !existingSecretUnreadable
+                && (newCodeChallengeMethod == null || newCodeChallengeMethod.equals(existingCodeChallengeMethod));
+        if (keepPair) {
             resourceAuthSettings.setCodeChallengeMethod(existingCodeChallengeMethod);
             resourceAuthSettings.setCodeChallenge(existingResourceAuthSettings.getCodeChallenge());
             resourceAuthSettings.setCodeVerifier(existingResourceAuthSettings.getCodeVerifier());
         } else {
-            setCodeChallengeProperties(resourceAuthSettings, newCodeChallengeMethod);
+            setCodeChallengeProperties(resourceAuthSettings, ObjectUtils.defaultIfNull(newCodeChallengeMethod, existingCodeChallengeMethod));
         }
     }
 
