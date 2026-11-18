@@ -60,7 +60,8 @@ instead of by the role `costLimit` (see the `spendingLimits` row in the README).
 - **Reported only with one budget.** DIAL reports a budget only when the user has exactly one unexpired budget in
   that cost object, whatever models it covers. With several, or none, a 200 answer carries no `x-codex-*` header,
   because no single budget says what the user can still spend. `GET /v1/user/usage` still lists every budget in
-  `budgets[]`.
+  `budgets[]`. It names the user's cost object in `costObject` and the models each budget covers in `object`;
+  which budget of that cost object pays depends on the model and the priority.
 - **Windows.** The budget's `day` and `month` amounts are its caps; a budget has no week window. Primary and
   secondary follow the rules above, and an amount of 2^53 or more is not reported.
 - **Used up.** When no budget that covers the model has room in every window it sets, the request is rejected before

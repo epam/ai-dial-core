@@ -19,6 +19,8 @@ public class Policy {
      * Path of the policy under {@code policies}; when set it must match the path of the request.
      */
     private String id;
+    /** Optional label for user-facing budget stats; does not identify the policy. */
+    private String displayName;
     private Integer priority;
     private PolicyKind kind;
     private PolicyQuantity quantity;

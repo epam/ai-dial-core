@@ -8,6 +8,8 @@ import com.epam.aidial.core.config.policy.PolicySubjectRule;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -82,7 +84,7 @@ class PolicyRecordCodecTest {
     @Test
     void testRoundTripKeepsTheDocument() throws Exception {
         String source = """
-                {"id":"gpt-500","priority":1,"kind":"budget","quantity":"cost","object":["gpt"],\
+                {"id":"gpt-500","displayName":"Engineering Pro","priority":1,"kind":"budget","quantity":"cost","object":["gpt"],\
                 "per":["subject"],"cost":{"day":5,"month":500}}""";
 
         Policy policy = PolicyRecordCodec.parsePolicy(json(source));
@@ -131,12 +133,13 @@ class PolicyRecordCodecTest {
                 {"object": ["*"]}""").contains("use \"*\""));
     }
 
-    @Test
-    void testAssignmentNamesTheFieldThatBelongsToThePolicy() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"priority", "displayName"})
+    void testAssignmentNamesTheFieldThatBelongsToThePolicy(String field) throws Exception {
         String message = assertThrows(IllegalArgumentException.class, () -> PolicyRecordCodec.parseAssignment(json("""
-                {"policy": "p", "priority": 5}"""))).getMessage();
+                {"policy": "p", "%s": 5}""".formatted(field)))).getMessage();
 
-        assertEquals("Failed to parse PolicyAssignment: 'priority' belongs to the policy, not to an assignment", message);
+        assertEquals("Failed to parse PolicyAssignment: '" + field + "' belongs to the policy, not to an assignment", message);
     }
 
     @Test
