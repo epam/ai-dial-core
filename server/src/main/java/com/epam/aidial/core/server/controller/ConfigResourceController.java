@@ -1153,8 +1153,8 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
                     },
                     responses = {
-                            @ApiResponse(code = 200, description = "Success: presentAs, target, userRoles and the display fields, with status "
-                                    + "valid, or the stored body with status invalid and validationWarnings when calls ignore it",
+                            @ApiResponse(code = 200, description = "Success: presentAs, target, userRoles, defaultHeaders and the display fields, "
+                                    + "with status valid, or the stored body with status invalid and validationWarnings when calls ignore it",
                                     body = @ApiSchema(allOf = {Alias.class, EntityMetadata.class}),
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the alias", required = true)
@@ -1184,9 +1184,9 @@ public class ConfigResourceController implements Controller {
                                     headers = {
                                             @ApiHeader(name = "ETag", description = "Entity tag for the saved alias", required = true)
                                     }),
-                            @ApiResponse(code = 400, description = "Invalid body, a field other than presentAs, target, userRoles and the "
-                                    + "display fields, a body name other than the path name, an invalid name or one the url encoding changes, "
-                                    + "or a target that does not fit presentAs"),
+                            @ApiResponse(code = 400, description = "Invalid body, a field other than presentAs, target, userRoles, defaultHeaders "
+                                    + "and the display fields, non-empty defaultHeaders on an alias of type toolset, a body name other than the "
+                                    + "path name, an invalid name or one the url encoding changes, or a target that does not fit presentAs"),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 412),

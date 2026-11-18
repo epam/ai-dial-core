@@ -44,6 +44,8 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     private final MultiMap headers = MultiMap.caseInsensitiveMultiMap();
     // set for a router's decide or notice request, null for a request to a deployment's interface
     private final RouterRequest router;
+    // the request of an alias pass to its target, served in process: its host marks the target pass
+    private final boolean aliasHop;
     private EmbeddedProxyResponse response;
     // serves the calls the plugin makes while it answers this attempt; set when the attempt is sent
     private VertxHostDelegate host;
@@ -56,7 +58,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     /**
      * @param proxyContext the pass the plugin answers
      * @param plugin       the plugin, taken when the attempt is sent
-     * @param baseUrl      the {@code dial-plugin://<name>} url the interface resolves to
+     * @param baseUrl      the {@code dial-plugin://<name>} url the interface resolves to, or the alias pass's base url
      * @param absoluteUri  that url with the path and query, the plugin getting the path and query
      */
     public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin, HttpMethod method,
@@ -69,6 +71,11 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
      */
     public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin, HttpMethod method,
                          String baseUrl, String absoluteUri, RouterRequest router) {
+        this(context, proxyContext, plugin, method, baseUrl, absoluteUri, router, false);
+    }
+
+    private EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin, HttpMethod method,
+                                 String baseUrl, String absoluteUri, RouterRequest router, boolean aliasHop) {
         this.context = context;
         this.proxyContext = proxyContext;
         this.plugin = plugin;
@@ -76,6 +83,17 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
         this.baseUrl = baseUrl;
         this.absoluteUri = absoluteUri;
         this.router = router;
+        this.aliasHop = aliasHop;
+    }
+
+    /**
+     * The request of an alias pass ({@code proxyContext}) to its target, which {@code plugin} hands to the target pass
+     * in process. As a request to a deployment's interface, except that its host marks the target pass as an alias
+     * target pass ({@link VertxHostDelegate#forAliasHop}).
+     */
+    public static EmbeddedProxyRequest forAliasHop(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin,
+                                                   HttpMethod method, String baseUrl, String absoluteUri) {
+        return new EmbeddedProxyRequest(context, proxyContext, plugin, method, baseUrl, absoluteUri, null, true);
     }
 
     /**
@@ -123,9 +141,13 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
 
     private Future<ProxyResponse> send(Buffer body, @Nullable ObjectNode tree) {
         Promise<ProxyResponse> promise = context.promise();
-        host = router == null
-                ? new VertxHostDelegate(proxyContext.getProxy(), proxyContext, context)
-                : VertxHostDelegate.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey());
+        if (router != null) {
+            host = VertxHostDelegate.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey());
+        } else if (aliasHop) {
+            host = VertxHostDelegate.forAliasHop(proxyContext.getProxy(), proxyContext, context);
+        } else {
+            host = new VertxHostDelegate(proxyContext.getProxy(), proxyContext, context);
+        }
         // registered for a router request too: the pass's end closes an attempt nothing else closed
         proxyContext.addHostDelegate(host);
         if (router == null) {
@@ -166,12 +188,14 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
                 failure = e;
             }
         }
-        if (failure != null && clientGone) {
+        if (failure != null && clientGone && !aliasHop) {
             // ponytail: the pass ends here, as after a client gone from an application: no retry, no row, no
             // finalize; the per-request key and the trace's usage record expire by their TTL. Its attempts close,
             // so that their calls end
             proxyContext.closeHostDelegates();
         } else if (failure != null) {
+            // for an alias hop with its client gone too: the alias pass's connect-failure path tries no other candidate
+            // for a closed client, and its finalize writes the router row and ends the pass, as the HTTP hop did
             fail(promise, failure);
         } else if (reset) {
             response = answer;

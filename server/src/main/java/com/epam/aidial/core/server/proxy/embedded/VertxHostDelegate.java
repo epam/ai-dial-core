@@ -21,7 +21,8 @@ import java.util.Set;
 import javax.annotation.Nullable;
 
 /**
- * Serves the in-process calls a plugin makes while it answers one attempt of an embedded pass. Each call is a
+ * Serves the in-process calls a plugin makes while it answers one attempt of an embedded pass, and the target pass of
+ * an alias call that Core serves in process through its built-in forward plugin ({@link #forAliasHop}). Each call is a
  * child pass: an in-memory request routed by Core's own controller selection, authenticated by the per-request key
  * record of the plugin's pass, so it is checked, limited, charged and logged as a request with that key, with no HTTP
  * request into Core and no key lookup.
@@ -47,6 +48,8 @@ public final class VertxHostDelegate implements HostDelegate {
     private final ContextInternal pluginContext;
     // the key record the calls carry; null for the parent pass's proxy key, read at each call
     private final ApiKeyData callKey;
+    // the calls serve the target pass of an alias call, which may write on the alias pass's span
+    private final boolean aliasHop;
     private final Promise<Void> cancelled;
     /**
      * The answers of the calls whose passes may still write, cancelled when the attempt closes: the pass serving a call
@@ -61,15 +64,17 @@ public final class VertxHostDelegate implements HostDelegate {
      * @param pluginContext the context the plugin was called on
      */
     public VertxHostDelegate(Proxy proxy, ProxyContext parent, ContextInternal pluginContext) {
-        this(proxy, parent, pluginContext, null, false);
+        this(proxy, parent, pluginContext, null, false, false);
     }
 
-    private VertxHostDelegate(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, ApiKeyData callKey, boolean closed) {
+    private VertxHostDelegate(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, ApiKeyData callKey, boolean closed,
+                              boolean aliasHop) {
         this.proxy = proxy;
         this.parent = parent;
         this.pluginContext = pluginContext;
         this.callKey = callKey;
         this.closed = closed;
+        this.aliasHop = aliasHop;
         this.cancelled = pluginContext.promise();
     }
 
@@ -78,7 +83,32 @@ public final class VertxHostDelegate implements HostDelegate {
      * notice carries no key, so with none the host is closed from the start and every call is answered {@code 401}.
      */
     public static VertxHostDelegate forRouter(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, @Nullable ApiKeyData callKey) {
-        return new VertxHostDelegate(proxy, parent, pluginContext, callKey, callKey == null);
+        return new VertxHostDelegate(proxy, parent, pluginContext, callKey, callKey == null, false);
+    }
+
+    /**
+     * The host that serves the target pass of an alias call in process: {@code parent} is the alias pass. Its child
+     * pass is marked as an alias target pass ({@link ProxyContext#isAliasTargetPass}).
+     */
+    public static VertxHostDelegate forAliasHop(Proxy proxy, ProxyContext parent, ContextInternal pluginContext) {
+        return new VertxHostDelegate(proxy, parent, pluginContext, null, false, true);
+    }
+
+    /**
+     * Whether the target pass of an alias hop under {@code aliasPass} may write on the current span: the alias pass has
+     * a server span of its own, or is itself such a target pass (an alias candidate of a router behind an alias). An
+     * alias that an origin plugin's call reached runs under the plugin's span, which its target must not write over.
+     */
+    static boolean writesOnAliasSpan(ProxyContext aliasPass) {
+        return !aliasPass.isChildPass() || aliasPass.isAliasTargetPass();
+    }
+
+    /**
+     * Whether a call to {@code path} (without the query) reaches a route an in-process call serves: the create
+     * operations.
+     */
+    public static boolean servesCall(String path) {
+        return CREATE_ROUTES.stream().anyMatch(route -> route.matches(path));
     }
 
     @Override
@@ -102,7 +132,7 @@ public final class VertxHostDelegate implements HostDelegate {
             return response.answer();
         }
         String path = pathOf(call.uri());
-        if (CREATE_ROUTES.stream().noneMatch(route -> route.matches(path))) {
+        if (!servesCall(path)) {
             return pluginContext.failedFuture(new IllegalArgumentException("A call reaches the create operations only, not " + path));
         }
         if (isResponses(path) && call.body().path("background").asBoolean(false)) {
@@ -120,6 +150,7 @@ public final class VertxHostDelegate implements HostDelegate {
         ProxyContext child = new ProxyContext(proxy, request, key, null, null,
                 IdGenerator.random().generateSpanId(), parent.getTraceFlags());
         child.setCallTree(call.body());
+        child.setAliasTargetPass(aliasHop && writesOnAliasSpan(parent));
         responses.add(response);
         response.finished().onSuccess(ignored -> {
             // once closed, close() owns the set: cancelling an answer may finish it while close() goes through the set
