@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.proxy;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.plugin.Call;
+import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.plugin.PluginManager;
@@ -29,6 +31,13 @@ public class ProxyClient {
 
     private static final String PLATFORM_APPLICATIONS = "applications/" + ResourceDescriptor.PLATFORM_BUCKET + "/";
 
+    /**
+     * Hands an alias pass's request on to its target, in process: the uri already names the target. It reads the
+     * body tree only; the request's {@code body} is the bytes the alias pass holds, which it does not serialize from the
+     * tree, so the two may differ.
+     */
+    private static final Plugin FORWARD = (request, host) -> host.call(new Call(request.uri(), request.headers(), request.bodyTree()));
+
     private final HttpClient client;
     private final Vertx vertx;
     private final PluginManager pluginManager;
@@ -48,6 +57,18 @@ public class ProxyClient {
      */
     public Future<ProxyRequest> embedded(ProxyContext context, HttpMethod method, String absoluteUri, String plugin) {
         return embeddedRequest(context, method, absoluteUri, plugin, null);
+    }
+
+    /**
+     * Creates the request of the context's alias pass to its target, served in process as a child pass instead of an
+     * HTTP request to Core's own address. {@code baseUrl} is the alias pass's base url, {@code absoluteUri} that url
+     * with the target's path and query. Not a plugin of the config, so the platform rule of {@link #embedded} does not
+     * apply.
+     */
+    public Future<ProxyRequest> aliasTarget(ProxyContext context, HttpMethod method, String baseUrl, String absoluteUri) {
+        // on a virtual thread that AsyncTaskExecutor dispatched, this is the request's context, as on its event loop
+        ContextInternal vertxContext = (ContextInternal) vertx.getOrCreateContext();
+        return vertxContext.succeededFuture(EmbeddedProxyRequest.forAliasHop(vertxContext, context, () -> FORWARD, method, baseUrl, absoluteUri));
     }
 
     /**
