@@ -268,6 +268,42 @@ class ConfigRouterTest extends ResourceBaseTest {
         JsonNode blob = ProxyUtil.MAPPER.readTree(dial.getProxy().getResourceService().getResource(descriptor));
         assertFalse(blob.has("applicationTypeSchemaId"), blob.toString());
         assertFalse(blob.has("applicationProperties"), blob.toString());
+        assertFalse(blob.has("editorUrl"), blob.toString());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void editorUrlReadBack() {
+        verify(admin(HttpMethod.PUT, ROUTER_URL + "r-ui", "{\"baseUrl\": \"http://router\", \"editorUrl\": \"https://router-ui.example\","
+                + " \"interfaces\": {\"openaiChatCompletions\": {}}}"), 200);
+
+        Response get = admin(HttpMethod.GET, ROUTER_URL + "r-ui", null);
+        verify(get, 200);
+        assertEquals("https://router-ui.example", ProxyUtil.MAPPER.readTree(get.body()).path("editorUrl").asText(), get.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void editorUrlSnakeCaseAlias() {
+        verify(admin(HttpMethod.PUT, ROUTER_URL + "r-ui", "{\"baseUrl\": \"http://router\", \"editor_url\": \"https://router-ui.example\","
+                + " \"interfaces\": {\"openaiChatCompletions\": {}}}"), 200);
+
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROUTER,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "r-ui");
+        JsonNode blob = ProxyUtil.MAPPER.readTree(dial.getProxy().getResourceService().getResource(descriptor));
+        assertEquals("https://router-ui.example", blob.path("editorUrl").asText(), blob.toString());
+        assertFalse(blob.has("editor_url"), blob.toString());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void fileRouterEditorUrl() {
+        Response file = admin(HttpMethod.GET, "/v1/admin/config/file/routers/r2", null);
+        verify(file, 200);
+        assertEquals("https://router-ui.example", ProxyUtil.MAPPER.readTree(file.body()).path("editorUrl").asText(), file.body());
     }
 
     @Test
