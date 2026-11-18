@@ -39,7 +39,7 @@ class AliasInProcessApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void chatCompletionWithoutCoresOwnAddress() {
+    void chatCompletionThroughAnAlias() {
         Response response;
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
@@ -54,7 +54,7 @@ class AliasInProcessApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void responsesAndMessagesWithoutCoresOwnAddress() {
+    void responsesAndMessagesThroughAnAlias() {
         List<String> models = new CopyOnWriteArrayList<>();
         try (TestWebServer server = new TestWebServer(4848)) {
             for (String path : List.of("/openai/v1/responses", "/openai/responses")) {

@@ -7,7 +7,7 @@ them failed as stated and the rest passed.
 
 - [x] 1.1 Add `AliasInProcessApiTest` (extends `ResourceBaseTest`; `additionalSettingsOverrides` sets
   `backgroundJob.localBaseUrl` to a port nothing listens on) with the deployment-aliases scenarios "Chat completion
-  without Core's own address", "Responses and Messages without Core's own address" (both Responses paths), "Router in
+  through an alias", "Responses and Messages through an alias" (both Responses paths), "Router in
   decision mode behind an alias" and "Requests that stay on HTTP" (tokenize, `count_tokens`, background Responses);
   verify the first three fail on `development` (502) and the last passes.
 - [x] 1.2 Add "Call chain unchanged": `AliasApiTest.targetRowNamesTheAliasAsItsParent` (the two rows read with

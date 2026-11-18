@@ -5,19 +5,20 @@
 ### Requirement: Target pass served in process
 For a call of an alias of type `model`, `application` or `router` through a deployments-POST action,
 `/openai/v1/chat/completions`, `/openai/v1/responses` or `/openai/responses` without `background: true`, or
-`/anthropic/v1/messages`, Core SHALL serve the target pass in process: no HTTP request SHALL reach Core's own address
-(`backgroundJob.localBaseUrl`). Every other request an alias forwards, Messages `count_tokens` included, SHALL reach
-the target over HTTP to that address.
+`/anthropic/v1/messages`, Core SHALL serve the target pass in process, without an HTTP request to itself. Every other
+request an alias forwards, Messages `count_tokens` included, SHALL reach the target over HTTP to Core's own address
+(`backgroundJob.localBaseUrl`).
 
-#### Scenario: Chat completion without Core's own address
-- **WHEN** `backgroundJob.localBaseUrl` names a port nothing listens on, and a caller sends a chat completion to
-  `/openai/deployments/assistant/chat/completions`, where `assistant` targets `gpt-4-internal`
-- **THEN** the answer is `200` with the model's answer
+#### Scenario: Chat completion through an alias
+- **WHEN** a caller sends a chat completion to `/openai/deployments/assistant/chat/completions`, where `assistant`
+  targets `gpt-4-internal`
+- **THEN** the answer is `200` with the model's answer, and Core sends no HTTP request to itself
 
-#### Scenario: Responses and Messages without Core's own address
-- **WHEN** `backgroundJob.localBaseUrl` names a port nothing listens on, and a caller sends `/openai/v1/responses`,
-  `/openai/responses` and `/anthropic/v1/messages` with `model: multi-alias`, whose target serves both interfaces
-- **THEN** all three answer `200`, and the target receives each request with `model` set to the target name
+#### Scenario: Responses and Messages through an alias
+- **WHEN** a caller sends `/openai/v1/responses`, `/openai/responses` and `/anthropic/v1/messages` with
+  `model: multi-alias`, whose target serves both interfaces
+- **THEN** all three answer `200`, the target receives each request with `model` set to the target name, and Core
+  sends no HTTP request to itself
 
 #### Scenario: Call chain unchanged
 - **WHEN** a caller sends a chat completion to `assistant`, which targets `gpt-4-internal`
@@ -25,9 +26,10 @@ the target over HTTP to that address.
   writes one analytics row for `assistant` and one for `gpt-4-internal` with `parent_deployment: assistant`
 
 #### Scenario: Router in decision mode behind an alias
-- **WHEN** `backgroundJob.localBaseUrl` names a port nothing listens on, an alias with `presentAs: model` targets a
-  router in decision mode, and the router names as its candidate an alias whose target is a model
-- **THEN** the model receives the request and the caller gets `200` with its answer
+- **WHEN** an alias with `presentAs: model` targets a router in decision mode, and the router names as its candidate
+  an alias whose target is a model
+- **THEN** the model receives the request, the caller gets `200` with its answer, and Core sends no HTTP request to
+  itself
 
 #### Scenario: Requests that stay on HTTP
 - **WHEN** `backgroundJob.localBaseUrl` names a port nothing listens on, and a caller posts to
