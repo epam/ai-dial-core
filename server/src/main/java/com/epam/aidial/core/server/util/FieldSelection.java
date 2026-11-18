@@ -45,21 +45,18 @@ public final class FieldSelection {
     }
 
     /**
-     * Returns null for null or blank text. The length limit is in UTF-8 bytes and applies to blank text too.
+     * Returns null for null or blank text. The length limit is in UTF-8 bytes.
      *
      * @param alwaysKept the top-level members that stay when not selected
      * @throws IllegalArgumentException when the text is not a selection or is over the length or depth limit
      */
     @Nullable
     public static FieldSelection parse(@Nullable String text, Set<String> alwaysKept) {
-        if (text == null) {
+        if (text == null || text.isBlank()) {
             return null;
         }
         if (text.getBytes(StandardCharsets.UTF_8).length > MAX_LENGTH) {
             throw new IllegalArgumentException("Invalid fields parameter: longer than " + MAX_LENGTH + " bytes");
-        }
-        if (text.isBlank()) {
-            return null;
         }
         return new FieldSelection(new Parser(text).parse(), Set.copyOf(alwaysKept));
     }

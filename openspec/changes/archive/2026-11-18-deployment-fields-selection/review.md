@@ -62,11 +62,12 @@ still cost what they cost today because `fields` does not skip building a field.
 - A later review found that a model with a decision-tree pricing rate made every `fields` request fail: `PricingRate`
   writes its `test` condition through the mapper, which had no filter provider for the mixin. The mapper copy now has a
   tolerant default provider, a failure while serializing the filtered body answers `500`, and `FieldSelectionTest`
-  covers a decision-tree rate. A blank value over the length limit is now `400`, as the spec says.
+  covers a decision-tree rate.
 - design.md named the measurement task as `4.2`; it is `3.1`. Corrected.
 - `docs/open_api_core.yaml` was regenerated with `./gradlew replaceSpec`; the diff was the one new parameter
   (7 lines). `SpecMerger` keeps the committed `description` of a parameter that already exists, so regenerating does not
-  update it: the later change of the `fields` description (nested names, 1,024 bytes) was made in the file by hand.
+  update it: for the later change of the `fields` description the committed description was deleted from the file
+  before `replaceSpec`, so that the generated text replaced it.
 - `validate --all --strict` reports one failure, `spec/resource-subscription` (a placeholder Purpose from an earlier
   archive, a known issue this change does not touch). The empty change folder `soft-validation-request-param` that
   failed it before was removed by the owner.

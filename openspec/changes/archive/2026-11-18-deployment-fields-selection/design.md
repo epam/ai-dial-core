@@ -20,7 +20,8 @@ The response is a bare JSON array. Nothing in the repo selects fields today (no 
 Constraints: blocking or heavy work leaves the event loop through `AsyncTaskExecutor.submit`
 (`docs/CODE_STYLE.md`, Vert.x); a request path throws on invalid input; cheap guards run before expensive work;
 `docs/open_api_core.yaml` is generated from the controller annotations, but the merge keeps the committed
-`description` of a parameter that already exists, so a later change to that text is made in the file by hand too.
+`description` of a parameter that already exists, so a later change to that text needs the committed one deleted
+before `replaceSpec` regenerates it.
 
 ## Goals / Non-Goals
 

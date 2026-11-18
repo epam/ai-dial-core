@@ -38,8 +38,8 @@ entries). "No parameter": the existing `testListDeployments`, which must pass un
   snake_case wire names, unknown names ignored, `id` and `object` always returned, limits) and an
   `@ApiParameter(name = "fields", in = QUERY, schema = String.class)` on `listDeployments`. Verify `./gradlew
   replaceSpec` runs and the regenerated `docs/open_api_core.yaml` shows the parameter on `listDeployments` (CI commits
-  that file; the merge keeps the committed description of an existing parameter, so edit a later change of that text
-  in the file by hand). No `docs/*.md` describes `GET /v1/deployments`, so no other doc changes.
+  that file; the merge keeps the committed description of an existing parameter, so delete it from the file before
+  `replaceSpec` when the text changes later). No `docs/*.md` describes `GET /v1/deployments`, so no other doc changes.
 - [x] 2.3 `./gradlew checkstyleMain checkstyleTest` and the test classes of 1.1 and 2.1 pass.
 
 ## 3. Final checks

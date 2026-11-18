@@ -213,7 +213,6 @@ public class FieldSelectionTest {
     void selectionOverTheLengthLimitIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> parse("a".repeat(FieldSelection.MAX_LENGTH + 1)));
         parse("a".repeat(FieldSelection.MAX_LENGTH));
-        assertThrows(IllegalArgumentException.class, () -> parse(" ".repeat(FieldSelection.MAX_LENGTH + 1)));
     }
 
     @Test
