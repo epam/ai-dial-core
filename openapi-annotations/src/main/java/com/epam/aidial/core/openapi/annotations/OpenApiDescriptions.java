@@ -182,6 +182,12 @@ public final class OpenApiDescriptions {
     public static final String DEPLOYMENT_NAME_TYPES =
             "Filter deployment names by kind (model, application, toolset, router). Defaults to all kinds.";
 
+    public static final String DEPLOYMENT_FIELDS =
+            "Return only the listed fields of each deployment, as comma-separated snake_case names of the response. "
+                    + "Parentheses select inside a field: `features(rate,tokenize)`; `*` stands for every key of a map: "
+                    + "`interface_configs(*(features))`. `id` and `object` are always returned. A name that no field "
+                    + "has is ignored. At most 2048 characters and 5 levels. Without it, all fields are returned.";
+
     public static final String DEPLOYMENT_TYPES =
             "Which deployment kinds to report on (model, application). Defaults to model.";
 

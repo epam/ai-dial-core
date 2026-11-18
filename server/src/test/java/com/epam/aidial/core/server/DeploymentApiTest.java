@@ -324,6 +324,86 @@ public class DeploymentApiTest extends ResourceBaseTest {
                 send(HttpMethod.GET, "/openai/deployments/gpt-5.4-mini")).get("interface_configs"));
     }
 
+
+    @DialConfigLocation("dial-config/deployment-interfaces-listing.json")
+    @Test
+    public void testListDeploymentsWithFields() throws JsonProcessingException {
+        Map<String, JsonNode> all = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
+        assertEquals(5, all.size());
+
+        // the tree the selection prunes is the same serialization as the full answer
+        assertEquals(all, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=*", null)));
+        // an empty value is no selection
+        assertEquals(all, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=", null)));
+
+        Map<String, JsonNode> names = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=display_name", null));
+        assertEquals(all.keySet(), names.keySet());
+        for (Map.Entry<String, JsonNode> entry : names.entrySet()) {
+            assertEquals(Set.of("id", "object", "display_name"), fieldNames(entry.getValue()));
+            assertEquals(all.get(entry.getKey()).get("object"), entry.getValue().get("object"));
+        }
+        // a name no deployment has adds nothing
+        assertEquals(names, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=display_name,descriptio", null)));
+
+        Map<String, JsonNode> several = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
+                "fields=display_name,display_version,features", null));
+        for (Map.Entry<String, JsonNode> entry : several.entrySet()) {
+            assertTrue(Set.of("id", "object", "display_name", "display_version", "features").containsAll(fieldNames(entry.getValue())));
+            assertEquals(all.get(entry.getKey()).get("features"), entry.getValue().get("features"));
+        }
+
+        // id and object stay when they are not selected
+        for (JsonNode row : collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=features", null)).values()) {
+            assertEquals(Set.of("id", "object", "features"), fieldNames(row));
+        }
+
+        Map<String, JsonNode> nested = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
+                "fields=display_name,features(rate,tokenize)", null));
+        for (JsonNode row : nested.values()) {
+            assertEquals(Set.of("id", "object", "display_name", "features"), fieldNames(row));
+            assertEquals(Set.of("rate", "tokenize"), fieldNames(row.get("features")));
+        }
+
+        // a field of another kind of deployment is left out of the rest
+        Map<String, JsonNode> properties = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=application_properties", null));
+        assertEquals(Set.of("id", "object", "application_properties"), fieldNames(properties.get("schema-app")));
+        assertEquals(Set.of("id", "object"), fieldNames(properties.get("gpt-4")));
+        assertEquals(Set.of("id", "object"), fieldNames(properties.get("git")));
+
+        // the selection narrows the fields, not the deployments of interface_type
+        Map<String, JsonNode> mcp = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp&fields=display_name", null));
+        assertEquals(collectDeployments(send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp", null)).keySet(), mcp.keySet());
+        for (JsonNode row : mcp.values()) {
+            assertEquals(Set.of("id", "object", "display_name"), fieldNames(row));
+        }
+
+        verify(send(HttpMethod.GET, "/v1/deployments", "fields=features(rate", null), 400);
+        verify(send(HttpMethod.GET, "/v1/deployments", "fields=id,,display_name", null), 400);
+
+        // the single deployment endpoint does not read the parameter
+        assertEquals(readDeployment(send(HttpMethod.GET, "/v1/deployments/gpt-4")),
+                readDeployment(send(HttpMethod.GET, "/v1/deployments/gpt-4", "fields=display_name", null)));
+    }
+
+    @DialConfigLocation("dial-config/deployment-interface-configs.json")
+    @Test
+    public void testListDeploymentsWithFieldsSelectsInsideMaps() throws JsonProcessingException {
+        Map<String, JsonNode> all = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
+        assertEquals(all, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=*", null)));
+
+        Map<String, JsonNode> selected = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
+                "fields=interface_configs(*(features(reasoning_efforts)))", null));
+        JsonNode configs = selected.get("gpt-5.4-mini").get("interface_configs");
+        assertEquals(fieldNames(all.get("gpt-5.4-mini").get("interface_configs")), fieldNames(configs));
+        assertEquals(3, configs.size());
+        for (JsonNode config : configs) {
+            assertEquals(Set.of("features"), fieldNames(config));
+            assertEquals(Set.of("reasoning_efforts"), fieldNames(config.get("features")));
+        }
+        assertEquals(List.of("low", "medium", "high", "xhigh", "max"),
+                textValues(configs.get("anthropicMessages").get("features").get("reasoning_efforts")));
+    }
+
     /**
      * Maps deployment id to its {@code features} object. Handles both the bare array returned by
      * {@code /v1/deployments} and the {@code {"data": [...]}} envelope of the legacy listings.

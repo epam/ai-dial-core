@@ -33,6 +33,8 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.FieldSelection;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -152,7 +154,11 @@ public class DeploymentController {
                     @ApiParameter(name = "interface_type", in = ParameterIn.QUERY,
                             schema = String[].class,
                             description = OpenApiDescriptions.INTERFACE_TYPE,
-                            allowableValues = {"chat", "embedding", "mcp", "custom_ui", "all"})
+                            allowableValues = {"chat", "embedding", "mcp", "custom_ui", "all"}),
+                    @ApiParameter(name = "fields", in = ParameterIn.QUERY,
+                            schema = String.class,
+                            description = OpenApiDescriptions.DEPLOYMENT_FIELDS,
+                            example = "display_name,features(rate,tokenize)")
             },
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {DeploymentData.class})),
@@ -164,8 +170,10 @@ public class DeploymentController {
         String[] interfaces = getDeploymentInterfaces();
 
         ExecutionPlan plan;
+        FieldSelection selection;
         try {
             plan = build(interfaces);
+            selection = FieldSelection.parse(context.getRequest().getParam("fields"));
         } catch (Exception e) {
             context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
             return Future.succeededFuture();
@@ -178,13 +186,22 @@ public class DeploymentController {
             for (int i = 0; i < result.size(); i++) {
                 deployments.addAll(result.resultAt(i));
             }
-            context.respond(HttpStatus.OK, deployments);
-        }).onFailure(error -> {
-            log.error("Error occurred on listing deployments", error);
-            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
-        });
+            if (selection == null) {
+                context.respond(HttpStatus.OK, deployments);
+                return;
+            }
+            proxy.getTaskExecutor()
+                    .submit(() -> selection.project(ProxyUtil.MAPPER.valueToTree(deployments)))
+                    .onSuccess(projected -> context.respond(HttpStatus.OK, projected))
+                    .onFailure(this::respondListingFailure);
+        }).onFailure(this::respondListingFailure);
 
         return Future.succeededFuture();
+    }
+
+    private void respondListingFailure(Throwable error) {
+        log.error("Error occurred on listing deployments", error);
+        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
     }
 
 
