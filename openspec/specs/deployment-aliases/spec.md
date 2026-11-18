@@ -244,9 +244,9 @@ When storage cannot list or read the stored aliases, a listing SHALL answer with
 ### Requirement: Content of an alias entry
 A listing entry of an alias SHALL carry the alias's name and display fields and the target's features, pricing,
 limits, defaults, interfaces, provider and lifecycle dates (`provider`, `deprecation_date`, `end_of_service`), and
-SHALL NOT carry the target's path or endpoint. The display name, description,
-icon, intro and keywords SHALL be the target's when the alias does not set them; the display version, author, dates
-and catalog fields SHALL NOT fall back to the target's.
+SHALL NOT carry the target's path or endpoint, nor any default headers. The display name, description, icon, intro
+and keywords SHALL fall back to the target's when the alias does not set them; the display version, author, dates
+and catalog fields SHALL NOT.
 
 #### Scenario: Model entry
 - **WHEN** a caller with `default-user` lists `/openai/models`
@@ -265,6 +265,12 @@ and catalog fields SHALL NOT fall back to the target's.
   `2027-12-31`
 - **THEN** `/openai/models` shows the alias with the same `provider`, `deprecation_date` and `end_of_service`
 
+#### Scenario: Stored alias with default headers listed
+- **WHEN** `team-v1` is stored under `/v1/aliases/public/` with `defaultHeaders: {"X-Team": "b"}`, and a caller who
+  may use it reads `/openai/models/aliases/public/team-v1`
+- **THEN** the answer is `200`, every `interface_configs` entry has empty `default_headers`, and the body has no
+  `X-Team`
+
 ### Requirement: Aliases of the config file
 `GET /v1/admin/config/file/aliases` SHALL list the names of the aliases in the config file and
 `GET /v1/admin/config/file/aliases/<name>` SHALL answer the alias, for admins only.
@@ -277,7 +283,7 @@ and catalog fields SHALL NOT fall back to the target's.
 Core SHALL serve aliases stored directly under `aliases/public/<name>` and SHALL call them by that url, as public
 applications are called: the url is the alias's deployment name in every endpoint, the execution path and listings.
 The bare name `<name>` SHALL NOT reach a stored alias. A stored alias SHALL keep only `presentAs`, `target`,
-`userRoles` and the display fields.
+`userRoles`, `defaultHeaders` (none on an alias of type `toolset`) and the display fields.
 
 #### Scenario: Called by its url
 - **WHEN** an admin stores `pub-v1` with target `models/gpt-4-internal`, and a caller with no role on `gpt-4-internal` sends a chat completion to `aliases/public/pub-v1`
@@ -320,7 +326,7 @@ answer.
 ### Requirement: Managing a stored alias
 Core SHALL create or replace a stored alias on `PUT /v1/aliases/public/<name>` (honouring `If-Match` and
 `If-None-Match`), answer it on `GET`, delete it on `DELETE`, and list the stored aliases on
-`GET /v1/metadata/aliases/public/`, for admins only: every method SHALL answer `403` to other callers. Another bucket
+`GET /v1/metadata/aliases/public/`, for admins only: every method SHALL answer `403` to other callers. A user bucket
 SHALL answer `404`; a nested path or a name of characters other than letters, digits, `.`, `_` and `-` SHALL answer
 `400`. A change SHALL apply to the next call.
 
@@ -337,8 +343,8 @@ SHALL answer `404`; a nested path or a name of characters other than letters, di
 - **THEN** the first three answer `400`; `/openai/models` lists `aliases/public/Pub.v1_2-x`, and that id is callable in the path and as body `model`
 
 #### Scenario: Not directly in the public bucket on write
-- **WHEN** an admin sends `PUT /v1/aliases/<user bucket>/pub-v1`, `PUT /v1/aliases/platform/pub-v1`, `PUT /v1/aliases/public/folder/pub-v1` or `PUT /v1/aliases/public/bad%20name`
-- **THEN** the answers are `404`, `404`, `400` and `400`
+- **WHEN** an admin sends `PUT /v1/aliases/<user bucket>/pub-v1`, `PUT /v1/aliases/public/folder/pub-v1` or `PUT /v1/aliases/public/bad%20name`
+- **THEN** the answers are `404`, `400` and `400`
 
 ### Requirement: Stored alias read back
 `GET /v1/aliases/public/<name>` SHALL answer the stored fields with `status: valid`, or, for a blob that calls ignore,
@@ -351,16 +357,22 @@ the body as stored with `status: invalid` and its `validationWarnings`.
 ### Requirement: Stored alias validated on write
 A `PUT` of a stored alias SHALL answer `400` and write nothing when the body has a field other than those a stored
 alias keeps, has a `name` other than the name in the path, has no `target.path` or a path of an unsupported form, targets an
-alias, has an unknown `presentAs`, or has a type that does not fit a target
-that exists (a config deployment or a resource). A target that does not exist SHALL be accepted.
+alias, has an unknown `presentAs`, has non-empty `defaultHeaders` on an alias of type `toolset`, or has a type that
+does not fit a target that exists (a config deployment or a resource). A target that does not exist SHALL be accepted.
 
 #### Scenario: Invalid bodies
-- **WHEN** an admin stores an alias with `userRoles` that is not a list of roles, with `endpoint`, with target `aliases/assistant`, with `presentAs: toolset` for a model target, with `presentAs: widget`, without `target`, or with `name` `other-v1`
+- **WHEN** an admin stores an alias with `userRoles` that is not a list of roles, with `defaultHeaders: ["X-Team"]`, with `endpoint`, with target `aliases/assistant`, with `presentAs: toolset` for a model target, with `presentAs: widget`, without `target`, or with `name` `other-v1`
 - **THEN** every answer is `400` and `GET` of the alias answers `404`
 
 #### Scenario: Resource target of the wrong kind
 - **WHEN** an admin stores an alias with `presentAs: toolset` whose target is an application resource without `mcp`
 - **THEN** the answer is `400`
+
+#### Scenario: Default headers on a toolset alias
+- **WHEN** an admin stores an alias with target `toolsets/search` and `defaultHeaders: {"X-Team": "a"}`, and then the
+  same alias with `defaultHeaders: {}`
+- **THEN** the first answers `400` and writes nothing, and the second answers `200` and `GET` of the alias has no
+  `defaultHeaders`
 
 ### Requirement: Target of a stored alias
 A stored alias of the public bucket SHALL target a config deployment other than a router, or a resource in the
@@ -429,9 +441,10 @@ candidate.
 - **THEN** Core answers `502` and sends nothing to `strong` or `r1`
 
 ### Requirement: Default headers of an alias
-For an alias of type `model`, `application` or `router`, the alias pass SHALL set each header of the alias's
-`defaultHeaders` that the client did not send on the request it forwards to the target, as for a deployment's default
-headers. The target pass SHALL treat them as headers the client sent.
+For an alias of type `model`, `application` or `router`, of the config file or stored through `/v1/aliases/`, the
+alias pass SHALL set each header of the alias's `defaultHeaders` that the client did not send on the request it
+forwards to the target, as for a deployment's default headers. The target pass SHALL treat them as headers the client
+sent.
 
 #### Scenario: Header reaches the decide request
 - **WHEN** `strong` targets `routers/r1` and has `defaultHeaders: {"X-DIAL-ROUTER-TIER": "strong"}`, and a client
@@ -456,6 +469,18 @@ headers. The target pass SHALL treat them as headers the client sent.
   `defaultHeaders: {"X-DIAL-ROUTER-TIER": "tier"}`, and a client calls `tier` without that header
 - **THEN** the decide request `r1` receives has `X-DIAL-ROUTER-TIER: tier`
 
+#### Scenario: Header of a public stored alias
+- **WHEN** an admin stores `team-v1` under `/v1/aliases/public/` with target `models/gpt-4-internal` and
+  `defaultHeaders: {"X-Team": "b"}`, and a client calls `aliases/public/team-v1` without that header
+- **THEN** `GET /v1/aliases/public/team-v1` answers `defaultHeaders: {"X-Team": "b"}`, and the upstream of
+  `gpt-4-internal` receives `X-Team: b`
+
+#### Scenario: Header of a platform alias
+- **WHEN** an admin stores `plt-team` under `/v1/aliases/platform/` with target `models/gpt-4-internal` and
+  `defaultHeaders: {"X-Team": "b"}`, the config is reloaded, and a client calls `plt-team` without that header
+- **THEN** `GET /v1/aliases/platform/plt-team` answers `defaultHeaders: {"X-Team": "b"}`, and the upstream of
+  `gpt-4-internal` receives `X-Team: b`
+
 ### Requirement: Alias of type router
 An alias of type `router` SHALL target `routers/<name>`: Core SHALL refuse one with any other target path, whether or
 not that target exists, a resource included, on the config load and on a stored alias's `PUT`.
@@ -472,3 +497,63 @@ not that target exists, a resource included, on the config load and on a stored 
 - **WHEN** the alias `tier` of type `router` targets `routers/r1` in decision mode, `r1` answers
   `{"candidates": ["gpt-4"]}` and a client sends a chat completion to `tier`
 - **THEN** `gpt-4` serves it and the client's answer has `"model": "tier"`
+
+### Requirement: Target pass served in process
+For a call of an alias of type `model`, `application` or `router` through a deployments-POST action,
+`/openai/v1/chat/completions`, `/openai/v1/responses` or `/openai/responses` without `background: true`, or
+`/anthropic/v1/messages`, Core SHALL serve the target pass in process, without an HTTP request to itself. Every other
+request an alias forwards, Messages `count_tokens` included, SHALL reach the target over HTTP to Core's own address
+(`backgroundJob.localBaseUrl`).
+
+#### Scenario: Chat completion through an alias
+- **WHEN** a caller sends a chat completion to `/openai/deployments/assistant/chat/completions`, where `assistant`
+  targets `gpt-4-internal`
+- **THEN** the answer is `200` with the model's answer, and Core sends no HTTP request to itself
+
+#### Scenario: Responses and Messages through an alias
+- **WHEN** a caller sends `/openai/v1/responses`, `/openai/responses` and `/anthropic/v1/messages` with
+  `model: multi-alias`, whose target serves both interfaces
+- **THEN** all three answer `200`, the target receives each request with `model` set to the target name, and Core
+  sends no HTTP request to itself
+
+#### Scenario: Call chain unchanged
+- **WHEN** a caller sends a chat completion to `assistant`, which targets `gpt-4-internal`
+- **THEN** the per-request key the model receives has `executionPath` `["assistant", "gpt-4-internal"]`, and Core
+  writes one analytics row for `assistant` and one for `gpt-4-internal` with `parent_deployment: assistant`
+
+#### Scenario: Router in decision mode behind an alias
+- **WHEN** an alias with `presentAs: model` targets a router in decision mode, and the router names as its candidate
+  an alias whose target is a model
+- **THEN** the model receives the request, the caller gets `200` with its answer, and Core sends no HTTP request to
+  itself
+
+#### Scenario: Requests that stay on HTTP
+- **WHEN** `backgroundJob.localBaseUrl` names a port nothing listens on, and a caller posts to
+  `/v1/deployments/<alias>/tokenize` of an alias whose target has a tokenize endpoint, sends
+  `/anthropic/v1/messages/count_tokens` with `model: multi-alias`, and sends `/openai/v1/responses` with
+  `background: true` to an alias whose target serves Responses
+- **THEN** all three answer `502`, and the target's endpoints receive nothing
+
+### Requirement: Headers of an in-process alias call
+When Core serves the target pass in process, the target's origin SHALL NOT receive the alias pass's
+`X-DIAL-OVERRIDE-NAME`; it receives one only when the target declares an override name of its own. The caller's
+answer SHALL carry `Access-Control-Allow-Origin`, and `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID` when response trace
+headers are on, once each.
+
+#### Scenario: No override name from the alias pass
+- **WHEN** a caller sends a chat completion to `assistant`, and `gpt-4-internal` declares no override name
+- **THEN** the request the model's origin receives has no `X-DIAL-OVERRIDE-NAME`, and has the `X-DIAL-DEPLOYMENT-ID`
+  `gpt-4-internal`
+
+#### Scenario: Response headers once
+- **WHEN** a caller sends a chat completion to `assistant`
+- **THEN** the answer has exactly one `Access-Control-Allow-Origin` header
+
+### Requirement: Attachments shared on through an alias
+When Core serves the target pass in process and the target pass shares a file of its answer with the alias pass,
+the alias pass SHALL share that file on with its own caller's per-request key, as a direct call of the target would.
+
+#### Scenario: Application calls an alias
+- **WHEN** application `app` calls `assistant` with its per-request key, and the answer of `gpt-4-internal` attaches a
+  file that the model's pass may read
+- **THEN** `app`'s per-request key may read that file after the call, as after a direct call of `gpt-4-internal`

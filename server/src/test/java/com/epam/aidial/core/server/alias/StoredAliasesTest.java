@@ -9,6 +9,7 @@ import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -62,6 +63,70 @@ class StoredAliasesTest {
         Alias alias = StoredAliases.fromRequest(json("{\"displayName\": \"Assistant\", \"target\": {\"path\": \"models/gpt-4\"}}"), NAME);
 
         assertEquals(json("{\"target\": {\"path\": \"models/gpt-4\"}, \"displayName\": \"Assistant\"}"), StoredAliases.toJson(alias));
+    }
+
+    @Test
+    void keepsDefaultHeadersInEitherSpelling() {
+        Alias model = StoredAliases.fromRequest(json("""
+                {"defaultHeaders": {"X-Team": "b"}, "target": {"path": "models/gpt-4"}}
+                """), NAME);
+        assertEquals(Map.of("X-Team", "b"), model.getDefaultHeaders());
+
+        Alias application = StoredAliases.fromRequest(json("""
+                {"default_headers": {"X-Team": "b"}, "target": {"path": "applications/public/app"}}
+                """), NAME);
+        assertEquals(Map.of("X-Team", "b"), application.getDefaultHeaders());
+    }
+
+    @Test
+    void nullDefaultHeadersReadAsNone() {
+        Alias put = StoredAliases.fromRequest(json("{\"defaultHeaders\": null, \"target\": {\"path\": \"models/gpt-4\"}}"), NAME);
+        assertEquals(Map.of(), put.getDefaultHeaders());
+        assertFalse(StoredAliases.toJson(put).has("defaultHeaders"));
+
+        Alias blob = StoredAliases.parse("{\"defaultHeaders\": null, \"target\": {\"path\": \"models/gpt-4\"}}", true).alias();
+        assertEquals(Map.of(), blob.getDefaultHeaders());
+        assertFalse(StoredAliases.toJson(blob).has("defaultHeaders"));
+
+        // a field a stored alias does not keep is refused even when it is null
+        assertThrows(IllegalArgumentException.class, () -> StoredAliases.fromRequest(
+                json("{\"target\": {\"path\": \"models/gpt-4\"}, \"endpoint\": null}"), NAME));
+    }
+
+    @Test
+    void defaultHeadersMustBeHeaderNamesToValues() {
+        assertThrows(IllegalArgumentException.class, () -> StoredAliases.fromRequest(
+                json("{\"defaultHeaders\": [\"X-Team\"], \"target\": {\"path\": \"models/gpt-4\"}}"), NAME));
+    }
+
+    @Test
+    void toolsetAliasRefusesDefaultHeaders() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> StoredAliases.fromRequest(
+                json("{\"defaultHeaders\": {\"X-Team\": \"a\"}, \"target\": {\"path\": \"toolsets/search\"}}"), NAME));
+        assertTrue(error.getMessage().contains("toolset"), error.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> StoredAliases.fromRequest(json("""
+                {"presentAs": "toolset", "defaultHeaders": {"X-Team": "a"}, "target": {"path": "applications/mcp-app"}}
+                """), NAME));
+
+        Alias empty = StoredAliases.fromRequest(json("{\"defaultHeaders\": {}, \"target\": {\"path\": \"toolsets/search\"}}"), NAME);
+        assertFalse(StoredAliases.toJson(empty).has("defaultHeaders"));
+    }
+
+    @Test
+    void blobHasDefaultHeadersAfterUserRolesUnlessEmptyOrToolset() {
+        Alias alias = StoredAliases.fromRequest(json("""
+                {"displayName": "A", "defaultHeaders": {"X-Team": "b"}, "userRoles": ["default-user"], "target": {"path": "models/gpt-4"}}
+                """), NAME);
+        assertEquals("{\"target\":{\"path\":\"models/gpt-4\"},\"userRoles\":[\"default-user\"],\"defaultHeaders\":{\"X-Team\":\"b\"},\"displayName\":\"A\"}",
+                StoredAliases.toJson(alias).toString());
+
+        Alias empty = StoredAliases.fromRequest(json("{\"defaultHeaders\": {}, \"target\": {\"path\": \"models/gpt-4\"}}"), NAME);
+        assertFalse(StoredAliases.toJson(empty).has("defaultHeaders"));
+
+        // a toolset blob written around the API: calls never send its headers, and GET and the platform reload drop them
+        Alias toolset = StoredAliases.parse("{\"defaultHeaders\": {\"X-Team\": \"b\"}, \"target\": {\"path\": \"toolsets/search\"}}", true).alias();
+        assertNotNull(toolset);
+        assertFalse(StoredAliases.toJson(toolset).has("defaultHeaders"));
     }
 
     @Test

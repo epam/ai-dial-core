@@ -101,8 +101,8 @@ public class RouterDecisionFlow {
     }
 
     /**
-     * An origin plugin's in-process call on an API that names the deployment in the body: a pass with a tree and no
-     * bytes of its own.
+     * An in-process call (an origin plugin's, or an alias pass's to its target) on an API that names the deployment in
+     * the body: a pass with a tree and no bytes of its own.
      */
     private boolean inProcessCall(@Nullable ObjectNode tree) {
         return tree != null && context.isChildPass();

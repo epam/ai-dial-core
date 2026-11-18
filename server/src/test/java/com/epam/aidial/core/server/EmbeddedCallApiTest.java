@@ -342,10 +342,10 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         assertEquals(app.getSpanId(), model.getParentSpanId());
     }
 
-    // analytics-log "Rows without bodies for an in-process child pass"
+    // analytics-log "Bodies in the analytics row", scenario "Call from an origin plugin"
 
     @Test
-    void testBodiesLoggedOnce() {
+    void testCallFromAnOriginPluginLogsBothBodies() {
         servedApp();
         servedModel(LIMITED_MODEL);
 
@@ -354,10 +354,10 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
 
         List<AnalyticsLogContext> rows = awaitAnalyticsRows(2);
         AnalyticsLogContext model = rowOf(rows, LIMITED_MODEL);
-        assertNull(model.getRequestBody());
-        assertNull(model.getResponseBody());
-        assertNull(model.getAssembledStreamingResponse());
-        assertTrue(model.isBodiesOmitted());
+        assertTrue(model.getRequestBody().toString().contains("\"messages\""));
+        assertTrue(model.getResponseBody().toString().contains("[DONE]"));
+        assertNotNull(model.getAssembledStreamingResponse());
+        assertFalse(model.isBodiesOmitted());
         assertEquals(15, model.getTokenUsage().getTotalTokens());
         assertNotNull(model.getTraceId());
         AnalyticsLogContext app = rowOf(rows, "app");

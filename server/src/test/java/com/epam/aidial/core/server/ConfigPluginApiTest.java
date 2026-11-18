@@ -8,6 +8,7 @@ import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
@@ -28,13 +29,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The {@code plugins} config entity over HTTP, with the default strict write and {@code abort} rebuild. The test
  * config declares {@code file-plugin}, {@code valid-plugin} and {@code bad/plugin}, all of type {@code test-echo}
- * (on the test classpath, needs a string {@code settings.greeting}); the plugins directory holds a jar registering
- * {@code jar-echo} (accepts any settings). {@link SkipMode} runs the soft write and the {@code skip} rebuild.
+ * (on the test classpath, needs a string {@code settings.greeting}); the plugin directory {@code custom/echo} holds a
+ * jar registering {@code jar-echo} (accepts any settings). {@link SkipMode} runs the soft write and the {@code skip}
+ * rebuild, {@link ExcludedPlugin} a plugin directory {@code plugins.exclude} names.
  */
 public class ConfigPluginApiTest extends ResourceBaseTest {
 
     // Written once and kept: the plugin class loader holds the jar open as long as the JVM runs
-    private static final Path PLUGINS_DIR = pluginsDirWithJarEcho();
+    private static final Path PLUGINS_DIR = pluginsDirWithJarEcho("custom/echo");
 
     @Override
     protected JsonObject additionalSettingsOverrides() {
@@ -208,10 +210,37 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
         }
     }
 
-    private static Path pluginsDirWithJarEcho() {
+    /**
+     * The plugin directory {@code builtin/echo} provides {@code jar-echo} and {@code plugins.exclude} names it.
+     */
+    public static class ExcludedPlugin extends ResourceBaseTest {
+
+        private static final Path PLUGINS_DIR = pluginsDirWithJarEcho("builtin/echo");
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject().put("plugins", new JsonObject()
+                    .put("dir", PLUGINS_DIR.toString())
+                    .put("exclude", new JsonArray().add("builtin/echo")));
+        }
+
+        @Test
+        @SneakyThrows
+        void testExcludedPluginTypeIsUnknown() {
+            Response put = adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"jar-echo\"}");
+            verify(put, 422);
+            JsonNode warnings = ProxyUtil.MAPPER.readTree(put.body()).get("validationWarnings");
+            assertEquals(1, warnings.size(), put::body);
+            assertEquals("type", warnings.get(0).get("field").asText());
+        }
+    }
+
+    private static Path pluginsDirWithJarEcho(String pluginDir) {
         try {
             Path dir = Files.createTempDirectory("dial-plugins");
-            JarEchoPluginProvider.writeJar(dir.resolve("jar-echo.jar"), JarEchoPluginProvider.class.getName());
+            Path jar = dir.resolve(pluginDir).resolve("jar-echo.jar");
+            Files.createDirectories(jar.getParent());
+            JarEchoPluginProvider.writeJar(jar, JarEchoPluginProvider.class.getName());
             return dir;
         } catch (IOException e) {
             throw new UncheckedIOException(e);

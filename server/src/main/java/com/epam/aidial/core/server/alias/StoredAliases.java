@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.alias;
 
 import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -21,22 +22,24 @@ import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_
 
 /**
  * The body of an alias stored under {@code aliases/public/<name>} or {@code aliases/platform/<name>}:
- * {@code presentAs}, {@code target}, {@code userRoles} and the display fields, nothing else. {@code userRoles}
- * decides who may call it, as for an alias of the config file (none means the target's); pricing, features and
- * interfaces come from the target, so it has none of those.
+ * {@code presentAs}, {@code target}, {@code userRoles}, {@code defaultHeaders} and the display fields, nothing else.
+ * {@code userRoles} decides who may call it and {@code defaultHeaders} what its calls send, as for an alias of the
+ * config file (no {@code userRoles} means the target's); pricing, features and interfaces come from the target, so it
+ * has none of those.
  */
 @UtilityClass
 public class StoredAliases {
 
     // the fields a stored alias keeps, by the name it is written under
-    private static final List<String> FIELDS = List.of("presentAs", "target", "userRoles", "displayName", "displayVersion",
-            "iconUrl", "description", "intro", "descriptionKeywords");
+    private static final List<String> FIELDS = List.of("presentAs", "target", "userRoles", "defaultHeaders", "displayName",
+            "displayVersion", "iconUrl", "description", "intro", "descriptionKeywords");
 
     // the other spellings Alias accepts for the same fields
     private static final Map<String, String> SPELLINGS = Map.of(
             "present_as", "presentAs",
             "user_roles", "userRoles",
             "dial:userRoles", "userRoles",
+            "default_headers", "defaultHeaders",
             "display_name", "displayName",
             "display_version", "displayVersion",
             "icon_url", "iconUrl",
@@ -52,7 +55,8 @@ public class StoredAliases {
     /**
      * The alias a {@code PUT} body describes for the alias {@code name}. Throws {@link IllegalArgumentException} for a
      * body that is not an object, whose {@code name} is not {@code name}, that has a field a stored alias does not
-     * keep, or whose fields do not parse.
+     * keep, whose fields do not parse, or that sets {@code defaultHeaders} on an alias of type {@code toolset}, whose
+     * calls never send them.
      */
     public Alias fromRequest(JsonNode body, String name) {
         if (!body.isObject()) {
@@ -76,9 +80,13 @@ public class StoredAliases {
         }
         if (!unsupported.isEmpty()) {
             throw new IllegalArgumentException("Fields not supported for a stored alias: " + String.join(", ", unsupported)
-                    + ". An alias keeps presentAs, target, userRoles and the display fields; the rest comes from its target.");
+                    + ". An alias keeps presentAs, target, userRoles, defaultHeaders and the display fields; the rest comes from its target.");
         }
-        return ConfigEntityCodec.treeToEntity(kept, Alias.class);
+        Alias alias = ConfigEntityCodec.treeToEntity(kept, Alias.class);
+        if (!alias.getDefaultHeaders().isEmpty() && alias.getEffectivePresentation() == AliasPresentation.TOOLSET) {
+            throw new IllegalArgumentException("defaultHeaders are not supported for an alias of type toolset");
+        }
+        return alias;
     }
 
     /**
@@ -90,6 +98,10 @@ public class StoredAliases {
         putIfSet(node, "presentAs", alias.getPresentAs());
         putIfSet(node, "target", alias.getTarget());
         putIfSet(node, "userRoles", alias.getUserRoles());
+        // a toolset pass sends no headers: GET, the blob and the platform reload drop those of a blob written around the API
+        if (!alias.getDefaultHeaders().isEmpty() && alias.getEffectivePresentation() != AliasPresentation.TOOLSET) {
+            node.set("defaultHeaders", BLOB_MAPPER.valueToTree(alias.getDefaultHeaders()));
+        }
         putIfSet(node, "displayName", alias.getDisplayName());
         putIfSet(node, "displayVersion", alias.getDisplayVersion());
         putIfSet(node, "iconUrl", alias.getIconUrl());
