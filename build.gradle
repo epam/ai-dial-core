@@ -22,7 +22,7 @@ allprojects {
 
     lombok {
         // the plugin's default Lombok (1.18.34) cannot compile on JDK 25; 1.18.40 is the first that can
-        version = "1.18.42"
+        version.set("1.18.42")
     }
 
     checkstyle {
