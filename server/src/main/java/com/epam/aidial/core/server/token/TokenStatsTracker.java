@@ -21,8 +21,10 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 @Slf4j
@@ -50,6 +52,9 @@ public class TokenStatsTracker {
      * the costs each deployment reports for itself are not affected.
      */
     public Future<Void> startSpan(ProxyContext context) {
+        if (isUntraced(context.getTraceId(), context.getSpanId())) {
+            return Future.succeededFuture();
+        }
         return taskExecutor.submit(() -> {
             update(context.getTraceId(), true, traceContext -> {
                 traceContext.addSpan(context);
@@ -69,6 +74,9 @@ public class TokenStatsTracker {
     }
 
     public Future<UsageStats> getUsageStats(ProxyContext context) {
+        if (isUntraced(context.getTraceId(), context.getSpanId())) {
+            return Future.succeededFuture(UsageStats.EMPTY);
+        }
         return taskExecutor.submit(() -> {
             String json = blockingCallTracer.trace("cost_stats.get", () -> getBucket(context.getTraceId()).get());
             TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
@@ -83,6 +91,9 @@ public class TokenStatsTracker {
      * Ends the root span of the trace: deletes its usage record.
      */
     public Future<Void> endSpan(String traceId) {
+        if (isUntraced(traceId, null)) {
+            return Future.succeededFuture();
+        }
         return taskExecutor.submit(() -> blockingCallTracer.trace("cost_stats.delete", () -> {
             RBucket<String> bucket = getBucket(traceId);
             // under the lock, so a racing update cannot write back the deleted record
@@ -125,6 +136,9 @@ public class TokenStatsTracker {
      */
     public Future<UsageStats> updateDeploymentStats(String traceId, String spanId, String deploymentName, TokenUsage tokenUsage,
             boolean rootMayHaveEnded) {
+        if (isUntraced(traceId, spanId)) {
+            return Future.succeededFuture(UsageStats.EMPTY);
+        }
         return taskExecutor.submit(() -> {
             UsageStats result = update(traceId, false, traceContext -> {
                 if (!traceContext.spans.containsKey(spanId)) {
@@ -191,7 +205,14 @@ public class TokenStatsTracker {
             List<AggregatedCost> aggregatedCosts = new ArrayList<>();
             BigDecimal delta = tokenUsage.getAggCost();
             String parentSpanId = tokenStats.parentSpanId;
+            // a span that is its own ancestor would be rolled into forever, one more entry per step
+            Set<String> visitedSpanIds = new HashSet<>();
+            visitedSpanIds.add(spanId);
             while (parentSpanId != null) {
+                if (!visitedSpanIds.add(parentSpanId)) {
+                    log.warn("Span {} is its own ancestor through span {}: its usage is not rolled up any further", spanId, parentSpanId);
+                    break;
+                }
                 tokenStats = spans.get(parentSpanId);
                 if (tokenStats == null) {
                     log.warn("Parent span {} was not added to the trace context.", parentSpanId);
@@ -273,6 +294,18 @@ public class TokenStatsTracker {
      */
     public record UsageStats(TokenUsage total, List<UsagePerModel> usagePerModel, List<AggregatedCost> aggregatedCosts) {
         public static final UsageStats EMPTY = new UsageStats(null, List.of(), List.of());
+    }
+
+    /**
+     * A no-op tracer (e.g. OpenTelemetry's with a disabled SDK) gives every request all-zero ids: they would all share
+     * one record, and a nested call would be its own parent.
+     */
+    private static boolean isUntraced(String traceId, String spanId) {
+        return isZeroId(traceId) || isZeroId(spanId);
+    }
+
+    private static boolean isZeroId(String id) {
+        return id != null && !id.isEmpty() && id.chars().allMatch(c -> c == '0');
     }
 
     /**
