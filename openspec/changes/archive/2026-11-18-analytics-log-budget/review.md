@@ -37,3 +37,13 @@ None.
   The metric `dial_budget_rejections_total` counts them.
 - `openspec/specs/resource-subscription/spec.md` fails `validate --specs --strict` on `development` already (a
   placeholder Purpose).
+
+## Follow-up review
+
+- A router's next candidate reuses the request's `ProxyContext`, and neither `RouterDecisionFlow.nextCandidateOrError`
+  nor `retryWithNextCandidate` cleared `budgetCheck`. When a model candidate failed, or was refused, and an
+  application (or a model whose limits the pass does not check) served next, that row carried the first model's
+  `spending_limits`. Both paths now clear it with the rest of the candidate's state. The scenario "Candidate after
+  a failed model" and `RouterDecisionApiTest.failedModelCandidateLeavesNoSpendingLimitsOnTheApplicationThatServes`
+  cover it. The charge was never affected: only a model whose limits the pass checks is charged, and its own check
+  replaces the payer.

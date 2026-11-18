@@ -77,6 +77,11 @@ Responses job when it ends.
 - **WHEN** the serving row of a decided request has `spending_limits` and Core builds the router's row from it
 - **THEN** the router's row has no `spending_limits`
 
+#### Scenario: Candidate after a failed model
+- **WHEN** a token caller's decided request goes to model `m1`, whose limits Core checks, `m1` fails, and the
+  router's next candidate, application `app`, serves the request
+- **THEN** `app`'s row has no `spending_limits`
+
 #### Scenario: Background job row
 - **WHEN** a background Responses job ends and Core writes its row from the job record
 - **THEN** the row has no `spending_limits`

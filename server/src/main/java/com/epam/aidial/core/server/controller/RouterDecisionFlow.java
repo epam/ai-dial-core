@@ -343,6 +343,8 @@ public class RouterDecisionFlow {
             // the next candidate starts from the client's bytes, as after a failed call: for an in-process call, the
             // serialization, not the call's tree the refused candidate may have changed
             context.setRequestBody(context.getOriginalRequestBody());
+            // the refused candidate's budget check is not the next candidate's, which may be no model at all
+            context.setBudgetCheck(null);
             if (decision.hasNext()) {
                 log.warn("Candidate {} of router {} skipped: {}", decision.current(), decision.getRouterName(), error.getMessage());
                 decision.skip(status, reason);
@@ -407,6 +409,8 @@ public class RouterDecisionFlow {
         // the failed answer's usage, which a stream can carry before it breaks, is not the next candidate's
         context.setTokenUsage(null);
         context.setUsagePerModel(null);
+        // nor is its budget check: the next candidate's row and charge are its own
+        context.setBudgetCheck(null);
         context.setRequestBody(context.getOriginalRequestBody());
         if (next) {
             decision.skip(status, reason, received);
