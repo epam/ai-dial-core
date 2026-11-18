@@ -19,11 +19,10 @@ import javax.annotation.Nullable;
 public final class FieldSelection {
 
     static final int MAX_LENGTH = 1024;
-    static final int MAX_DEPTH = 5;
+    private static final int MAX_DEPTH = 5;
 
     private static final String WILDCARD = "*";
     private static final Node WHOLE = new Node(true);
-    private static final List<Node> KEEP_ALL = List.of(WHOLE);
 
     private final Node root;
     private final Set<String> alwaysKept;
@@ -34,7 +33,8 @@ public final class FieldSelection {
     }
 
     /**
-     * Returns null for null or blank text. The length limit is in UTF-8 bytes.
+     * Returns null for blank text and for a selection that keeps everything, which is no selection. The length limit
+     * is in UTF-8 bytes.
      *
      * @param alwaysKept the top-level members that stay when not selected
      * @throws IllegalArgumentException when the text is not a selection or is over the length or depth limit
@@ -47,14 +47,33 @@ public final class FieldSelection {
         if (text.getBytes(StandardCharsets.UTF_8).length > MAX_LENGTH) {
             throw new IllegalArgumentException("Invalid fields parameter: longer than " + MAX_LENGTH + " bytes");
         }
-        return new FieldSelection(new Parser(text).parse(), Set.copyOf(alwaysKept));
+        Node root = new Parser(text).parse();
+        Node any = root.members.get(WILDCARD);
+        if (any != null && any.whole) {
+            return null;
+        }
+        return new FieldSelection(root, Set.copyOf(alwaysKept));
     }
 
     /**
      * The result shares the kept values with the row.
      */
     public ObjectNode project(ObjectNode row) {
-        return pruneObject(List.of(root), row, true);
+        return pruneObject(root.self, row, true);
+    }
+
+    int memberCount() {
+        return memberCount(root);
+    }
+
+    private static int memberCount(Node node) {
+        int count = node.members.size();
+        for (Node member : node.members.values()) {
+            if (!member.whole) {
+                count += memberCount(member);
+            }
+        }
+        return count;
     }
 
     private JsonNode prune(List<Node> selections, JsonNode value) {
@@ -64,7 +83,7 @@ public final class FieldSelection {
         if (value instanceof ArrayNode array) {
             ArrayNode pruned = array.arrayNode();
             for (JsonNode element : array) {
-                pruned.add(element instanceof ObjectNode object ? pruneObject(selections, object, false) : element);
+                pruned.add(prune(selections, element));
             }
             return pruned;
         }
@@ -76,43 +95,53 @@ public final class FieldSelection {
         for (Map.Entry<String, JsonNode> member : object.properties()) {
             String name = member.getKey();
             List<Node> memberSelections = select(selections, name);
-            if (memberSelections == KEEP_ALL) {
+            if (memberSelections == null) {
+                if (topLevel && alwaysKept.contains(name)) {
+                    pruned.set(name, member.getValue());
+                }
+            } else if (isWhole(memberSelections)) {
                 pruned.set(name, member.getValue());
-            } else if (memberSelections != null) {
+            } else {
                 pruned.set(name, prune(memberSelections, member.getValue()));
-            } else if (topLevel && alwaysKept.contains(name)) {
-                pruned.set(name, member.getValue());
             }
         }
         return pruned;
     }
 
+    private static boolean isWhole(List<Node> selections) {
+        return selections.get(0).whole;
+    }
+
     @Nullable
     private static List<Node> select(List<Node> selections, String name) {
-        List<Node> matched = null;
+        if (selections.size() == 1) {
+            Node selection = selections.get(0);
+            Node named = selection.members.get(name);
+            Node any = selection.members.get(WILDCARD);
+            if (named == null || any == null || named == any) {
+                Node only = named != null ? named : any;
+                return only == null ? null : only.self;
+            }
+            return named.whole || any.whole ? WHOLE.self : List.of(named, any);
+        }
+        List<Node> matched = new ArrayList<>();
         for (Node selection : selections) {
             Node named = selection.members.get(name);
             Node any = selection.members.get(WILDCARD);
             if (named != null) {
                 if (named.whole) {
-                    return KEEP_ALL;
+                    return WHOLE.self;
                 }
-                matched = add(matched, named);
+                matched.add(named);
             }
             if (any != null && any != named) {
                 if (any.whole) {
-                    return KEEP_ALL;
+                    return WHOLE.self;
                 }
-                matched = add(matched, any);
+                matched.add(any);
             }
         }
-        return matched;
-    }
-
-    private static List<Node> add(@Nullable List<Node> nodes, Node node) {
-        List<Node> result = nodes == null ? new ArrayList<>(2) : nodes;
-        result.add(node);
-        return result;
+        return matched.isEmpty() ? null : matched;
     }
 
     private static Node union(Node first, Node second) {
@@ -128,6 +157,7 @@ public final class FieldSelection {
     private static final class Node {
         private final boolean whole;
         private final Map<String, Node> members = new LinkedHashMap<>();
+        private final List<Node> self = List.of(this);
 
         private Node(boolean whole) {
             this.whole = whole;

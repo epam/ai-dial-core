@@ -324,7 +324,6 @@ public class DeploymentApiTest extends ResourceBaseTest {
                 send(HttpMethod.GET, "/openai/deployments/gpt-5.4-mini")).get("interface_configs"));
     }
 
-
     @DialConfigLocation("dial-config/deployment-interfaces-listing.json")
     @Test
     public void testListDeploymentsWithFields() throws JsonProcessingException {

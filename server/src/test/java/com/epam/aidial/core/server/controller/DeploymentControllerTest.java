@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
+import io.vertx.core.http.HttpServerResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -32,12 +34,14 @@ public class DeploymentControllerTest {
     private final Proxy proxy = mock(Proxy.class);
     private final ProxyContext context = mock(ProxyContext.class);
     private final AsyncTaskExecutor executor = mock(AsyncTaskExecutor.class);
+    private final HttpServerResponse response = mock(HttpServerResponse.class);
 
     private DeploymentController controller;
 
     @BeforeEach
     void setUp() {
         when(proxy.getTaskExecutor()).thenReturn(executor);
+        when(context.getResponse()).thenReturn(response);
         controller = new DeploymentController(proxy, context);
     }
 
@@ -65,7 +69,7 @@ public class DeploymentControllerTest {
         controller.respondListing(List.of(new ModelData()), FieldSelection.parse("display_name", Set.of("id")));
 
         verify(context).respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
-        verifyNoMoreInteractions(context);
+        verify(context, never()).respond(eq(HttpStatus.OK), any(Object.class));
     }
 
     @Test
@@ -76,5 +80,15 @@ public class DeploymentControllerTest {
         controller.respondListing(deployments, null);
 
         verify(context).respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
+    }
+
+    @Test
+    void failedWriteAfterTheResponseHeadIsWrittenIsOnlyLogged() {
+        when(response.headWritten()).thenReturn(true);
+        doThrow(new IllegalStateException("boom")).when(context).respond(eq(HttpStatus.OK), any(Object.class));
+
+        controller.respondListing(List.of(new ModelData()), null);
+
+        verify(context, never()).respond(eq(HttpStatus.INTERNAL_SERVER_ERROR), any(String.class));
     }
 }

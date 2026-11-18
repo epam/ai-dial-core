@@ -96,7 +96,7 @@ Routers appear, as entries with `object: "router"`, in the generic deployment li
 * `GET /v1/deployment-names`, with `type=router` or `all`.
 * `GET /v1/deployments/{router_name}`: `403` when the caller's roles do not allow the router.
 
-`GET /v1/deployments` takes an optional `fields` parameter that cuts each entry down to the named members plus `id` and `object`, for example `fields=display_name,interfaces`. Names are the names of the response, and unknown names are ignored. A selection that is malformed or longer than 1024 bytes answers `400`. A request that already sends an unrelated `fields` parameter to this endpoint is now read as a selection and gets filtered entries or a `400`.
+`GET /v1/deployments` takes an optional `fields` parameter that cuts each entry down to the named members plus `id` and `object`, for example `fields=display_name,interfaces`. Parentheses select inside a member (`features(rate,tokenize)`), and `*` stands for every member at its level (`interface_configs(*(features))`). Names are the names of the response: snake_case at the top level, and inside a nested object the names that object has. Unknown names are ignored, and an object left with none of the named members is `{}`. A selection that is malformed, longer than 1024 bytes or nested deeper than 5 levels answers `400`. A request that already sends an unrelated `fields` parameter to this endpoint is now read as a selection and gets filtered entries or a `400`.
 
 They have their own listing too:
 

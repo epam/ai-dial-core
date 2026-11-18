@@ -190,10 +190,7 @@ public class DeploymentController {
                 deployments.addAll(result.resultAt(i));
             }
             respondListing(deployments, selection);
-        }).onFailure(error -> {
-            log.error("Error occurred on listing deployments", error);
-            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
-        });
+        }).onFailure(this::respondInternalError);
 
         return Future.succeededFuture();
     }
@@ -227,7 +224,9 @@ public class DeploymentController {
 
     private void respondInternalError(Throwable error) {
         log.error("Error occurred on listing deployments", error);
-        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
+        if (!context.getResponse().headWritten()) {
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
+        }
     }
 
 

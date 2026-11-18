@@ -65,10 +65,15 @@ still cost what they cost today because `fields` does not skip building a field.
 - The pruner carries the matching selection nodes of a name and `*` down the recursion and does not merge them into the
   parsed tree, so the parsed selection is immutable. Merging at parse time copies the `*` subtree into every named
   sibling at every level: a simulation turned a 1,004-byte selection of 152 nodes into 125,051 nodes with three `*`
-  levels and 2,086,619 with four. `FieldSelectionTest.wildcardsAtSeveralLevelsStayCheap` guards this.
-- A failure of the conversion and pruning, or of writing the answer, with or without `fields`, is logged and answered
-  `500` with the text `Internal error`; the failure of the listing itself keeps its handler. `DeploymentControllerTest`
-  covers both, through the package-private `respondListing`.
+  levels and 2,086,619 with four. `FieldSelectionTest.wildcardsAtSeveralLevelsAreNotMergedIntoTheParsedSelection` guards this.
+- A failure of the listing, of the conversion and pruning, or of writing the answer, with or without `fields`, is
+  logged and answered `500` with the text `Internal error`, and only logged when the response head is already
+  written. `DeploymentControllerTest` covers it through the package-private `respondListing`.
+- From a later review: a bare `*` at the top (`*`, `*,x`) keeps everything, so `parse` returns no selection and the
+  request takes the unselected path; arrays are selected into recursively, nested arrays included; the matching
+  selection lists of a single node are cached on the node, so the common case allocates nothing; the size guard of the
+  parsed selection counts members, not seconds; the spec and the OpenAPI text say that an object left with no members
+  stays `{}`. The cost of the conversion on the virtual-thread executor was accepted and is recorded in design.md.
 - A filter-while-serializing version replaced the tree for a while and was dropped again (see above). Along the way a
   model with a decision-tree pricing rate had made every `fields` request fail, which the tree version cannot do;
   `FieldSelectionTest` keeps the cases for localized values, decision-tree rates and a `JsonNode` in a free-form map.

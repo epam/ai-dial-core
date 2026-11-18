@@ -12,7 +12,7 @@ entries). "No parameter": the existing `testListDeployments`, which must pass un
 ## 1. FieldSelection helper
 
 - [x] 1.1 Add `server/.../util/FieldSelection` (design D2, D3, D5): `parse(String)` returning no selection for null,
-  empty or blank, throwing `IllegalArgumentException` (message with the position) for unbalanced parentheses, an empty
+  empty or blank text and a bare `*` at the top, throwing `IllegalArgumentException` (message with the position) for unbalanced parentheses, an empty
   name, a parenthesis with no name before it, text after `)` other than `,` or `)`, a value over `MAX_LENGTH = 1024` bytes
   and nesting over `MAX_DEPTH = 5`; the union rule of design D2 for repeated names, and the matching selection nodes of a name and `*`
   carried down the recursion (design D3); `project(ObjectNode row)` keeping the caller's always-kept names (`id` and
@@ -27,9 +27,10 @@ entries). "No parameter": the existing `testListDeployments`, which must pass un
 
 - [x] 2.1 `DeploymentController.listDeployments` (design D4): parse `fields` after `build` and before `execute`, answer
   `400` with the exception message on `IllegalArgumentException`; with a selection, convert and prune row by row on
-  `proxy.getTaskExecutor()` and respond with the `ArrayNode`; a failure there, or of writing the answer with or
-  without `fields`, is logged and answered `500` `Internal error`; without a selection, the current `respond` call
-  stays but for that failure handling.
+  `proxy.getTaskExecutor()` and respond with the `ArrayNode`; a failure of the listing, of the conversion and
+  pruning, or of writing the answer, with or without `fields`, is logged and answered `500` `Internal error` (only
+  logged once the response head is written); without a selection, the current `respond` call stays but for that
+  failure handling.
   Tests first in `DeploymentApiTest`: one method on `deployment-interfaces-listing.json` for the scenarios of the
   header ("Top-level fields only", "Several names", "Selection without id and object", "Nested object", "Misspelled
   name", "Field of another kind", "Unbalanced parenthesis", "Empty value", "With interface type", "Other

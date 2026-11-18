@@ -90,9 +90,10 @@ With a selection, `listDeployments` converts each deployment with `ProxyUtil.MAP
 never a tree of the whole listing. Rows are serialized by the same mapper as today, so the wire names, `NON_NULL`, the
 runtime subtype and the encrypted-field rule give the same members; pruning only removes. Order is kept: members
 appear in the order the full serialization has them. `id` and `object` are kept at the top level of each row in
-addition to the selection (the always-kept names the caller passes). An array applies the selection to each object
-element and keeps a non-object element; a selection below a value with no members (a string, a number, null, an array
-of strings) leaves the value as it is, so a nested name on a scalar is not an error and not a loss. The tree holds
+addition to the selection (the always-kept names the caller passes). An array applies the selection to each of its elements, nested arrays included. A selection below a value with no
+members (a string, a number, null, an array of strings) leaves the value as it is, so a nested name on a scalar is not
+an error and not a loss. An object that has none of the named members becomes `{}`, which is what a misspelled nested
+name gives; only a top-level unknown name makes a member disappear. The tree holds
 exactly what the mapper wrote, so every type is narrowed the same way: a localized value, a decision-tree pricing rate
 or a `JsonNode` stored in a free-form map needs no cooperation from its serializer.
 
@@ -117,13 +118,14 @@ fields while building each `DeploymentData` (see Non-Goals; it would couple ever
 `FieldSelection.parse(String, Set<String>)` runs right after `getDeploymentInterfaces`/`build` and before `execute`, so
 a bad selection is `400` before any storage read, as a bad `interface_type` is today. It throws
 `IllegalArgumentException` with a message that names the problem and the position; the controller answers it the way
-it answers `build`'s. A null, empty or blank value gives no selection and the code that follows is the code of today.
+it answers `build`'s. A null, empty or blank value, and a selection with a bare `*` at the top (`*`, `*,x`), which keeps everything, give
+no selection and the code that follows is the code of today.
 
 When there is a selection, the `onSuccess` of the combined future submits the conversion and pruning, row by row, to
 `proxy.getTaskExecutor()` and responds with the resulting `ArrayNode`. The event loop then serializes the pruned tree,
-which is smaller than the full list it serializes today. A failure of the listing keeps its handler (`500` with the
-exception message). A failure of the conversion and pruning, or of writing the answer, with or without `fields`, is
-logged and answered `500` with the text `Internal error`.
+which is smaller than the full list it serializes today. A failure of the listing, of the conversion and pruning, or of writing the answer, with or without
+`fields`, is logged and answered `500` with the text `Internal error`; when the response head is already written it is
+only logged.
 
 Rejected: converting on the event loop (the whole point is large listings; a list of thousands of custom
 applications would add a second pass over every row to the loop). The cost of the hop is one task submission, which
@@ -148,6 +150,11 @@ used by an `@ApiParameter(name = "fields", in = QUERY, schema = String.class)` o
   listing on the existing fixtures.
 - [Extra memory and CPU: each row exists as a DTO and as a tree until it is pruned] → Only with `fields`, one full row
   tree at a time plus the pruned result, on the task executor; the measurement records it.
+- [CPU-bound conversion on the virtual-thread executor] → Accepted. Virtual threads do not yield during CPU work, so
+  about 100 ms of work for 5,000 rows with configs (about 5 ms for 200) holds a carrier thread, and several concurrent
+  large `fields` requests can delay the blocking storage and Redis tasks on the same executor
+  (`dial_async_task_start_delay` shows it). The unselected listing already spends 44 to 73 ms for the same rows on the
+  event loop, which blocks every request. Revisit with chunked tasks if the metric shows queuing.
 - [A key with `,`, `(` or `)` in a free-form map cannot be named] → `*(...)` reaches it; no such key exists in the
   fixtures or the documented settings.
 - [Caches keyed on the URL] → The parameter is part of the URL, so a cached full listing is never served for a

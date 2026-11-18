@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +25,6 @@ import java.util.stream.IntStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class FieldSelectionTest {
@@ -146,7 +144,6 @@ public class FieldSelectionTest {
     void repeatedNamesAreMerged() {
         assertEquals(List.of("rate", "tokenize"), names(project("features(rate),features(tokenize)").get(0).get("features")));
         assertEquals(4, project("features,features(rate)").get(0).get("features").size());
-        assertEquals(4, project("*,features(rate)").get(0).get("features").size());
         assertEquals(List.of("rate", "tokenize"), names(project("features(rate),*(tokenize)").get(0).get("features")));
     }
 
@@ -182,10 +179,10 @@ public class FieldSelectionTest {
         model.setPricing(pricing);
 
         JsonNode expectedRate = ProxyUtil.MAPPER.valueToTree(rate);
-        for (String fields : List.of("*", "pricing", "pricing(prompt)")) {
+        for (String fields : List.of("pricing", "pricing(prompt)")) {
             assertEquals(expectedRate, parse(fields).project(tree(model)).get("pricing").get("prompt"), fields);
         }
-        assertEquals(tree(model), parse("*").project(tree(model)));
+        assertEquals(tree(model).get("pricing"), parse("pricing").project(tree(model)).get("pricing"));
         assertEquals(read("{\"test\": {\"field\": \"prompt_tokens\"}, \"ifTrue\": \"1\"}"),
                 parse("pricing(prompt(test(field),ifTrue))").project(tree(model)).get("pricing").get("prompt"));
     }
@@ -208,8 +205,26 @@ public class FieldSelectionTest {
     }
 
     @Test
-    void topLevelWildcardKeepsEverything() {
-        assertEquals(read(ROWS), project("*"));
+    void bareWildcardAtTheTopKeepsEverythingSoItIsNoSelection() {
+        assertNull(parse("*"));
+        assertNull(parse("*,features(rate)"));
+        assertNull(parse("features(rate), * "));
+        assertThrows(IllegalArgumentException.class, () -> parse("*,a("));
+    }
+
+    @Test
+    void nestedArraysAreSelectedInto() {
+        ObjectNode row = object("{\"m\": [[{\"a\": 1, \"b\": 2}], \"s\", [[{\"b\": 3}]]]}");
+
+        assertEquals(read("{\"m\": [[{\"a\": 1}], \"s\", [[{}]]]}"), parse("m(a)").project(row));
+    }
+
+    @Test
+    void objectWithoutTheNamedMembersIsLeftEmpty() {
+        JsonNode first = project("features(rat),interface_configs(*(feature))").get(0);
+
+        assertEquals(read("{}"), first.get("features"));
+        assertEquals(read("{\"openaiChatCompletions\": {}, \"anthropicMessages\": {}}"), first.get("interface_configs"));
     }
 
     @Test
@@ -247,11 +262,12 @@ public class FieldSelectionTest {
     }
 
     @Test
-    void wildcardsAtSeveralLevelsStayCheap() {
+    void wildcardsAtSeveralLevelsAreNotMergedIntoTheParsedSelection() {
         String names = IntStream.range(0, 37).mapToObj(i -> "n" + i + "(z)").collect(Collectors.joining(","));
         String fields = "*(*(*(" + names + ")," + names + ")," + names + ")," + names;
 
-        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> project(fields));
+        assertTrue(parse(fields).memberCount() <= fields.length());
+        assertEquals(2, project(fields).size());
     }
 
     private static FieldSelection parse(String fields) {

@@ -29,7 +29,7 @@ names of the response: snake_case at the top level, and inside a nested object t
 
 ### Requirement: Nested selection
 A name in `fields` MAY be followed by a parenthesised selection that applies to the value of that field. A selection
-on an object keeps only the members it names. On an array, it applies to each object element. A name `*` matches
+on an object keeps only the members it names. On an array, it applies to each element, nested arrays included. A name `*` matches
 every key at its level. A selection on a value that has no members (a string, a number, an array of strings) SHALL
 leave that value unchanged.
 
@@ -52,6 +52,18 @@ leave that value unchanged.
 #### Scenario: Free-form map
 - **WHEN** a caller sends `fields=defaults(temperature)` and a deployment's `defaults` holds several keys
 - **THEN** that deployment's `defaults` holds only `temperature`
+
+#### Scenario: Objects in nested arrays
+- **WHEN** a caller sends `fields=defaults(m(a))` and `defaults.m` is an array of arrays of objects with members `a` and `b`
+- **THEN** each inner object holds only `a`
+
+#### Scenario: Object left without members
+- **WHEN** a caller sends `fields=features(rat)` and no member of `features` is called `rat`
+- **THEN** `features` is `{}` in every deployment
+
+#### Scenario: Wildcard alone
+- **WHEN** a caller sends `fields=*` or `fields=*,display_name`
+- **THEN** the answer is the same as without `fields`
 
 ### Requirement: Selection reaches inside localized values and pricing rates
 A nested selection SHALL apply inside a localized value that holds several locales (`display_name`, `description`),
@@ -112,8 +124,9 @@ five levels. A top-level name is level one, and each parenthesis opens the next 
 - **THEN** the answer is the same as without `fields`
 
 ### Requirement: A listing that cannot be written answers 500
-`GET /v1/deployments` SHALL answer `500` with the text `Internal error` when it fails to convert the listing for
-`fields` or to write the answer, with or without `fields`.
+`GET /v1/deployments` SHALL answer `500` with the text `Internal error` when it fails to build the listing, to
+convert it for `fields` or to write the answer, with or without `fields`. When the response head is already written,
+the failure is only logged.
 
 #### Scenario: Conversion fails
 - **WHEN** converting the listing for a `fields` request fails
