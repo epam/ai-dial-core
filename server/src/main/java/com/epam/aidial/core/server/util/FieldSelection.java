@@ -2,9 +2,9 @@ package com.epam.aidial.core.server.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -17,51 +17,53 @@ import javax.annotation.Nullable;
  * <p>A name keeps the whole value of that member. A name followed by a parenthesised selection applies it to the
  * value: to the members of an object and to each object element of an array. A value with no members is left as it
  * is. The name {@code *} matches every member at its level. A name no member has selects nothing.
+ *
+ * <p>The caller names the top-level members that are kept whether selected or not. A selection caches what it resolves
+ * while projecting, so one instance is not for concurrent use.
  */
 public final class FieldSelection {
 
-    static final int MAX_LENGTH = 2048;
+    static final int MAX_LENGTH = 1024;
     static final int MAX_DEPTH = 5;
 
     private static final String WILDCARD = "*";
-    private static final Set<String> ALWAYS_KEPT = Set.of("id", "object");
     private static final Node WHOLE = new Node(true);
 
     private final Node root;
+    private final Set<String> alwaysKept;
 
-    private FieldSelection(Node root) {
+    private FieldSelection(Node root, Set<String> alwaysKept) {
         this.root = root;
+        this.alwaysKept = alwaysKept;
     }
 
     /**
      * Returns null when the text is null or blank, which means no selection.
      *
+     * @param alwaysKept the names of the top-level members that {@link #project} keeps when they are not selected
+     *
      * @throws IllegalArgumentException when the text is longer or nested deeper than the limits or is not a selection
      */
     @Nullable
-    public static FieldSelection parse(@Nullable String text) {
+    public static FieldSelection parse(@Nullable String text, Set<String> alwaysKept) {
         if (text == null || text.isBlank()) {
             return null;
         }
         if (text.length() > MAX_LENGTH) {
             throw new IllegalArgumentException("Invalid fields parameter: longer than " + MAX_LENGTH + " characters");
         }
-        return new FieldSelection(new Parser(text).parse());
+        return new FieldSelection(new Parser(text).parse(), Set.copyOf(alwaysKept));
     }
 
     /**
-     * Keeps the selected members of each object in the rows, and {@code id} and {@code object} whether selected or not.
-     * The result shares the kept values with the rows.
+     * Keeps the selected members of the row, and the always-kept ones whether selected or not.
+     * The result shares the kept values with the row.
      */
-    public ArrayNode project(JsonNode rows) {
-        ArrayNode projected = JsonNodeFactory.instance.arrayNode();
-        for (JsonNode row : rows) {
-            projected.add(row instanceof ObjectNode object ? pruneObject(root, object, true) : row);
-        }
-        return projected;
+    public ObjectNode project(ObjectNode row) {
+        return pruneObject(root, row, true);
     }
 
-    private static JsonNode prune(Node selection, JsonNode value) {
+    private JsonNode prune(Node selection, JsonNode value) {
         if (selection.whole) {
             return value;
         }
@@ -78,14 +80,14 @@ public final class FieldSelection {
         return value;
     }
 
-    private static ObjectNode pruneObject(Node selection, ObjectNode object, boolean topLevel) {
+    private ObjectNode pruneObject(Node selection, ObjectNode object, boolean topLevel) {
         ObjectNode pruned = object.objectNode();
         for (Map.Entry<String, JsonNode> member : object.properties()) {
             String name = member.getKey();
             Node memberSelection = selection.select(name);
             if (memberSelection != null) {
                 pruned.set(name, prune(memberSelection, member.getValue()));
-            } else if (topLevel && ALWAYS_KEPT.contains(name)) {
+            } else if (topLevel && alwaysKept.contains(name)) {
                 pruned.set(name, member.getValue());
             }
         }
@@ -105,6 +107,7 @@ public final class FieldSelection {
     private static final class Node {
         private final boolean whole;
         private final Map<String, Node> members = new LinkedHashMap<>();
+        private final Map<String, Node> unions = new HashMap<>();
 
         private Node(boolean whole) {
             this.whole = whole;
@@ -117,7 +120,7 @@ public final class FieldSelection {
             if (named == null) {
                 return any;
             }
-            return any == null ? named : union(named, any);
+            return any == null ? named : unions.computeIfAbsent(name, key -> union(named, any));
         }
     }
 

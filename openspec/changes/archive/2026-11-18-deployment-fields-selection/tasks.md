@@ -13,9 +13,9 @@ entries). "No parameter": the existing `testListDeployments`, which must pass un
 
 - [x] 1.1 Add `server/.../util/FieldSelection` (design D2, D3, D5): `parse(String)` returning no selection for null,
   empty or blank, throwing `IllegalArgumentException` (message with the position) for unbalanced parentheses, an empty
-  name, a parenthesis with no name before it, text after `)` other than `,` or `)`, a value over `MAX_LENGTH = 2048`
-  and nesting over `MAX_DEPTH = 5`; a merged member tree with the union rule; `project(JsonNode rows)` keeping `id` and
-  `object` at the top level, applying nested selections to objects and to the object elements of arrays, leaving a
+  name, a parenthesis with no name before it, text after `)` other than `,` or `)`, a value over `MAX_LENGTH = 1024`
+  and nesting over `MAX_DEPTH = 5`; a merged member tree with the union rule; `project(ObjectNode row)` keeping the
+  caller's always-kept names (`id` and `object`) at the top level, applying nested selections to objects and to the object elements of arrays, leaving a
   value with no members unchanged, and keeping member order. Tests first in `FieldSelectionTest` (the unit scenarios
   above, one assertion group each, and `*` over the serialized fixture-like `DeploymentData` rows equals the
   unselected tree). Verify `./gradlew :server:test --tests "com.epam.aidial.core.server.util.FieldSelectionTest"`

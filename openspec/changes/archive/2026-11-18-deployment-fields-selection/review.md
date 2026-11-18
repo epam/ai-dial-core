@@ -30,6 +30,11 @@ because `fields` does not skip building a field.
 - A bug found by `FieldSelectionTest`: whitespace after a closing parenthesis (`features(rate) , x`) was rejected,
   against design D2 ("surrounding whitespace is trimmed"). `FieldSelection` now skips it. No change to the spec or
   design.
+- After the PR review: `FieldSelection` takes the always-kept names from the caller (`parse(text, alwaysKept)`) and
+  projects one row (`project(ObjectNode row)`), so the controller converts and prunes row by row and the full tree of
+  the listing is never held; the union of a name and `*` is cached per node; `MAX_LENGTH` is 1,024 so that a selection
+  whose separators are percent-encoded still fits the 4,096-byte request line. The proposal now says that a request
+  already sending an unrelated `fields` parameter is read as a selection.
 - design.md named the measurement task as `4.2`; it is `3.1`. Corrected.
 - `DeploymentController` gained a private `respondListingFailure` shared by the two failure handlers (the listing
   and the projection); the design did not name it.

@@ -20,13 +20,14 @@ This change lets the caller name the fields it wants.
 - A name that matches nothing in a deployment is left out of that deployment. Core does not check names against a
   schema: `fields=display_name,descriptio` returns `display_name` and no error. A name only fails when the selection
   text itself is malformed or too large.
-- A malformed selection (unbalanced parentheses, an empty name) or one over the limits (2,048 characters, five
+- A malformed selection (unbalanced parentheses, an empty name) or one over the limits (1,024 characters, five
   levels) answers `400`, as an unknown `interface_type` does today. The limits are constants in code.
 - The parameter composes with `interface_type`: `interface_type` picks the deployments, `fields` picks what is
   returned for each.
 - Without `fields` nothing changes: same rows, same bytes.
 
-No breaking change: the parameter is optional and a request without it is answered as before.
+A request without `fields` is answered as before. A request that already sends a `fields` parameter for some other
+reason is now read as a selection: it gets fewer members per deployment, or `400` when the text is not a selection.
 
 Out of scope:
 

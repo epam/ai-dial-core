@@ -75,11 +75,11 @@ with no name before it, or text after a closing parenthesis other than `,` or `)
 - **THEN** the answer is `400`
 
 ### Requirement: Selection size limits
-`GET /v1/deployments` SHALL answer `400` when the `fields` value is longer than 2,048 characters or nests deeper than
+`GET /v1/deployments` SHALL answer `400` when the `fields` value is longer than 1,024 characters or nests deeper than
 five levels. A top-level name is level one, and each parenthesis opens the next level.
 
 #### Scenario: Too long
-- **WHEN** a caller sends a `fields` value of 2,049 characters
+- **WHEN** a caller sends a `fields` value of 1,025 characters
 - **THEN** the answer is `400`
 
 #### Scenario: Too deep

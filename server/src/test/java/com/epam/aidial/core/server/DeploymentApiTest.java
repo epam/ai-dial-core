@@ -328,28 +328,31 @@ public class DeploymentApiTest extends ResourceBaseTest {
     @DialConfigLocation("dial-config/deployment-interfaces-listing.json")
     @Test
     public void testListDeploymentsWithFields() throws JsonProcessingException {
-        Map<String, JsonNode> all = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
-        assertEquals(5, all.size());
+        Map<String, JsonNode> deploymentsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
+        assertEquals(5, deploymentsById.size());
 
         // the tree the selection prunes is the same serialization as the full answer
-        assertEquals(all, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=*", null)));
+        assertEquals(deploymentsById, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=*", null)));
         // an empty value is no selection
-        assertEquals(all, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=", null)));
+        assertEquals(deploymentsById, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=", null)));
 
-        Map<String, JsonNode> names = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=display_name", null));
-        assertEquals(all.keySet(), names.keySet());
-        for (Map.Entry<String, JsonNode> entry : names.entrySet()) {
+        Map<String, JsonNode> displayNamesById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=display_name", null));
+        assertEquals(deploymentsById.keySet(), displayNamesById.keySet());
+        // the selection does not reorder the deployments
+        assertEquals(listedIds(send(HttpMethod.GET, "/v1/deployments", null, null)),
+                listedIds(send(HttpMethod.GET, "/v1/deployments", "fields=display_name", null)));
+        for (Map.Entry<String, JsonNode> entry : displayNamesById.entrySet()) {
             assertEquals(Set.of("id", "object", "display_name"), fieldNames(entry.getValue()));
-            assertEquals(all.get(entry.getKey()).get("object"), entry.getValue().get("object"));
+            assertEquals(deploymentsById.get(entry.getKey()).get("object"), entry.getValue().get("object"));
         }
         // a name no deployment has adds nothing
-        assertEquals(names, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=display_name,descriptio", null)));
+        assertEquals(displayNamesById, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=display_name,descriptio", null)));
 
-        Map<String, JsonNode> several = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
+        Map<String, JsonNode> severalFieldsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
                 "fields=display_name,display_version,features", null));
-        for (Map.Entry<String, JsonNode> entry : several.entrySet()) {
+        for (Map.Entry<String, JsonNode> entry : severalFieldsById.entrySet()) {
             assertTrue(Set.of("id", "object", "display_name", "display_version", "features").containsAll(fieldNames(entry.getValue())));
-            assertEquals(all.get(entry.getKey()).get("features"), entry.getValue().get("features"));
+            assertEquals(deploymentsById.get(entry.getKey()).get("features"), entry.getValue().get("features"));
         }
 
         // id and object stay when they are not selected
@@ -357,23 +360,23 @@ public class DeploymentApiTest extends ResourceBaseTest {
             assertEquals(Set.of("id", "object", "features"), fieldNames(row));
         }
 
-        Map<String, JsonNode> nested = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
+        Map<String, JsonNode> nestedFeaturesById = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
                 "fields=display_name,features(rate,tokenize)", null));
-        for (JsonNode row : nested.values()) {
+        for (JsonNode row : nestedFeaturesById.values()) {
             assertEquals(Set.of("id", "object", "display_name", "features"), fieldNames(row));
             assertEquals(Set.of("rate", "tokenize"), fieldNames(row.get("features")));
         }
 
         // a field of another kind of deployment is left out of the rest
-        Map<String, JsonNode> properties = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=application_properties", null));
-        assertEquals(Set.of("id", "object", "application_properties"), fieldNames(properties.get("schema-app")));
-        assertEquals(Set.of("id", "object"), fieldNames(properties.get("gpt-4")));
-        assertEquals(Set.of("id", "object"), fieldNames(properties.get("git")));
+        Map<String, JsonNode> applicationPropertiesById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=application_properties", null));
+        assertEquals(Set.of("id", "object", "application_properties"), fieldNames(applicationPropertiesById.get("schema-app")));
+        assertEquals(Set.of("id", "object"), fieldNames(applicationPropertiesById.get("gpt-4")));
+        assertEquals(Set.of("id", "object"), fieldNames(applicationPropertiesById.get("git")));
 
         // the selection narrows the fields, not the deployments of interface_type
-        Map<String, JsonNode> mcp = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp&fields=display_name", null));
-        assertEquals(collectDeployments(send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp", null)).keySet(), mcp.keySet());
-        for (JsonNode row : mcp.values()) {
+        Map<String, JsonNode> mcpDeploymentsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp&fields=display_name", null));
+        assertEquals(collectDeployments(send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp", null)).keySet(), mcpDeploymentsById.keySet());
+        for (JsonNode row : mcpDeploymentsById.values()) {
             assertEquals(Set.of("id", "object", "display_name"), fieldNames(row));
         }
 
@@ -388,13 +391,13 @@ public class DeploymentApiTest extends ResourceBaseTest {
     @DialConfigLocation("dial-config/deployment-interface-configs.json")
     @Test
     public void testListDeploymentsWithFieldsSelectsInsideMaps() throws JsonProcessingException {
-        Map<String, JsonNode> all = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
-        assertEquals(all, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=*", null)));
+        Map<String, JsonNode> deploymentsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
+        assertEquals(deploymentsById, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=*", null)));
 
-        Map<String, JsonNode> selected = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
+        Map<String, JsonNode> reasoningEffortsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
                 "fields=interface_configs(*(features(reasoning_efforts)))", null));
-        JsonNode configs = selected.get("gpt-5.4-mini").get("interface_configs");
-        assertEquals(fieldNames(all.get("gpt-5.4-mini").get("interface_configs")), fieldNames(configs));
+        JsonNode configs = reasoningEffortsById.get("gpt-5.4-mini").get("interface_configs");
+        assertEquals(fieldNames(deploymentsById.get("gpt-5.4-mini").get("interface_configs")), fieldNames(configs));
         assertEquals(3, configs.size());
         for (JsonNode config : configs) {
             assertEquals(Set.of("features"), fieldNames(config));
@@ -459,6 +462,15 @@ public class DeploymentApiTest extends ResourceBaseTest {
             result.put(deployment.get("id").asText(), deployment);
         }
         return result;
+    }
+
+    private static List<String> listedIds(Response response) throws JsonProcessingException {
+        verify(response, 200);
+        List<String> ids = new ArrayList<>();
+        for (JsonNode deployment : ProxyUtil.MAPPER.readTree(response.body())) {
+            ids.add(deployment.get("id").asText());
+        }
+        return ids;
     }
 
     private static Set<String> fieldNames(JsonNode object) {

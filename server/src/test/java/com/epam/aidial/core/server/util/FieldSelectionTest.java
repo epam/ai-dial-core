@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -8,6 +10,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -15,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class FieldSelectionTest {
+
+    private static final Set<String> ID_AND_OBJECT = Set.of("id", "object");
 
     private static final String ROWS = """
             [
@@ -33,9 +38,9 @@ public class FieldSelectionTest {
 
     @Test
     void emptyOrBlankValueGivesNoSelection() {
-        assertNull(FieldSelection.parse(null));
-        assertNull(FieldSelection.parse(""));
-        assertNull(FieldSelection.parse("  "));
+        assertNull(parse(null));
+        assertNull(parse(""));
+        assertNull(parse("  "));
     }
 
     @Test
@@ -70,8 +75,23 @@ public class FieldSelectionTest {
         assertEquals(List.of("rate", "tokenize"), names(first.get("features")));
         assertEquals(List.of("paths"), names(first.get("routes").get("r1")));
 
-        JsonNode rows = read("[{\"a\": [{\"b\": 1, \"c\": 2}, \"s\", 3]}]");
-        assertEquals(read("[{\"a\": [{\"b\": 1}, \"s\", 3]}]"), FieldSelection.parse("a(b)").project(rows));
+        ObjectNode row = (ObjectNode) read("{\"a\": [{\"b\": 1, \"c\": 2}, \"s\", 3]}");
+        assertEquals(read("{\"a\": [{\"b\": 1}, \"s\", 3]}"), parse("a(b)").project(row));
+    }
+
+    @Test
+    void alwaysKeptNamesAreChosenByTheCaller() {
+        ObjectNode row = (ObjectNode) read("{\"id\": \"x\", \"name\": \"n\", \"kind\": \"k\", \"size\": 1}");
+
+        assertEquals(List.of("name", "kind"), names(FieldSelection.parse("name", Set.of("kind")).project(row)));
+        assertEquals(List.of("name"), names(FieldSelection.parse("name", Set.of()).project(row)));
+    }
+
+    @Test
+    void alwaysKeptNamesApplyOnlyAtTheTopLevel() {
+        ObjectNode row = (ObjectNode) read("{\"id\": \"x\", \"a\": {\"id\": 1, \"b\": 2}}");
+
+        assertEquals(read("{\"id\": \"x\", \"a\": {\"b\": 2}}"), parse("a(b)").project(row));
     }
 
     @Test
@@ -100,6 +120,10 @@ public class FieldSelectionTest {
         assertEquals(4, project("features,features(rate)").get(0).get("features").size());
         assertEquals(4, project("*,features(rate)").get(0).get("features").size());
         assertEquals(List.of("rate", "tokenize"), names(project("features(rate),*(tokenize)").get(0).get("features")));
+
+        FieldSelection selection = parse("features(rate),*(tokenize)");
+        ObjectNode row = (ObjectNode) read(ROWS).get(0);
+        assertEquals(selection.project(row), selection.project(row));
     }
 
     @Test
@@ -126,24 +150,33 @@ public class FieldSelectionTest {
     @ParameterizedTest
     @ValueSource(strings = {"features(rate", "features)", "features(rate))", "id,,display_name", "a(,b)", "()", "(a)", "a,", ",a", "a(b)c", "a(b)(c)"})
     void malformedSelectionIsRejected(String fields) {
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> FieldSelection.parse(fields));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> parse(fields));
         assertTrue(error.getMessage().contains("position"), error.getMessage());
     }
 
     @Test
     void selectionOverTheLengthLimitIsRejected() {
-        assertThrows(IllegalArgumentException.class, () -> FieldSelection.parse("a".repeat(FieldSelection.MAX_LENGTH + 1)));
-        FieldSelection.parse("a".repeat(FieldSelection.MAX_LENGTH));
+        assertThrows(IllegalArgumentException.class, () -> parse("a".repeat(FieldSelection.MAX_LENGTH + 1)));
+        parse("a".repeat(FieldSelection.MAX_LENGTH));
     }
 
     @Test
     void selectionOverTheDepthLimitIsRejected() {
-        assertThrows(IllegalArgumentException.class, () -> FieldSelection.parse("a(b(c(d(e(f)))))"));
-        FieldSelection.parse("a(b(c(d(e))))");
+        assertThrows(IllegalArgumentException.class, () -> parse("a(b(c(d(e(f)))))"));
+        parse("a(b(c(d(e))))");
     }
 
-    private static JsonNode project(String fields) {
-        return FieldSelection.parse(fields).project(read(ROWS));
+    private static FieldSelection parse(String fields) {
+        return FieldSelection.parse(fields, ID_AND_OBJECT);
+    }
+
+    private static ArrayNode project(String fields) {
+        FieldSelection selection = parse(fields);
+        ArrayNode projected = ProxyUtil.MAPPER.createArrayNode();
+        for (JsonNode row : read(ROWS)) {
+            projected.add(selection.project((ObjectNode) row));
+        }
+        return projected;
     }
 
     @SneakyThrows

@@ -73,9 +73,10 @@ grows with the number of members (the main objection raised in the exploration).
 treat them differently. Rejected: JSON:API `fields[model]=`, which selects per type and needs the caller to know the
 kind in advance.
 
-Limits, constants in `FieldSelection` (`MAX_LENGTH = 2048`, `MAX_DEPTH = 5`): a longer value or deeper nesting is
+Limits, constants in `FieldSelection` (`MAX_LENGTH = 1024`, `MAX_DEPTH = 5`): a longer value or deeper nesting is
 `400`. Vert.x's request-line limit is its default 4096 (`maxInitialLineLength` is not set anywhere in Core), so a
-2,048-character selection fits with the path and the other parameters. Depth five covers the deepest useful path,
+1,024-character selection fits with the path and the other parameters even when a client percent-encodes every
+separator to three bytes. Depth five covers the deepest useful path,
 `interface_configs(*(features(reasoning_efforts)))` (four levels), and bounds the parser's recursion.
 
 ### D3. Cut the JSON tree of each row
@@ -111,10 +112,11 @@ the measurement in tasks.md checks against the alternative.
 
 ### D5. Where the code goes
 
-`server/.../util/FieldSelection.java`: `static FieldSelection parse(String)`, `ArrayNode project(JsonNode rows)` for
-the listing (the top-level rule with `id` and `object`), and the recursive member pruning behind it. The helper is a
-`util` class like `DeploymentEndpointUtil`, and a later `GET /v1/deployments/{id}` would call the same method on one
-row. The parameter text is a new constant in `OpenApiDescriptions` (module `openapi-annotations`) used by an
+`server/.../util/FieldSelection.java`: `static FieldSelection parse(String, Set<String> alwaysKept)` and
+`ObjectNode project(ObjectNode row)`, with the recursive member pruning behind them. The caller names the top-level
+members that stay when not selected (`id` and `object` for the deployment listing), so the helper is not tied to
+deployments. It is a `util` class like `DeploymentEndpointUtil`, and a later `GET /v1/deployments/{id}` would call the
+same method on its one row. The parameter text is a new constant in `OpenApiDescriptions` (module `openapi-annotations`) used by an
 `@ApiParameter(name = "fields", in = QUERY, schema = String.class)` on `listDeployments`.
 
 ## Risks / Trade-offs
@@ -137,7 +139,7 @@ row. The parameter text is a new constant in `OpenApiDescriptions` (module `open
 - Without `fields`: one `getParam("fields")` that returns null, and nothing else: no parse, no tree, no copy. The
   listing is built, serialized and answered as today. Measured by the existing `DeploymentApiTest.testListDeployments`
   passing unchanged.
-- With `fields`: one parse of at most 2,048 characters; one `valueToTree` and one prune per listed deployment on a
+- With `fields`: one parse of at most 1,024 characters; one `valueToTree` and one prune per listed deployment on a
   virtual thread of the task executor; the event loop serializes the pruned tree in place of the full DTO list. No
   body is forwarded, parsed or copied (the listing is Core's own answer, not a proxied body), no Redis or blob round
   trip is added, and the storage reads that build the list are the ones it does today.

@@ -39,6 +39,7 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
@@ -67,6 +68,7 @@ public class DeploymentController {
     private static final String TOOLSET_TYPE = "toolset";
     private static final String ROUTER_TYPE = "router";
     private static final Set<String> DEPLOYMENT_NAME_TYPES = Set.of(MODEL_TYPE, APPLICATION_TYPE, TOOLSET_TYPE, ROUTER_TYPE);
+    private static final Set<String> ALWAYS_LISTED_FIELDS = Set.of("id", "object");
     private final Proxy proxy;
     private final ProxyContext context;
     private final DeploymentService.DeploymentExtractor appExtractor;
@@ -173,7 +175,7 @@ public class DeploymentController {
         FieldSelection selection;
         try {
             plan = build(interfaces);
-            selection = FieldSelection.parse(context.getRequest().getParam("fields"));
+            selection = FieldSelection.parse(context.getRequest().getParam("fields"), ALWAYS_LISTED_FIELDS);
         } catch (Exception e) {
             context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
             return Future.succeededFuture();
@@ -191,12 +193,20 @@ public class DeploymentController {
                 return;
             }
             proxy.getTaskExecutor()
-                    .submit(() -> selection.project(ProxyUtil.MAPPER.valueToTree(deployments)))
+                    .submit(() -> projectDeployments(selection, deployments))
                     .onSuccess(projected -> context.respond(HttpStatus.OK, projected))
                     .onFailure(this::respondListingFailure);
         }).onFailure(this::respondListingFailure);
 
         return Future.succeededFuture();
+    }
+
+    private static ArrayNode projectDeployments(FieldSelection selection, List<DeploymentData> deployments) {
+        ArrayNode projected = ProxyUtil.MAPPER.createArrayNode();
+        for (DeploymentData deployment : deployments) {
+            projected.add(selection.project(ProxyUtil.MAPPER.valueToTree(deployment)));
+        }
+        return projected;
     }
 
     private void respondListingFailure(Throwable error) {
