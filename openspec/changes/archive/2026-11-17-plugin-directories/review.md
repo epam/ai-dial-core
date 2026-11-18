@@ -87,6 +87,12 @@ Six low findings, inline on the PR.
 
 Checks (JDK 21.0.8): `checkstyleMain checkstyleTest` pass; `PluginRegistryTest` 19/19; `ConfigPluginApiTest` 10/10, `$SkipMode` 3/3, `$ExcludedPlugin` 1/1; `validate plugin-registry --type spec --strict` valid.
 
+## PR review round 2
+
+- **Class loader for a directory with no jars (follow-up: "needed if the setup doesn't have any jars"): changed.** A setup without plugin jars never created a loader: the default image has no `plugins` directory, and with no plugin directory the loop does not run. A loader was created only for an existing plugin directory without jars, just before the start failed. The "registers no plugin provider" check now runs on the jars' registrations before the loader is built (same message, same behaviour); the check on the loaded types after it went, since each registered class is created or fails the load. `testPluginDirectoryWithoutProviderFailsTheLoad` now also covers a directory holding only a library jar.
+
+Checks (JDK 21.0.8): `checkstyleMain checkstyleTest` pass; `PluginRegistryTest` 19/19.
+
 ## Outcome
 
 High/medium findings open: none.

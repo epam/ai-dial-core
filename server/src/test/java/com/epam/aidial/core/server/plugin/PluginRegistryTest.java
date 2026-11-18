@@ -113,6 +113,17 @@ class PluginRegistryTest {
         IllegalStateException error = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings()));
 
         assertTrue(error.getMessage().contains("custom/empty"), error.getMessage());
+
+        // A library jar alone registers nothing either
+        Files.delete(dir.resolve("custom/empty/README.txt"));
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(dir.resolve("custom/empty/library.jar")))) {
+            out.putNextEntry(new JarEntry("library.txt"));
+            out.closeEntry();
+        }
+
+        error = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings()));
+
+        assertTrue(error.getMessage().contains("custom/empty") && error.getMessage().contains("registers no plugin provider"), error.getMessage());
     }
 
     @Test

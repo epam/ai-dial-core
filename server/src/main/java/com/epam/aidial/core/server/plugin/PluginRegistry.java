@@ -86,15 +86,16 @@ public final class PluginRegistry {
                 continue;
             }
             PluginJars jars = listJars(pluginDir);
+            if (jars.providerClasses().isEmpty()) {
+                throw new IllegalStateException("Plugin directory %s (%s) registers no plugin provider".formatted(id, pluginDir.toAbsolutePath()));
+            }
             // Parent first, so Core's classes win over a plugin's copy; never closed since providers live as long as
-            // Core. The loader also finds the classpath's providers through its parent: keep the ones its jars register
+            // Core. The loader also finds the classpath's providers through its parent: keep the ones its jars register.
+            // Each registered class is created or fails the load, so types is never empty here
             ClassLoader loader = new URLClassLoader(jars.urls().toArray(URL[]::new), parent);
             List<String> types = addProviders(ServiceLoader.load(PluginProvider.class, loader).stream()
                             .filter(provider -> jars.providerClasses().contains(provider.type().getName())),
                     "plugin directory " + id, providers, originByType);
-            if (types.isEmpty()) {
-                throw new IllegalStateException("Plugin directory %s (%s) registers no plugin provider".formatted(id, pluginDir.toAbsolutePath()));
-            }
             log.info("Loaded plugin directory {}: types {}", id, types);
         }
         return new PluginRegistry(Map.copyOf(providers));
