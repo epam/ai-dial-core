@@ -125,7 +125,10 @@ class AliasPassesTest {
         target.setDefaultHeaders(Map.of("x-secret", "2"));
         target.setUserRoles(Set.of("power-user"));
 
-        Model view = (Model) AliasPasses.view(alias(AliasPresentation.MODEL), AliasPresentation.MODEL, target);
+        Alias alias = alias(AliasPresentation.MODEL);
+        alias.setDefaultHeaders(Map.of("X-Team", "b"));
+
+        Model view = (Model) AliasPasses.view(alias, AliasPresentation.MODEL, target);
 
         assertEquals("assistant", view.getName());
         assertEquals(LocalizedValue.of("Assistant"), view.getDisplayName());
