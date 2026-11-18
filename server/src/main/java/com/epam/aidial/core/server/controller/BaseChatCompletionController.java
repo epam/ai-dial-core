@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BaseResponseFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
@@ -289,8 +290,8 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
         responseStream.end(response);
 
         String assembledStreamingResponse = null;
-        // the row of an in-process call's pass drops it, so it is not built
-        if (isEventStreamResponse(context.getProxyResponse()) && !context.isChildPass()) {
+        // an alias pass's row drops it, so it is not built
+        if (isEventStreamResponse(context.getProxyResponse()) && !(context.getDeployment() instanceof AliasPass)) {
             assembledStreamingResponse = context.assembledChatCompletionsResponse();
         }
         finishAndLog(assembledStreamingResponse);

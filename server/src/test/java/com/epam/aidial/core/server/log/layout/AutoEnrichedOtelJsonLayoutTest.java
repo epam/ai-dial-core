@@ -354,6 +354,43 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals("01", jsonNode.get("TraceFlags").asText());
     }
 
+    // alias-in-process-hop design D6: the target pass of an alias call enriches the current span, the alias pass's;
+    // the pass of an origin plugin's call leaves its plugin's span alone
+
+    @Test
+    void aliasTargetPassEnrichesTheCurrentSpan() throws Exception {
+        // built before the stubbing: Mockito refuses a mock stubbed inside another stubbing
+        ProxyContext proxyContext = childPassContext(true);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(currentSpan.isRecording()).thenReturn(true);
+
+        layout.doLayout(createEvent("In the target pass"));
+
+        verify(currentSpan).setAttribute("loggerName", "test.logger");
+    }
+
+    @Test
+    void pluginCallPassLeavesTheCurrentSpanAlone() throws Exception {
+        // built before the stubbing: Mockito refuses a mock stubbed inside another stubbing
+        ProxyContext proxyContext = childPassContext(false);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(currentSpan.isRecording()).thenReturn(true);
+
+        layout.doLayout(createEvent("In the plugin's call"));
+
+        verify(currentSpan, never()).setAttribute("loggerName", "test.logger");
+    }
+
+    private static ProxyContext childPassContext(boolean aliasTarget) {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getResponse()).thenReturn(response);
+        when(proxyContext.isChildPass()).thenReturn(true);
+        when(proxyContext.isAliasTargetPass()).thenReturn(aliasTarget);
+        return proxyContext;
+    }
+
     private static LoggingEvent createEvent(String message) {
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         LoggingEvent event = new LoggingEvent();

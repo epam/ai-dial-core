@@ -103,13 +103,24 @@ type), with that name as `<alias>`:
   `/v1/deployments/<alias>/mcp` when the target application has `mcp`.
 * `toolset`: `/v1/toolset/<alias>/mcp`.
 
-Core calls the target in a second pass, over its own HTTP address, as an application calls a model. The address is
-the static setting `backgroundJob.localBaseUrl`, by default `http://localhost:<server port>`; set it when this port
-is not reachable on `localhost`. The second pass:
+Core calls the target in a second pass, as an application calls a model. For chat completions, completions,
+embeddings, Responses (`/openai/v1/responses` and `/openai/responses`, not with `background: true`) and Messages, the
+second pass runs in process: no HTTP request reaches Core, and the body goes over already parsed. Everything else an
+alias forwards goes over Core's own HTTP address: MCP, `tokenize`, `truncate_prompt`, `configuration`, `rate`,
+Messages `count_tokens`, background Responses and the operations on a stored response. That address is the static
+setting `backgroundJob.localBaseUrl`, by default `http://localhost:<server port>`; set it when this port is not
+reachable on `localhost`. The second pass:
 
-* records the call chain: `execution_path` is `[alias, target]`, with one span and one analytics row per pass. The
-  target's usage is counted once, by the target pass; the alias's row shows it as an application's row shows the
-  usage of the models it called;
+* records the call chain: `execution_path` is `[alias, target]`, with one token-stats span and one analytics row per
+  pass. The target's usage is counted once, by the target pass; the alias's row shows it as an application's row
+  shows the usage of the models it called. The alias's row has no `request.body`, `response.body` or
+  `assembled_response`, whatever the key: the target's row logs the bodies once. A target that refuses the call before
+  calling its origin (a limit, access or interface error) writes no row, as on a direct call, so such a call logs no
+  bodies;
+* when it runs in process, has no HTTP server span of its own: it writes its request, operation and usage span
+  attributes on the alias's span, which then shows the target's model and usage; latency, attempts and the response id
+  stay the alias's (see [Tracing](../tracing.md)). An alias that an origin plugin's call reached runs under the
+  plugin's span, so its target pass writes no span attributes, as the plugin's call does not;
 * checks and charges limits and cost under the **target's** name, to the user who made the request. Several aliases
   to one model share its quota, and a role that reaches a model only through an alias needs its limit defined under
   the model's name; a limit under the alias's name has no effect, and the config load logs a warning for it;
@@ -121,6 +132,12 @@ Answers keep the target's `model` value; for a router target in decision mode, t
 router would name itself (see [Decision mode](routers.md#decision-mode)). For a router target the alias lends the
 router only: the deployment the router chooses is checked against the caller's own rights. The caller's
 `Authorization` header is not forwarded through an alias, so a target with `forwardAuthToken` does not receive it.
+
+When the second pass runs in process, the call behaves as a direct call of the target in four more ways: the
+target's origin does not receive an `X-DIAL-OVERRIDE-NAME` from the alias (only one the target declares itself); the
+answer carries `Access-Control-Allow-Origin`, `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID` once; a file the target's answer
+attaches, which the target pass shares with the alias, is shared on with the alias's caller, so an application that
+calls an alias can read it; and a client that leaves before the answer cancels the target pass at once.
 
 ## Signing in to a toolset through an alias
 
