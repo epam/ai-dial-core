@@ -48,7 +48,7 @@ class OrgUnitRolesTest {
             assertFalse(roles.allows(List.of(VIEWER), WRITE, namespace), namespace);
         }
         for (String role : List.of(ADMIN, EDITOR, VIEWER)) {
-            assertTrue(roles.allows(List.of(role), READ, ORG_UNITS), role);
+            assertFalse(roles.allows(List.of(role), READ, ORG_UNITS), role);
             assertFalse(roles.allows(List.of(role), WRITE, ORG_UNITS), role);
         }
         assertTrue(roles.covers(List.of(ADMIN), VIEWER));

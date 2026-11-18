@@ -180,8 +180,8 @@ public final class OrgUnitRoles {
     }
 
     /**
-     * The actions on every content namespace and the extra ones, then {@code read} on {@code org-units}: whoever holds a
-     * built-in role at a unit sees its child units.
+     * The actions on every content namespace and the extra ones; no {@code org-units}, so a built-in role doesn't show
+     * the units below.
      */
     private static List<OrgUnitPermission> permissions(List<String> actions, List<String> extraNamespaces) {
         List<OrgUnitPermission> permissions = new ArrayList<>();
@@ -191,7 +191,6 @@ public final class OrgUnitRoles {
         for (String namespace : extraNamespaces) {
             permissions.add(new OrgUnitPermission(actions, namespace + ANY_BELOW));
         }
-        permissions.add(new OrgUnitPermission(List.of(READ), ORG_UNITS + ANY_BELOW));
         return List.copyOf(permissions);
     }
 

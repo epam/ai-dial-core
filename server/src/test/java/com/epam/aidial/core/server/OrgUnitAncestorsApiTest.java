@@ -136,12 +136,20 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testRoleAboveStillShowsEveryChildUnit() {
+    void testBuiltInRoleAboveShowsOnlyTheChildUnitOnThePath() {
         assign("public/Acme", "viewer");
 
-        assertEquals(List.of("files/public/Acme/.dial_folder", "files/public/Acme/HR/", "files/public/Acme/Risk/", "files/public/Acme/a.txt"),
+        assertEquals(List.of("files/public/Acme/.dial_folder", "files/public/Acme/Risk/", "files/public/Acme/a.txt"),
                 urls(list("public/Acme/", BOB)));
         assertEquals(List.of("files/public/Acme/Risk/US%20Risk/"), urls(list("public/Acme/Risk/", BOB)));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/org-unit-navigator-role.json")
+    void testRoleReadingOrgUnitsShowsEveryChildUnit() {
+        assign("public/Acme", "navigator");
+
+        assertEquals(List.of("files/public/Acme/HR/", "files/public/Acme/Risk/"), urls(list("public/Acme/", BOB)));
     }
 
     @Test

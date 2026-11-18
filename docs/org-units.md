@@ -128,13 +128,13 @@ by role assignments, below.
 
 | Role | Grants in its unit |
 |---|---|
-| `admin` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills`, `projects`, `publications` and `role-assignments`; `read` on `org-units` |
-| `editor` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects`; `read` on `org-units` |
-| `viewer` | `read` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects`; `read` on `org-units` |
+| `admin` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills`, `projects`, `publications` and `role-assignments` |
+| `editor` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects` |
+| `viewer` | `read` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects` |
 
 `read` and `write publications/**` decide publication requests into the unit; `write role-assignments/**` manages its
 assignments. `read org-units/**` shows the units directly below in the unit list and in the unit folder's listing,
-by name only. `org-units` takes
+by name only; no built-in role holds it, so a role defined in config grants it where the units below should show. `org-units` takes
 only `read`, as only DIAL admins change units. A role body uses the DIAL 2.0 design's grammar; core evaluates `actions` of `read` and `write` on
 `pathPattern`s of the form `<namespace>/**` with the namespaces above, relative to the unit. A config with anything
 else fails to load, so a reload keeps the previous config. For example:
@@ -274,7 +274,7 @@ menus and buttons without trying calls:
     {"id": "0123", "name": "Acme", "displayName": "Acme", "path": "public/Acme", "folder": "public/Acme/",
      "roles": [], "permissions": {}},
     {"id": "0124", "name": "Risk", "displayName": "Risk", "path": "public/Acme/Risk", "folder": "public/Acme/Risk/",
-     "roles": ["editor"], "permissions": {"applications": ["read", "write"], "files": ["read", "write"], "org-units": ["read"]}}
+     "roles": ["editor"], "permissions": {"applications": ["read", "write"], "files": ["read", "write"]}}
   ]
 }
 ```

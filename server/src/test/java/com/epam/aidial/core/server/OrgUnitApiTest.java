@@ -132,9 +132,9 @@ public class OrgUnitApiTest extends ResourceBaseTest {
         assertEquals(200, create(ORG + "/Finance", "Tax").status());
         Response all = send(HttpMethod.GET, "/v1/org-units/" + ORG, "recursive=true", null, "authorization", "user");
         assertEquals(200, all.status(), all.body());
-        // a role at Risk shows the units directly below it by name
-        assertEquals(List.of("Risk", "Audit"), childNames(new JsonObject(all.body())));
-        assertEquals(200, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Risk/Audit", null, null, "authorization", "user").status());
+        // a built-in role at Risk doesn't show the units below it
+        assertEquals(List.of("Risk"), childNames(new JsonObject(all.body())));
+        assertEquals(404, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Risk/Audit", null, null, "authorization", "user").status());
         assertEquals(404, send(HttpMethod.GET, "/v1/org-units/" + ORG + "/Finance/Tax", null, null, "authorization", "user").status());
         assertEquals(List.of("Finance", "Tax", "Risk", "Audit"), childNames(read(ORG, true)));
     }
