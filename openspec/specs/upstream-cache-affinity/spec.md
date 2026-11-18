@@ -1,8 +1,10 @@
 # upstream-cache-affinity Specification
 
 ## Purpose
-How Core sends a request whose prompt prefix an upstream has already cached to that same upstream: the pin Core
-stores in Redis when an upstream answers with `X-DIAL-CACHE-BREAKPOINT-PATH`, and how a later request is matched to it.
+How Core sends a request whose prompt prefix an upstream has already cached to that same upstream. So far this spec
+covers only which request shapes count as the same prefix. How Core stores a pin when an upstream answers with
+`X-DIAL-CACHE-BREAKPOINT-PATH`, which positions it looks up under `cacheSupported` and `autoCachingSupported`, the
+initiator scope and the pin lifetime are not specified here yet; until a baseline adds them, the code is the reference.
 
 ## Requirements
 

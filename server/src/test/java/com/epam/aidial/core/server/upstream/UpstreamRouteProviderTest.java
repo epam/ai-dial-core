@@ -144,6 +144,26 @@ public class UpstreamRouteProviderTest {
     }
 
     @Test
+    public void testGet_IdOnlyPinOfRemovedUpstreamWarns() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setId("up-1");
+        upstream1.setEndpoint("upstream1");
+        model.setUpstreams(List.of(upstream1));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        // the usual pin of an upstream configured through interfaces: an id and no endpoint
+        CachedUpstreamEntry entry = new CachedUpstreamEntry(null, "gone", "prefix", null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        List<ILoggingEvent> warnings = captureWarnings(() -> assertEquals(upstream1, provider.get(model, cacheBreakpointContext).next()));
+
+        assertEquals(1, warnings.size(), warnings::toString);
+    }
+
+    @Test
     public void testGet_PinMissLogsNoWarning() {
         Model model = new Model();
         model.setName("model");

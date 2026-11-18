@@ -61,3 +61,20 @@ No fix round ran. Both findings are low severity and were not acted on.
 - High/medium findings open: none.
 - Low findings left: the id-only pin warning test gap (UpstreamRouteProviderTest.java:138) and the redundant path assertions (MessagesApiRequestTest.java:224, 252).
 - CI must still confirm: the full test suite across all modules (only targeted classes ran locally) and checkstyle on a clean build.
+
+## Independent PR review
+
+A reviewer without this run's context reviewed PR #2314 after the archive; CI was green, including the full suite. No
+high or medium findings.
+
+| Severity | File:line | Finding | Outcome |
+| --- | --- | --- | --- |
+| low | UpstreamRouteProviderTest.java:138 | The warning test pins an endpoint only (`CachedUpstreamEntry(endpoint, id, ...)`), not the id-only pin of an upstream configured through interfaces; design.md "Spec review" 8 calls it "an id no upstream has", which is wrong. | Fixed: `testGet_IdOnlyPinOfRemovedUpstreamWarns` asserts one WARN for `(null, "gone", "prefix", null)`. |
+| low | openspec/specs/upstream-cache-affinity/spec.md:4 | The Purpose promised the whole pin mechanism; the spec holds one requirement. | Fixed: the Purpose says what is covered and that the rest is not specified yet. |
+| nit | UpstreamRouteProvider.java:150 | A pin with neither id nor endpoint (a chat-completions upstream with only a `key`) can never match and now logs at debug. | Not changed: before this change the same warning fired on every miss; the fix is not to write such a pin, outside this change. |
+| nit | MessagesApiTest.java | `Thread.sleep(1000)` waits for the async pin write. | Not changed: same pattern as the existing pin test. |
+| nit | PR description | "six touched classes": three were touched, six run; rollback not mentioned. | Fixed in the PR description. |
+
+Questions outside this change: the adapter drops unsupported tools before it reports the breakpoint path, so a
+`tools[i]` path can point at a different prefix than Core hashed; a top-level `cache_control` with only
+`cacheSupported` writes a pin that is never looked up; a string `tool_result.content` is not normalized.
