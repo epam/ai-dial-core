@@ -184,8 +184,8 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
-            if (context.getExtractedClaims() != null && roleBasedEntity instanceof Model
-                    && context.getConfig().getSpendingLimits().getMode() == SpendingLimitMode.OFF) {
+            if (context.getConfig().getSpendingLimits().getMode() == SpendingLimitMode.OFF
+                    && BudgetEnforcer.isBudgetCall(context, roleBasedEntity)) {
                 // budgets would apply to this call if they were on: its analytics row says they are off
                 context.setBudgetCheck(BudgetCheck.OFF);
             }

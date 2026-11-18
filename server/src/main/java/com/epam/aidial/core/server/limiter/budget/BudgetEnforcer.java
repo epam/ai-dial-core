@@ -62,10 +62,14 @@ public class BudgetEnforcer {
      * mode stay on the legacy cost limit.
      */
     public static boolean isApplicable(ProxyContext context, RoleBasedEntity entity) {
-        SpendingLimits settings = context.getConfig().getSpendingLimits();
-        return settings.getMode() != SpendingLimitMode.OFF
-                && context.getExtractedClaims() != null
-                && entity instanceof Model;
+        return context.getConfig().getSpendingLimits().getMode() != SpendingLimitMode.OFF && isBudgetCall(context, entity);
+    }
+
+    /**
+     * Whether budgets would take part in the call if they were on: a JWT caller's call to a model.
+     */
+    public static boolean isBudgetCall(ProxyContext context, RoleBasedEntity entity) {
+        return context.getExtractedClaims() != null && entity instanceof Model;
     }
 
     public static boolean isEnforced(ProxyContext context, RoleBasedEntity entity) {
@@ -112,7 +116,6 @@ public class BudgetEnforcer {
         }
         return picked.map(outcome -> {
             if (outcome.payer != null) {
-                context.setBudgetPayer(outcome.payer);
                 context.setBudgetCheck(new BudgetCheck(settings.getMode(), costObject, BudgetCheck.Outcome.PAID, outcome.payer));
                 if (!isWithSpendCaps) {
                     return RateLimitResult.SUCCESS;

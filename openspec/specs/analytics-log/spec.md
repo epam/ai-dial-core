@@ -132,8 +132,8 @@ the call's cost: `policy` (the policy path, as `budgets[].policy` of `GET /v1/us
 
 ### Requirement: Rows without spending limits
 Core SHALL NOT write `spending_limits` in the row of an API key caller, of a pass whose limits Core does not
-check, of a deployment that is not a model (including the router row of a decided request), or of a background
-Responses job when it ends.
+check, of a deployment that is not a model (including the router row of a decided request), or that Core writes
+from a background Responses job's record when the job ends.
 
 #### Scenario: API key caller
 - **WHEN** an API key calls the model

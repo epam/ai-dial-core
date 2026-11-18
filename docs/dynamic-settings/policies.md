@@ -89,10 +89,12 @@ A row has no `spending_limits` when:
 - Core does not check the limits of the pass, as for the outer request of a translated interface;
 - the row is not a model's: an application, interceptor or route row, or the router row of a decided request,
   whose `price` rolls up the model's;
-- the row is the one a background Responses job writes when it ends. Background jobs charge no budget yet.
+- the row is the one the poller writes from the job record when a background Responses job ends. The poller
+  charges no budget yet. A background job that its own stream ends is charged like any call, and its row has the
+  object.
 
 The spend charged to a budget is the sum of `token_usage.deployment_price` over the rows that name it. A call that
 failed after the check, such as on an upstream error, has `outcome` `paid` with no or zero `deployment_price`.
 
-The `project.id` field is unchanged. It is empty when the token has no project claim, while
+`project.id` is the token's project claim, so it is empty when the token has none, while
 `spending_limits.cost_object` then holds the default cost object.

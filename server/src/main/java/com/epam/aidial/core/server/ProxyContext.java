@@ -47,6 +47,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 
 @Slf4j
 @Getter
@@ -85,9 +86,7 @@ public class ProxyContext {
     private String userId;
     private List<String> userRoles;
     private String userProject;
-    // the budget that pays for this call, set by the pre-call check and charged after the call
-    private BudgetPayer budgetPayer;
-    // what the pre-call budget check found, for the analytics row; null when budgets were not considered
+    // what the pre-call budget check found, for the analytics row and the charge; null when budgets were not considered
     private BudgetCheck budgetCheck;
     private String userHash;
     private TokenUsage tokenUsage;
@@ -341,6 +340,14 @@ public class ProxyContext {
                 .map(ApiKeyData::getHttpHeaders)
                 .map(h -> h.get(name))
                 .orElse(null);
+    }
+
+    /**
+     * The budget that pays for this call: picked by the pre-call check and charged after the call.
+     */
+    @Nullable
+    public BudgetPayer getBudgetPayer() {
+        return budgetCheck == null ? null : budgetCheck.payer();
     }
 
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
