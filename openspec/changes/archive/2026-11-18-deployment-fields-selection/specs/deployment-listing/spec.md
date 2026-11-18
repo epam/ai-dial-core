@@ -10,7 +10,7 @@ the fields of each deployment by a field selection.
 ### Requirement: Fields parameter selects response fields
 `GET /v1/deployments` SHALL accept an optional query parameter `fields`. When it is present and not empty, each
 returned deployment SHALL hold only the top-level fields the selection names, plus `id` and `object`. Names are the
-snake_case names of the response.
+names of the response: snake_case at the top level, and inside a nested object the names that object has.
 
 #### Scenario: Top-level fields only
 - **WHEN** a caller sends `GET /v1/deployments?fields=display_name`
@@ -49,6 +49,14 @@ leave that value unchanged.
 - **WHEN** a caller sends `fields=features(rate),features(tokenize)`
 - **THEN** `features` holds both `rate` and `tokenize`
 
+### Requirement: Localized values are returned whole
+A localized value that holds several locales (`display_name`, `description`) SHALL be returned whole, whatever
+selection follows its name.
+
+#### Scenario: Selection inside a localized value
+- **WHEN** a caller sends `fields=display_name(en)` and a deployment's `display_name` holds several locales
+- **THEN** that deployment's `display_name` holds all of them
+
 ### Requirement: Unknown names are ignored
 `GET /v1/deployments` SHALL NOT reject a `fields` name because no response field has it. A name that matches no
 member of a deployment adds nothing to that deployment.
@@ -75,11 +83,11 @@ with no name before it, or text after a closing parenthesis other than `,` or `)
 - **THEN** the answer is `400`
 
 ### Requirement: Selection size limits
-`GET /v1/deployments` SHALL answer `400` when the `fields` value is longer than 1,024 characters or nests deeper than
+`GET /v1/deployments` SHALL answer `400` when the `fields` value is longer than 1,024 bytes (UTF-8) or nests deeper than
 five levels. A top-level name is level one, and each parenthesis opens the next level.
 
 #### Scenario: Too long
-- **WHEN** a caller sends a `fields` value of 1,025 characters
+- **WHEN** a caller sends a `fields` value of 1,025 bytes
 - **THEN** the answer is `400`
 
 #### Scenario: Too deep

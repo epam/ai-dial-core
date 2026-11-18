@@ -331,7 +331,7 @@ public class DeploymentApiTest extends ResourceBaseTest {
         Map<String, JsonNode> deploymentsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
         assertEquals(5, deploymentsById.size());
 
-        // the tree the selection prunes is the same serialization as the full answer
+        // selecting everything gives the full answer
         assertEquals(deploymentsById, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=*", null)));
         // an empty value is no selection
         assertEquals(deploymentsById, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=", null)));

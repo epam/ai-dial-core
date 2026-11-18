@@ -1,16 +1,22 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.config.LocalizedValue;
+import com.epam.aidial.core.server.data.FeaturesData;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -75,23 +81,23 @@ public class FieldSelectionTest {
         assertEquals(List.of("rate", "tokenize"), names(first.get("features")));
         assertEquals(List.of("paths"), names(first.get("routes").get("r1")));
 
-        ObjectNode row = (ObjectNode) read("{\"a\": [{\"b\": 1, \"c\": 2}, \"s\", 3]}");
-        assertEquals(read("{\"a\": [{\"b\": 1}, \"s\", 3]}"), parse("a(b)").project(row));
+        Map<String, Object> row = map("{\"a\": [{\"b\": 1, \"c\": 2}, \"s\", 3]}");
+        assertEquals(read("{\"a\": [{\"b\": 1}, \"s\", 3]}"), read(parse("a(b)").serialize(row)));
     }
 
     @Test
     void alwaysKeptNamesAreChosenByTheCaller() {
-        ObjectNode row = (ObjectNode) read("{\"id\": \"x\", \"name\": \"n\", \"kind\": \"k\", \"size\": 1}");
+        Map<String, Object> row = map("{\"id\": \"x\", \"name\": \"n\", \"kind\": \"k\", \"size\": 1}");
 
-        assertEquals(List.of("name", "kind"), names(FieldSelection.parse("name", Set.of("kind")).project(row)));
-        assertEquals(List.of("name"), names(FieldSelection.parse("name", Set.of()).project(row)));
+        assertEquals(List.of("name", "kind"), names(read(FieldSelection.parse("name", Set.of("kind")).serialize(row))));
+        assertEquals(List.of("name"), names(read(FieldSelection.parse("name", Set.of()).serialize(row))));
     }
 
     @Test
     void alwaysKeptNamesApplyOnlyAtTheTopLevel() {
-        ObjectNode row = (ObjectNode) read("{\"id\": \"x\", \"a\": {\"id\": 1, \"b\": 2}}");
+        Map<String, Object> row = map("{\"id\": \"x\", \"a\": {\"id\": 1, \"b\": 2}}");
 
-        assertEquals(read("{\"id\": \"x\", \"a\": {\"b\": 2}}"), parse("a(b)").project(row));
+        assertEquals(read("{\"id\": \"x\", \"a\": {\"b\": 2}}"), read(parse("a(b)").serialize(row)));
     }
 
     @Test
@@ -121,9 +127,41 @@ public class FieldSelectionTest {
         assertEquals(4, project("*,features(rate)").get(0).get("features").size());
         assertEquals(List.of("rate", "tokenize"), names(project("features(rate),*(tokenize)").get(0).get("features")));
 
-        FieldSelection selection = parse("features(rate),*(tokenize)");
-        ObjectNode row = (ObjectNode) read(ROWS).get(0);
-        assertEquals(selection.project(row), selection.project(row));
+    }
+
+    @Test
+    void beanMembersAreSelectedLikeMapMembers() {
+        JsonNode features = read(FieldSelection.parse("rate,tokenize", Set.of()).serialize(new FeaturesData()));
+
+        assertEquals(List.of("rate", "tokenize"), names(features));
+    }
+
+    @Test
+    void valueWrittenByCustomSerializerIsNotNarrowed() {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", "x");
+        row.put("display_name", LocalizedValue.of(new LinkedHashMap<>(Map.of("en", "a", "de", "b"))));
+
+        assertEquals(read("{\"id\": \"x\", \"display_name\": {\"en\": \"a\", \"de\": \"b\"}}"),
+                read(parse("display_name(en)").serialize(row)));
+    }
+
+    @Test
+    void oneSelectionServesConcurrentSerializations() throws Exception {
+        FieldSelection selection = parse("features(rate),*(tokenize),interface_configs(*(features))");
+        String expected = selection.serialize(rows());
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        try {
+            List<Future<String>> results = new ArrayList<>();
+            for (int i = 0; i < 64; i++) {
+                results.add(pool.submit(() -> selection.serialize(rows())));
+            }
+            for (Future<String> result : results) {
+                assertEquals(expected, result.get());
+            }
+        } finally {
+            pool.shutdown();
+        }
     }
 
     @Test
@@ -161,6 +199,13 @@ public class FieldSelectionTest {
     }
 
     @Test
+    void lengthLimitCountsBytes() {
+        String twoByteCharacter = Character.toString(0xE9);
+        assertThrows(IllegalArgumentException.class, () -> parse(twoByteCharacter.repeat(FieldSelection.MAX_LENGTH / 2 + 1)));
+        parse(twoByteCharacter.repeat(FieldSelection.MAX_LENGTH / 2));
+    }
+
+    @Test
     void selectionOverTheDepthLimitIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> parse("a(b(c(d(e(f)))))"));
         parse("a(b(c(d(e))))");
@@ -170,13 +215,21 @@ public class FieldSelectionTest {
         return FieldSelection.parse(fields, ID_AND_OBJECT);
     }
 
-    private static ArrayNode project(String fields) {
-        FieldSelection selection = parse(fields);
-        ArrayNode projected = ProxyUtil.MAPPER.createArrayNode();
-        for (JsonNode row : read(ROWS)) {
-            projected.add(selection.project((ObjectNode) row));
-        }
-        return projected;
+    private static JsonNode project(String fields) {
+        return read(parse(fields).serialize(rows()));
+    }
+
+    private static List<Map<String, Object>> rows() {
+        return readValue(ROWS, new TypeReference<>() { });
+    }
+
+    private static Map<String, Object> map(String json) {
+        return readValue(json, new TypeReference<>() { });
+    }
+
+    @SneakyThrows
+    private static <T> T readValue(String json, TypeReference<T> type) {
+        return ProxyUtil.MAPPER.readValue(json, type);
     }
 
     @SneakyThrows

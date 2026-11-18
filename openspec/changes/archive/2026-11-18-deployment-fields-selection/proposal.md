@@ -13,14 +13,14 @@ This change lets the caller name the fields it wants.
 ## What Changes
 
 - `GET /v1/deployments` accepts an optional query parameter `fields`: a comma-separated list of response field names
-  in the wire (snake_case) form, with parentheses for nested fields and `*` for "every key of a map".
+  in the wire form (snake_case at the top level), with parentheses for nested fields and `*` for "every key of a map".
   `fields=display_name,features(rate,tokenize)` returns, for each deployment, `id`, `object`, `display_name` and
   `features` holding only `rate` and `tokenize`.
 - `id` and `object` are always returned, so the caller can tell a model from an application whatever it selects.
 - A name that matches nothing in a deployment is left out of that deployment. Core does not check names against a
   schema: `fields=display_name,descriptio` returns `display_name` and no error. A name only fails when the selection
   text itself is malformed or too large.
-- A malformed selection (unbalanced parentheses, an empty name) or one over the limits (1,024 characters, five
+- A malformed selection (unbalanced parentheses, an empty name) or one over the limits (1,024 bytes, five
   levels) answers `400`, as an unknown `interface_type` does today. The limits are constants in code.
 - The parameter composes with `interface_type`: `interface_type` picks the deployments, `fields` picks what is
   returned for each.

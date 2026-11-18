@@ -34,14 +34,13 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.FieldSelection;
-import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
+import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -192,26 +191,14 @@ public class DeploymentController {
                 context.respond(HttpStatus.OK, deployments);
                 return;
             }
-            proxy.getTaskExecutor()
-                    .submit(() -> projectDeployments(selection, deployments))
-                    .onSuccess(projected -> context.respond(HttpStatus.OK, projected))
-                    .onFailure(this::respondListingFailure);
-        }).onFailure(this::respondListingFailure);
+            context.getResponse().putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+            context.respond(HttpStatus.OK, selection.serialize(deployments));
+        }).onFailure(error -> {
+            log.error("Error occurred on listing deployments", error);
+            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
+        });
 
         return Future.succeededFuture();
-    }
-
-    private static ArrayNode projectDeployments(FieldSelection selection, List<DeploymentData> deployments) {
-        ArrayNode projected = ProxyUtil.MAPPER.createArrayNode();
-        for (DeploymentData deployment : deployments) {
-            projected.add(selection.project(ProxyUtil.MAPPER.valueToTree(deployment)));
-        }
-        return projected;
-    }
-
-    private void respondListingFailure(Throwable error) {
-        log.error("Error occurred on listing deployments", error);
-        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
     }
 
 
