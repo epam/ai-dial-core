@@ -87,6 +87,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -590,7 +591,7 @@ public class RateLimiterTest {
                 statuses.add(executor.submit(() -> {
                     ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, new ApiKeyData(),
                             new ExtractedClaims("sub", List.of("role"), "user-hash",
-                                    ProxyUtil.MAPPER.createObjectNode(), null, null),
+                                    ProxyUtil.MAPPER.createObjectNode(), null, null, null),
                             "trace-id", "span-id", "01");
                     proxyContext.setDeployment(model);
                     return rateLimiter.limit(proxyContext, model).result().status();
@@ -1336,7 +1337,8 @@ public class RateLimiterTest {
 
     private static long countRecordReads(ResourceService service) {
         return Mockito.mockingDetails(service).getInvocations().stream()
-                .filter(invocation -> invocation.getMethod().getName().equals("getResource") && invocation.getArguments().length == 1)
+                // every read ends in the three-argument form: the one-argument form delegates to it, the counters call it directly
+                .filter(invocation -> invocation.getMethod().getName().equals("getResource") && invocation.getArguments().length == 3)
                 .count();
     }
 
@@ -1639,7 +1641,8 @@ public class RateLimiterTest {
         stubInlineExecutorReturningFailures();
         ResourceService resourceSpy = spy(resourceService);
         doThrow(new IllegalStateException("budget listing")).when(resourceSpy).listResources(any(ResourceDescriptor.class), any());
-        doThrow(new IllegalStateException("token record")).when(resourceSpy).getResource(any(ResourceDescriptor.class));
+        // the limit records are read without the lock
+        doThrow(new IllegalStateException("token record")).when(resourceSpy).getResource(any(ResourceDescriptor.class), any(), eq(false));
         RateLimiter limiter = new RateLimiter(taskExecutor, resourceSpy, mock(ConfigStore.class), BlockingCallTracer.NOOP);
         Config config = budgetConfig(SpendingLimitMode.ENFORCE, "ORG/a");
         ProxyContext context = userContext(config, List.of("role"), "alice");

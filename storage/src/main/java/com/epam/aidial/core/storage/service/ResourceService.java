@@ -1318,7 +1318,7 @@ public class ResourceService implements AutoCloseable {
     @VisibleForTesting
     void dequeueIfDue(String redisKey, long dueBy) {
         redis.getScript(StringCodec.INSTANCE).eval(RScript.Mode.READ_WRITE, DEQUEUE_IF_DUE_SCRIPT,
-                RScript.ReturnType.INTEGER, List.of(resourceQueue), redisKey, Long.toString(dueBy));
+                RScript.ReturnType.LONG, List.of(resourceQueue), redisKey, Long.toString(dueBy));
     }
 
     private <T> T trace(String name, ResourceDescriptor descriptor, Callable<T> work) {
