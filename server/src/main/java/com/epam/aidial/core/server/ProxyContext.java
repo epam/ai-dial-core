@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
@@ -86,6 +87,8 @@ public class ProxyContext {
     private String userProject;
     // the budget that pays for this call, set by the pre-call check and charged after the call
     private BudgetPayer budgetPayer;
+    // what the pre-call budget check found, for the analytics row; null when budgets were not considered
+    private BudgetCheck budgetCheck;
     private String userHash;
     private TokenUsage tokenUsage;
     private List<UsagePerModel> usagePerModel;

@@ -1,5 +1,7 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
+import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -188,8 +190,24 @@ public class GfLogStore implements LogStore {
 
         append(entry, ",\"project\":{\"id\":\"", false);
         append(entry, logContext.getProject(), true);
+        append(entry, "\"}", false);
 
-        append(entry, "\"},\"user\":{\"id\":\"", false);
+        BudgetCheck budgetCheck = logContext.getBudgetCheck();
+        if (budgetCheck != null) {
+            append(entry, ",\"spending_limits\":{\"mode\":\"", false);
+            append(entry, budgetCheck.mode().toValue(), true);
+            append(entry, "\"", false);
+            appendField(entry, "cost_object", budgetCheck.costObject());
+            appendField(entry, "outcome", budgetCheck.outcome() == null ? null : budgetCheck.outcome().toValue());
+            BudgetPayer payer = budgetCheck.payer();
+            if (payer != null) {
+                appendField(entry, "policy", payer.instance().policyPath());
+                appendField(entry, "assignment", payer.instance().assignment() == null ? null : payer.instance().id());
+            }
+            append(entry, "}", false);
+        }
+
+        append(entry, ",\"user\":{\"id\":\"", false);
         append(entry, logContext.getUserHash(), true);
 
         append(entry, "\",\"title\":\"", false);
@@ -574,5 +592,16 @@ public class GfLogStore implements LogStore {
 
     private static boolean exceedLimit(Buffer body) {
         return body.length() > MAX_BODY_SIZE_BYTES;
+    }
+
+    /**
+     * Appends {@code ,"name":"value"} to an open object, or nothing when the value is null.
+     */
+    private static void appendField(LogEntry entry, String name, String value) {
+        if (value != null) {
+            append(entry, ",\"" + name + "\":\"", false);
+            append(entry, value, true);
+            append(entry, "\"", false);
+        }
     }
 }

@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.RouterDecision;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -47,6 +48,8 @@ public class AnalyticsLogContext {
     private final String sessionId;
     private final String jobTitle;
     private final boolean securedApiKey;
+    // what the pre-call budget check found for a JWT caller's model call; null when budgets were not considered
+    private final BudgetCheck budgetCheck;
 
     private final String userId;
     private final List<String> userRoles;
@@ -109,6 +112,7 @@ public class AnalyticsLogContext {
                 .sessionId(GenAiTraceAttributes.resolveConversationId(context))
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
                 .securedApiKey(context.isSecuredApiKey())
+                .budgetCheck(context.getBudgetCheck())
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
                 .userDisplayName(context.getUserDisplayName())
@@ -219,6 +223,8 @@ public class AnalyticsLogContext {
                 .parentDeployment(hop.parentDeployment())
                 .executionPath(hop.executionPath())
                 .decision(decision)
+                // the router pays nothing, and its price rolls up the model's, which the model's row names the budget of
+                .budgetCheck(null)
                 .requestBody(null)
                 .responseBody(null)
                 .assembledStreamingResponse(null)

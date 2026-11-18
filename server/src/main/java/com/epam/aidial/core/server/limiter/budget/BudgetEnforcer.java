@@ -95,8 +95,11 @@ public class BudgetEnforcer {
         SpendingLimits settings = context.getConfig().getSpendingLimits();
         ExtractedClaims claims = context.getExtractedClaims();
         String costObject = resolveCostObject(context, settings);
+        // without an outcome until the counters are read, so a failed read leaves the row without one
+        context.setBudgetCheck(new BudgetCheck(settings.getMode(), costObject, null, null));
         List<BudgetInstance> candidates = resolveCandidates(context, costObject, model, timestamp);
         if (candidates.isEmpty()) {
+            context.setBudgetCheck(new BudgetCheck(settings.getMode(), costObject, BudgetCheck.Outcome.NO_BUDGET, null));
             return Future.succeededFuture(rejectNoBudget(settings, claims, costObject, model));
         }
         // the candidates are a subset of the cost object's budgets, so with several the caller has several
@@ -110,12 +113,14 @@ public class BudgetEnforcer {
         return picked.map(outcome -> {
             if (outcome.payer != null) {
                 context.setBudgetPayer(outcome.payer);
+                context.setBudgetCheck(new BudgetCheck(settings.getMode(), costObject, BudgetCheck.Outcome.PAID, outcome.payer));
                 if (!isWithSpendCaps) {
                     return RateLimitResult.SUCCESS;
                 }
                 return RateLimitResult.SUCCESS.withSpendCaps(
                         isReported ? toSpendCaps(outcome.payer.instance(), outcome.payerUsage) : SpendCaps.EMPTY);
             }
+            context.setBudgetCheck(new BudgetCheck(settings.getMode(), costObject, BudgetCheck.Outcome.EXHAUSTED, null));
             // with spend caps there is no display message: a client builds it from the cap's period
             RateLimitResult exhausted = buildExhaustedResult(costObject, isWithSpendCaps ? null : "You've exceeded your budget",
                     outcome, timestamp);

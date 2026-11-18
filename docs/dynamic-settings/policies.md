@@ -55,3 +55,44 @@ resetting spend or changing limits, priority order or enforcement. No locale sel
 Existing policies require no migration and use the policy path as their label. Deploy supporting Core versions
 on all instances before configuring names: older versions reject unknown policy fields. Before rolling back,
 remove `displayName` from stored policy records while the supporting version is still running.
+
+# Spending limits in the analytics log
+
+The analytics log row of a JWT caller's model call whose limits Core checks carries a `spending_limits` object,
+right after `project`:
+
+```json
+"project": { "id": "project-a" },
+"spending_limits": { "mode": "enforce", "cost_object": "project-a", "outcome": "paid",
+                     "policy": "engineering-pro", "assignment": "project-a/42" },
+```
+
+| Key           | Value                                                                                                  |
+|---------------|--------------------------------------------------------------------------------------------------------|
+| `mode`        | `spendingLimits.mode`: `off`, `shadow` or `enforce`. Always present; with `off` it is the only key       |
+| `cost_object` | The cost object the call is charged to: the token's project claim, or `spendingLimits.defaultCostObject` when the token has none |
+| `outcome`     | `paid`: a budget pays. `no_budget`: no budget covers the caller and the model. `exhausted`: every such budget is used up. Absent when a budget counter could not be read |
+| `policy`      | With `paid`: the path of the budget's policy, as `budgets[].policy` of `GET /v1/user/limits` reports it |
+| `assignment`  | With `paid`: the path of the policy assignment that grants the budget, `<costObject>/<id>`; absent for a policy that applies by itself |
+
+The paying budget is the one the check before the call picked: the first budget of the caller's cost object, by
+priority, that covers the model and has room. The call's cost is charged to it after the call, in `shadow` mode as in
+`enforce` mode. `user.id` is the user's hash; `spending_limits` does not carry the user.
+
+In `enforce` mode a call with `no_budget` or `exhausted` is refused with 429, and Core writes no analytics row for
+a refused call. Those two outcomes therefore appear in `shadow` mode only, where the call goes through. The metric
+`dial_budget_rejections_total` counts refusals in both modes.
+
+A row has no `spending_limits` when:
+
+- the caller is an API key, or an application whose call chain started with an API key;
+- Core does not check the limits of the pass, as for the outer request of a translated interface;
+- the row is not a model's: an application, interceptor or route row, or the router row of a decided request,
+  whose `price` rolls up the model's;
+- the row is the one a background Responses job writes when it ends. Background jobs charge no budget yet.
+
+The spend charged to a budget is the sum of `token_usage.deployment_price` over the rows that name it. A call that
+failed after the check, such as on an upstream error, has `outcome` `paid` with no or zero `deployment_price`.
+
+The `project.id` field is unchanged. It is empty when the token has no project claim, while
+`spending_limits.cost_object` then holds the default cost object.

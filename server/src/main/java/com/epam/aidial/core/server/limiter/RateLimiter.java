@@ -8,12 +8,14 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
+import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.CostItemLimitStats;
 import com.epam.aidial.core.server.data.ItemLimitStats;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.data.UserLimitStats;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.limiter.budget.BudgetCounterStore;
 import com.epam.aidial.core.server.limiter.budget.BudgetEnforcer;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
@@ -182,6 +184,11 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
+            if (context.getExtractedClaims() != null && roleBasedEntity instanceof Model
+                    && context.getConfig().getSpendingLimits().getMode() == SpendingLimitMode.OFF) {
+                // budgets would apply to this call if they were on: its analytics row says they are off
+                context.setBudgetCheck(BudgetCheck.OFF);
+            }
             if (withSpendCaps && BudgetEnforcer.isEnforced(context, roleBasedEntity)) {
                 return checkBudgetsWithSpendCaps(context, (Model) roleBasedEntity, limit);
             }
