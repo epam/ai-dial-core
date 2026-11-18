@@ -91,8 +91,10 @@ the runtime subtype and the encrypted-field rule give the same members and the s
 Order is kept. `id` and `object` are kept at the top level (the always-kept names the caller passes) in addition to
 the selection. An array applies the selection to each object element and writes a non-object element as it is; a
 selection below a value with no members (a string, a number, an array of strings) leaves the value as it is, so a
-nested name on a scalar is not an error and not a loss. A value written by a custom serializer that writes to the
-generator itself (`LocalizedValue` with several locales) is not narrowed and is returned whole.
+nested name on a scalar is not an error and not a loss. A value written by a custom serializer (a `LocalizedValue`
+with several locales, a `PricingRate` that is a decision tree) is not narrowed and is returned whole. The mapper copy
+has a default filter provider that tolerates the filter id, so a serializer that writes a nested value through the
+mapper (`PricingRate` writes its `test` condition that way) writes it without the filter instead of failing.
 
 The first version converted the list to a JSON tree and pruned it. A spike on 5,000 synthetic rows (review.md) showed
 the filter doing the same work in a fraction of the time and memory: 5 to 60 ms and 1 to 6 MB against 45 to 130 ms
@@ -134,8 +136,8 @@ value. The parameter text is a new constant in `OpenApiDescriptions` (module `op
 - [The filtered text differs from the full serialization] → Both come from a copy of `ProxyUtil.MAPPER`, and
   `FieldSelectionTest` and the integration test assert that `fields=*` equals the unselected listing on the existing
   fixtures.
-- [A value written by a custom serializer, such as a localized value with several locales, is returned whole] → Stated
-  in the spec; it returns more than asked, never less, and `@EncryptedField` values stay hidden because the filter
+- [A value written by a custom serializer, such as a localized value or a decision-tree pricing rate, is returned
+  whole] → Stated in the spec; it returns more than asked, never less, and `@EncryptedField` values stay hidden because the filter
   runs on a copy of the same mapper.
 - [The filter relies on a mixin on `Object.class` of a separate mapper] → The default mapper is not touched, and the
   copy is used only by `FieldSelection`.

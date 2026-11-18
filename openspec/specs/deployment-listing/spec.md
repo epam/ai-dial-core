@@ -49,13 +49,18 @@ leave that value unchanged.
 - **WHEN** a caller sends `fields=features(rate),features(tokenize)`
 - **THEN** `features` holds both `rate` and `tokenize`
 
-### Requirement: Localized values are returned whole
-A localized value that holds several locales (`display_name`, `description`) SHALL be returned whole, whatever
-selection follows its name.
+### Requirement: Values written in a custom form are returned whole
+A value that Core writes with a custom serializer SHALL be returned whole, whatever selection follows its name. These
+are a localized value that holds several locales (`display_name`, `description`) and a pricing rate that is a
+decision tree (`pricing.prompt`, `pricing.completion`, `pricing.cache_read`, `pricing.cache_write`).
 
 #### Scenario: Selection inside a localized value
 - **WHEN** a caller sends `fields=display_name(en)` and a deployment's `display_name` holds several locales
 - **THEN** that deployment's `display_name` holds all of them
+
+#### Scenario: Selection inside a decision-tree pricing rate
+- **WHEN** a caller sends `fields=pricing(prompt(test))` and a model's `pricing.prompt` is a decision tree
+- **THEN** the answer is `200` and that model's `pricing.prompt` holds `test`, `ifTrue` and `ifFalse` as without `fields`
 
 ### Requirement: Unknown names are ignored
 `GET /v1/deployments` SHALL NOT reject a `fields` name because no response field has it. A name that matches no

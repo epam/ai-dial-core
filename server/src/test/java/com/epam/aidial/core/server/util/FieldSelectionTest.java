@@ -1,7 +1,12 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.config.Condition;
 import com.epam.aidial.core.config.LocalizedValue;
+import com.epam.aidial.core.config.Operator;
+import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.server.data.FeaturesData;
+import com.epam.aidial.core.server.data.ModelData;
+import com.epam.aidial.core.server.data.PricingData;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.SneakyThrows;
@@ -143,6 +148,30 @@ public class FieldSelectionTest {
     }
 
     @Test
+    void decisionTreePricingRateIsReturnedWhole() throws Exception {
+        PricingRate tree = new PricingRate();
+        Condition condition = new Condition();
+        condition.setField("prompt_tokens");
+        condition.setOperator(Operator.values()[0]);
+        condition.setValue(100);
+        tree.setTest(condition);
+        tree.setIfTrue(PricingRate.flat("1"));
+        tree.setIfFalse(PricingRate.flat("2"));
+        PricingData pricing = new PricingData();
+        pricing.setPrompt(tree);
+        ModelData model = new ModelData();
+        model.setId("m");
+        model.setPricing(pricing);
+
+        JsonNode expectedTree = ProxyUtil.MAPPER.valueToTree(tree);
+        for (String fields : List.of("*", "pricing", "pricing(prompt)", "pricing(prompt(test))")) {
+            JsonNode prompt = read(parse(fields).serialize(List.of(model))).get(0).get("pricing").get("prompt");
+            assertEquals(expectedTree, prompt, fields);
+        }
+        assertEquals(read(ProxyUtil.MAPPER.writeValueAsString(List.of(model))), read(parse("*").serialize(List.of(model))));
+    }
+
+    @Test
     void unionOfNameAndWildcardServesEveryRow() {
         Map<String, Object> row = rows().get(0);
 
@@ -184,6 +213,7 @@ public class FieldSelectionTest {
     void selectionOverTheLengthLimitIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> parse("a".repeat(FieldSelection.MAX_LENGTH + 1)));
         parse("a".repeat(FieldSelection.MAX_LENGTH));
+        assertThrows(IllegalArgumentException.class, () -> parse(" ".repeat(FieldSelection.MAX_LENGTH + 1)));
     }
 
     @Test

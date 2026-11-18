@@ -191,8 +191,16 @@ public class DeploymentController {
                 context.respond(HttpStatus.OK, deployments);
                 return;
             }
+            String body;
+            try {
+                body = selection.serialize(deployments);
+            } catch (Exception e) {
+                log.error("Error occurred on serializing the deployment listing with fields", e);
+                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
+                return;
+            }
             context.getResponse().putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
-            context.respond(HttpStatus.OK, selection.serialize(deployments));
+            context.respond(HttpStatus.OK, body);
         }).onFailure(error -> {
             log.error("Error occurred on listing deployments", error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());

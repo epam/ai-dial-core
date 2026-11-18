@@ -59,6 +59,10 @@ still cost what they cost today because `fields` does not skip building a field.
   wildcard subtree into every named sibling at every level; `MAX_LENGTH` is 1,024 UTF-8 bytes, so that a selection
   whose bytes are all percent-encoded still fits the 4,096-byte request line. The proposal says that a request
   already sending an unrelated `fields` parameter is read as a selection.
+- A later review found that a model with a decision-tree pricing rate made every `fields` request fail: `PricingRate`
+  writes its `test` condition through the mapper, which had no filter provider for the mixin. The mapper copy now has a
+  tolerant default provider, a failure while serializing the filtered body answers `500`, and `FieldSelectionTest`
+  covers a decision-tree rate. A blank value over the length limit is now `400`, as the spec says.
 - design.md named the measurement task as `4.2`; it is `3.1`. Corrected.
 - `docs/open_api_core.yaml` was regenerated with `./gradlew replaceSpec`; the diff was the one new parameter
   (7 lines). `SpecMerger` keeps the committed `description` of a parameter that already exists, so regenerating does not

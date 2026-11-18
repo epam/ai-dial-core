@@ -30,7 +30,9 @@ public final class FieldSelection {
     private static final String FILTER_ID = "fieldSelection";
     private static final String WILDCARD = "*";
     private static final Node WHOLE = new Node(true);
-    private static final ObjectMapper FILTERING_MAPPER = ProxyUtil.MAPPER.copy().addMixIn(Object.class, Filtered.class);
+    private static final ObjectMapper FILTERING_MAPPER = ProxyUtil.MAPPER.copy()
+            .addMixIn(Object.class, Filtered.class)
+            .setFilterProvider(new SimpleFilterProvider().setFailOnUnknownId(false));
 
     private final Node root;
     private final Set<String> alwaysKept;
@@ -43,25 +45,28 @@ public final class FieldSelection {
     }
 
     /**
-     * Returns null for null or blank text. The length limit is in UTF-8 bytes.
+     * Returns null for null or blank text. The length limit is in UTF-8 bytes and applies to blank text too.
      *
      * @param alwaysKept the top-level members that stay when not selected
      * @throws IllegalArgumentException when the text is not a selection or is over the length or depth limit
      */
     @Nullable
     public static FieldSelection parse(@Nullable String text, Set<String> alwaysKept) {
-        if (text == null || text.isBlank()) {
+        if (text == null) {
             return null;
         }
         if (text.getBytes(StandardCharsets.UTF_8).length > MAX_LENGTH) {
             throw new IllegalArgumentException("Invalid fields parameter: longer than " + MAX_LENGTH + " bytes");
         }
+        if (text.isBlank()) {
+            return null;
+        }
         return new FieldSelection(new Parser(text).parse(), Set.copyOf(alwaysKept));
     }
 
     /**
-     * Members written by a custom serializer, such as a localized value, are not narrowed. A selection caches while
-     * it serializes, so one instance is not for concurrent use.
+     * A value written by a custom serializer, such as a localized value or a decision-tree pricing rate, is returned
+     * whole. A selection caches while it serializes, so one instance is not for concurrent use.
      */
     @SneakyThrows
     public String serialize(Object value) {
@@ -94,14 +99,14 @@ public final class FieldSelection {
         @Override
         public void serializeAsField(Object pojo, JsonGenerator generator, SerializerProvider provider, PropertyWriter writer)
                 throws Exception {
-            if (selects(generator.getOutputContext(), writer.getName())) {
+            if (isSelected(generator.getOutputContext(), writer.getName())) {
                 writer.serializeAsField(pojo, generator, provider);
             } else if (!generator.canOmitFields()) {
                 writer.serializeAsOmittedField(pojo, generator, provider);
             }
         }
 
-        private boolean selects(JsonStreamContext object, String name) {
+        private boolean isSelected(JsonStreamContext object, String name) {
             Node node = nodeOf(object);
             if (node == null) {
                 return false;
@@ -173,21 +178,28 @@ public final class FieldSelection {
                 throw error("nested deeper than " + MAX_DEPTH + " levels");
             }
             Node selection = new Node(false);
+            boolean hasMore;
             do {
                 String name = readName();
                 if (name.isEmpty()) {
                     throw error("expected a field name");
                 }
                 Node member = WHOLE;
-                if (consume('(')) {
+                if (isNext('(')) {
+                    position++;
                     member = parseSelection(depth + 1);
-                    if (!consume(')')) {
+                    if (!isNext(')')) {
                         throw error(position < text.length() ? "unexpected '" + text.charAt(position) + "'" : "missing ')'");
                     }
+                    position++;
                     skipWhitespace();
                 }
                 selection.members.merge(name, member, FieldSelection::union);
-            } while (consume(','));
+                hasMore = isNext(',');
+                if (hasMore) {
+                    position++;
+                }
+            } while (hasMore);
             return selection;
         }
 
@@ -205,12 +217,8 @@ public final class FieldSelection {
             }
         }
 
-        private boolean consume(char expected) {
-            if (position < text.length() && text.charAt(position) == expected) {
-                position++;
-                return true;
-            }
-            return false;
+        private boolean isNext(char expected) {
+            return position < text.length() && text.charAt(position) == expected;
         }
 
         private IllegalArgumentException error(String reason) {
