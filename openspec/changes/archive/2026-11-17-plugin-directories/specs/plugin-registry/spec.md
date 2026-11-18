@@ -58,7 +58,8 @@ jar lies directly in `plugins.dir` or directly in a group directory.
 Core SHALL load a plugin directory only when its id `<group>/<plugin>` matches a pattern of the static setting
 `plugins.include` (default `["*"]`) and no pattern of `plugins.exclude` (default `[]`). A pattern is `*` or
 `<group>/<plugin>` where either part may be `*`; each setting is a JSON array of patterns or one comma-separated
-string. Core SHALL fail to start on any other pattern, and SHALL not open a plugin directory it does not load.
+string. Core SHALL fail to start on any other pattern and on an empty `plugins.include`, and SHALL not open a plugin
+directory it does not load.
 
 #### Scenario: Default loads everything
 - **WHEN** `builtin/echo` and `custom/other` exist and neither setting is given
@@ -88,3 +89,7 @@ string. Core SHALL fail to start on any other pattern, and SHALL not open a plug
 #### Scenario: Malformed pattern
 - **WHEN** `plugins.exclude` is `["a/b/c"]`
 - **THEN** Core does not start, with a message naming the pattern
+
+#### Scenario: Empty include
+- **WHEN** `plugins.include` is `[]`, or the empty string an unset environment variable gives
+- **THEN** Core does not start, with a message naming `plugins.include`

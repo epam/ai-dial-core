@@ -128,11 +128,15 @@ to measure.
 - **A misplaced jar fails the start whatever `exclude` says.** Exclusion applies to plugin directories; a jar directly
   in `plugins.dir` or in a group directory belongs to none, and the spec rule is unconditional.
 - **Pattern check.** A pattern is `*` or `<name>/<name>`, where a name is `*` or has no `/`, `*`, whitespace,
-  bracket, quote or comma: `builtin`, `builtin/`, `/echo`, `a/b/c`, `built*/echo`, `" builtin/echo"` and
+  bracket, quote or comma: `builtin`, `builtin/`, `/echo`, `a/b/c`, `built*/echo`, `built in/echo` and
   `'builtin/echo'` stop the start with a message naming the pattern and the setting. The refused characters come from
   the review: `aidial.plugins.exclude=[builtin/echo]` is not JSON, reaches Core as a string, and with a looser name
-  would split into `[builtin/echo` and match nothing, leaving the plugin loaded. Array items are taken as given; the
-  string form drops blank parts and strips spaces around each part.
+  would split into `[builtin/echo` and match nothing, leaving the plugin loaded. Both forms strip each pattern and drop
+  blank ones (PR review: the array form first took items as given, unlike the string form); a `null` or number item
+  becomes `'null'` or `'5'` and stops the start as malformed.
+- **An empty `include` stops the start (PR review).** `aidial.plugins.include=` or `[]` would load no plugin directory
+  and log each as excluded, and the plugins' types would then fail later as unknown. Loading none on purpose is
+  `plugins.exclude=*`. `testEmptyIncludeFailsTheLoad`.
 - **Dot directories and `lost+found` are ignored (added after the review).** A formatted volume mounted at `custom`
   carries `custom/lost+found`, empty or unreadable; as a plugin directory it would stop the start ("registers no
   plugin provider" or a listing error), and at the top level no `exclude` could skip it, since a group is listed before

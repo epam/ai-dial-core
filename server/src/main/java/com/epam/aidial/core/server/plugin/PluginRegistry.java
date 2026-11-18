@@ -68,6 +68,10 @@ public final class PluginRegistry {
     public static PluginRegistry load(JsonObject settings) {
         Path dir = Path.of(settings.getString("dir", "plugins"));
         List<String> include = patterns(settings, "include", "*");
+        if (include.isEmpty()) {
+            // Most likely an empty environment variable: it would load no plugin directory and log each as excluded
+            throw new IllegalStateException("plugins.include is empty: name the plugin directories to load, or set plugins.exclude to * to load none");
+        }
         List<String> exclude = patterns(settings, "exclude", "");
         ClassLoader parent = PluginRegistry.class.getClassLoader();
         Map<String, PluginProvider> providers = new HashMap<>();
@@ -126,13 +130,15 @@ public final class PluginRegistry {
     }
 
     /**
-     * A JSON array of patterns, or one string of comma-separated patterns, as an environment variable gives it.
+     * A JSON array of patterns, or one string of comma-separated patterns, as an environment variable gives it. Both
+     * forms strip each pattern and drop the blank ones.
      */
     private static List<String> patterns(JsonObject settings, String key, String defaultValue) {
         Object value = settings.getValue(key);
-        List<String> patterns = value instanceof JsonArray array
-                ? array.stream().map(String::valueOf).toList()
-                : Arrays.stream(String.valueOf(value == null ? defaultValue : value).split(",")).map(String::strip).filter(pattern -> !pattern.isEmpty()).toList();
+        Stream<String> items = value instanceof JsonArray array
+                ? array.stream().map(String::valueOf)
+                : Arrays.stream(String.valueOf(value == null ? defaultValue : value).split(","));
+        List<String> patterns = items.map(String::strip).filter(pattern -> !pattern.isEmpty()).toList();
         for (String pattern : patterns) {
             if (!PATTERN.matcher(pattern).matches()) {
                 throw new IllegalStateException("Malformed pattern '%s' in plugins.%s: use * or <group>/<plugin>, where either part may be *"

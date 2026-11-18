@@ -141,7 +141,7 @@ Moving from an earlier version: move each plugin's jars into `<plugins.dir>/<gro
 
 ### Including and excluding plugins
 
-The static settings `plugins.include` (default `["*"]`) and `plugins.exclude` (default `[]`) pick the plugin directories DIAL Core loads: one is loaded when its id matches a pattern of `include` and no pattern of `exclude`. A pattern is `*` or `<group>/<plugin>`, where either part may be `*`: `builtin/*` names a group, `*/echo` a plugin in any group. Any other pattern stops the start. A pattern that matches no directory is fine, so one setting can serve environments with different mounts.
+The static settings `plugins.include` (default `["*"]`) and `plugins.exclude` (default `[]`) pick the plugin directories DIAL Core loads: one is loaded when its id matches a pattern of `include` and no pattern of `exclude`. A pattern is `*` or `<group>/<plugin>`, where either part may be `*`: `builtin/*` names a group, `*/echo` a plugin in any group. Any other pattern stops the start, and so does an empty `include`; to load no plugin directory, set `exclude` to `*`. A pattern that matches no directory is fine, so one setting can serve environments with different mounts.
 
 Each setting is a JSON array or one string of comma-separated patterns, the form an environment variable takes:
 

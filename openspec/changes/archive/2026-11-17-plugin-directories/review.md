@@ -74,6 +74,19 @@ Checks after these fixes (JDK 21.0.8): `checkstyleMain checkstyleTest` pass; `Pl
 
 `validate --specs --strict` after the archive warned that "Plugin providers loaded at start" ran over 500 characters (the change-level validate does not check this). The requirement is now three: "Plugin providers loaded at start" (location, layout, ignored directories), "Plugin directories loaded apart" (class loader isolation) and "Plugin load errors stop the start" (the failure list), each with its scenarios; the archived delta was changed to match (one MODIFIED, three ADDED). `plugin-registry` validates. `resource-subscription` still fails `--specs --strict` with its "TBD" Purpose, from #2202 on development, outside this change.
 
+## PR review round 1
+
+Six low findings, inline on the PR.
+
+- **Empty `include` loads nothing: fixed.** `aidial.plugins.include=` or `[]` now stops the start naming `plugins.include`; `exclude=*` loads none on purpose. Spec scenario "Empty include", docs, `testEmptyIncludeFailsTheLoad`.
+- **Array items not stripped, unlike the string form: fixed.** Both forms go through one strip-and-drop-blank step; a `null` or number item stops the start as `'null'` or `'5'`. `testIncludeListLimitsTheLoad` (array with spaces and a blank item), `testMalformedPatternFailsTheLoad` (null item).
+- **Filter providers by class loader instead of registered class name: kept.** Design D4 note: a loader filter would drop a jar that registers a classpath class without a word and then report "registers no plugin provider"; the name filter names the clash. The test jars also rely on it.
+- **`isJar` without `Files.isRegularFile`: kept.** `refuseJar` is only called on entries that are not directories. In a plugin directory a `*.jar` directory is an exploded jar; skipping it would start Core without that code, while the current error names it.
+- **`matchesAny` five-element list: kept.** Two lines at start time; splitting each pattern into parts is longer.
+- **Class loader created for a directory with no jars: kept.** The error is already "registers no plugin provider" (`testPluginDirectoryWithoutProviderFailsTheLoad`); moving the check changes nothing a user sees.
+
+Checks (JDK 21.0.8): `checkstyleMain checkstyleTest` pass; `PluginRegistryTest` 19/19; `ConfigPluginApiTest` 10/10, `$SkipMode` 3/3, `$ExcludedPlugin` 1/1; `validate plugin-registry --type spec --strict` valid.
+
 ## Outcome
 
 High/medium findings open: none.

@@ -203,10 +203,20 @@ class PluginRegistryTest {
         writeJar("builtin/echo/echo.jar", JarEchoPluginProvider.class.getName());
         writeJar("custom/other/other.jar", OtherPluginProvider.class.getName());
 
-        PluginRegistry registry = PluginRegistry.load(settings().put("include", new JsonArray().add("custom/*")));
+        // Array items are stripped and blank ones dropped, as in the string form
+        PluginRegistry registry = PluginRegistry.load(settings().put("include", new JsonArray().add(" custom/* ").add("")));
 
         assertNull(registry.get(JarEchoPluginProvider.TYPE));
         assertInstanceOf(OtherPluginProvider.class, registry.get(OtherPluginProvider.TYPE));
+    }
+
+    @Test
+    void testEmptyIncludeFailsTheLoad() {
+        for (Object include : List.of("", " , ", new JsonArray(), new JsonArray().add(" "))) {
+            IllegalStateException error = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings().put("include", include)));
+
+            assertTrue(error.getMessage().contains("plugins.include is empty"), error.getMessage());
+        }
     }
 
     @Test
@@ -231,12 +241,16 @@ class PluginRegistryTest {
 
     @Test
     void testMalformedPatternFailsTheLoad() {
-        for (String pattern : List.of("a/b/c", "builtin", "builtin/", "/echo", "built*/echo", " builtin/echo", "'builtin/echo'")) {
+        for (String pattern : List.of("a/b/c", "builtin", "builtin/", "/echo", "built*/echo", "built in/echo", "'builtin/echo'")) {
             IllegalStateException error = assertThrows(IllegalStateException.class,
                     () -> PluginRegistry.load(settings().put("exclude", new JsonArray().add(pattern))));
 
             assertTrue(error.getMessage().contains("'" + pattern + "'"), error.getMessage());
         }
+        IllegalStateException nullItem = assertThrows(IllegalStateException.class,
+                () -> PluginRegistry.load(settings().put("exclude", new JsonArray().addNull())));
+
+        assertTrue(nullItem.getMessage().contains("'null'"), nullItem.getMessage());
         // A list in brackets that is not JSON reaches Core as a string, as from an environment variable
         IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> PluginRegistry.load(settings().put("exclude", "[builtin/echo, custom/old]")));
