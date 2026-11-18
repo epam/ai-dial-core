@@ -73,7 +73,11 @@ follows from the code paths in the Code map.
 - A role that set a request limit under an alias's name loses it on Messages and Responses; the config load already
   warns that such a limit has no effect.
 - In a decision chain, the target pass's spend-cap 429 is a failed candidate while the router has decisions left, so
-  Core asks the router again before the client gets the 429. Today the alias pass's own refusal does the same.
+  Core tries the next candidate, or asks the router again, before the client gets the 429. Today the alias pass's own
+  refusal does the same. One case differs: when asking the router again fails (a timeout or an error of the router),
+  the client gets the error of the alias pass's used-up upstream route, without spend headers, where today it gets
+  the alias pass's own 429. A budget refusal of
+  a model candidate behaves like this already; the change that ends a decision at a budget refusal covers both.
 - A chain whose serving pass is an application or a translated deployment reports the caps that pass reads, as a
   direct call of it does.
 
@@ -93,8 +97,9 @@ None.
 - `RateLimiter.java:limitWithSpendCaps`, `RateLimiter.java:checkLimitWithSpendCaps`, `RateLimiter.java:checkLimit`,
   `RateLimiter.java:checkRequestLimit`, `BudgetEnforcer.java:isEnforced`: why an alias pass reads the role cost limit
   and counts a request under its name.
-- `AliasPass.java`, `AliasApplicationPass.java`, `AliasPasses.java:build`: the type to test for, which every alias
-  presentation but `toolset` serves; `McpProxyController.java:limit` as the precedent.
+- `AliasPass.java`: the type to test for. `AliasPasses.java:build` makes every alias pass one:
+  `AliasApplicationPass.java` for every presentation but `toolset`, `AliasToolSetPass.java` (MCP only) for `toolset`.
+  `McpProxyController.java:limit` is the precedent.
 - `MessagesBaseController.java:serveCandidate`, `ResponsesController.java:serveCandidate`,
   `RouterDecisionFlow.java:decideIfRouter`: the pass that asks a router takes the candidate's deployment before
   `verifyLimit`.
