@@ -1,4 +1,4 @@
-FROM gradle:9.9.1-jdk21-alpine AS builder
+FROM gradle:9.9.1-jdk25-alpine AS builder
 
 #COPY --from=cache /cache /home/gradle/.gradle
 COPY --chown=gradle:gradle . /home/gradle/src
@@ -10,7 +10,7 @@ RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.
 ARG SAMPLE_PLUGINS=false
 RUN if [ "$SAMPLE_PLUGINS" = "true" ]; then mkdir -p /build/plugins && cp /home/gradle/src/plugin-samples/build/libs/*.jar /build/plugins/; fi
 
-FROM eclipse-temurin:21-jdk-alpine
+FROM eclipse-temurin:25-jdk-alpine
 
 ENV OTEL_TRACES_EXPORTER="none"
 ENV OTEL_METRICS_EXPORTER="none"
