@@ -40,7 +40,7 @@ A map of aliases and their [parameters](#aliasesalias_name):
   callers than the admin listed.
 * `defaultHeaders`: Headers the alias sets on each call under every name the client did not send, as a deployment's
   `defaultHeaders` do; a value the client sent wins. The target receives them as client headers. Not for an alias
-  of type `toolset`, nor for a stored alias.
+  of type `toolset`: the config file ignores them there, and a stored alias with them answers `400`.
 * `displayName`, `description`, `iconUrl`, `intro`, `descriptionKeywords`: Shown in listings. When not set, the
   target's are shown, read on every listing, so they follow changes of the target.
 * `displayVersion`, `author`, `createdAt`, `updatedAt`, `catalogSchemaId`, `catalogProperties`: Shown in listings.
@@ -159,8 +159,8 @@ alias whose target is missing is left out. Every listing that shows aliases list
 the task executor, except the router listings: an alias in public storage never has the type `router`.
 
 An entry has the alias's name and display fields (with the fallbacks above) and the target's features, pricing,
-limits, defaults and interfaces. It never shows the target's path, endpoint or default headers, nor the target's
-version as the alias's.
+limits, defaults and interfaces. It never shows the target's path or endpoint, nor any default headers (the alias's
+or the target's), nor the target's version as the alias's.
 
 ## Aliases in public storage
 
@@ -184,8 +184,9 @@ so that the id listings show is the id callers send. `GET` of a blob that calls 
 example without `target`) answers it with `status: invalid` and its `validationWarnings`. If storage cannot list the
 stored aliases, listings answer without them.
 
-**Body.** Only `target`, `presentAs`, `userRoles` and the display fields `displayName`, `displayVersion`, `iconUrl`,
-`description`, `intro` and `descriptionKeywords`, with the meaning above. Any other field answers `400` (`status` and a `name` equal to `<alias_name>` from a `GET` answer are ignored, so it can be sent back;
+**Body.** Only `target`, `presentAs`, `userRoles`, `defaultHeaders` and the display fields `displayName`,
+`displayVersion`, `iconUrl`, `description`, `intro` and `descriptionKeywords`, with the meaning above;
+non-empty `defaultHeaders` on an alias of type `toolset` answers `400`. Any other field answers `400` (`status` and a `name` equal to `<alias_name>` from a `GET` answer are ignored, so it can be sent back;
 another `name` answers `400`).
 
 **Checks on `PUT`**, before anything is written:
