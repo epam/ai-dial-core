@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +26,7 @@ import java.util.Set;
 public class MessagesApiRequest implements RequestObject {
     private static final String CONTENT_NODE = "content";
     private static final String CACHE_CONTROL_NODE = "cache_control";
+    private static final TextNode TEXT_TYPE = TextNode.valueOf("text");
 
     @Getter
     private final ObjectNode tree;
@@ -124,9 +126,15 @@ public class MessagesApiRequest implements RequestObject {
     /**
      * Feeds a block into the digest, skipping {@code cache_control} so a client moving its marker
      * forward each turn does not invalidate earlier prefixes. {@code cache_control} is only skipped
-     * during iteration, never removed from the tree.
+     * during iteration, never removed from the tree. A string feeds as its text block
+     * {@code {"text": <s>, "type": "text"}} does, so a client switching between the two shapes keeps its pin.
      */
     private static void updateExcludingCacheControl(CacheKeyBuilder builder, JsonNode block) {
+        if (block.isTextual()) {
+            builder.update(block);
+            builder.update(TEXT_TYPE);
+            return;
+        }
         if (!block.isObject()) {
             builder.update(block);
             return;

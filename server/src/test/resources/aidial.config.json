@@ -326,6 +326,15 @@
         {"endpoint": "http://upstream-b/v1/messages", "key": "keyB", "id": "up-b"}
       ]
     },
+    "claude-cache-tiers": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
+      "features": { "autoCachingSupported": true },
+      "upstreams": [
+        {"endpoint": "http://upstream-a/v1/messages", "key": "keyA", "id": "up-a", "tier": 0},
+        {"endpoint": "http://upstream-b/v1/messages", "key": "keyB", "id": "up-b", "tier": 1}
+      ]
+    },
     "claude-override": {
       "type": "chat",
       "overrideName": "claude-sonnet-4-5-20250929",

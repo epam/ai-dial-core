@@ -151,6 +151,59 @@ public class MessagesApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testStringMessagePinnedAfterItsTextBlock() throws IOException, InterruptedException {
+        String firstTurn = "{\"model\":\"claude-cache-tiers\",\"max_tokens\":100,\"stream\":false,\"messages\":["
+                + "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Hello\",\"cache_control\":{\"type\":\"ephemeral\"}}]}]}";
+        String secondTurn = "{\"model\":\"claude-cache-tiers\",\"max_tokens\":100,\"stream\":false,\"messages\":["
+                + "{\"role\":\"user\",\"content\":\"Hello\"},"
+                + "{\"role\":\"assistant\",\"content\":\"Hi there\"},"
+                + "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Next\",\"cache_control\":{\"type\":\"ephemeral\"}}]}]}";
+
+        assertEquals("keyB", sendPinnedThenUnpinned(firstTurn, secondTurn, "prefix.body.messages[0].content[0]"));
+    }
+
+    @Test
+    public void testStringSystemPinnedAfterItsTextBlock() throws IOException, InterruptedException {
+        String firstTurn = "{\"model\":\"claude-cache-tiers\",\"max_tokens\":100,\"stream\":false,"
+                + "\"system\":[{\"type\":\"text\",\"text\":\"Be brief\",\"cache_control\":{\"type\":\"ephemeral\"}}],"
+                + "\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}";
+        String secondTurn = "{\"model\":\"claude-cache-tiers\",\"max_tokens\":100,\"stream\":false,\"system\":\"Be brief\","
+                + "\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"},{\"role\":\"assistant\",\"content\":\"Hello\"},"
+                + "{\"role\":\"user\",\"content\":\"More\"}]}";
+
+        assertEquals("keyB", sendPinnedThenUnpinned(firstTurn, secondTurn, "prefix.body.system[0]"));
+    }
+
+    /**
+     * Sends the first turn forced to {@code up-b} (tier 1), which pins {@code breakpointPath} to it, then the second turn
+     * without {@code X-UPSTREAM-ID}, and returns the {@code X-UPSTREAM-KEY} of the second origin request. Without a pin
+     * the balancer picks {@code up-a} (tier 0, {@code keyA}).
+     */
+    private String sendPinnedThenUnpinned(String firstTurn, String secondTurn, String breakpointPath)
+            throws IOException, InterruptedException {
+        AtomicReference<String> upstreamKey = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                upstreamKey.set(request.getHeader("X-UPSTREAM-KEY"));
+                long expireAt = Instant.now().plusSeconds(600).getEpochSecond();
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE,
+                        "Content-Type", "application/json",
+                        "X-DIAL-CACHE-BREAKPOINT-PATH", breakpointPath,
+                        "X-DIAL-CACHE-EXPIRE-AT", String.valueOf(expireAt));
+            });
+
+            Response first = post(client, MESSAGES_PATH, firstTurn, "api-key", "proxyKey1", "X-UPSTREAM-ID", "up-b");
+            assertEquals(200, first.status());
+            assertEquals("keyB", upstreamKey.get());
+            Thread.sleep(1000); // wait for the async Redis update after the first turn
+
+            Response second = post(client, MESSAGES_PATH, secondTurn, "api-key", "proxyKey1");
+            assertEquals(200, second.status());
+            return upstreamKey.get();
+        }
+    }
+
+    @Test
     public void testXapiKeyAuthenticatesAndIsNotLeaked() throws IOException {
         AtomicReference<RecordedRequest> captured = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
