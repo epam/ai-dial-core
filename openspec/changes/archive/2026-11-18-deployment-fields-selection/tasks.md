@@ -37,7 +37,7 @@ entries). "No parameter": the existing `testListDeployments`, which must pass un
   `./gradlew :server:test --tests "com.epam.aidial.core.server.DeploymentApiTest"` passes, including the unchanged
   `testListDeployments`.
 - [x] 2.2 Document the parameter: a `DEPLOYMENT_FIELDS` constant in `OpenApiDescriptions` (syntax in one example,
-  snake_case wire names, unknown names ignored, `id` and `object` always returned, limits) and an
+  top-level names in snake_case and nested names as each object has them, unknown names ignored, `id` and `object` always returned, limits) and an
   `@ApiParameter(name = "fields", in = QUERY, schema = String.class)` on `listDeployments`. Verify `./gradlew
   replaceSpec` runs and the regenerated `docs/open_api_core.yaml` shows the parameter on `listDeployments` (CI commits
   that file; the merge keeps the committed description of an existing parameter, so delete it from the file before

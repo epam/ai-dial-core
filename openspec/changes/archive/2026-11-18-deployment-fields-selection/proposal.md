@@ -13,7 +13,8 @@ This change lets the caller name the fields it wants.
 ## What Changes
 
 - `GET /v1/deployments` accepts an optional query parameter `fields`: a comma-separated list of response field names
-  in the wire form (snake_case at the top level), with parentheses for nested fields and `*` for "every key of a map".
+  as they are on the wire (snake_case at the top level; a nested object keeps its own names, such as `rewritePath`
+  inside `routes`), with parentheses for nested fields and `*` for "every member at its level".
   `fields=display_name,features(rate,tokenize)` returns, for each deployment, `id`, `object`, `display_name` and
   `features` holding only `rate` and `tokenize`.
 - `id` and `object` are always returned, so the caller can tell a model from an application whatever it selects.

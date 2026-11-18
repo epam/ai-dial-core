@@ -11,9 +11,11 @@ unknown value, answered `400` with the message), runs the model, application, to
 `ProxyContext.respond(HttpStatus, Object)` serializes the object with `ProxyUtil.MAPPER` (the default response
 mapper, which drops `@EncryptedField` fields) on the thread that calls it, which is an event-loop thread.
 `DeploymentData` and its subtypes (`ModelData`, `ApplicationData`, `ToolSetData`, `RouterData`) carry
-`@JsonInclude(NON_NULL)` and `@JsonNaming(SnakeCaseStrategy)`, so the wire names are snake_case, a null field is
-absent, and each row is serialized with the fields of its runtime class. `interface_configs` keys are camelCase map
-keys (`openaiChatCompletions`) and `defaults`, `catalog_properties` and `application_properties` are free-form maps.
+`@JsonInclude(NON_NULL)` and `@JsonNaming(SnakeCaseStrategy)`, so their own wire names are snake_case, a null field
+is absent, and each row is serialized with the fields of its runtime class. Nested types need not follow that:
+`Route` (in `routes` of an application) has no naming strategy and writes `rewritePath`, `maxRetryAttempts` and
+`attachmentPaths`, and `interface_configs` keys are camelCase map keys (`openaiChatCompletions`).
+`defaults`, `catalog_properties` and `application_properties` are free-form maps.
 
 The response is a bare JSON array. Nothing in the repo selects fields today (no `@JsonFilter`, no GraphQL).
 
