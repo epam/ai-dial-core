@@ -15,7 +15,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -32,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginManagerTest {
 
-    private static final PluginRegistry REGISTRY = PluginRegistry.load(Path.of("no-plugins-dir"));
+    private static final PluginRegistry REGISTRY = PluginRegistry.load(new JsonObject().put("dir", "no-plugins-dir"));
 
     // a real one: the executor that closes plugins needs a context
     private final Vertx vertx = Vertx.vertx();
