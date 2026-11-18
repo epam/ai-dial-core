@@ -1044,7 +1044,7 @@ class PublicationApiTest extends ResourceBaseTest {
                   "url" : "conversations/public/",
                   "nodeType" : "FOLDER",
                   "resourceType" : "CONVERSATION",
-                  "permissions" : [ "READ", "WRITE", "SHARE" ],
+                  "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                   "items" : [ ]
                 }
                 """);
@@ -1192,7 +1192,7 @@ class PublicationApiTest extends ResourceBaseTest {
                    "url" : "conversations/public/",
                    "nodeType" : "FOLDER",
                    "resourceType" : "CONVERSATION",
-                  "permissions" : [ "READ", "WRITE", "SHARE" ],
+                  "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                    "items" : [ {
                      "name" : "folder1",
                      "parentPath" : null,
@@ -1200,7 +1200,7 @@ class PublicationApiTest extends ResourceBaseTest {
                      "url" : "conversations/public/folder1/",
                      "nodeType" : "FOLDER",
                      "resourceType" : "CONVERSATION",
-                     "permissions" : [ "READ", "WRITE", "SHARE" ],
+                     "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                      "items" : null
                    }, {
                      "name" : "folder2",
@@ -1209,7 +1209,7 @@ class PublicationApiTest extends ResourceBaseTest {
                      "url" : "conversations/public/folder2/",
                      "nodeType" : "FOLDER",
                      "resourceType" : "CONVERSATION",
-                     "permissions" : [ "READ", "WRITE", "SHARE" ],
+                     "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                      "items" : null
                    } ]
                  }
@@ -1225,7 +1225,7 @@ class PublicationApiTest extends ResourceBaseTest {
                   "url" : "conversations/public/",
                   "nodeType" : "FOLDER",
                   "resourceType" : "CONVERSATION",
-                  "permissions" : [ "READ", "WRITE", "SHARE" ],
+                  "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                   "items" : [{
                     "name" : "conversation1",
                     "parentPath" : "folder1",
@@ -1233,7 +1233,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url" : "conversations/public/folder1/conversation1",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ", "WRITE", "SHARE" ],
+                    "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                     "updatedAt" : "@ignore"
                     },{
                     "name" : "conversation2",
@@ -1242,7 +1242,7 @@ class PublicationApiTest extends ResourceBaseTest {
                     "url" : "conversations/public/folder2/conversation2",
                     "nodeType" : "ITEM",
                     "resourceType" : "CONVERSATION",
-                    "permissions" : [ "READ", "WRITE", "SHARE" ],
+                    "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                     "updatedAt" : "@ignore"
                     } ]
                 }

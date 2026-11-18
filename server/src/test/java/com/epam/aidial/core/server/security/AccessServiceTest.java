@@ -28,9 +28,12 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -503,6 +506,22 @@ public class AccessServiceTest {
 
         assertTrue(accessService(mock(ApplicationSchemaService.class)).hasReadAccess(review, context));
         verifyNoInteractions(orgUnitApprovals);
+    }
+
+    @Test
+    public void testFullLookupForReadWriteShareRecipientAsksOrgUnits() {
+        ResourceDescriptor shared = new ResourceDescriptor(ResourceTypes.FILE, "a.txt", List.of(), "bucket", "Users/alice/", false);
+        lenient().when(context.getUserRoles()).thenReturn(List.of());
+        lenient().when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.getUserId()).thenReturn("bob");
+        when(shareService.getPermissions(any(), any(), any())).thenReturn(Map.of(shared, ResourceAccessType.READ_WRITE_SHARE));
+        when(orgUnitGrants.isEnabled()).thenReturn(true);
+        when(orgUnitGrants.access(any(), any())).thenReturn(Map.of());
+        AccessService accessService = accessService(mock(ApplicationSchemaService.class));
+
+        // READ, WRITE and SHARE are no longer every permission, so the lookup goes on to the org-unit rule
+        assertEquals(ResourceAccessType.READ_WRITE_SHARE, accessService.lookupPermissions(Set.of(shared), context).get(shared));
+        verify(orgUnitGrants, times(1)).access(any(), any());
     }
 
     @Test

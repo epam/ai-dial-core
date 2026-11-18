@@ -250,7 +250,7 @@ public enum RouteTemplate {
 
     // Operations
     SHARE_RESOURCE_OPERATIONS(
-            "^/v1/ops/resource/share/(create|list|discard|revoke|copy)$",
+            "^/v1/ops/resource/share/(create|list|discard|revoke|copy|list_shares)$",
             "/v1/ops/resource/share/{operation}"
     ),
     INVITATIONS(
