@@ -81,88 +81,91 @@ Limits, constants in `FieldSelection` (`MAX_LENGTH = 1024`, `MAX_DEPTH = 5`): a 
 parameters even when a client percent-encodes every byte to three. Depth five covers the deepest useful path,
 `interface_configs(*(features(reasoning_efforts)))` (four levels), and bounds the parser's recursion.
 
-### D3. A Jackson property filter that knows the path
+### D3. Cut the JSON tree of each row
 
-With a selection, `FieldSelection.serialize` writes the listing with a copy of `ProxyUtil.MAPPER` that has a
-`@JsonFilter` mixin on `Object.class` and one `PropertyFilter`. For every member the serializer is about to write, the
-filter reads the path from the generator's output context (the names of the enclosing objects; arrays add no level),
-resolves it in the selection and keeps or skips the member. Maps are filtered the same way, so `*` reaches the keys of
-`interface_configs` and the other free-form maps. The copy is the same mapper as today, so the wire names, `NON_NULL`,
-the runtime subtype and the encrypted-field rule give the same members and the same bytes; the filter only skips.
-Order is kept. `id` and `object` are kept at the top level (the always-kept names the caller passes) in addition to
-the selection. An array applies the selection to each object element and writes a non-object element as it is; a
-selection below a value with no members (a string, a number, an array of strings) leaves the value as it is, so a
-nested name on a scalar is not an error and not a loss. `LocalizedValueSerializer` and `PricingRateSerializer` write their members through the
-serializer provider, as a map, so the filter reaches inside a localized value (its locales) and a decision-tree rate
-(`test`, `ifTrue`, `ifFalse`). A custom serializer that writes straight to the generator or through the mapper is not
-narrowed and its value is returned whole; the mapper copy has a default filter provider that tolerates the filter id,
-so such a value is written without the filter and does not fail. A new custom serializer of a response type has to
-write its nested members through the provider (CLAUDE.md).
+With a selection, `listDeployments` converts each deployment with `ProxyUtil.MAPPER.valueToTree` and prunes that row's
+`ObjectNode` against the selection, one row at a time, so the peak is one row's full tree plus the pruned result and
+never a tree of the whole listing. Rows are serialized by the same mapper as today, so the wire names, `NON_NULL`, the
+runtime subtype and the encrypted-field rule give the same members; pruning only removes. Order is kept: members
+appear in the order the full serialization has them. `id` and `object` are kept at the top level of each row in
+addition to the selection (the always-kept names the caller passes). An array applies the selection to each object
+element and keeps a non-object element; a selection below a value with no members (a string, a number, null, an array
+of strings) leaves the value as it is, so a nested name on a scalar is not an error and not a loss. The tree holds
+exactly what the mapper wrote, so every type is narrowed the same way: a localized value, a decision-tree pricing rate
+or a `JsonNode` stored in a free-form map needs no cooperation from its serializer.
 
-The first version converted the list to a JSON tree and pruned it. A spike on 5,000 synthetic rows (review.md) showed
-the filter doing the same work in a fraction of the time and memory: 5 to 60 ms and 1 to 6 MB against 45 to 130 ms
-and 40 to 98 MB, with byte-identical output for the three selections tried. The tree version was replaced.
+The pruner walks the tree with the selection nodes that match the current value in hand. At each member it matches the
+named node and the `*` node of every selection in hand, which is at most two per level and so at most 2^5 = 32 nodes,
+and an already-whole match is kept without being walked. The parsed selection is immutable and nothing is resolved from
+the root per member. The union of a name and `*` is deliberately not merged into the tree at parse time: merging copies
+the `*` subtree into every named sibling at every level, and in a simulation a 1,004-byte selection of 152 parsed nodes
+became 125,051 nodes with three `*` levels and 2,086,619 with four.
 
-Rejected: converting to a tree and pruning it (the cost above, and a full tree of every row to throw most of it away).
-Rejected: serializing to text and parsing it back with `readTree`. Rejected: a Jackson library for field filtering
-(`squiggly-filter-jackson` is unmaintained, nests with `[ ]`, gives `*` another meaning and adds exclusion and regular
-expressions to the input). Rejected: leaving out the fields while building each `DeploymentData` (see Non-Goals; it
-would couple every `to(...)` method to the selection).
+Rejected: a Jackson `@JsonFilter` property filter that filters while serializing. It was built and measured (review.md)
+at 2 to 15 times less time and 10 to 40 times less memory, but it narrows only what goes through the serializer
+provider: a serializer that writes straight to the generator or through the mapper, or a `JsonNode` in a free-form map,
+is returned whole, and the cooperation of every serializer on the path, now and later, would rest on a prose rule. It
+also needs a mixin on `Object.class` of a mapper copy. Rejected: serializing to text and parsing it back with
+`readTree`. Rejected: a Jackson library for field filtering (`squiggly-filter-jackson` is unmaintained, nests with
+`[ ]`, gives `*` another meaning and adds exclusion and regular expressions to the input). Rejected: leaving out the
+fields while building each `DeploymentData` (see Non-Goals; it would couple every `to(...)` method to the selection).
 
-### D4. Parse before any work, serialize on the event loop
+### D4. Parse before any work, project off the event loop
 
 `FieldSelection.parse(String, Set<String>)` runs right after `getDeploymentInterfaces`/`build` and before `execute`, so
 a bad selection is `400` before any storage read, as a bad `interface_type` is today. It throws
 `IllegalArgumentException` with a message that names the problem and the position; the controller answers it the way
 it answers `build`'s. A null, empty or blank value gives no selection and the code that follows is the code of today.
 
-When there is a selection, the `onSuccess` of the combined future serializes the listing with the filter and answers
-the text with the JSON content type. That serialization is the one `respond` does today on the event loop, and it
-writes fewer members, so it costs less than the unselected response (the spike measured 5 to 61 ms against 34 to 79 ms
-for the full listing). No executor hop is needed. Failures of the listing go to the same `onFailure` that answers
-`500`.
+When there is a selection, the `onSuccess` of the combined future submits the conversion and pruning, row by row, to
+`proxy.getTaskExecutor()` and responds with the resulting `ArrayNode`. The event loop then serializes the pruned tree,
+which is smaller than the full list it serializes today. A failure of the listing keeps its handler (`500` with the
+exception message). A failure of the conversion and pruning, or of writing the answer, with or without `fields`, is
+logged and answered `500` with the text `Internal error`.
+
+Rejected: converting on the event loop (the whole point is large listings; a list of thousands of custom
+applications would add a second pass over every row to the loop). The cost of the hop is one task submission, which
+the measurement in tasks.md checks against the alternative.
 
 ### D5. Where the code goes
 
 `server/.../util/FieldSelection.java`: `static FieldSelection parse(String, Set<String> alwaysKept)` and
-`String serialize(Object value)`, with the path-aware filter behind it. The caller names the top-level members that
-stay when not selected (`id` and `object` for the deployment listing), so the helper is not tied to deployments. It is
-a `util` class like `DeploymentEndpointUtil`, and a later `GET /v1/deployments/{id}` would call `serialize` on its one
-value. The parameter text is a new constant in `OpenApiDescriptions` (module `openapi-annotations`) used by an
-`@ApiParameter(name = "fields", in = QUERY, schema = String.class)` on `listDeployments`.
+`ObjectNode project(ObjectNode row)`, with the recursive member pruning behind them. The caller names the top-level
+members that stay when not selected (`id` and `object` for the deployment listing), so the helper is not tied to
+deployments. It is a `util` class like `DeploymentEndpointUtil`, and a later `GET /v1/deployments/{id}` would call
+`project` on its one row. The parameter text is a new constant in `OpenApiDescriptions` (module `openapi-annotations`)
+used by an `@ApiParameter(name = "fields", in = QUERY, schema = String.class)` on `listDeployments`.
 
 ## Risks / Trade-offs
 
 - [A misspelled name silently drops that field] → Decided and written in the spec. The `fields` description in the
   OpenAPI document says that unknown names are ignored, and that nested names are the ones each nested type has
-  (`rewritePath` in `routes` is camelCase).
-- [The filtered text differs from the full serialization] → Both come from a copy of `ProxyUtil.MAPPER`, and
-  `FieldSelectionTest` and the integration test assert that `fields=*` equals the unselected listing on the existing
-  fixtures.
-- [A custom serializer that writes straight to the generator or through the mapper is not narrowed] → Its value is
-  returned whole: more than asked, never less, and `@EncryptedField` values stay hidden because the filter runs on a
-  copy of the same mapper. The two such serializers of the listing (`LocalizedValueSerializer`,
-  `PricingRateSerializer`) write through the provider, and CLAUDE.md says new ones must.
-- [The filter relies on a mixin on `Object.class` of a separate mapper] → The default mapper is not touched, and the
-  copy is used only by `FieldSelection`.
+  (`rewritePath` inside each entry of `routes` is camelCase).
+- [The tree differs from the string serialization (a number, a date or an enum written differently)] → Both come from
+  `ProxyUtil.MAPPER`, and `FieldSelectionTest` and the integration test assert that `fields=*` equals the unselected
+  listing on the existing fixtures.
+- [Extra memory and CPU: each row exists as a DTO and as a tree until it is pruned] → Only with `fields`, one full row
+  tree at a time plus the pruned result, on the task executor; the measurement records it.
 - [A key with `,`, `(` or `)` in a free-form map cannot be named] → `*(...)` reaches it; no such key exists in the
   fixtures or the documented settings.
 - [Caches keyed on the URL] → The parameter is part of the URL, so a cached full listing is never served for a
   `fields` request.
 - [A client takes an absent field for a null one] → Same as today: `NON_NULL` already omits unset fields.
+- [A client already sends an unrelated `fields` parameter to this endpoint] → It is now read as a selection and gets
+  filtered entries or `400`. Stated in the proposal and in `docs/dynamic-settings/routers.md`.
 
 ## Per-request effect
 
 - Without `fields`: one `getParam("fields")` that returns null, and nothing else: no parse, no tree, no copy. The
   listing is built, serialized and answered as today. Measured by the existing `DeploymentApiTest.testListDeployments`
   passing unchanged.
-- With `fields`: one parse of at most 1,024 bytes, and one serialization of the listing on the event loop in place of
-  the full one, with a path lookup per member it writes. No tree, no copy, no executor task. No body is forwarded or
-  parsed (the listing is Core's own answer, not a proxied body), no Redis or blob round trip is added, and the storage
-  reads that build the list are the ones it does today.
+- With `fields`: one parse of at most 1,024 bytes; one `valueToTree` and one prune per listed deployment on a virtual
+  thread of the task executor; the event loop serializes the pruned tree in place of the full DTO list. No body is
+  forwarded, parsed or copied (the listing is Core's own answer, not a proxied body), no Redis or blob round trip is
+  added, and the storage reads that build the list are the ones it does today.
 - Measured in tasks.md 3.1: response bytes with and without `fields=id,display_name` on the fixture listing, and the
-  time, allocation and retained heap of the filter against the tree-and-prune version and the full serialization for
-  5,000 synthetic rows. The numbers go in review.md.
+  time, allocation and retained heap of per-row `valueToTree` plus prune against `writeValueAsString` of the full list
+  for 5,000 synthetic rows. The numbers go in review.md.
 
 ## Migration Plan
 

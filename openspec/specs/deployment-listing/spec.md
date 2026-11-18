@@ -49,6 +49,10 @@ leave that value unchanged.
 - **WHEN** a caller sends `fields=features(rate),features(tokenize)`
 - **THEN** `features` holds both `rate` and `tokenize`
 
+#### Scenario: Free-form map
+- **WHEN** a caller sends `fields=defaults(temperature)` and a deployment's `defaults` holds several keys
+- **THEN** that deployment's `defaults` holds only `temperature`
+
 ### Requirement: Selection reaches inside localized values and pricing rates
 A nested selection SHALL apply inside a localized value that holds several locales (`display_name`, `description`),
 where the locales are its members, and inside a pricing rate that is a decision tree (`pricing.prompt`,
@@ -106,6 +110,14 @@ five levels. A top-level name is level one, and each parenthesis opens the next 
 #### Scenario: Empty value
 - **WHEN** a caller sends `GET /v1/deployments?fields=`
 - **THEN** the answer is the same as without `fields`
+
+### Requirement: A listing that cannot be written answers 500
+`GET /v1/deployments` SHALL answer `500` with the text `Internal error` when it fails to convert the listing for
+`fields` or to write the answer, with or without `fields`.
+
+#### Scenario: Conversion fails
+- **WHEN** converting the listing for a `fields` request fails
+- **THEN** the answer is `500` with the body `Internal error`, and no partial listing is returned
 
 ### Requirement: Fields leaves the listing otherwise unchanged
 Without `fields` the response of `GET /v1/deployments` SHALL be the one it is today. With `fields` the set of

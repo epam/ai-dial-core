@@ -34,13 +34,14 @@ import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.FieldSelection;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
-import io.vertx.core.http.HttpHeaders;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -51,6 +52,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.controller.ModelController.createModel;
 
@@ -187,26 +189,45 @@ public class DeploymentController {
             for (int i = 0; i < result.size(); i++) {
                 deployments.addAll(result.resultAt(i));
             }
-            if (selection == null) {
-                context.respond(HttpStatus.OK, deployments);
-                return;
-            }
-            String body;
-            try {
-                body = selection.serialize(deployments);
-            } catch (Exception e) {
-                log.error("Error occurred on serializing the deployment listing with fields", e);
-                context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
-                return;
-            }
-            context.getResponse().putHeader(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
-            context.respond(HttpStatus.OK, body);
+            respondListing(deployments, selection);
         }).onFailure(error -> {
             log.error("Error occurred on listing deployments", error);
             context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
         });
 
         return Future.succeededFuture();
+    }
+
+    void respondListing(List<DeploymentData> deployments, @Nullable FieldSelection selection) {
+        if (selection == null) {
+            respondOk(deployments);
+            return;
+        }
+        proxy.getTaskExecutor()
+                .submit(() -> project(selection, deployments))
+                .onSuccess(this::respondOk)
+                .onFailure(this::respondInternalError);
+    }
+
+    private static ArrayNode project(FieldSelection selection, List<DeploymentData> deployments) {
+        ArrayNode projected = ProxyUtil.MAPPER.createArrayNode();
+        for (DeploymentData deployment : deployments) {
+            projected.add(selection.project(ProxyUtil.MAPPER.valueToTree(deployment)));
+        }
+        return projected;
+    }
+
+    private void respondOk(Object body) {
+        try {
+            context.respond(HttpStatus.OK, body);
+        } catch (Exception e) {
+            respondInternalError(e);
+        }
+    }
+
+    private void respondInternalError(Throwable error) {
+        log.error("Error occurred on listing deployments", error);
+        context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
     }
 
 

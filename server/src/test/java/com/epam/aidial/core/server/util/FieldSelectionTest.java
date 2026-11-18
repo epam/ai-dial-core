@@ -7,21 +7,26 @@ import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.ModelData;
 import com.epam.aidial.core.server.data.PricingData;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class FieldSelectionTest {
@@ -82,23 +87,23 @@ public class FieldSelectionTest {
         assertEquals(List.of("rate", "tokenize"), names(first.get("features")));
         assertEquals(List.of("paths"), names(first.get("routes").get("r1")));
 
-        Map<String, Object> row = map("{\"a\": [{\"b\": 1, \"c\": 2}, \"s\", 3]}");
-        assertEquals(read("{\"a\": [{\"b\": 1}, \"s\", 3]}"), read(parse("a(b)").serialize(row)));
+        ObjectNode row = object("{\"a\": [{\"b\": 1, \"c\": 2}, \"s\", 3]}");
+        assertEquals(read("{\"a\": [{\"b\": 1}, \"s\", 3]}"), parse("a(b)").project(row));
     }
 
     @Test
     void alwaysKeptNamesAreChosenByTheCaller() {
-        Map<String, Object> row = map("{\"id\": \"x\", \"name\": \"n\", \"kind\": \"k\", \"size\": 1}");
+        ObjectNode row = object("{\"id\": \"x\", \"name\": \"n\", \"kind\": \"k\", \"size\": 1}");
 
-        assertEquals(List.of("name", "kind"), names(read(FieldSelection.parse("name", Set.of("kind")).serialize(row))));
-        assertEquals(List.of("name"), names(read(FieldSelection.parse("name", Set.of()).serialize(row))));
+        assertEquals(List.of("name", "kind"), names(FieldSelection.parse("name", Set.of("kind")).project(row)));
+        assertEquals(List.of("name"), names(FieldSelection.parse("name", Set.of()).project(row)));
     }
 
     @Test
     void alwaysKeptNamesApplyOnlyAtTheTopLevel() {
-        Map<String, Object> row = map("{\"id\": \"x\", \"a\": {\"id\": 1, \"b\": 2}}");
+        ObjectNode row = object("{\"id\": \"x\", \"a\": {\"id\": 1, \"b\": 2}}");
 
-        assertEquals(read("{\"id\": \"x\", \"a\": {\"b\": 2}}"), read(parse("a(b)").serialize(row)));
+        assertEquals(read("{\"id\": \"x\", \"a\": {\"b\": 2}}"), parse("a(b)").project(row));
     }
 
     @Test
@@ -107,6 +112,9 @@ public class FieldSelectionTest {
 
         assertEquals("1.0", first.get("display_version").asText());
         assertEquals(read("{\"reasoning_efforts\": [\"low\", \"high\"]}"), first.get("features"));
+
+        ObjectNode row = object("{\"a\": null, \"b\": 5, \"c\": [\"x\", \"y\"]}");
+        assertEquals(row, parse("a(x),b(x),c(x)").project(row));
     }
 
     @Test
@@ -122,65 +130,73 @@ public class FieldSelectionTest {
     }
 
     @Test
+    void wildcardAndNamedSelectionsBothApplyBelowTheirLevel() {
+        JsonNode configs = project("interface_configs(*(features(reasoning_efforts)),openaiChatCompletions(defaults))")
+                .get(0).get("interface_configs");
+
+        assertEquals(read("""
+                {
+                  "openaiChatCompletions": {"features": {"reasoning_efforts": ["low"]}, "defaults": {"temperature": 1}},
+                  "anthropicMessages": {"features": {"reasoning_efforts": ["max"]}}
+                }
+                """), configs);
+    }
+
+    @Test
     void repeatedNamesAreMerged() {
         assertEquals(List.of("rate", "tokenize"), names(project("features(rate),features(tokenize)").get(0).get("features")));
         assertEquals(4, project("features,features(rate)").get(0).get("features").size());
         assertEquals(4, project("*,features(rate)").get(0).get("features").size());
         assertEquals(List.of("rate", "tokenize"), names(project("features(rate),*(tokenize)").get(0).get("features")));
-
     }
 
     @Test
     void beanMembersAreSelectedLikeMapMembers() {
-        JsonNode features = read(FieldSelection.parse("rate,tokenize", Set.of()).serialize(new FeaturesData()));
-
-        assertEquals(List.of("rate", "tokenize"), names(features));
+        assertEquals(List.of("rate", "tokenize"), names(FieldSelection.parse("rate,tokenize", Set.of()).project(tree(new FeaturesData()))));
     }
 
     @Test
     void localeOfLocalizedValueCanBeSelected() {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("id", "x");
-        row.put("display_name", LocalizedValue.of(new LinkedHashMap<>(Map.of("en", "a", "de", "b"))));
+        ModelData model = new ModelData();
+        model.setId("x");
+        model.setDisplayName(LocalizedValue.of(new LinkedHashMap<>(Map.of("en", "a", "de", "b"))));
 
-        assertEquals(read("{\"id\": \"x\", \"display_name\": {\"en\": \"a\"}}"),
-                read(parse("display_name(en)").serialize(row)));
+        assertEquals(read("{\"id\": \"x\", \"object\": \"model\", \"display_name\": {\"en\": \"a\"}}"),
+                parse("display_name(en)").project(tree(model)));
     }
 
     @Test
-    void decisionTreePricingRateMembersCanBeSelected() throws Exception {
-        PricingRate tree = new PricingRate();
+    void decisionTreePricingRateMembersCanBeSelected() {
+        PricingRate rate = new PricingRate();
         Condition condition = new Condition();
         condition.setField("prompt_tokens");
         condition.setOperator(Operator.values()[0]);
         condition.setValue(100);
-        tree.setTest(condition);
-        tree.setIfTrue(PricingRate.flat("1"));
-        tree.setIfFalse(PricingRate.flat("2"));
+        rate.setTest(condition);
+        rate.setIfTrue(PricingRate.flat("1"));
+        rate.setIfFalse(PricingRate.flat("2"));
         PricingData pricing = new PricingData();
-        pricing.setPrompt(tree);
+        pricing.setPrompt(rate);
         ModelData model = new ModelData();
         model.setId("m");
         model.setPricing(pricing);
 
-        JsonNode expectedTree = ProxyUtil.MAPPER.valueToTree(tree);
+        JsonNode expectedRate = ProxyUtil.MAPPER.valueToTree(rate);
         for (String fields : List.of("*", "pricing", "pricing(prompt)")) {
-            JsonNode prompt = read(parse(fields).serialize(List.of(model))).get(0).get("pricing").get("prompt");
-            assertEquals(expectedTree, prompt, fields);
+            assertEquals(expectedRate, parse(fields).project(tree(model)).get("pricing").get("prompt"), fields);
         }
-        JsonNode narrowed = read(parse("pricing(prompt(test(field),ifTrue))").serialize(List.of(model))).get(0).get("pricing").get("prompt");
-        assertEquals(read("{\"test\": {\"field\": \"prompt_tokens\"}, \"ifTrue\": \"1\"}"), narrowed);
-        assertEquals(read(ProxyUtil.MAPPER.writeValueAsString(List.of(model))), read(parse("*").serialize(List.of(model))));
+        assertEquals(tree(model), parse("*").project(tree(model)));
+        assertEquals(read("{\"test\": {\"field\": \"prompt_tokens\"}, \"ifTrue\": \"1\"}"),
+                parse("pricing(prompt(test(field),ifTrue))").project(tree(model)).get("pricing").get("prompt"));
     }
 
     @Test
-    void unionOfNameAndWildcardServesEveryRow() {
-        Map<String, Object> row = rows().get(0);
+    void membersOfJsonNodeValueCanBeSelected() {
+        ModelData model = new ModelData();
+        model.setId("m");
+        model.setDefaults(Map.of("node", ProxyUtil.MAPPER.createObjectNode().put("x", 1).put("y", 2)));
 
-        JsonNode projected = read(parse("features(rate),*(tokenize)").serialize(List.of(row, row)));
-
-        assertEquals(List.of("rate", "tokenize"), names(projected.get(0).get("features")));
-        assertEquals(projected.get(0), projected.get(1));
+        assertEquals(read("{\"x\": 1}"), parse("defaults(node(x))").project(tree(model)).get("defaults").get("node"));
     }
 
     @Test
@@ -213,16 +229,14 @@ public class FieldSelectionTest {
 
     @Test
     void selectionOverTheLengthLimitIsRejected() {
-        String repeat = "a".repeat(FieldSelection.MAX_LENGTH + 1);
-        assertThrows(IllegalArgumentException.class, () -> parse(repeat));
+        assertThrows(IllegalArgumentException.class, () -> parse("a".repeat(FieldSelection.MAX_LENGTH + 1)));
         parse("a".repeat(FieldSelection.MAX_LENGTH));
     }
 
     @Test
     void lengthLimitCountsBytes() {
         String twoByteCharacter = Character.toString(0xE9);
-        String repeat = twoByteCharacter.repeat(FieldSelection.MAX_LENGTH / 2 + 1);
-        assertThrows(IllegalArgumentException.class, () -> parse(repeat));
+        assertThrows(IllegalArgumentException.class, () -> parse(twoByteCharacter.repeat(FieldSelection.MAX_LENGTH / 2 + 1)));
         parse(twoByteCharacter.repeat(FieldSelection.MAX_LENGTH / 2));
     }
 
@@ -232,25 +246,33 @@ public class FieldSelectionTest {
         parse("a(b(c(d(e))))");
     }
 
+    @Test
+    void wildcardsAtSeveralLevelsStayCheap() {
+        String names = IntStream.range(0, 37).mapToObj(i -> "n" + i + "(z)").collect(Collectors.joining(","));
+        String fields = "*(*(*(" + names + ")," + names + ")," + names + ")," + names;
+
+        assertTimeoutPreemptively(Duration.ofSeconds(5), () -> project(fields));
+    }
+
     private static FieldSelection parse(String fields) {
         return FieldSelection.parse(fields, ID_AND_OBJECT);
     }
 
-    private static JsonNode project(String fields) {
-        return read(parse(fields).serialize(rows()));
+    private static ArrayNode project(String fields) {
+        FieldSelection selection = parse(fields);
+        ArrayNode projected = ProxyUtil.MAPPER.createArrayNode();
+        for (JsonNode row : read(ROWS)) {
+            projected.add(selection.project((ObjectNode) row));
+        }
+        return projected;
     }
 
-    private static List<Map<String, Object>> rows() {
-        return readValue(ROWS, new TypeReference<>() { });
+    private static ObjectNode tree(Object value) {
+        return ProxyUtil.MAPPER.valueToTree(value);
     }
 
-    private static Map<String, Object> map(String json) {
-        return readValue(json, new TypeReference<>() { });
-    }
-
-    @SneakyThrows
-    private static <T> T readValue(String json, TypeReference<T> type) {
-        return ProxyUtil.MAPPER.readValue(json, type);
+    private static ObjectNode object(String json) {
+        return (ObjectNode) read(json);
     }
 
     @SneakyThrows

@@ -1,25 +1,19 @@
 package com.epam.aidial.core.server.util;
 
-import com.fasterxml.jackson.annotation.JsonFilter;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonStreamContext;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.ser.PropertyWriter;
-import com.fasterxml.jackson.databind.ser.impl.SimpleBeanPropertyFilter;
-import com.fasterxml.jackson.databind.ser.impl.SimpleFilterProvider;
-import lombok.SneakyThrows;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.annotation.Nullable;
 
 /**
- * A selection of response fields read from text such as {@code display_name,features(rate,tokenize),interface_configs(*(features))}:
+ * A selection of response fields read from text such as {@code display_name,features(rate,tokenize),routes(*(paths))}:
  * a name keeps that member whole, {@code name(...)} selects inside it, and {@code *} matches every member at its level.
  */
 public final class FieldSelection {
@@ -27,21 +21,16 @@ public final class FieldSelection {
     static final int MAX_LENGTH = 1024;
     static final int MAX_DEPTH = 5;
 
-    private static final String FILTER_ID = "fieldSelection";
     private static final String WILDCARD = "*";
     private static final Node WHOLE = new Node(true);
-    private static final ObjectMapper FILTERING_MAPPER = ProxyUtil.MAPPER.copy()
-            .addMixIn(Object.class, Filtered.class)
-            .setFilterProvider(new SimpleFilterProvider().setFailOnUnknownId(false));
+    private static final List<Node> KEEP_ALL = List.of(WHOLE);
 
     private final Node root;
     private final Set<String> alwaysKept;
-    private final ObjectWriter writer;
 
     private FieldSelection(Node root, Set<String> alwaysKept) {
         this.root = root;
         this.alwaysKept = alwaysKept;
-        this.writer = FILTERING_MAPPER.writer(new SimpleFilterProvider().addFilter(FILTER_ID, new MemberFilter()));
     }
 
     /**
@@ -62,20 +51,68 @@ public final class FieldSelection {
     }
 
     /**
-     * A custom serializer has to write its nested members through the {@code SerializerProvider}, or its value is
-     * returned whole. A selection caches while it serializes, so one instance is not for concurrent use.
+     * The result shares the kept values with the row.
      */
-    @SneakyThrows
-    public String serialize(Object value) {
-        return writer.writeValueAsString(value);
+    public ObjectNode project(ObjectNode row) {
+        return pruneObject(List.of(root), row, true);
+    }
+
+    private JsonNode prune(List<Node> selections, JsonNode value) {
+        if (value instanceof ObjectNode object) {
+            return pruneObject(selections, object, false);
+        }
+        if (value instanceof ArrayNode array) {
+            ArrayNode pruned = array.arrayNode();
+            for (JsonNode element : array) {
+                pruned.add(element instanceof ObjectNode object ? pruneObject(selections, object, false) : element);
+            }
+            return pruned;
+        }
+        return value;
+    }
+
+    private ObjectNode pruneObject(List<Node> selections, ObjectNode object, boolean topLevel) {
+        ObjectNode pruned = object.objectNode();
+        for (Map.Entry<String, JsonNode> member : object.properties()) {
+            String name = member.getKey();
+            List<Node> memberSelections = select(selections, name);
+            if (memberSelections == KEEP_ALL) {
+                pruned.set(name, member.getValue());
+            } else if (memberSelections != null) {
+                pruned.set(name, prune(memberSelections, member.getValue()));
+            } else if (topLevel && alwaysKept.contains(name)) {
+                pruned.set(name, member.getValue());
+            }
+        }
+        return pruned;
     }
 
     @Nullable
-    private static JsonStreamContext enclosingObject(@Nullable JsonStreamContext context) {
-        while (context != null && !context.inObject()) {
-            context = context.getParent();
+    private static List<Node> select(List<Node> selections, String name) {
+        List<Node> matched = null;
+        for (Node selection : selections) {
+            Node named = selection.members.get(name);
+            Node any = selection.members.get(WILDCARD);
+            if (named != null) {
+                if (named.whole) {
+                    return KEEP_ALL;
+                }
+                matched = add(matched, named);
+            }
+            if (any != null && any != named) {
+                if (any.whole) {
+                    return KEEP_ALL;
+                }
+                matched = add(matched, any);
+            }
         }
-        return context;
+        return matched;
+    }
+
+    private static List<Node> add(@Nullable List<Node> nodes, Node node) {
+        List<Node> result = nodes == null ? new ArrayList<>(2) : nodes;
+        result.add(node);
+        return result;
     }
 
     private static Node union(Node first, Node second) {
@@ -88,69 +125,12 @@ public final class FieldSelection {
         return union;
     }
 
-    @JsonFilter(FILTER_ID)
-    private abstract static class Filtered {
-    }
-
-    private final class MemberFilter extends SimpleBeanPropertyFilter {
-        @Override
-        public void serializeAsField(Object pojo, JsonGenerator generator, SerializerProvider provider, PropertyWriter writer)
-                throws Exception {
-            if (isSelected(generator.getOutputContext(), writer.getName())) {
-                writer.serializeAsField(pojo, generator, provider);
-            } else if (!generator.canOmitFields()) {
-                writer.serializeAsOmittedField(pojo, generator, provider);
-            }
-        }
-
-        private boolean isSelected(JsonStreamContext object, String name) {
-            Node node = nodeOf(object);
-            if (node == null) {
-                return false;
-            }
-            if (node.whole || node.select(name) != null) {
-                return true;
-            }
-            return enclosingObject(object.getParent()) == null && alwaysKept.contains(name);
-        }
-
-        @Nullable
-        private Node nodeOf(JsonStreamContext object) {
-            JsonStreamContext outer = enclosingObject(object.getParent());
-            if (outer == null) {
-                return root;
-            }
-            Node outerNode = nodeOf(outer);
-            if (outerNode == null) {
-                return null;
-            }
-            return outerNode.whole ? WHOLE : outerNode.select(outer.getCurrentName());
-        }
-    }
-
     private static final class Node {
         private final boolean whole;
         private final Map<String, Node> members = new LinkedHashMap<>();
-        private Map<String, Node> unions;
 
         private Node(boolean whole) {
             this.whole = whole;
-        }
-
-        @Nullable
-        private Node select(String name) {
-            Node named = members.get(name);
-            Node any = members.get(WILDCARD);
-            if (named == null) {
-                return any;
-            }
-            if (any == null) {
-                return named;
-            }
-            if (unions == null) {
-                unions = new HashMap<>();
-            }
-            return unions.computeIfAbsent(name, key -> union(named, any));
         }
     }
 
