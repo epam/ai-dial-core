@@ -142,8 +142,13 @@ class OrgUnitRolesTest {
                 "navigator", role(new OrgUnitPermission(List.of(READ), "org-units/**"), new OrgUnitPermission(List.of(READ), "files/**"))));
         OrgUnitRoles roles = OrgUnitRoles.of(config);
 
-        assertTrue(roles.covers(List.of(ADMIN), "navigator"), "org-units is not compared");
-        assertFalse(roles.covers(List.of(), "navigator"), "the content it grants still is");
+        assertTrue(roles.covers(List.of(ADMIN), "navigator"), "a built-in role still counts as reading org-units here");
+        assertFalse(roles.covers(List.of("manager"), "navigator"), "a config role that doesn't read org-units doesn't cover it");
+        assertTrue(roles.covers(List.of("manager", "navigator"), "navigator"));
+
+        config.setOrgUnitRoles(Map.of(ADMIN, role(new OrgUnitPermission(List.of(READ, WRITE), "files/**")),
+                "navigator", role(new OrgUnitPermission(List.of(READ), "org-units/**"))));
+        assertFalse(OrgUnitRoles.of(config).covers(List.of(ADMIN), "navigator"), "an admin redefined in config gets only what it lists");
 
         assertTrue(roles.covers(List.of(ADMIN), ADMIN));
         assertTrue(roles.covers(List.of(ADMIN), EDITOR));
