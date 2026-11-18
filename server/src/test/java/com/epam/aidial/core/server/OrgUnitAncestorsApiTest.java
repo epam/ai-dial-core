@@ -154,13 +154,18 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation("dial-config/org-unit-navigator-role.json")
-    void testBuiltInAdminCantGiveRolesReadingOrgUnits() {
+    void testOnlyHoldersOfRolesReadingOrgUnitsGiveAndRemoveThem() {
         assign("public/Acme", "admin");
-        String body = "{\"roleName\": \"navigator\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", "
-                + "\"targets\": [\"carol\"]}}";
+        Response byDialAdmin = giveNavigator("carol", "admin");
+        assertEquals(200, byDialAdmin.status(), byDialAdmin.body());
+        String carol = new JsonObject(byDialAdmin.body()).getString("id");
 
-        Response given = send(HttpMethod.POST, "/v1/org-units/public/Acme/role-assignments", null, body, "authorization", BOB);
-        assertEquals(403, given.status(), given.body());
+        assertEquals(403, giveNavigator("dave", BOB).status());
+        assertEquals(403, removeAssignment(carol, BOB).status());
+
+        assign("public/Acme", "navigator");
+        assertEquals(200, giveNavigator("dave", BOB).status());
+        assertEquals(200, removeAssignment(carol, BOB).status());
     }
 
     @Test
@@ -188,6 +193,16 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
                         .formatted(roleName), "authorization", "admin");
         assertEquals(200, response.status(), response.body());
         return new JsonObject(response.body()).getString("id");
+    }
+
+    private Response giveNavigator(String target, String caller) {
+        return send(HttpMethod.POST, "/v1/org-units/public/Acme/role-assignments", null,
+                "{\"roleName\": \"navigator\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"%s\"]}}"
+                        .formatted(target), "authorization", caller);
+    }
+
+    private Response removeAssignment(String id, String caller) {
+        return send(HttpMethod.DELETE, "/v1/org-units/public/Acme/role-assignments/" + id, null, null, "authorization", caller);
     }
 
     private Response list(String folder, String caller) {

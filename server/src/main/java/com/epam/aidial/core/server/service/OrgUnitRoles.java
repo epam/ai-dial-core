@@ -23,8 +23,8 @@ import javax.annotation.Nullable;
  * {@code editor} and {@code viewer}, as overridden or extended by the dynamic config's
  * {@code orgUnitRoles}. A role grants only in the unit it is assigned at; a resource belongs to the nearest unit above
  * it, so child units are not covered. {@code read} on {@code org-units} shows the unit and the names of its child units,
- * never their content. A role anywhere also shows a person the units above it by name, each with only the child unit on
- * the way down.
+ * never their content; no built-in role holds it, so only a config role shows child units. A role anywhere also shows a
+ * person the units above it by name, each with only the child unit on the way down.
  */
 public final class OrgUnitRoles {
 
@@ -177,6 +177,17 @@ public final class OrgUnitRoles {
         }
         return wanted.entrySet().stream().allMatch(entry -> entry.getValue().stream()
                 .allMatch(action -> allows(roleNames, action, entry.getKey())));
+    }
+
+    /**
+     * The roles that {@code admin} can't give or remove, as they grant something it doesn't, in name order; none when
+     * {@code admin} doesn't manage role assignments at all.
+     */
+    public List<String> beyondAdmin() {
+        if (!allows(List.of(ADMIN), WRITE, ROLE_ASSIGNMENTS)) {
+            return List.of();
+        }
+        return roles.keySet().stream().filter(name -> !covers(List.of(ADMIN), name)).sorted().toList();
     }
 
     /**

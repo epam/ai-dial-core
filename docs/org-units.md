@@ -133,11 +133,11 @@ by role assignments, below.
 | `viewer` | `read` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects` |
 
 `read` and `write publications/**` decide publication requests into the unit; `write role-assignments/**` manages its
-assignments. `read org-units/**` shows the units directly below in the unit list and in the unit folder's listing,
-by name only; no built-in role holds it, so a role defined in config grants it where the units below should show. `org-units` takes
-only `read`, as only DIAL admins change units. A role body uses the DIAL 2.0 design's grammar; core evaluates `actions` of `read` and `write` on
-`pathPattern`s of the form `<namespace>/**` with the namespaces above, relative to the unit. A config with anything
-else fails to load, so a reload keeps the previous config. For example:
+assignments. `read org-units/**` shows the units directly below in the unit list and in the unit folder's listing, by
+name only; no built-in role holds it, so a role defined in config grants it where the units below should show.
+`org-units` takes only `read`, as only DIAL admins change units. A role body uses the DIAL 2.0 design's grammar; core
+evaluates `actions` of `read` and `write` on `pathPattern`s of the form `<namespace>/**` with the namespaces above,
+relative to the unit. A config with anything else fails to load, so a reload keeps the previous config. For example:
 
 ```json
 {
@@ -165,10 +165,11 @@ grants apply as described in Editing a unit, `role-assignments` below and `publi
 Besides DIAL admins, a holder of `read role-assignments/**` at a unit — by default its `admin` — lists its roles and
 assignments, and a holder of `write role-assignments/**` adds and removes them, in that unit only. They give or remove
 only roles whose permissions their own roles there hold together, so nobody hands out more than they have; an
-assignment of a role that no longer exists can be removed. No built-in role holds `read org-units/**`, so a role
-that grants it is given only by DIAL admins and by holders of a role that grants it too: a config that adds it to
-`editor` or `viewer` adds it to `admin` as well, or unit admins can no longer give them. A unit admin may remove their own assignment, and so lose
-the power. To anyone else the calls answer 403, also for a path that names no unit.
+assignment of a role that no longer exists can be removed. No built-in role holds `read org-units/**`, so a role that
+grants it is given only by DIAL admins and by holders of a role that grants it too: a config that adds it to `editor` or
+`viewer` adds it to `admin` as well, or unit admins can no longer give or remove them. Core logs a warning on loading a
+config with roles that `admin` can't give. A unit admin may remove their own assignment, and so lose the power. To
+anyone else the calls answer 403, also for a path that names no unit.
 
 | Call | Who | What |
 |---|---|---|
