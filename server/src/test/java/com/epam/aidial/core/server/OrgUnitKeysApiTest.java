@@ -70,16 +70,16 @@ public class OrgUnitKeysApiTest extends ResourceBaseTest {
         Response list = send(HttpMethod.POST, "/v1/ops/publication/list", null, "{\"url\": \"publications/public/\"}", "api-key", "proxyKey1");
         assertEquals(200, list.status(), list.body());
         assertEquals(url, new JsonObject(list.body()).getJsonArray("publications").getJsonObject(0).getString("url"));
-        Response publication = decide("get", url);
+        Response publication = decide("get", url, "proxyKey1");
         assertEquals(200, publication.status(), publication.body());
         String reviewUrl = new JsonObject(publication.body()).getJsonArray("resources").getJsonObject(0).getString("reviewUrl");
         Response review = send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "api-key", "proxyKey1");
         assertEquals(200, review.status(), review.body());
-        Response approved = decide("approve", url);
+        Response approved = decide("approve", url, "proxyKey1");
         assertEquals(200, approved.status(), approved.body());
         assertEquals("APPROVED", new JsonObject(approved.body()).getString("status"));
 
-        Response rejected = decide("reject", requestPublication("q.txt"));
+        Response rejected = decide("reject", requestPublication("q.txt"), "proxyKey1");
         assertEquals(200, rejected.status(), rejected.body());
         assertEquals("REJECTED", new JsonObject(rejected.body()).getString("status"));
     }
@@ -118,6 +118,36 @@ public class OrgUnitKeysApiTest extends ResourceBaseTest {
         Response listing = send(HttpMethod.GET, "/v1/metadata/files/public/", null, null, "api-key", "proxyKey1");
         assertEquals(200, listing.status(), listing.body());
         assertTrue(listing.body().contains("\"files/public/Acme/\""), listing.body());
+    }
+
+    @Test
+    void testApplicationsNeitherApproveNorManageNorSeeUnitsAbove() {
+        assertEquals(200, send(HttpMethod.POST, "/v1/org-units/public/Acme", null, "{\"name\": \"Risk\"}", "authorization", "admin").status());
+        String alice = "{\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"alice\"]}";
+        assign("admin", alice);
+        assign("viewer", "{\"type\": \"claimsPredicate\", \"source\": \"roles\", \"function\": \"EQUAL\", \"targets\": [\"user\"]}");
+        Response belowAssigned = send(HttpMethod.POST, "/v1/org-units/public/Acme/Risk/role-assignments", null,
+                "{\"roleName\": \"viewer\", \"subject\": %s}".formatted(alice), "authorization", "admin");
+        assertEquals(200, belowAssigned.status(), belowAssigned.body());
+        String url = requestPublication("p.txt");
+        String key = perRequestKeyFor("alice");
+
+        assertEquals(403, send(HttpMethod.POST, "/v1/ops/publication/list", null, "{\"url\": \"publications/public/\"}", "api-key", key).status());
+        assertEquals(403, decide("get", url, key).status());
+        String reviewUrl = new JsonObject(send(HttpMethod.POST, "/v1/ops/publication/get", null, new JsonObject().put("url", url).encode(),
+                "authorization", "admin").body()).getJsonArray("resources").getJsonObject(0).getString("reviewUrl");
+        assertEquals(403, send(HttpMethod.GET, "/v1/" + reviewUrl, null, null, "api-key", key).status());
+        assertEquals(403, decide("approve", url, key).status());
+        assertEquals(403, decide("reject", url, key).status());
+        assertEquals(403, send(HttpMethod.GET, "/v1/org-units/public/Acme/role-assignments", null, null, "api-key", key).status());
+
+        String bob = perRequestKeyFor("bob");
+        Response bobAssigned = send(HttpMethod.POST, "/v1/org-units/public/Acme/Risk/role-assignments", null,
+                "{\"roleName\": \"viewer\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", "
+                        + "\"targets\": [\"bob\"]}}", "authorization", "admin");
+        assertEquals(200, bobAssigned.status(), bobAssigned.body());
+        assertEquals(403, send(HttpMethod.GET, "/v1/metadata/files/public/Acme/", null, null, "api-key", bob).status(),
+                "a role in Risk shows a person Acme, not an application");
     }
 
     @Test
@@ -212,8 +242,8 @@ public class OrgUnitKeysApiTest extends ResourceBaseTest {
         return new JsonObject(created.body()).getString("url");
     }
 
-    private Response decide(String operation, String url) {
-        return send(HttpMethod.POST, "/v1/ops/publication/" + operation, null, new JsonObject().put("url", url).encode(), "api-key", "proxyKey1");
+    private Response decide(String operation, String url, String key) {
+        return send(HttpMethod.POST, "/v1/ops/publication/" + operation, null, new JsonObject().put("url", url).encode(), "api-key", key);
     }
 
     private void assign(String roleName, String subject) {

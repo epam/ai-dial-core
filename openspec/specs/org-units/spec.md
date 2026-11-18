@@ -44,3 +44,7 @@ review, manage role assignments, list units or see the units above through them.
 #### Scenario: Application stays read-only
 - **WHEN** the unit `Acme` gives `editor` to a subject matching an application's user
 - **THEN** the application's per-request key reads `files/public/Acme/a.txt` with `200`, gets `403` uploading `files/public/Acme/b.txt`, and `GET /v1/user/role-assignments` with it lists no units
+
+#### Scenario: Application neither approves, manages nor sees units above
+- **WHEN** the unit `Acme` gives `admin` and its child `Acme/Risk` gives `viewer` to subjects matching an application's user, and a user requests a publication into `public/Acme/`
+- **THEN** the application's per-request key gets `403` listing, reading, approving and rejecting the request, reading its review copy and listing the unit's role assignments, and a key whose user holds a role only in `Acme/Risk` gets `403` listing `public/Acme/`

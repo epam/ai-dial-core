@@ -40,6 +40,12 @@ Round 2 (style and structure), each checked against the cited rule before fixing
 - API keys with the same `project` share one bucket, so one key's publication request counts as the other's own:
   it adds the self-approval credential check and skips the rejection notification. This is the existing bucket model.
 
+A final gated review of the committed PR found no blocking findings. Its two notes are fixed: the `ProxyContext`
+field comment said "person" where it means any role holder, and the application clauses (no approve, review, role
+management or units above) had no test in the branch; `OrgUnitKeysApiTest.testApplicationsNeitherApproveNorManageNorSeeUnitsAbove`
+now pins them, with a matching scenario in the spec. It passes on the base too, as a guard; it fails (`403` expected,
+`200` received) when applications are made role holders.
+
 ## Test evidence
 
 Fail-before/pass-after on a throwaway checkout of the base: `OrgUnitKeysApiTest.testApiKeysWriteThroughTheirConfiguredRoles`,
