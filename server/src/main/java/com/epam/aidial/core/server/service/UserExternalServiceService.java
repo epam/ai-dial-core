@@ -3,7 +3,6 @@ package com.epam.aidial.core.server.service;
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
-import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -28,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
+import static com.epam.aidial.core.server.service.ExternalServiceAuthSettings.hasSecret;
+
 /**
  * User-authored external-service definitions: each is its own resource in the author's
  * bucket at {@code Users/{ownerUserId}/external_services/applications/{app_id}/{id}}. Isolation rides on
@@ -41,7 +42,7 @@ public class UserExternalServiceService {
     private final ResourceService resourceService;
     private final ResourceAuthSettingsEncryptionService secretEncryptionService;
     private final EncryptionService bucketEncryptionService;
-    private final ResourceAuthSettingsService resourceAuthSettingsService;
+    private final ExternalServiceAuthSettings externalServiceAuthSettings;
 
     public ResourceDescriptor descriptor(String ownerUserId, String appPart, String serviceId) {
         requireOwner(ownerUserId);
@@ -87,8 +88,7 @@ public class UserExternalServiceService {
             boolean existingSecretUnreadable = !tryDecryptSecretOrDrop(aad, bucket, existing);
             ExternalServiceValidation.validate(serviceId, service);
             // Registered under the URL, not the AAD: the client name reaches the provider, the raw user id must not.
-            ExternalServiceAuthSettings.setUp(resourceAuthSettingsService, resource.getUrl(), serviceId, service, existing,
-                    existingSecretUnreadable);
+            externalServiceAuthSettings.setUp(resource.getUrl(), serviceId, service, existing, existingSecretUnreadable);
             persisted.capture(service);
             encryptSecret(aad, bucket, service);
             result.setValue(service);
@@ -178,9 +178,5 @@ public class UserExternalServiceService {
     /** Returns {@code false} when the stored secret could not be decrypted and was dropped. */
     private boolean tryDecryptSecretOrDrop(String aad, BucketInfo bucket, ExternalService service) {
         return !hasSecret(service) || secretEncryptionService.tryDecryptOrDropSecrets(aad, bucket, service.getAuthSettings());
-    }
-
-    private static boolean hasSecret(ExternalService service) {
-        return ExternalServiceAuthSettings.hasSecret(service);
     }
 }

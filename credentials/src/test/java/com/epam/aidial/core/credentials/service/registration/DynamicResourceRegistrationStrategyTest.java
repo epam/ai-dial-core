@@ -150,9 +150,7 @@ class DynamicResourceRegistrationStrategyTest {
 
     @Test
     void testRegister_noPublishedResource_externalServicePolicy_hasNoResource() {
-        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(
-                authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, List.of("https://redirect.uri"),
-                RegistrationPolicy.EXTERNAL_SERVICE);
+        resourceRegistrationStrategy = externalServiceStrategy(List.of("https://redirect.uri"));
 
         ClientRegistration result = runRegistration("client_secret_basic", null);
 
@@ -161,9 +159,7 @@ class DynamicResourceRegistrationStrategyTest {
 
     @Test
     void testRegister_publishedResource_externalServicePolicy_usesMetadata() {
-        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(
-                authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, List.of("https://redirect.uri"),
-                RegistrationPolicy.EXTERNAL_SERVICE);
+        resourceRegistrationStrategy = externalServiceStrategy(List.of("https://redirect.uri"));
 
         ClientRegistration result = runRegistration("client_secret_basic", "https://test.endpoint.com/mcp");
 
@@ -172,9 +168,7 @@ class DynamicResourceRegistrationStrategyTest {
 
     @Test
     void testRegister_externalServicePolicy_unlistedRedirectUriRejectedBeforeAnyRequest() {
-        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(authorizationServerMetadataService,
-                resourceAuthorizationClient, protectedResourceMetadataService, List.of("https://chat/callback"),
-                RegistrationPolicy.EXTERNAL_SERVICE);
+        resourceRegistrationStrategy = externalServiceStrategy(List.of("https://chat/callback"));
         ResourceAuthSettings settings = mock(ResourceAuthSettings.class);
         when(settings.getRedirectUri()).thenReturn("https://attacker.example/cb");
 
@@ -185,12 +179,16 @@ class DynamicResourceRegistrationStrategyTest {
 
     @Test
     void testRegister_externalServicePolicy_noAllowedRedirectUriRejectedBeforeAnyRequest() {
-        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(authorizationServerMetadataService,
-                resourceAuthorizationClient, protectedResourceMetadataService, List.of(), RegistrationPolicy.EXTERNAL_SERVICE);
+        resourceRegistrationStrategy = externalServiceStrategy(List.of());
 
         assertThrows(IllegalArgumentException.class, () -> resourceRegistrationStrategy.register(
                 "testResource", "https://test.endpoint.com", mock(ResourceAuthSettings.class)));
         verifyNoInteractions(protectedResourceMetadataService, authorizationServerMetadataService, resourceAuthorizationClient);
+    }
+
+    private DynamicResourceRegistrationStrategy externalServiceStrategy(List<String> allowedRedirectUris) {
+        return new DynamicResourceRegistrationStrategy(authorizationServerMetadataService, resourceAuthorizationClient,
+                protectedResourceMetadataService, allowedRedirectUris, RegistrationPolicy.EXTERNAL_SERVICE);
     }
 
     private ClientRegistration runRegistrationWithResponseMethod(String responseMethod) {

@@ -67,6 +67,7 @@ import com.epam.aidial.core.server.service.BackgroundJobService.Settings;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.ConsentService;
 import com.epam.aidial.core.server.service.DeploymentService;
+import com.epam.aidial.core.server.service.ExternalServiceAuthSettings;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
@@ -308,8 +309,9 @@ public class AiDial {
                     credentialEncryptionService);
             ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
                     resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
+            ExternalServiceAuthSettings externalServiceAuthSettings = new ExternalServiceAuthSettings(resourceAuthSettingsService);
             ExternalServiceService externalServiceService = new ExternalServiceService(resourceService,
-                    resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor, resourceAuthSettingsService);
+                    resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor, externalServiceAuthSettings);
 
             // Before the config stores: they validate every plugins entry against the provider of its type
             PluginRegistry pluginRegistry = PluginRegistry.load(Path.of(settings("plugins").getString("dir", "plugins")));
@@ -356,7 +358,7 @@ public class AiDial {
                     resourceRegistrationService, resourceAuthSettingsService);
 
             UserExternalServiceService userExternalServiceService = new UserExternalServiceService(
-                    resourceService, resourceAuthSettingsEncryptionService, encryptionService, resourceAuthSettingsService);
+                    resourceService, resourceAuthSettingsEncryptionService, encryptionService, externalServiceAuthSettings);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     secretFieldProcessor, externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));

@@ -7,7 +7,6 @@ import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
-import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
 import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
@@ -32,6 +31,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.epam.aidial.core.server.service.ExternalServiceAuthSettings.hasSecret;
+
 /**
  * Manages an application's inline {@code external_services}: validation, OAuth client setup (shared with toolsets),
  * encryption-at-rest of {@code client_secret} and {@code code_verifier}, and per-service create/update/delete.
@@ -44,11 +45,11 @@ public class ExternalServiceService {
     private final ResourceAuthSettingsEncryptionService encryptionService;
     private final ResourceCredentialsService resourceCredentialsService;
     private final SecretFieldProcessor secretFieldProcessor;
-    private final ResourceAuthSettingsService resourceAuthSettingsService;
+    private final ExternalServiceAuthSettings externalServiceAuthSettings;
 
     /**
-     * On an application write: validate, drop computed statuses, preserve omitted client_secrets, encrypt
-     * at rest. Returns ids whose APP-level credentials this write invalidated — services dropped outright and
+     * On an application write: validate, set up each OAuth client (registration, PKCE, the stored fields an update
+     * omits), encrypt at rest. Returns ids whose APP-level credentials this write invalidated — services dropped outright and
      * services whose {@code authentication_type} changed — so the caller can purge them.
      *
      * <p>With {@link ExternalServicesWriteMode#PRESERVE_IF_OMITTED} (the request omitted {@code external_services},
@@ -270,8 +271,7 @@ public class ExternalServiceService {
     /** {@code existing} must be decrypted, its secrets dropped when {@code existingSecretUnreadable}. */
     private void setUpAuthSettings(ResourceDescriptor resource, String serviceId, ExternalService service,
                                    ExternalService existing, boolean existingSecretUnreadable) {
-        ExternalServiceAuthSettings.setUp(resourceAuthSettingsService, secretAad(resource, serviceId), serviceId, service,
-                existing, existingSecretUnreadable);
+        externalServiceAuthSettings.setUp(secretAad(resource, serviceId), serviceId, service, existing, existingSecretUnreadable);
     }
 
     /** Returns {@code false} when the stored secret could not be decrypted and was dropped. */
@@ -310,10 +310,6 @@ public class ExternalServiceService {
             }
             action.apply(entry.getKey(), service.getAuthSettings(), bucketInfo);
         }
-    }
-
-    private static boolean hasSecret(ExternalService service) {
-        return ExternalServiceAuthSettings.hasSecret(service);
     }
 
     @FunctionalInterface

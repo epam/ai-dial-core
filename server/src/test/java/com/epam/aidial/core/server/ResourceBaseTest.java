@@ -54,8 +54,10 @@ import org.slf4j.LoggerFactory;
 import redis.embedded.RedisServer;
 
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Comparator;
@@ -350,6 +352,37 @@ public class ResourceBaseTest {
 
     // Structurally valid Base64 that no key decrypts, standing in for a secret whose key is lost.
     protected static final String CORRUPTED_CIPHERTEXT = Base64.getEncoder().encodeToString(new byte[64]);
+
+    protected String userApplicationUrl(String role, String appName) throws Exception {
+        Response bucket = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", role);
+        assertEquals(200, bucket.status());
+        return "applications/" + ProxyUtil.MAPPER.readTree(bucket.body()).get("bucket").asText() + "/" + appName;
+    }
+
+    protected String createPlainDynamicApp(String role, String appName) throws Exception {
+        String appUrl = userApplicationUrl(role, appName);
+        Response create = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {"endpoint": "http://localhost:7001/v1/x", "display_name": "Mgmt App"}
+                """, "authorization", role);
+        assertEquals(200, create.status(), create::body);
+        return appUrl;
+    }
+
+    /** The PKCE S256 challenge of {@code verifier}. */
+    protected static String s256(String verifier) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+    }
+
+    protected static Map<String, String> parseForm(String body) {
+        Map<String, String> form = new HashMap<>();
+        for (String pair : body.split("&")) {
+            String[] parts = pair.split("=", 2);
+            form.put(URLDecoder.decode(parts[0], StandardCharsets.UTF_8),
+                    parts.length > 1 ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8) : "");
+        }
+        return form;
+    }
 
     protected String readStoredBlob(String url) {
         return dial.getProxy().getResourceService().getResource(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService));

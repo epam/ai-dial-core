@@ -251,14 +251,11 @@ class PublicationApiTest extends ResourceBaseTest {
                     }
                     """, "authorization", "admin");
             assertEquals(200, signIn.status(), signIn.body());
-            String verifier = java.net.URLDecoder.decode(tokenBody.get().replaceAll(".*code_verifier=([^&]*).*", "$1"),
-                    java.nio.charset.StandardCharsets.UTF_8);
+            String verifier = parseForm(tokenBody.get()).get("code_verifier");
             Response published = send(HttpMethod.GET, "/v1/applications/public/folder/pkce-ext-app", null, "", "authorization", "admin");
             String challenge = ProxyUtil.MAPPER.readTree(published.body())
                     .at("/external_services/sf/auth_settings/code_challenge").asText();
-            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(verifier.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
-            assertEquals(challenge, java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(digest),
+            assertEquals(challenge, s256(verifier),
                     "sign-in must send the verifier matching the stored challenge, got: " + tokenBody.get());
         }
     }

@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.ExternalService;
 import com.epam.aidial.core.config.ResourceAuthSettings;
-import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import lombok.experimental.UtilityClass;
@@ -17,8 +16,6 @@ public class ExternalServiceValidation {
 
     // Ids flow into URI-parsed credential scopes and storage paths, so restrict them like toolset names.
     private static final Pattern SERVICE_ID_PATTERN = Pattern.compile("^[A-Za-z0-9-_]+$");
-
-    private static final AuthSettingsValidatorFactory VALIDATOR_FACTORY = new AuthSettingsValidatorFactory();
 
     // Re-validate on every access: descriptor() builds storage paths from the id, keeping get/delete self-enforcing.
     public static void validateServiceId(String serviceId) {
@@ -39,10 +36,6 @@ public class ExternalServiceValidation {
             throw new HttpException(HttpStatus.BAD_REQUEST,
                     "External service '%s': auth_settings.authentication_type is required".formatted(serviceId));
         }
-        if (VALIDATOR_FACTORY.getValidator(authSettings.getAuthenticationType()) == null) {
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "External service '%s': unknown authentication_type %s".formatted(serviceId, authSettings.getAuthenticationType()));
-        }
         validateDiscoveryUrl(serviceId, authSettings.getDiscoveryUrl());
     }
 
@@ -54,12 +47,16 @@ public class ExternalServiceValidation {
         try {
             uri = new URI(discoveryUrl);
         } catch (URISyntaxException e) {
-            uri = null;
+            throw invalidDiscoveryUrl(serviceId);
         }
-        if (uri == null || !uri.isAbsolute() || uri.getHost() == null
+        if (!uri.isAbsolute() || uri.getHost() == null
                 || !("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))) {
-            throw new HttpException(HttpStatus.BAD_REQUEST,
-                    "External service '%s': discovery_url must be an absolute http or https URL".formatted(serviceId));
+            throw invalidDiscoveryUrl(serviceId);
         }
+    }
+
+    private static HttpException invalidDiscoveryUrl(String serviceId) {
+        return new HttpException(HttpStatus.BAD_REQUEST,
+                "External service '%s': discovery_url must be an absolute http or https URL".formatted(serviceId));
     }
 }

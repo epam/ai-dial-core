@@ -75,11 +75,12 @@ public class ResourceAuthSettingsService {
 
     /**
      * Same as {@link #processResourceAuthSettings(SecuredResource, SecuredResource, boolean)} for a resource that is not a
-     * {@code SecuredResource}. A null {@code existingResourceAuthSettings} means a create. A static client of a
-     * resource without an endpoint has nothing to discover from, so it is stored as sent; a dynamic one is rejected.
+     * {@code SecuredResource}. A null {@code existingResourceAuthSettings} means a create. {@code discoveryUrl} is where
+     * OAuth metadata is read from (a toolset's endpoint, an external service's {@code discovery_url}); without one a
+     * static client is stored as sent and a dynamic one is rejected.
      */
     public void processResourceAuthSettings(String resourceId,
-                                            String resourceEndpoint,
+                                            String discoveryUrl,
                                             ResourceAuthSettings resourceAuthSettings,
                                             ResourceAuthSettings existingResourceAuthSettings,
                                             boolean existingSecretUnreadable,
@@ -97,8 +98,8 @@ public class ResourceAuthSettingsService {
 
         if (resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT
                 || resourceAuthSettingsChangeMode == ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT) {
-            if (resourceEndpoint != null) {
-                enrichResourceAuthSettings(resourceId, resourceEndpoint, resourceAuthSettings,
+            if (discoveryUrl != null) {
+                enrichResourceAuthSettings(resourceId, discoveryUrl, resourceAuthSettings,
                         requiresDynamicClientRegistration, policy);
             } else if (requiresDynamicClientRegistration) {
                 throw new IllegalArgumentException(
@@ -129,17 +130,10 @@ public class ResourceAuthSettingsService {
                 resourceAuthSettings.setTokenEndpointAuthMethod(existingResourceAuthSettings.getTokenEndpointAuthMethod());
             }
 
-            // Clients that predate the field omit it, so null keeps the stored indicator; a blank value clears it.
-            if (resourceAuthSettings.getResource() == null) {
-                resourceAuthSettings.setResource(existingResourceAuthSettings.getResource());
-            } else if (StringUtils.isBlank(resourceAuthSettings.getResource())) {
-                resourceAuthSettings.setResource(null);
-            }
-            if (resourceAuthSettings.getDiscoveryUrl() == null) {
-                resourceAuthSettings.setDiscoveryUrl(existingResourceAuthSettings.getDiscoveryUrl());
-            } else if (StringUtils.isBlank(resourceAuthSettings.getDiscoveryUrl())) {
-                resourceAuthSettings.setDiscoveryUrl(null);
-            }
+            // Clients that predate these fields omit them, so null keeps the stored value; a blank value clears it.
+            resourceAuthSettings.setResource(keepOrClear(resourceAuthSettings.getResource(), existingResourceAuthSettings.getResource()));
+            resourceAuthSettings.setDiscoveryUrl(
+                    keepOrClear(resourceAuthSettings.getDiscoveryUrl(), existingResourceAuthSettings.getDiscoveryUrl()));
 
             resolveCodeChallengeSettings(resourceAuthSettings, existingResourceAuthSettings, existingSecretUnreadable);
 
@@ -149,6 +143,13 @@ public class ResourceAuthSettingsService {
                 resourceAuthSettings.setDynamicallyRegistered(existingResourceAuthSettings.getDynamicallyRegistered());
             }
         }
+    }
+
+    private static String keepOrClear(String sent, String stored) {
+        if (sent == null) {
+            return stored;
+        }
+        return StringUtils.isBlank(sent) ? null : sent;
     }
 
     /**
@@ -192,18 +193,18 @@ public class ResourceAuthSettingsService {
      * Enriches the resource authentication settings with metadata by registering clients dynamically or statically.
      *
      * @param resourceId The resource name
-     * @param resourceEndpoint The resource endpoint (URL)
+     * @param discoveryUrl The URL OAuth metadata is read from
      * @param resourceAuthSettings The `ResourceAuthSettings` being enriched
      * @param oauthDynamicClientRegistrationRequired Whether dynamic client registration is needed
      * @param policy What the registration may take from the resource itself
      */
     private void enrichResourceAuthSettings(String resourceId,
-                                            String resourceEndpoint,
+                                            String discoveryUrl,
                                             ResourceAuthSettings resourceAuthSettings,
                                             boolean oauthDynamicClientRegistrationRequired,
                                             RegistrationPolicy policy) {
         ClientRegistration clientRegistration = resourceRegistrationService.register(
-                resourceId, resourceEndpoint, resourceAuthSettings, oauthDynamicClientRegistrationRequired, policy);
+                resourceId, discoveryUrl, resourceAuthSettings, oauthDynamicClientRegistrationRequired, policy);
 
         resourceAuthSettings.setClientId(clientRegistration.getClientId());
         resourceAuthSettings.setClientSecret(clientRegistration.getClientSecret());

@@ -1,23 +1,16 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
-import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
 
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -44,8 +37,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testCreateRegistersClient() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-create");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-create");
 
             Response put = putService(appUrl, "crm", dynamicBody());
             assertEquals(200, put.status(), put::body);
@@ -69,8 +62,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testRegistrationThroughApplicationWrite() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = bucketUrl("dcr-app-write");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = userApplicationUrl("user", "dcr-app-write");
             Response put = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
                     {
                         "endpoint": "http://localhost:7001/v1/x",
@@ -88,22 +81,22 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testAuthorizationServerWithoutRegistrationRejected() throws Exception {
-        try (Provider provider = new Provider(true, false, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-no-registration");
+        try (Provider provider = Provider.withoutRegistration()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-no-registration");
 
             Response put = putService(appUrl, "crm", dynamicBody());
             assertEquals(400, put.status(), put::body);
             assertTrue(put.body().contains("does not support dynamic client registration"), put::body);
 
             assertEquals(0, provider.count("POST /register"));
-            assertEquals(404, send(HttpMethod.GET, "/v1/" + appUrl + "/external-services/crm", null, "", "authorization", "user").status());
+            assertEquals(404, serviceStatus(appUrl, "crm"));
         }
     }
 
     @Test
     @DialConfigLocation(CONFIG)
     void testNeitherClientNorEndpointRejected() throws Exception {
-        String appUrl = createPlainDynamicApp("dcr-no-endpoint");
+        String appUrl = createPlainDynamicApp("user", "dcr-no-endpoint");
 
         Response put = putService(appUrl, "crm", """
                 {"auth_settings": {"authentication_type": "OAUTH"}}
@@ -116,8 +109,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testDynamicBodyWithTokenEndpointRejectedWithoutRequests() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-token-endpoint");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-token-endpoint");
 
             Response put = putService(appUrl, "crm", """
                     {"auth_settings": {"authentication_type": "OAUTH", "discovery_url": "%s", "token_endpoint": "http://localhost:9876/token"}}
@@ -132,23 +125,23 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testDynamicBodyWithUnlistedRedirectUriRejectedWithoutRequests() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-unlisted-redirect");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-unlisted-redirect");
 
             Response put = putService(appUrl, "crm", dynamicBodyWithRedirect("https://attacker.example/cb"));
 
             assertEquals(400, put.status(), put::body);
             assertTrue(put.body().contains("is not in toolsets.security.allowedRedirectUris"), put::body);
             assertEquals(List.of(), provider.requests);
-            assertEquals(404, send(HttpMethod.GET, "/v1/" + appUrl + "/external-services/crm", null, "", "authorization", "user").status());
+            assertEquals(404, serviceStatus(appUrl, "crm"));
         }
     }
 
     @Test
     @DialConfigLocation(CONFIG)
     void testDynamicBodyWithListedRedirectUriRegisters() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-listed-redirect");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-listed-redirect");
 
             Response put = putService(appUrl, "crm", dynamicBodyWithRedirect("http://admin/callback"));
 
@@ -161,8 +154,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testSignInWithAllowedRedirectUri() throws Exception {
-        try (Provider provider = new Provider(true, true, true, "client_secret_post")) {
-            String appUrl = createPlainDynamicApp("dcr-signin-redirect");
+        try (Provider provider = Provider.confidential("client_secret_post")) {
+            String appUrl = createPlainDynamicApp("user", "dcr-signin-redirect");
             assertEquals(200, putService(appUrl, "crm", dynamicBody()).status());
 
             verify(signIn(appUrl + "/external_services/crm", "http://admin/callback"), 200, "true");
@@ -174,8 +167,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testSignInWithUnlistedRedirectUriRejected() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-signin-unlisted");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-signin-unlisted");
             assertEquals(200, putService(appUrl, "crm", dynamicBody()).status());
 
             Response signIn = signIn(appUrl + "/external_services/crm", "https://attacker.example/cb");
@@ -188,8 +181,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testBlankRedirectUriAndDiscoveryUrlCountAsAbsent() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-blank-fields");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-blank-fields");
 
             Response dynamic = putService(appUrl, "crm", dynamicBodyWithRedirect(""));
             assertEquals(200, dynamic.status(), dynamic::body);
@@ -212,7 +205,7 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testSwitchToOauthNeedsClientSecret() throws Exception {
-        String appUrl = createPlainDynamicApp("switch-needs-secret");
+        String appUrl = createPlainDynamicApp("user", "switch-needs-secret");
         assertEquals(200, putService(appUrl, "crm", """
                 {"auth_settings": {"authentication_type": "API_KEY", "api_key_header": "X-Key"}}
                 """).status());
@@ -229,7 +222,7 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testRelativeDiscoveryUrlRejected() throws Exception {
-        String appUrl = createPlainDynamicApp("dcr-relative");
+        String appUrl = createPlainDynamicApp("user", "dcr-relative");
 
         Response put = putService(appUrl, "crm", """
                 {"auth_settings": {"authentication_type": "OAUTH", "discovery_url": "/api"}}
@@ -237,13 +230,13 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
 
         assertEquals(400, put.status(), put::body);
         assertTrue(put.body().contains("discovery_url must be an absolute"), put::body);
-        assertEquals(404, send(HttpMethod.GET, "/v1/" + appUrl + "/external-services/crm", null, "", "authorization", "user").status());
+        assertEquals(404, serviceStatus(appUrl, "crm"));
     }
 
     @Test
     @DialConfigLocation(CONFIG)
     void testDiscoveryUrlRejectedForApiKey() throws Exception {
-        String appUrl = createPlainDynamicApp("dcr-api-key");
+        String appUrl = createPlainDynamicApp("user", "dcr-api-key");
 
         Response put = putService(appUrl, "crm", """
                 {"auth_settings": {"authentication_type": "API_KEY", "api_key_header": "X-Key", "discovery_url": "%s"}}
@@ -256,11 +249,10 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testUpdateOmittingDiscoveryUrlKeepsIt() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-keep-discovery");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-keep-discovery");
             assertEquals(200, putService(appUrl, "crm", dynamicBody()).status());
-            ObjectNode resent = (ObjectNode) getService(appUrl, "crm").deepCopy();
-            resent.remove("id");
+            ObjectNode resent = resendable(getService(appUrl, "crm"));
             ((ObjectNode) resent.get("auth_settings")).remove("discovery_url");
 
             assertEquals(200, putService(appUrl, "crm", resent.toString()).status());
@@ -273,13 +265,12 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testRoundTripKeepsRegistrationAndOauthFields() throws Exception {
-        try (Provider provider = new Provider(true, true, true, "client_secret_post")) {
-            String appUrl = createPlainDynamicApp("dcr-round-trip");
+        try (Provider provider = Provider.confidential("client_secret_post")) {
+            String appUrl = createPlainDynamicApp("user", "dcr-round-trip");
             assertEquals(200, putService(appUrl, "crm", dynamicBody()).status());
             JsonNode created = getService(appUrl, "crm");
 
-            ObjectNode resent = (ObjectNode) created.deepCopy();
-            resent.remove("id");
+            ObjectNode resent = resendable(created);
             resent.put("display_name", "Renamed");
             Response update = putService(appUrl, "crm", resent.toString());
             assertEquals(200, update.status(), update::body);
@@ -303,11 +294,10 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testBlankResourceClearsIt() throws Exception {
-        try (Provider ignore = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-blank-resource");
+        try (Provider ignore = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-blank-resource");
             assertEquals(200, putService(appUrl, "crm", dynamicBody()).status());
-            ObjectNode resent = (ObjectNode) getService(appUrl, "crm").deepCopy();
-            resent.remove("id");
+            ObjectNode resent = resendable(getService(appUrl, "crm"));
             ((ObjectNode) resent.get("auth_settings")).put("resource", "");
 
             assertEquals(200, putService(appUrl, "crm", resent.toString()).status());
@@ -319,8 +309,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testTypeChangeKeepsNoOauthField() throws Exception {
-        try (Provider ignore = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-type-change");
+        try (Provider ignore = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-type-change");
             assertEquals(200, putService(appUrl, "crm", dynamicBody()).status());
 
             Response update = putService(appUrl, "crm", """
@@ -339,8 +329,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testPublicClientVerifierEncryptedAtRestAndNeverReturned() throws Exception {
-        try (Provider provider = new Provider(false, true, true, null)) {
-            String appUrl = createPlainDynamicApp("dcr-public");
+        try (Provider provider = Provider.publicClient()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-public");
             assertEquals(200, putService(appUrl, "crm", dynamicBody()).status());
             String scope = appUrl + "/external_services/crm";
 
@@ -350,7 +340,7 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
             assertNotNull(verifier, "sign-in must send the decrypted code_verifier");
             assertNull(token.get("client_secret"));
 
-            String blob = dial.getProxy().getResourceService().getResource(appDescriptor(appUrl));
+            String blob = readStoredBlob(appUrl);
             String stored = ProxyUtil.MAPPER.readTree(blob).at("/external_services/crm/auth_settings/code_verifier").asText();
             assertFalse(stored.isEmpty(), blob);
             assertFalse(blob.contains(verifier), "the code_verifier must be encrypted at rest");
@@ -372,8 +362,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testStaticClientWithoutEndpointMakesNoRequest() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("static-offline");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "static-offline");
 
             Response put = putService(appUrl, "crm", """
                     {"auth_settings": %s}
@@ -390,8 +380,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testStaticClientWithoutEndpointAsksForPkce() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("static-pkce");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "static-pkce");
 
             Response put = putService(appUrl, "crm", """
                     {"auth_settings": %s}
@@ -408,8 +398,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testAdminPanelStaticBodyWithBlankFieldsAccepted() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("static-admin-panel");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "static-admin-panel");
             String body = """
                     {"display_name": "CRM", "auth_settings": {
                         "authentication_type": "OAUTH",
@@ -440,8 +430,8 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testStaticClientWithEndpointReadsMetadata() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
-            String appUrl = createPlainDynamicApp("static-endpoint");
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "static-endpoint");
 
             Response put = putService(appUrl, "crm", """
                     {"auth_settings": %s}
@@ -463,10 +453,10 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testStaticClientWithUnreachableMetadataStoredAsSent() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
+        try (Provider provider = Provider.confidential()) {
             provider.server.map(HttpMethod.GET, "/.well-known/oauth-protected-resource/api", 500, "boom");
             provider.server.map(HttpMethod.GET, "/.well-known/oauth-authorization-server", 500, "boom");
-            String appUrl = createPlainDynamicApp("static-metadata-down");
+            String appUrl = createPlainDynamicApp("user", "static-metadata-down");
 
             Response put = putService(appUrl, "crm", """
                     {"auth_settings": %s}
@@ -483,11 +473,11 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testStaticClientWithInvalidMetadataRejected() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
+        try (Provider provider = Provider.confidential()) {
             provider.server.map(HttpMethod.GET, "/.well-known/oauth-protected-resource/api", 200,
                     "{\"resource\": \"https://other.example.com\", \"authorization_servers\": [\"http://localhost:9876\"]}",
                     "Content-Type", "application/json");
-            String appUrl = createPlainDynamicApp("static-metadata-invalid");
+            String appUrl = createPlainDynamicApp("user", "static-metadata-invalid");
 
             Response put = putService(appUrl, "crm", """
                     {"auth_settings": %s}
@@ -495,14 +485,14 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
 
             assertEquals(400, put.status(), put::body);
             assertTrue(put.body().contains("Protected resource metadata is not the same"), put::body);
-            assertEquals(404, send(HttpMethod.GET, "/v1/" + appUrl + "/external-services/crm", null, "", "authorization", "user").status());
+            assertEquals(404, serviceStatus(appUrl, "crm"));
         }
     }
 
     @Test
     @DialConfigLocation(CONFIG)
     void testUserAuthoredServiceRegistersAndRoundTrips() throws Exception {
-        try (Provider provider = new Provider(true, true, true, "client_secret_post")) {
+        try (Provider provider = Provider.confidential("client_secret_post")) {
             String path = "/v1/applications/user-services-app/external-services/crm";
             Response put = send(HttpMethod.PUT, path, null, dynamicBody(), "authorization", "user");
             assertEquals(200, put.status(), put::body);
@@ -527,7 +517,7 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testConfigFileServiceWithoutClientDropped() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
+        try (Provider provider = Provider.confidential()) {
             Response list = send(HttpMethod.GET, "/v1/applications/config-dcr-app/external-services", null, "", "authorization", "admin");
             assertEquals(200, list.status(), list::body);
 
@@ -543,7 +533,7 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testAdminValidateDoesNotRegister() throws Exception {
-        try (Provider provider = new Provider(true, true, true, null)) {
+        try (Provider provider = Provider.confidential()) {
             Response validate = send(HttpMethod.POST, "/v1/admin/validate", null, """
                     {
                       "manifests": [
@@ -594,6 +584,17 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
         return send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/" + serviceId, null, body, "authorization", "user");
     }
 
+    private int serviceStatus(String appUrl, String serviceId) {
+        return send(HttpMethod.GET, "/v1/" + appUrl + "/external-services/" + serviceId, null, "", "authorization", "user").status();
+    }
+
+    /** A read of the service as a write body: everything but the id. */
+    private static ObjectNode resendable(JsonNode service) {
+        ObjectNode body = service.deepCopy();
+        body.remove("id");
+        return body;
+    }
+
     private JsonNode getService(String appUrl, String serviceId) throws Exception {
         Response get = send(HttpMethod.GET, "/v1/" + appUrl + "/external-services/" + serviceId, null, "", "authorization", "user");
         assertEquals(200, get.status(), get::body);
@@ -612,30 +613,6 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
                 """.formatted(scope), "authorization", "user"), 200, "true");
     }
 
-    private String bucketUrl(String appName) throws Exception {
-        Response bucket = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "user");
-        assertEquals(200, bucket.status());
-        return "applications/" + ProxyUtil.MAPPER.readTree(bucket.body()).get("bucket").asText() + "/" + appName;
-    }
-
-    private String createPlainDynamicApp(String appName) throws Exception {
-        String appUrl = bucketUrl(appName);
-        Response create = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
-                {"endpoint": "http://localhost:7001/v1/x", "display_name": "App"}
-                """, "authorization", "user");
-        assertEquals(200, create.status(), create::body);
-        return appUrl;
-    }
-
-    private ResourceDescriptor appDescriptor(String appUrl) {
-        return ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService);
-    }
-
-    private static String s256(String verifier) throws Exception {
-        byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
-    }
-
     /** The service and its OAuth provider on one port; every request is recorded as "METHOD path". */
     private static final class Provider implements AutoCloseable {
 
@@ -644,7 +621,23 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
         final AtomicReference<String> registrationBody = new AtomicReference<>();
         final AtomicReference<String> tokenBody = new AtomicReference<>();
 
-        Provider(boolean issueSecret, boolean offerRegistration, boolean offerS256, String tokenEndpointAuthMethod) {
+        static Provider confidential() {
+            return new Provider(true, true, null);
+        }
+
+        static Provider confidential(String tokenEndpointAuthMethod) {
+            return new Provider(true, true, tokenEndpointAuthMethod);
+        }
+
+        static Provider publicClient() {
+            return new Provider(false, true, null);
+        }
+
+        static Provider withoutRegistration() {
+            return new Provider(true, false, null);
+        }
+
+        private Provider(boolean issueSecret, boolean offerRegistration, String tokenEndpointAuthMethod) {
             server = new TestWebServer(9876, request -> {
                 requests.add(request.getMethod() + " " + request.getPath());
                 return new MockResponse().setResponseCode(404);
@@ -657,11 +650,11 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
                     {
                       "issuer": "http://localhost:9876",
                       "authorization_endpoint": "http://localhost:9876/authorize",
-                      "token_endpoint": "http://localhost:9876/token"
-                      %s%s
+                      "token_endpoint": "http://localhost:9876/token",
+                      "code_challenge_methods_supported": ["S256"]
+                      %s
                     }
-                    """.formatted(offerRegistration ? ", \"registration_endpoint\": \"http://localhost:9876/register\"" : "",
-                    offerS256 ? ", \"code_challenge_methods_supported\": [\"S256\"]" : ""));
+                    """.formatted(offerRegistration ? ", \"registration_endpoint\": \"http://localhost:9876/register\"" : ""));
             server.map(HttpMethod.POST, "/register", request -> {
                 requests.add("POST /register");
                 registrationBody.set(request.getBody().readUtf8());
@@ -694,10 +687,7 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
 
         Map<String, String> tokenForm() {
             assertNotNull(tokenBody.get(), "the token endpoint was not called");
-            return Stream.of(tokenBody.get().split("&"))
-                    .map(pair -> pair.split("=", 2))
-                    .collect(Collectors.toMap(pair -> URLDecoder.decode(pair[0], StandardCharsets.UTF_8),
-                            pair -> pair.length > 1 ? URLDecoder.decode(pair[1], StandardCharsets.UTF_8) : ""));
+            return parseForm(tokenBody.get());
         }
 
         @Override

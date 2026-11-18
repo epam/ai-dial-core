@@ -7,21 +7,23 @@ import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.registration.RegistrationPolicy;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import lombok.experimental.UtilityClass;
+import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 
 /** OAuth client setup and secret detection shared by the inline and the user-authored external-service writes. */
-@UtilityClass
-class ExternalServiceAuthSettings {
+@RequiredArgsConstructor
+public class ExternalServiceAuthSettings {
+
+    private final ResourceAuthSettingsService resourceAuthSettingsService;
 
     /**
      * Runs the toolset client setup on {@code service}: validation for the change, registration or metadata lookup
-     * when the service has an {@code endpoint}, PKCE, and on an update the stored fields the body omits.
+     * when the service has a {@code discovery_url}, PKCE, and on an update the stored fields the body omits.
      * {@code existing} must be decrypted; when its secrets could not be, they are dropped and
      * {@code existingSecretUnreadable} is set, so an update that would have kept them is refused.
      */
-    static void setUp(ResourceAuthSettingsService resourceAuthSettingsService, String resourceId, String serviceId,
-                      ExternalService service, ExternalService existing, boolean existingSecretUnreadable) {
+    void setUp(String resourceId, String serviceId, ExternalService service, ExternalService existing,
+               boolean existingSecretUnreadable) {
         ResourceAuthSettings existingSettings = existing == null ? null : existing.getAuthSettings();
         ResourceAuthSettings settings = service.getAuthSettings();
         // Internal re-writes (publication link rewrite) send back the verifier decrypted on read: that is the stored
