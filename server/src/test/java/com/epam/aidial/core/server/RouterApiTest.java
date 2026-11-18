@@ -386,6 +386,25 @@ class RouterApiTest extends ResourceBaseTest {
         assertEquals("router", ProxyUtil.MAPPER.readTree(r2.body()).get("object").asText());
     }
 
+    @Test
+    @DialConfigLocation(CONFIG)
+    void editorUrlNotListed() throws Exception {
+        Response list = send(HttpMethod.GET, "/v1/routers", null, null, "api-key", "proxyKey2");
+        Response single = send(HttpMethod.GET, "/v1/routers/r2", null, null, "api-key", "proxyKey2");
+        Response deployments = send(HttpMethod.GET, "/v1/deployments", null, null, "api-key", "proxyKey2");
+        Response deployment = send(HttpMethod.GET, "/v1/deployments/r2", null, null, "api-key", "proxyKey2");
+
+        for (Response response : List.of(list, single, deployments, deployment)) {
+            verify(response, 200);
+            JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+            JsonNode r2 = body.isArray() || body.has("data") ? entry(body, "r2") : body;
+            assertNotNull(r2, response.body());
+            assertEquals("r2", r2.path("id").asText(), response.body());
+            assertFalse(r2.has("editor_url"), response.body());
+            assertFalse(r2.has("editorUrl"), response.body());
+        }
+    }
+
     private static JsonNode entry(JsonNode list, String id) {
         JsonNode items = list.isArray() ? list : list.get("data");
         for (JsonNode item : items) {
