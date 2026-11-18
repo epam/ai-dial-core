@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -798,13 +799,36 @@ class OrgUnitServiceTest {
     }
 
     @Test
-    void testCallersWhoAreNotPersonsHaveNoUnits() {
+    void testApplicationsHaveNoUnits() {
         FakeOrgUnitStorage storage = unitsOfStorage();
         OrgUnitService service = service(storage);
         clearInvocations(storage.resources);
 
         assertEquals(List.of(), service.unitsOf(caller("per-request-key"), false));
         verify(storage.resources, never()).load(anyList(), anyList());
+    }
+
+    @Test
+    void testApiKeyReadsEveryPolicyAtMostOncePerRequest() {
+        FakeOrgUnitStorage storage = unitsOfStorage();
+        OrgUnitService service = service(storage);
+        Map<String, OrgUnit> units = service.getUnitList().units();
+        ProxyContext apiKey = mock(ProxyContext.class);
+        AtomicReference<Set<String>> unitsAbove = new AtomicReference<>();
+        when(apiKey.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(apiKey.getUserRoles()).thenReturn(List.of("default"));
+        when(apiKey.getConfig()).thenReturn(new Config());
+        when(apiKey.getUnitsAboveHeldRoles()).thenAnswer(invocation -> unitsAbove.get());
+        doAnswer(invocation -> {
+            unitsAbove.set(invocation.getArgument(0));
+            return null;
+        }).when(apiKey).setUnitsAboveHeldRoles(any());
+        clearInvocations(storage.resources);
+
+        service.callerRoles(apiKey, units).holdsRoleBelow("public/Acme/");
+        service.callerRoles(apiKey, units).holdsRoleBelow("public/Beta/");
+
+        verify(storage.resources, times(1)).load(anyList(), anyList());
     }
 
     @Test

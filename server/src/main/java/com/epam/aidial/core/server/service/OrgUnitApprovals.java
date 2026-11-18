@@ -49,7 +49,7 @@ public class OrgUnitApprovals {
      * stored inside a unit.
      */
     public boolean mayDecide(ProxyContext context, Publication publication) {
-        if (!isEnabled() || !isPerson(context)) {
+        if (!isEnabled() || !isRoleHolder(context)) {
             return false;
         }
         return grantedInEveryUnit(context, publication, orgUnits.getUnitList().units(), OrgUnitRoles.READ, OrgUnitRoles.WRITE);
@@ -60,7 +60,7 @@ public class OrgUnitApprovals {
      * of every target.
      */
     public boolean mayReview(ProxyContext context, Publication publication) {
-        return isEnabled() && isPerson(context) && grantedInEveryUnit(context, publication, orgUnits.getUnitList().units(), OrgUnitRoles.READ);
+        return isEnabled() && isRoleHolder(context) && grantedInEveryUnit(context, publication, orgUnits.getUnitList().units(), OrgUnitRoles.READ);
     }
 
     /**
@@ -80,7 +80,7 @@ public class OrgUnitApprovals {
      */
     @Nullable
     public Predicate<String> approvedTargetFolders(ProxyContext context) {
-        if (!isEnabled() || !isPerson(context)) {
+        if (!isEnabled() || !isRoleHolder(context)) {
             return null;
         }
 
@@ -102,7 +102,7 @@ public class OrgUnitApprovals {
     }
 
     public boolean approvesAnyUnit(ProxyContext context) {
-        return isEnabled() && isPerson(context) && approvesAnyUnit(context, orgUnits.getUnitList().units());
+        return isEnabled() && isRoleHolder(context) && approvesAnyUnit(context, orgUnits.getUnitList().units());
     }
 
     /**
@@ -118,7 +118,7 @@ public class OrgUnitApprovals {
      * request is pending and the caller may review it.
      */
     public boolean mayReadReviewCopy(ProxyContext context, ResourceDescriptor resource) {
-        if (!isEnabled() || !isPerson(context) || !PublicationService.isReviewBucket(resource)) {
+        if (!isEnabled() || !isRoleHolder(context) || !PublicationService.isReviewBucket(resource)) {
             return false;
         }
 
@@ -184,8 +184,8 @@ public class OrgUnitApprovals {
         return url == null || url.startsWith(PUBLICATIONS + ResourceDescriptor.PATH_SEPARATOR + bucket + ResourceDescriptor.PATH_SEPARATOR);
     }
 
-    private static boolean isPerson(ProxyContext context) {
-        return OrgUnitSubjects.isPerson(context);
+    private static boolean isRoleHolder(ProxyContext context) {
+        return OrgUnitSubjects.isRoleHolder(context);
     }
 
     private static boolean grants(ProxyContext context, List<RoleAssignment> assignments, String action) {

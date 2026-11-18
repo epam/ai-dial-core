@@ -33,4 +33,24 @@ class OrgUnitSubjectsTest {
 
         assertEquals(Set.of("editor"), OrgUnitSubjects.heldRoles(bob, assignments));
     }
+
+    @Test
+    void testApiKeysHoldTheRolesTheirRolesMatchAndApplicationsOnlyReadWithThem() {
+        List<RoleAssignment> assignments = List.of(
+                new RoleAssignment("1", "editor", new Subject.ClaimsPredicate("roles", Rule.Function.EQUAL, List.of("default"))));
+
+        ProxyContext apiKey = mock(ProxyContext.class);
+        when(apiKey.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(apiKey.getUserRoles()).thenReturn(List.of("default"));
+        assertEquals(Set.of("editor"), OrgUnitSubjects.heldRoles(apiKey, assignments));
+
+        ApiKeyData perRequest = new ApiKeyData();
+        perRequest.setPerRequestKey("per-request");
+        ProxyContext application = mock(ProxyContext.class);
+        when(application.getApiKeyData()).thenReturn(perRequest);
+        when(application.getExtractedClaims()).thenReturn(new ExtractedClaims("alice", List.of("default"), "alice", null, null, "Alice", null));
+        when(application.getUserRoles()).thenReturn(List.of("default"));
+        assertEquals(Set.of(), OrgUnitSubjects.heldRoles(application, assignments));
+        assertEquals(Set.of("editor"), OrgUnitSubjects.rolesToReadWith(application, assignments));
+    }
 }

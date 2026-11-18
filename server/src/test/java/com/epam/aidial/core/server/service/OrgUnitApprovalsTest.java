@@ -108,15 +108,13 @@ class OrgUnitApprovalsTest {
     }
 
     @Test
-    void testApplicationsApiKeysAndSwitchedOffNeverMatch() {
+    void testApplicationsAndSwitchedOffNeverMatch() {
         Publication publication = publication("public/Acme/", "files/public/Acme/a.txt");
         ProxyContext application = person("bob@acme.com");
         application.getApiKeyData().setPerRequestKey("per-request");
-        ProxyContext apiKey = context(null);
 
         assertFalse(approvals(true).mayDecide(application, publication));
-        assertFalse(approvals(true).mayDecide(apiKey, publication));
-        assertFalse(approvals(true).approvesAnyUnit(apiKey));
+        assertFalse(approvals(true).approvesAnyUnit(application));
         assertFalse(approvals(false).mayDecide(person("bob@acme.com"), publication));
         assertFalse(approvals(false).approvesAnyUnit(person("bob@acme.com")));
     }
