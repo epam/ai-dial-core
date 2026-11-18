@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -127,6 +128,28 @@ class AliasPlatformApiTest extends ResourceBaseTest {
                     "Content-Type", "application/json");
             assertEquals(200, chat("plt-v1", "default-key").status());
         }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void platformAliasDefaultHeaderReachesTheTargetAfterReload() {
+        assertEquals(200, putAlias("plt-team",
+                "{\"userRoles\":[\"default-user\"],\"defaultHeaders\":{\"X-Team\":\"b\"},\"target\":{\"path\":\"models/gpt-4-internal\"}}").status());
+        // the reload reads the blob again, as another pod does
+        reload();
+        Response read = admin(HttpMethod.GET, ALIAS_URL + "plt-team", null);
+        assertEquals(new JsonObject().put("X-Team", "b"), new JsonObject(read.body()).getJsonObject("defaultHeaders"), read.body());
+
+        AtomicReference<String> header = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", request -> {
+                header.set(request.getHeader("X-Team"));
+                return TestWebServer.createResponse(200, CHAT_RESPONSE, "Content-Type", "application/json");
+            });
+            Response response = chat("plt-team", "default-key");
+            assertEquals(200, response.status(), response.body());
+        }
+        assertEquals("b", header.get());
     }
 
     @Test
