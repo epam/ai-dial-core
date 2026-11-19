@@ -28,9 +28,9 @@ import java.util.Set;
 import javax.security.cert.X509Certificate;
 
 /**
- * The request of a pass Core serves in process for an origin plugin's call: a {@code POST} to the call's path and
- * query, with the call's headers. The pass takes the call's body as a tree, so {@link #body()} is empty and already
- * read. Members no controller of the create operations uses throw.
+ * The request of a pass Core serves in process, for an origin plugin's call or as the target pass of an alias call: a
+ * {@code POST} to the call's path and query, with the call's headers. The pass takes the call's body as a tree, so
+ * {@link #body()} is empty and already read. Members no controller of the create operations uses throw.
  */
 public final class EmbeddedServerRequest implements HttpServerRequest {
 
