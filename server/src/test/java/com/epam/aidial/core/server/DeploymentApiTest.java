@@ -406,6 +406,14 @@ public class DeploymentApiTest extends ResourceBaseTest {
         }
         assertEquals(List.of("low", "medium", "high", "xhigh", "max"),
                 textValues(configs.get("anthropicMessages").get("features").get("reasoning_efforts")));
+
+        // naming every member keeps the whole listing through the pruned tree, with the bytes of the direct serialization
+        Set<String> allNames = new HashSet<>();
+        for (JsonNode deployment : deploymentsById.values()) {
+            allNames.addAll(fieldNames(deployment));
+        }
+        assertEquals(send(HttpMethod.GET, "/v1/deployments", null, null).body(),
+                send(HttpMethod.GET, "/v1/deployments", "fields=" + String.join(",", allNames), null).body());
     }
 
     /**

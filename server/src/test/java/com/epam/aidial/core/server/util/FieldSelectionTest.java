@@ -186,14 +186,7 @@ public class FieldSelectionTest {
 
     @Test
     void decisionTreePricingRateMembersCanBeSelected() {
-        PricingRate rate = new PricingRate();
-        Condition condition = new Condition();
-        condition.setField("prompt_tokens");
-        condition.setOperator(Operator.EQ);
-        condition.setValue(100);
-        rate.setTest(condition);
-        rate.setIfTrue(PricingRate.flat("1"));
-        rate.setIfFalse(PricingRate.flat("2"));
+        PricingRate rate = decisionTree();
         PricingData pricing = new PricingData();
         pricing.setPrompt(rate);
         ModelData model = new ModelData();
@@ -207,6 +200,33 @@ public class FieldSelectionTest {
         assertEquals(tree(model).get("pricing"), parse("pricing").project(tree(model)).get("pricing"));
         assertEquals(read("{\"test\": {\"field\": \"prompt_tokens\"}, \"ifTrue\": \"1\"}"),
                 parse("pricing(prompt(test(field),ifTrue))").project(tree(model)).get("pricing").get("prompt"));
+    }
+
+    @Test
+    void selectingEveryMemberKeepsTheBytesOfTheDirectSerialization() throws Exception {
+        Map<String, Object> defaults = new LinkedHashMap<>();
+        defaults.put("integer", 1);
+        defaults.put("long", 12345678901L);
+        defaults.put("double", 0.1);
+        defaults.put("flag", true);
+        defaults.put("nothing", null);
+        defaults.put("list", List.of(1, 2.5, "x"));
+        PricingData pricing = new PricingData();
+        pricing.setUnit("token");
+        pricing.setPrompt(PricingRate.flat("0.0000003"));
+        pricing.setCompletion(decisionTree());
+        ModelData model = new ModelData();
+        model.setId("m");
+        model.setDisplayName(LocalizedValue.of(new LinkedHashMap<>(Map.of("en", "a", "de", "b"))));
+        model.setDescription(LocalizedValue.of("plain"));
+        model.setDefaults(defaults);
+        model.setCatalogProperties(new LinkedHashMap<>(Map.of("k", "v")));
+        model.setPricing(pricing);
+
+        String direct = ProxyUtil.MAPPER.writeValueAsString(model);
+        FieldSelection selection = parse(String.join(",", names(read(direct))));
+
+        assertEquals(direct, ProxyUtil.MAPPER.writeValueAsString(selection.project(tree(model))));
     }
 
     @Test
@@ -312,6 +332,18 @@ public class FieldSelectionTest {
 
         assertTrue(parse(fields).countMembers() <= fields.length());
         assertEquals(2, project(fields).size());
+    }
+
+    private static PricingRate decisionTree() {
+        Condition condition = new Condition();
+        condition.setField("prompt_tokens");
+        condition.setOperator(Operator.EQ);
+        condition.setValue(100);
+        PricingRate rate = new PricingRate();
+        rate.setTest(condition);
+        rate.setIfTrue(PricingRate.flat("1"));
+        rate.setIfFalse(PricingRate.flat("2"));
+        return rate;
     }
 
     private static FieldSelection parse(String fields) {

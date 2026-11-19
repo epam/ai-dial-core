@@ -73,8 +73,10 @@ still cost what they cost today because `fields` does not skip building a field.
 - From later reviews: a selection that keeps everything (`*`, `*(*)`, `a,*`, `features(*,rate)` inside an object)
   becomes whole in the parser, and at the top that is no selection, so the request takes the unselected path; arrays
   are selected into recursively, nested arrays included; the matching selection lists of a single node are cached on
-  the node, so the common case allocates nothing; the size guard of the parsed selection counts members, not seconds;
-  the spec and the OpenAPI text say that an object left with no members stays `{}`. The cost of the conversion on the virtual-thread executor was accepted
+  the node, so the common case allocates nothing; a test-only check that the parsed selection has no more members than the text has names replaces the timing test;
+  the spec and the OpenAPI text say that an object left with no members stays `{}`. a parse failure other than `IllegalArgumentException` is no longer answered `400`; tests compare the bytes of a
+  selection naming every member with the direct serialization. They found one difference: a `BigDecimal` with trailing
+  zeros in a free-form map is written as `1.1` for `1.10` on the tree path; it is recorded in design.md. The cost of the conversion on the virtual-thread executor was accepted
   and is recorded in design.md.
 - A filter-while-serializing version replaced the tree for a while and was dropped again (see above). Along the way a
   model with a decision-tree pricing rate had made every `fields` request fail, which the tree version cannot do;

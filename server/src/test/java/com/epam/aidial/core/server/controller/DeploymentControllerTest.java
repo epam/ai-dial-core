@@ -55,6 +55,7 @@ public class DeploymentControllerTest {
 
         controller.respondListing(List.of(model), FieldSelection.parse("display_version", Set.of("id", "object")));
 
+        verify(executor).submit(any(Callable.class));
         ArgumentCaptor<Object> body = ArgumentCaptor.forClass(Object.class);
         verify(context).respond(eq(HttpStatus.OK), body.capture());
         JsonNode expected = ProxyUtil.MAPPER.readTree("[{\"id\": \"m\", \"object\": \"model\", \"display_version\": \"1.0\"}]");
@@ -98,6 +99,7 @@ public class DeploymentControllerTest {
 
         controller.respondListing(deployments, null);
 
+        verify(executor, never()).submit(any(Callable.class));
         verify(context).respond(any(IllegalStateException.class), eq("Internal error"));
     }
 }

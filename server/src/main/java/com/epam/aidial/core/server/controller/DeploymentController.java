@@ -173,11 +173,17 @@ public class DeploymentController {
         String[] interfaces = getDeploymentInterfaces();
 
         ExecutionPlan plan;
-        FieldSelection selection;
         try {
             plan = build(interfaces);
-            selection = FieldSelection.parse(context.getRequest().getParam("fields"), ALWAYS_LISTED_FIELDS);
         } catch (Exception e) {
+            context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
+            return Future.succeededFuture();
+        }
+
+        FieldSelection selection;
+        try {
+            selection = FieldSelection.parse(context.getRequest().getParam("fields"), ALWAYS_LISTED_FIELDS);
+        } catch (IllegalArgumentException e) {
             context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
             return Future.succeededFuture();
         }

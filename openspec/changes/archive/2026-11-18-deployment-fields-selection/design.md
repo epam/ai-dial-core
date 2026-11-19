@@ -150,6 +150,11 @@ used by an `@ApiParameter(name = "fields", in = QUERY, schema = String.class)` o
 - [The tree differs from the string serialization (a number, a date or an enum written differently)] → Both come from
   `ProxyUtil.MAPPER`, and `FieldSelectionTest` and the integration test assert that `fields=*` equals the unselected
   listing on the existing fixtures.
+- [A `BigDecimal` with trailing zeros in a free-form map is written without them on the tree path: `1.10` becomes
+  `1.1`] → The number is the same. Building a tree strips trailing zeros of a `BigDecimal` by default, and the
+  direct serialization keeps them. Values of `defaults` and `catalog_properties` read from JSON are `Double`, so none is
+  expected; a test compares the bytes of every other kind of member (integers, longs, doubles, nulls, lists, localized
+  values, pricing rates) with the direct serialization.
 - [Extra memory and CPU: each row exists as a DTO and as a tree until it is pruned] → Only with `fields`, one full row
   tree at a time plus the pruned result, on the task executor; the measurement records it.
 - [CPU-bound conversion on the virtual-thread executor] → Accepted. Virtual threads do not yield during CPU work, so
