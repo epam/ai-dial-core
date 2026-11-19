@@ -27,7 +27,7 @@ public class ExternalServiceValidation {
 
     /**
      * The shape of a definition. The rules that depend on the stored definition (which fields a create or an update
-     * needs, the client secret) run with the client setup, in {@link ExternalServiceAuthSettings#setUp}.
+     * needs, the client secret) run with the client setup, in {@link ExternalServiceService#setUpAuthSettings}.
      */
     public static void validate(String serviceId, ExternalService service) {
         validateServiceId(serviceId);

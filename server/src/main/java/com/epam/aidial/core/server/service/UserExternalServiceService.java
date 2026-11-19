@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-import static com.epam.aidial.core.server.service.ExternalServiceAuthSettings.hasSecret;
+import static com.epam.aidial.core.server.service.ExternalServiceService.hasSecret;
 
 /**
  * User-authored external-service definitions: each is its own resource in the author's
@@ -42,7 +42,7 @@ public class UserExternalServiceService {
     private final ResourceService resourceService;
     private final ResourceAuthSettingsEncryptionService secretEncryptionService;
     private final EncryptionService bucketEncryptionService;
-    private final ExternalServiceAuthSettings externalServiceAuthSettings;
+    private final ExternalServiceService externalServiceService;
 
     public ResourceDescriptor descriptor(String ownerUserId, String appPart, String serviceId) {
         requireOwner(ownerUserId);
@@ -88,7 +88,7 @@ public class UserExternalServiceService {
             boolean existingSecretUnreadable = !tryDecryptSecretOrDrop(aad, bucket, existing);
             ExternalServiceValidation.validate(serviceId, service);
             // Registered under the URL, not the AAD: the client name reaches the provider, the raw user id must not.
-            externalServiceAuthSettings.setUp(resource.getUrl(), serviceId, service, existing, existingSecretUnreadable);
+            externalServiceService.setUpAuthSettings(resource.getUrl(), serviceId, service, existing, existingSecretUnreadable);
             persisted.capture(service);
             encryptSecret(aad, bucket, service);
             result.setValue(service);
