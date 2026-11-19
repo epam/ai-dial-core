@@ -72,7 +72,8 @@ abstract class BaseRouteController implements Controller {
         return hasRequiredPermissions(route.getPermissions()).compose(result -> {
             if (!result) {
                 // the route has no required permissions
-                respond(HttpStatus.FORBIDDEN, "Forbidden route");
+                context.respond(HttpStatus.FORBIDDEN, "Forbidden route");
+                proxy.getLogStore().saveErrorResponse(context);
                 return Future.succeededFuture();
             }
             Route.Response response = route.getResponse();

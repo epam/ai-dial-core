@@ -258,8 +258,8 @@ public class ResourceBaseTest {
                         }
 
                         @Override
-                        public boolean errorRows() {
-                            return store.errorRows();
+                        public boolean isErrorRowsEnabled() {
+                            return store.isErrorRowsEnabled();
                         }
                     };
                 }

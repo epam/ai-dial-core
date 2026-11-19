@@ -35,8 +35,8 @@ Notes from implementing (each is also in design.md where it changes a decision):
 ## 1. The setting (already in `9b6043c7`, stays)
 
 - [x] 1.1 `AnalyticsSettingsTest#testErrorRowsDefaultsToFalse` and `#testErrorRowsRead` (analytics-log, "Setting absent").
-- [x] 1.2 `errorRows` in `AnalyticsSettings`, the default method `LogStore.errorRows()` and its override in `GfLogStore`.
-- [x] 1.3 `ResourceBaseTest.createLogStore` delegates `errorRows()`; `ErrorRowsApiTest#testSettingReachesTheStore` and
+- [x] 1.2 `errorRows` in `AnalyticsSettings`, the default method `LogStore.isErrorRowsEnabled()` and its override in `GfLogStore`.
+- [x] 1.3 `ResourceBaseTest.createLogStore` delegates `isErrorRowsEnabled()`; `ErrorRowsApiTest#testSettingReachesTheStore` and
   `ErrorRowsDisabledApiTest#testSettingAbsentIsOff`.
 - [x] 1.4 `"errorRows": false` in the `analytics` object of `server/src/main/resources/aidial.settings.json`; the test-resources file
   is not changed.
@@ -81,9 +81,9 @@ Notes from implementing (each is also in design.md where it changes a decision):
 - [x] 2.2 Add the default methods `LogStore.saveErrorRow(ProxyContext)` (saves the row when the setting is on) and
   `saveErrorResponse(ProxyContext)` (calls it when the status of the response is outside 200-299), with `LogStoreTest` for each branch. At the end of
   each of the four `respond(...)` helpers of `BaseDeploymentPostController`, after `context.respond(...)`, call
-  `proxy.getLogStore().saveErrorResponse(context)` when `writesErrorRows()` is true; no other method or class writes the row, and
-  the one `try/catch` is in `saveErrorRow` (design D1, D2, D7). `writesErrorRows()` is false for a router in decision mode with no
-  decision. Override `writesErrorRows()` in
+  `proxy.getLogStore().saveErrorResponse(context)` when `isErrorRowAllowed()` is true; no other method or class writes the row, and
+  nothing is wrapped in a `try/catch` (design D1, D2, D7). `isErrorRowAllowed()` is false for a router in decision mode with no
+  decision. Override `isErrorRowAllowed()` in
   `BaseInterceptorController` to return `false`. Verify 2.1 passes, with exact row counts.
 - [x] 2.3 Add one test for each answer of the same helpers that a test can reach and 2.1 does not cover: `#testUnknownUpstreamId`
   (`400`, `X-UPSTREAM-ID` naming no upstream). List the ones not run (`500 Failed to process deployment`, `503 Upstream is missing
@@ -107,7 +107,7 @@ Notes from implementing (each is also in design.md where it changes a decision):
   `#testClientLeavesApplication` (one row; the key Core sent the application still exists in Redis). Use
   `SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY`, as `EmbeddedCallApiTest#testTargetFailsMidStream` does. In
   `ErrorRowsDisabledApiTest`: `#testSettingOffOriginBreaks` (a2m "Setting off, the origin breaks": no row).
-- [x] 3.2 In `handleResponseError`, with the setting on (`logStore.errorRows()`), save the row with `logStore.save(AnalyticsLogContext.from(context, null))`: when `responseStream.endStreamFuture()` of a `Model` fails, and
+- [x] 3.2 In `handleResponseError`, with the setting on (`logStore.isErrorRowsEnabled()`), save the row with `logStore.save(AnalyticsLogContext.from(context, null))`: when `responseStream.endStreamFuture()` of a `Model` fails, and
   after `context.getProxyRequest().reset()` for an application (design D1, D6). Verify 3.1 passes, and `#testClientLeavesModel` still
   finds one row.
   A Responses request with `background: true` writes no row here: its terminal row is the job's (`#testBrokenStreamOfBackgroundJobWritesNoRow`).
@@ -135,7 +135,7 @@ Notes from implementing (each is also in design.md where it changes a decision):
 - [x] 4.2 Add the same check of the store and the same `save`, written in the helper, after `context.respond(...)` in the two helpers of
   `DeploymentFeatureController`, in `McpProxyController.respond(HttpStatus, String)` and `respond(HttpException)` (a comment on
   `respond(int, Buffer)` says why it is not hooked), and in the three helpers of `BaseRouteController` and after the direct
-  `context.respond` at `:75`, which now goes through `respond(HttpStatus, String)`: `logStore.saveErrorResponse(context)`, one line.
+  `context.respond` at `:75`: `logStore.saveErrorResponse(context)`, one line.
   No new method, no new class, nothing in `ProxyContext`. Verify 4.1 passes, and that the tests of group 2 still pass.
 - [x] 4.3 Extend `README.md` and the "Error rows" section of `docs/tracing.md` to feature calls, MCP and routes, and say that the relayed
   error of these surfaces keeps its one row and that a stream that breaks on them writes none. Verify both name the surfaces as the spec.

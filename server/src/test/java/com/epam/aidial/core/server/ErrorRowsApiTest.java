@@ -35,7 +35,7 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
 
     @Test
     void testSettingReachesTheStore() {
-        assertTrue(dial.getProxy().getLogStore().errorRows());
+        assertTrue(dial.getProxy().getLogStore().isErrorRowsEnabled());
     }
 
     // "Error rows for answers Core gives itself": the origin's answers that leave no attempt

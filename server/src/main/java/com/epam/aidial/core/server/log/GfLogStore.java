@@ -95,7 +95,7 @@ public class GfLogStore implements LogStore {
     }
 
     @Override
-    public boolean errorRows() {
+    public boolean isErrorRowsEnabled() {
         return settings.errorRows();
     }
 

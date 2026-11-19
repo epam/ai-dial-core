@@ -76,7 +76,7 @@ helper hands the answer to the store, in one line. The store holds the rule, so 
 protected Future<?> respond(HttpStatus status, String errorMessage) {
     finalizeRequest();
     Future<?> answered = context.respond(status, errorMessage);
-    if (writesErrorRows()) {
+    if (isErrorRowAllowed()) {
         proxy.getLogStore().saveErrorResponse(context);
     }
     return answered;
@@ -84,15 +84,15 @@ protected Future<?> respond(HttpStatus status, String errorMessage) {
 ```
 
 `LogStore` has two default methods. `saveErrorRow(context)` saves `AnalyticsLogContext.from(context, null)` when the setting is on
-(`errorRows()`) and the request is a POST, checked before the row is built, and it never throws (Decision 7). `saveErrorResponse(context)`
+(`isErrorRowsEnabled()`) and the request is a POST, checked before the row is built. `saveErrorResponse(context)`
 calls it when the status of the response is outside 200-299, the condition under which `ProxyContext.respond` logs its WARN. The status
 is the one the helper just answered with, read from the response, so the row carries what the client got.
 `ProxyContext` is not touched, and no class or method outside `LogStore` writes the row. The two exclusions of Decision 2 are
-`writesErrorRows()`; the three other controllers have none and call `saveErrorResponse` on its own.
+`isErrorRowAllowed()`; the three other controllers have none and call `saveErrorResponse` on its own.
 
 **B: `handleResponseError`**, where E9 occurs. For a `Model`, the row is saved when `responseStream.endStreamFuture()` fails (the
 existing code saves when it succeeds, so the two never both happen); for an application, after `context.getProxyRequest().reset()`.
-Both are `proxy.getLogStore().saveErrorRow(context)`, through one private method that applies `writesErrorRows()` (Decision 2) and skips a background Responses job: the poller
+Both are `proxy.getLogStore().saveErrorRow(context)`, through one private method that applies `isErrorRowAllowed()` (Decision 2) and skips a background Responses job: the poller
 (`BackgroundJobService`) writes the terminal row of that job, and a second row for the same span would break the one-row guarantee.
 Both only with the setting on, and neither needs a status check: the row carries the status Core had set (200).
 
@@ -103,9 +103,8 @@ Both only with the setting on, and neither needs a status check: the row carries
   origin's answer (`:396`) and `:397` saves the row right after, so a hook there would write two rows for a relayed `500`. Its WARN is
   the origin's status, and the pass already has its row.
 - `BaseRouteController`: `respond(HttpStatus, String)`, `respond(HttpException)` and `respond(HttpStatus)`, and the call after the direct
-  `context.respond(HttpStatus.FORBIDDEN, "Forbidden route")` at `:75` (a route whose permissions the caller lacks). That call skipped
-  `finalizeRequest()`; it now goes through `respond(HttpStatus, String)` like the role check at `:66`, which ends the span and
-  invalidates the per-request key and writes the row. `RouteRequestBodyHandler` answers through
+  `context.respond(HttpStatus.FORBIDDEN, "Forbidden route")` at `:75` (a route whose permissions the caller lacks). That call skips
+  `finalizeRequest()` today; this change leaves it so, and adds only the row. `RouteRequestBodyHandler` answers through
   `controller.respond(...)`, so it is covered, and it relays the origin's answer through `responseStream.end(response)`, so a relayed
   route error keeps its one row from `:220`.
 None of the three has an interceptor or a decision, so none needs an exclusion.
@@ -124,8 +123,8 @@ statuses, no condition on the last origin status, and no condition on whether th
 own, a new error answer added to a helper later is covered without a change here.
 
 Two passes stay without a row because existing specs say they write none (review decisions D2 and D3):
-- the call to an interceptor: `BaseInterceptorController` overrides the protected `writesErrorRows()` to return `false`;
-- the pass of a router in decision mode that has not decided yet: the base `writesErrorRows()` returns false for a pass whose
+- the call to an interceptor: `BaseInterceptorController` overrides the protected `isErrorRowAllowed()` to return `false`;
+- the pass of a router in decision mode that has not decided yet: the base `isErrorRowAllowed()` returns false for a pass whose
   deployment is a `Router` with `getMode() == Router.Mode.DECISION` and whose `getDecision()` is null. A **decided** request is not
   skipped (Decision 3).
 
@@ -145,7 +144,7 @@ The earlier drafts added an `error` object (`reason`, then `upstream_status`); b
 `response.status` tells these rows apart as it does for a relayed `500`. For a broken stream it is the `200` Core had set, which is
 what the existing row of a client that left a `Model` carries (Measured: x10). Review decision D4 asks whether that is enough.
 
-### 5. The flag is `LogStore.errorRows()`, a default method that returns `false`
+### 5. The flag is `LogStore.isErrorRowsEnabled()`, a default method that returns `false`
 
 `GfLogStore` returns `settings.errorRows()`. `AnalyticsSettings.from` reads it with `getBoolean("errorRows", false)`, the code
 default; the bundled `aidial.settings.json` states it too. The settings are static, so a change needs a restart, as every `analytics`
@@ -153,7 +152,7 @@ setting does. (This is already in the code and stays.)
 
 Rejected alternatives: give `Proxy` the `AnalyticsSettings` (changes the constructor and every test that builds one); derive it
 from `AIDIAL_LOG_LEVEL` (that level also sets the gflog console logger); a dynamic-config flag (every other `analytics` setting is
-static). Test side: `ResourceBaseTest.java:createLogStore` wraps the real store and delegates `errorRows()`.
+static). Test side: `ResourceBaseTest.java:createLogStore` wraps the real store and delegates `isErrorRowsEnabled()`.
 
 ### 6. One row per pass, with no marker
 
@@ -168,14 +167,16 @@ There is no `rowMark`. The guarantee comes from how a pass ends:
 The limit of this argument: a later change that answered twice would double-write. The exact row counts in the tests (every scenario
 reads the count with `awaitAnalyticsRows`) are what would catch it.
 
-### 7. The write is wrapped once, in `LogStore.saveErrorRow`
+### 7. The write is not wrapped
 
-The hook runs after the response has ended, from helpers that sit in failure handlers and retry callbacks. The formatting and the file
-write run on the writer thread and are caught there (`GfLogStore.java:doSave`), but the synchronous part (`AnalyticsLogContext.from`,
-and in `GfLogStore.save` the `admit` and `executor.submit`) could throw. An exception there would skip the code that follows the call, or
-fail the future the helper runs in and make a second `respond(...)` throw `IllegalStateException`, for a row that is only an addition
-to an answer the client already has. So `saveErrorRow` catches `RuntimeException` and logs a WARN (`Error row is not written`). It is
-the one place that writes an error row, so the `try/catch` is written once and not in each helper. The success paths stay as they are.
+The helper hook runs after the response has ended, with the call every other row uses (`LogStore.save`, `AnalyticsLogContext.from`).
+No `try/catch` is added around it, as in the success paths, which have none either. The formatting and the file write run on the
+writer thread and are caught there (`GfLogStore.java:doSave`). The synchronous part (`AnalyticsLogContext.from`, and in
+`GfLogStore.save` the `admit` and `executor.submit`) could throw; if it did, the exception would reach the code that called the helper
+and be logged, and the client already has its answer.
+
+Rejected alternative: a `try/catch (RuntimeException)` that logs a WARN and returns, in `saveErrorRow`. `docs/CODE_STYLE.md` forbids
+error handling for an exception that the code is not known to throw, and the success paths have none.
 
 ## Status semantics
 
@@ -211,7 +212,7 @@ Each "rows" cell is an exact count read with `awaitAnalyticsRows`. Tests are nam
 
 ## Per-request cost
 
-- Off: the success and relay-success paths are not touched. An error answer reads one boolean (`errorRows()`); B reads it only on its
+- Off: the success and relay-success paths are not touched. An error answer reads one boolean (`isErrorRowsEnabled()`); B reads it only on its
   failure paths. No allocation, no I/O.
 - On, success path: the same as off, nothing else.
 - On, an error answer or a broken relay: one `AnalyticsLogContext.from` (a builder and a copy of the request header map, as for every
@@ -232,9 +233,9 @@ on, expecting the same count (deferred: needs Docker and Redis, as in the invest
   failures). → They log the same WARN, so the task covers them; one test for each that a test can reach, and the rest are listed.
 - **MCP `respond(int, Buffer)` is not hooked.** A relayed MCP error has its row from `McpProxyController.java:397`; hooking it would
   write two. → `#testMcpRelayedErrorHasOneRow` fails if that changes. The same goes for the route and feature-call relays.
-- **A route whose permissions the caller lacks** (`hasRequiredPermissions`, which application routes use) **answered through
-  `context.respond` directly** (`BaseRouteController.java:75`), which skipped `finalizeRequest()`. → It now uses the helper, so the span
-  ends and the per-request key is invalidated as on the other `403`, and the row is written there. No test reaches that `403`: the test config has no route with permissions, and an application route needs an application
+- **A route whose permissions the caller lacks** (`hasRequiredPermissions`, which application routes use) **answers through
+  `context.respond` directly** (`BaseRouteController.java:75`), which skips `finalizeRequest()`. → Not changed here, so that nothing
+  changes with the setting off; the row is added after it. No test reaches that `403`: the test config has no route with permissions, and an application route needs an application
   the caller may not use. It is covered by the code and listed in `review.md`, not exercised. The role check at `:66` answers through a
   helper, and `#testRouteRefusedByRole` covers that one.
 - **A feature call, MCP or route request that is not a POST** writes no row: `GfLogStore.save` drops it, as for every row. The tests
@@ -268,7 +269,7 @@ None. The setting is off by default and every existing row is unchanged. To enab
 Recorded so that the narrow draft is not read as the design. Commit `9b6043c7` implements it and tasks.md group 0 takes it back:
 the hook in `nextUpstream` (`writeExhaustedRow()`), the `rowMark` and `markRowWritten()` on `ProxyContext`, `lastUpstreamStatus` and
 its six one-line calls in the three controllers, the filters (the last origin status in 429, 502, 503, 504; no decision), and the
-`error` object with `errorReason` in `AnalyticsLogContext` and `GfLogStore`. The setting, `LogStore.errorRows()`, the bundled default and
+`error` object with `errorReason` in `AnalyticsLogContext` and `GfLogStore`. The setting, `LogStore.isErrorRowsEnabled()`, the bundled default and
 the `ResourceBaseTest` delegate stay.
 
 ## Drift found while implementing
@@ -289,7 +290,7 @@ Recorded, as `openspec/config.yaml` asks, instead of diverging silently.
   `context.respond(...)`: one line, `saveErrorResponse(context)` on the store. Three earlier versions put the write on
   `ProxyContext`, in a class `ErrorRows` with a `writeErrorRow`, and as the same four-line block written in each helper; the first two
   were dropped for adding code outside the store, the last as duplication. Now the rule lives in `LogStore` once, and `ProxyContext`
-  does not change. The `try/catch` is in `saveErrorRow`, once (Decision 7), with the test that a failing store does not throw.
+  does not change. The `try/catch` they carried went with them (Decision 7).
 - `McpProxyController.respond(int, Buffer)` is not hooked, on purpose (Decision 1, A2): it relays the origin's answer and the row is saved
   right after it. `#testMcpRelayedErrorHasOneRow` guards it.
 - The rate feature is called as `POST /v1/{id}/rate`, not under `/v1/deployments/`; the test for a feature that needs no origin uses it.

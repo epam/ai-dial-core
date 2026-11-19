@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -23,7 +22,7 @@ class LogStoreTest {
 
     @Test
     void errorRowsAreOffByDefault() {
-        assertFalse(((LogStore) row -> { }).errorRows());
+        assertFalse(((LogStore) row -> { }).isErrorRowsEnabled());
     }
 
     @Test
@@ -96,28 +95,6 @@ class LogStoreTest {
         assertTrue(store.saved.isEmpty());
     }
 
-    @Test
-    void saveErrorRowDoesNotThrowWhenTheStoreFails() {
-        RecordingStore store = new RecordingStore(true) {
-            @Override
-            public void save(AnalyticsLogContext logContext) {
-                throw new IllegalStateException("the writer is full");
-            }
-        };
-
-        assertDoesNotThrow(() -> store.saveErrorRow(context(502)));
-    }
-
-    @Test
-    void saveErrorRowDoesNotThrowWhenTheRowCannotBeBuilt() {
-        RecordingStore store = new RecordingStore(true);
-        ProxyContext context = context(502);
-        when(context.getRequest().headers()).thenThrow(new IllegalStateException("no headers"));
-
-        assertDoesNotThrow(() -> store.saveErrorRow(context));
-        assertTrue(store.saved.isEmpty());
-    }
-
     private static class RecordingStore implements LogStore {
 
         final List<AnalyticsLogContext> saved = new ArrayList<>();
@@ -133,7 +110,7 @@ class LogStoreTest {
         }
 
         @Override
-        public boolean errorRows() {
+        public boolean isErrorRowsEnabled() {
             return errorRows;
         }
     }

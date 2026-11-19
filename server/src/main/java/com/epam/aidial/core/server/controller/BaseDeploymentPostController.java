@@ -109,7 +109,7 @@ public class BaseDeploymentPostController {
     protected Future<?> respond(HttpStatus status, String errorMessage) {
         finalizeRequest();
         Future<?> answered = context.respond(status, errorMessage);
-        if (writesErrorRows()) {
+        if (isErrorRowAllowed()) {
             proxy.getLogStore().saveErrorResponse(context);
         }
         return answered;
@@ -118,7 +118,7 @@ public class BaseDeploymentPostController {
     protected void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
-        if (writesErrorRows()) {
+        if (isErrorRowAllowed()) {
             proxy.getLogStore().saveErrorResponse(context);
         }
     }
@@ -126,7 +126,7 @@ public class BaseDeploymentPostController {
     protected void respond(HttpStatus status) {
         finalizeRequest();
         context.respond(status);
-        if (writesErrorRows()) {
+        if (isErrorRowAllowed()) {
             proxy.getLogStore().saveErrorResponse(context);
         }
     }
@@ -134,16 +134,13 @@ public class BaseDeploymentPostController {
     protected void respond(HttpStatus status, Object result) {
         finalizeRequest();
         context.respond(status, result);
-        if (writesErrorRows()) {
+        if (isErrorRowAllowed()) {
             proxy.getLogStore().saveErrorResponse(context);
         }
     }
 
-    /**
-     * Whether an error answer of this pass also writes a row with {@code analytics.errorRows} on. The call to an interceptor does
-     * not, and neither does the pass of a router in decision mode that has not decided yet: their specs say they write no row.
-     */
-    protected boolean writesErrorRows() {
+    /** False for an interceptor call and an undecided decision-mode router: their specs say they write no error row. */
+    protected boolean isErrorRowAllowed() {
         return !(context.getDeployment() instanceof Router router && router.getMode() == Router.Mode.DECISION
                 && context.getDecision() == null);
     }
@@ -265,7 +262,7 @@ public class BaseDeploymentPostController {
 
     // a background job's terminal row is written by BackgroundJobService, once the job ends
     private void saveBrokenStreamRow() {
-        if (writesErrorRows() && !context.isBackgroundJob()) {
+        if (isErrorRowAllowed() && !context.isBackgroundJob()) {
             proxy.getLogStore().saveErrorRow(context);
         }
     }

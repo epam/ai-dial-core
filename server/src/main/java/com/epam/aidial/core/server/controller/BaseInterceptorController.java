@@ -95,7 +95,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     }
 
     @Override
-    protected boolean writesErrorRows() {
+    protected boolean isErrorRowAllowed() {
         return false;
     }
 

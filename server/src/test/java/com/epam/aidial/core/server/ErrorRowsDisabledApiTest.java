@@ -22,7 +22,7 @@ public class ErrorRowsDisabledApiTest extends BaseErrorRowsApiTest {
 
     @Test
     void testSettingAbsentIsOff() {
-        assertFalse(dial.getProxy().getLogStore().errorRows());
+        assertFalse(dial.getProxy().getLogStore().isErrorRowsEnabled());
     }
 
     @Test
