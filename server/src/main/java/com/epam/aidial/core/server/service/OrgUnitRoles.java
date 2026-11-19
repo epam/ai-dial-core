@@ -23,8 +23,8 @@ import javax.annotation.Nullable;
  * {@code editor} and {@code viewer}, as overridden or extended by the dynamic config's
  * {@code orgUnitRoles}. A role grants only in the unit it is assigned at; a resource belongs to the nearest unit above
  * it, so child units are not covered. {@code read} on {@code org-units} shows the unit and the names of its child units,
- * never their content; no built-in role holds it, so only a config role shows child units. A role anywhere also shows a
- * person the units above it by name, each with only the child unit on the way down.
+ * never their content; no built-in role holds it, so only a config role shows child units. A role anywhere also shows its
+ * holder the units above it by name, each with only the child unit on the way down.
  */
 public final class OrgUnitRoles {
 
