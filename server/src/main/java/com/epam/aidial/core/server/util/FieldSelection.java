@@ -44,7 +44,7 @@ public final class FieldSelection {
         if (text == null || text.isBlank()) {
             return null;
         }
-        if (text.getBytes(StandardCharsets.UTF_8).length > MAX_LENGTH) {
+        if (text.length() > MAX_LENGTH || text.getBytes(StandardCharsets.UTF_8).length > MAX_LENGTH) {
             throw new IllegalArgumentException("Invalid fields parameter: longer than " + MAX_LENGTH + " bytes");
         }
         Node root = new Parser(text).parse();

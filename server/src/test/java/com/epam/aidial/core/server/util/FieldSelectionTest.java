@@ -148,6 +148,28 @@ public class FieldSelectionTest {
     }
 
     @Test
+    void namedWholeSelectionWinsOverWildcardSelection() {
+        JsonNode first = project("features,*(tokenize)").get(0);
+
+        assertEquals(read(ROWS).get(0).get("features"), first.get("features"));
+        assertEquals("GPT 4", first.get("display_name").asText());
+        assertEquals(read("{}"), first.get("routes"));
+    }
+
+    @Test
+    void wholeMatchBelowLevelWinsOverNarrowerMatch() {
+        JsonNode configs = project("interface_configs(openaiChatCompletions(features),*(features(rate)))")
+                .get(0).get("interface_configs");
+
+        assertEquals(read("""
+                {
+                  "openaiChatCompletions": {"features": {"reasoning_efforts": ["low"], "rate": true}},
+                  "anthropicMessages": {"features": {"rate": false}}
+                }
+                """), configs);
+    }
+
+    @Test
     void beanMembersAreSelectedLikeMapMembers() {
         assertEquals(List.of("rate", "tokenize"), names(FieldSelection.parse("rate,tokenize", Set.of()).project(tree(new FeaturesData()))));
     }

@@ -63,6 +63,7 @@ Motivated by the wish for a lighter `GET /v1/deployments` for clients that need 
 Code: `DeploymentController.listDeployments`, a new `FieldSelection` helper in `server/.../util`,
 `OpenApiDescriptions` (the parameter text) and the `@ApiParameter` on `listDeployments`. Tests: a new
 `FieldSelectionTest`, assertions in `DeploymentApiTest`. Docs: `docs/open_api_core.yaml` carries the parameter
-(its description is the constant in `OpenApiDescriptions`), and `docs/dynamic-settings/routers.md`, which lists
-`GET /v1/deployments`, gets a short paragraph on `fields`.
+(its description is the constant in `OpenApiDescriptions`), and `docs/deployment-listing.md`, new, describes the
+parameter, with pointers from `docs/dynamic-settings/routers.md` and `aliases.md`, which mention `GET /v1/deployments`,
+and from the README.
 No new dependency, no setting, no migration. A request without `fields` takes one extra `getParam` call.

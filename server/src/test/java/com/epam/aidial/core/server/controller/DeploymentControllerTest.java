@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.data.ModelData;
 import com.epam.aidial.core.server.util.FieldSelection;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
@@ -22,6 +23,7 @@ import java.util.concurrent.RejectedExecutionException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -68,6 +70,16 @@ public class DeploymentControllerTest {
 
         verify(context).respond(any(IllegalStateException.class), eq("Internal error"));
         verify(context, never()).respond(eq(HttpStatus.OK), any(Object.class));
+    }
+
+    @Test
+    void failureWithItsOwnStatusIsPassedOn() {
+        HttpException forbidden = new HttpException(HttpStatus.FORBIDDEN, "no access");
+        when(executor.submit(any(Callable.class))).thenReturn(Future.failedFuture(forbidden));
+
+        controller.respondListing(List.of(new ModelData()), FieldSelection.parse("display_name", Set.of("id")));
+
+        verify(context).respond(same(forbidden), eq("Internal error"));
     }
 
     @Test
