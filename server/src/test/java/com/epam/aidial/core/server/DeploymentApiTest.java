@@ -381,6 +381,8 @@ public class DeploymentApiTest extends ResourceBaseTest {
 
         verify(send(HttpMethod.GET, "/v1/deployments", "fields=features(rate", null), 400);
         verify(send(HttpMethod.GET, "/v1/deployments", "fields=id,,display_name", null), 400);
+        verify(send(HttpMethod.GET, "/v1/deployments", "fields=" + "a".repeat(1025), null), 400);
+        verify(send(HttpMethod.GET, "/v1/deployments", "fields=a(b(c(d(e(f)))))", null), 400);
 
         // the single deployment endpoint does not read the parameter
         assertEquals(readDeployment(send(HttpMethod.GET, "/v1/deployments/gpt-4")),

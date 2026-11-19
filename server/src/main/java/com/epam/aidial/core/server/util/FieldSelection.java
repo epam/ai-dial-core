@@ -33,8 +33,8 @@ public final class FieldSelection {
     }
 
     /**
-     * Returns null for blank text and for a selection that keeps everything, which is no selection. The length limit
-     * is in UTF-8 bytes.
+     * Returns null for blank text and for a selection that keeps everything, such as {@code *} or {@code a,*}, which is
+     * no selection. The length limit is in UTF-8 bytes.
      *
      * @param alwaysKept the top-level members that stay when not selected
      * @throws IllegalArgumentException when the text is not a selection or is over the length or depth limit
@@ -48,11 +48,7 @@ public final class FieldSelection {
             throw new IllegalArgumentException("Invalid fields parameter: longer than " + MAX_LENGTH + " bytes");
         }
         Node root = new Parser(text).parse();
-        Node any = root.members.get(WILDCARD);
-        if (any != null && any.whole) {
-            return null;
-        }
-        return new FieldSelection(root, Set.copyOf(alwaysKept));
+        return root.whole ? null : new FieldSelection(root, Set.copyOf(alwaysKept));
     }
 
     /**
@@ -62,15 +58,15 @@ public final class FieldSelection {
         return pruneObject(root.self, row, true);
     }
 
-    int memberCount() {
-        return memberCount(root);
+    int countMembers() {
+        return countMembers(root);
     }
 
-    private static int memberCount(Node node) {
+    private static int countMembers(Node node) {
         int count = node.members.size();
         for (Node member : node.members.values()) {
             if (!member.whole) {
-                count += memberCount(member);
+                count += countMembers(member);
             }
         }
         return count;
@@ -207,7 +203,8 @@ public final class FieldSelection {
                     position++;
                 }
             } while (hasMore);
-            return selection;
+            Node any = selection.members.get(WILDCARD);
+            return any != null && any.whole ? WHOLE : selection;
         }
 
         private String readName() {

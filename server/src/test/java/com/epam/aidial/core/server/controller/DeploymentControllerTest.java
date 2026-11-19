@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
-import io.vertx.core.http.HttpServerResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -18,6 +17,7 @@ import org.mockito.ArgumentCaptor;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.RejectedExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,14 +34,12 @@ public class DeploymentControllerTest {
     private final Proxy proxy = mock(Proxy.class);
     private final ProxyContext context = mock(ProxyContext.class);
     private final AsyncTaskExecutor executor = mock(AsyncTaskExecutor.class);
-    private final HttpServerResponse response = mock(HttpServerResponse.class);
 
     private DeploymentController controller;
 
     @BeforeEach
     void setUp() {
         when(proxy.getTaskExecutor()).thenReturn(executor);
-        when(context.getResponse()).thenReturn(response);
         controller = new DeploymentController(proxy, context);
     }
 
@@ -68,8 +66,17 @@ public class DeploymentControllerTest {
 
         controller.respondListing(List.of(new ModelData()), FieldSelection.parse("display_name", Set.of("id")));
 
-        verify(context).respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
+        verify(context).respond(any(IllegalStateException.class), eq("Internal error"));
         verify(context, never()).respond(eq(HttpStatus.OK), any(Object.class));
+    }
+
+    @Test
+    void rejectedSubmissionAnswersInternalError() {
+        when(executor.submit(any(Callable.class))).thenThrow(new RejectedExecutionException("closed"));
+
+        controller.respondListing(List.of(new ModelData()), FieldSelection.parse("display_name", Set.of("id")));
+
+        verify(context).respond(any(RejectedExecutionException.class), eq("Internal error"));
     }
 
     @Test
@@ -79,16 +86,6 @@ public class DeploymentControllerTest {
 
         controller.respondListing(deployments, null);
 
-        verify(context).respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
-    }
-
-    @Test
-    void failedWriteAfterTheResponseHeadIsWrittenIsOnlyLogged() {
-        when(response.headWritten()).thenReturn(true);
-        doThrow(new IllegalStateException("boom")).when(context).respond(eq(HttpStatus.OK), any(Object.class));
-
-        controller.respondListing(List.of(new ModelData()), null);
-
-        verify(context, never()).respond(eq(HttpStatus.INTERNAL_SERVER_ERROR), any(String.class));
+        verify(context).respond(any(IllegalStateException.class), eq("Internal error"));
     }
 }

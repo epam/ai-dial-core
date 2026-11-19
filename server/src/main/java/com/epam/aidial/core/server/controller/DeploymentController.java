@@ -190,7 +190,7 @@ public class DeploymentController {
                 deployments.addAll(result.resultAt(i));
             }
             respondListing(deployments, selection);
-        }).onFailure(this::respondInternalError);
+        }).onFailure(this::respondListingError);
 
         return Future.succeededFuture();
     }
@@ -200,10 +200,14 @@ public class DeploymentController {
             respondOk(deployments);
             return;
         }
-        proxy.getTaskExecutor()
-                .submit(() -> project(selection, deployments))
-                .onSuccess(this::respondOk)
-                .onFailure(this::respondInternalError);
+        try {
+            proxy.getTaskExecutor()
+                    .submit(() -> project(selection, deployments))
+                    .onSuccess(this::respondOk)
+                    .onFailure(this::respondListingError);
+        } catch (Exception e) {
+            respondListingError(e);
+        }
     }
 
     private static ArrayNode project(FieldSelection selection, List<DeploymentData> deployments) {
@@ -218,15 +222,13 @@ public class DeploymentController {
         try {
             context.respond(HttpStatus.OK, body);
         } catch (Exception e) {
-            respondInternalError(e);
+            respondListingError(e);
         }
     }
 
-    private void respondInternalError(Throwable error) {
+    private void respondListingError(Throwable error) {
         log.error("Error occurred on listing deployments", error);
-        if (!context.getResponse().headWritten()) {
-            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Internal error");
-        }
+        context.respond(error, "Internal error");
     }
 
 

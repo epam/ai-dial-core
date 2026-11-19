@@ -167,7 +167,7 @@ public class FieldSelectionTest {
         PricingRate rate = new PricingRate();
         Condition condition = new Condition();
         condition.setField("prompt_tokens");
-        condition.setOperator(Operator.values()[0]);
+        condition.setOperator(Operator.EQ);
         condition.setValue(100);
         rate.setTest(condition);
         rate.setIfTrue(PricingRate.flat("1"));
@@ -209,7 +209,29 @@ public class FieldSelectionTest {
         assertNull(parse("*"));
         assertNull(parse("*,features(rate)"));
         assertNull(parse("features(rate), * "));
+        assertNull(parse("*(*)"));
+        assertNull(parse("display_name,*"));
         assertThrows(IllegalArgumentException.class, () -> parse("*,a("));
+    }
+
+    @Test
+    void wildcardInsideAnObjectKeepsTheWholeObject() {
+        JsonNode first = project("features(*,rate),interface_configs(*(*))").get(0);
+
+        assertEquals(read(ROWS).get(0).get("features"), first.get("features"));
+        assertEquals(read(ROWS).get(0).get("interface_configs"), first.get("interface_configs"));
+    }
+
+    @Test
+    void wildcardWithNameNarrowsEveryObjectMemberToIt() {
+        JsonNode first = project("*(en)").get(0);
+
+        assertEquals(read("""
+                {
+                  "id": "gpt-4", "object": "model", "display_name": "GPT 4", "display_version": "1.0",
+                  "features": {}, "interface_configs": {}, "routes": {}
+                }
+                """), first);
     }
 
     @Test
@@ -266,7 +288,7 @@ public class FieldSelectionTest {
         String names = IntStream.range(0, 37).mapToObj(i -> "n" + i + "(z)").collect(Collectors.joining(","));
         String fields = "*(*(*(" + names + ")," + names + ")," + names + ")," + names;
 
-        assertTrue(parse(fields).memberCount() <= fields.length());
+        assertTrue(parse(fields).countMembers() <= fields.length());
         assertEquals(2, project(fields).size());
     }
 

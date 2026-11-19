@@ -173,7 +173,9 @@ the url of a stored one), for the callers who may use it (one of its `userRoles`
 who may use its target), and their single-item endpoints answer for that name, for example
 `/openai/models/aliases/public/assistant-v1`. Aliases to config deployments and to resources are both listed. An
 alias whose target is missing is left out. Every listing that shows aliases lists and reads the stored aliases, on
-the task executor, except the router listings: an alias in public storage never has the type `router`. `GET /v1/deployments` also takes a `fields` parameter that narrows each entry, alias entries included; see [Listing](routers.md#listing).
+the task executor, except the router listings: an alias in public storage never has the type `router`.
+
+`GET /v1/deployments` takes a `fields` parameter that narrows each entry, alias entries included; see [Deployment listing](../deployment-listing.md).
 
 An entry has the alias's name and display fields (with the fallbacks above) and the target's features, pricing,
 limits, defaults and interfaces. It never shows the target's path or endpoint, nor any default headers (the alias's

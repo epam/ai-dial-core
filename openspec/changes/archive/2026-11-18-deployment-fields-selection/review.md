@@ -66,14 +66,17 @@ still cost what they cost today because `fields` does not skip building a field.
   parsed tree, so the parsed selection is immutable. Merging at parse time copies the `*` subtree into every named
   sibling at every level: a simulation turned a 1,004-byte selection of 152 nodes into 125,051 nodes with three `*`
   levels and 2,086,619 with four. `FieldSelectionTest.wildcardsAtSeveralLevelsAreNotMergedIntoTheParsedSelection` guards this.
-- A failure of the listing, of the conversion and pruning, or of writing the answer, with or without `fields`, is
-  logged and answered `500` with the text `Internal error`, and only logged when the response head is already
-  written. `DeploymentControllerTest` covers it through the package-private `respondListing`.
-- From a later review: a bare `*` at the top (`*`, `*,x`) keeps everything, so `parse` returns no selection and the
-  request takes the unselected path; arrays are selected into recursively, nested arrays included; the matching
-  selection lists of a single node are cached on the node, so the common case allocates nothing; the size guard of the
-  parsed selection counts members, not seconds; the spec and the OpenAPI text say that an object left with no members
-  stays `{}`. The cost of the conversion on the virtual-thread executor was accepted and is recorded in design.md.
+- A failure of the listing, of submitting or running the conversion and pruning, or of writing the answer, with or
+  without `fields`, is logged and answered with `context.respond(error, "Internal error")`, as the controller's other
+  failures are: `500` `Internal error`, or the status of an `HttpException`. `DeploymentControllerTest` covers it
+  through the package-private `respondListing`.
+- From later reviews: a selection that keeps everything (`*`, `*(*)`, `a,*`, `features(*,rate)` inside an object)
+  becomes whole in the parser, and at the top that is no selection, so the request takes the unselected path; arrays
+  are selected into recursively, nested arrays included; the matching selection lists of a single node are cached on
+  the node, so the common case allocates nothing; the size guard of the parsed selection counts members, not seconds;
+  the spec and the OpenAPI text say that an object left with no members stays `{}`; the `fields` parameter has its
+  own document, `docs/deployment-listing.md`. The cost of the conversion on the virtual-thread executor was accepted
+  and is recorded in design.md.
 - A filter-while-serializing version replaced the tree for a while and was dropped again (see above). Along the way a
   model with a decision-tree pricing rate had made every `fields` request fail, which the tree version cannot do;
   `FieldSelectionTest` keeps the cases for localized values, decision-tree rates and a `JsonNode` in a free-form map.

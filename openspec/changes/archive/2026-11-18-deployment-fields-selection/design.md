@@ -31,7 +31,7 @@ before `replaceSpec` regenerates it.
 
 - A request with `fields` returns the same deployments as without it, each cut down to the named members plus `id`
   and `object`, with exactly the bytes the full serialization would have given for the members it keeps.
-- A request without `fields` runs the same code as today.
+- A request without `fields` runs the same code as today, apart from how a failure is answered.
 - The selection is one small class with no reference to the controller, so another endpoint can call it later.
 
 **Non-Goals:**
@@ -65,7 +65,9 @@ name      := one or more characters other than  ,  (  )   (surrounding whitespac
 A name that is exactly `*` matches every key at its level. Matching is exact and case-sensitive. A bare name keeps
 the whole value. A name with a parenthesised selection applies it to that value, as the spec says. Because a member
 can match both a name and `*`, its selection is the union of the selections of every item that matches it, and a
-bare item counts as "whole value": `features,features(rate)` and `*,features(rate)` both keep all of `features`.
+bare item counts as "whole value": `features,features(rate)` and `*,features(rate)` both keep all of `features`. A `*` that keeps the whole value
+keeps everything at its level whatever else is named, so `display_name,*`, `*(*)` and `features(*,rate)` keep the whole
+value, and at the top that is no selection (D4).
 
 Characters `,` `(` `)` `*` are legal unescaped in a query string, so a typical selection needs no percent-encoding.
 `getParam` decodes percent escapes as it does for `interface_type`. A key of a free-form map that itself contains
@@ -118,14 +120,14 @@ fields while building each `DeploymentData` (see Non-Goals; it would couple ever
 `FieldSelection.parse(String, Set<String>)` runs right after `getDeploymentInterfaces`/`build` and before `execute`, so
 a bad selection is `400` before any storage read, as a bad `interface_type` is today. It throws
 `IllegalArgumentException` with a message that names the problem and the position; the controller answers it the way
-it answers `build`'s. A null, empty or blank value, and a selection with a bare `*` at the top (`*`, `*,x`), which keeps everything, give
+it answers `build`'s. A null, empty or blank value, and a selection that keeps everything (`*`, `*(*)`, `a,*`), give
 no selection and the code that follows is the code of today.
 
 When there is a selection, the `onSuccess` of the combined future submits the conversion and pruning, row by row, to
 `proxy.getTaskExecutor()` and responds with the resulting `ArrayNode`. The event loop then serializes the pruned tree,
-which is smaller than the full list it serializes today. A failure of the listing, of the conversion and pruning, or of writing the answer, with or without
-`fields`, is logged and answered `500` with the text `Internal error`; when the response head is already written it is
-only logged.
+which is smaller than the full list it serializes today. A failure of the listing, of submitting or running the conversion and pruning, or of writing the answer, with
+or without `fields`, is logged and answered the way the controller answers its other failures,
+`context.respond(error, "Internal error")`: `500` with the text `Internal error`, or the status of an `HttpException`.
 
 Rejected: converting on the event loop (the whole point is large listings; a list of thousands of custom
 applications would add a second pass over every row to the loop). The cost of the hop is one task submission, which

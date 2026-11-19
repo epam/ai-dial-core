@@ -63,7 +63,11 @@ leave that value unchanged.
 
 #### Scenario: Wildcard alone
 - **WHEN** a caller sends `fields=*` or `fields=*,display_name`
-- **THEN** the answer is the same as without `fields`
+- **THEN** the answer is the same as without `fields`, because `*` keeps every member
+
+#### Scenario: Wildcard inside an object
+- **WHEN** a caller sends `fields=features(*,rate)`
+- **THEN** `features` holds all its members
 
 ### Requirement: Selection reaches inside localized values and pricing rates
 A nested selection SHALL apply inside a localized value that holds several locales (`display_name`, `description`),
@@ -125,15 +129,14 @@ five levels. A top-level name is level one, and each parenthesis opens the next 
 
 ### Requirement: A listing that cannot be written answers 500
 `GET /v1/deployments` SHALL answer `500` with the text `Internal error` when it fails to build the listing, to
-convert it for `fields` or to write the answer, with or without `fields`. When the response head is already written,
-the failure is only logged.
+convert it for `fields` or to write the answer, with or without `fields`. A failure that is an `HttpException` keeps its own status.
 
 #### Scenario: Conversion fails
 - **WHEN** converting the listing for a `fields` request fails
 - **THEN** the answer is `500` with the body `Internal error`, and no partial listing is returned
 
 ### Requirement: Fields leaves the listing otherwise unchanged
-Without `fields` the response of `GET /v1/deployments` SHALL be the one it is today. With `fields` the set of
+Without `fields` the successful response of `GET /v1/deployments` SHALL be the one it is today. With `fields` the set of
 deployments, their order and the effect of `interface_type` SHALL be the same as without it, and no other endpoint
 SHALL read `fields`.
 
