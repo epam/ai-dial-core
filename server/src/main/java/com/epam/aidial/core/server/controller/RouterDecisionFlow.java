@@ -340,9 +340,9 @@ public class RouterDecisionFlow {
             return error;
         }
         if (!context.getResponse().closed()) {
-            // the next candidate starts from the client's bytes, as after a failed call: for an in-process call, the
-            // serialization, not the call's tree the refused candidate may have changed
-            context.setRequestBody(context.getOriginalRequestBody());
+            // as after a failed call; for an in-process call, the serialization, not the call's tree the refused
+            // candidate may have changed. Its budget check is not the next candidate's, which may be no model at all
+            resetCandidateOutcome();
             if (decision.hasNext()) {
                 log.warn("Candidate {} of router {} skipped: {}", decision.current(), decision.getRouterName(), error.getMessage());
                 decision.skip(status, reason);
@@ -405,9 +405,7 @@ public class RouterDecisionFlow {
         context.setUpstreamBodyReceived(false);
         context.setSpanUsageStats(null);
         // the failed answer's usage, which a stream can carry before it breaks, is not the next candidate's
-        context.setTokenUsage(null);
-        context.setUsagePerModel(null);
-        context.setRequestBody(context.getOriginalRequestBody());
+        resetCandidateOutcome();
         if (next) {
             decision.skip(status, reason, received);
             decision.getReenter().run();
@@ -416,6 +414,18 @@ public class RouterDecisionFlow {
             redecide(answerOriginal);
         }
         return true;
+    }
+
+    /**
+     * Drops what the current candidate left for its row and its charge, its usage and its budget check, and starts
+     * the next candidate from the client's bytes. Every path that moves on to another candidate calls it, so none
+     * keeps the previous candidate's payer.
+     */
+    private void resetCandidateOutcome() {
+        context.setTokenUsage(null);
+        context.setUsagePerModel(null);
+        context.setBudgetCheck(null);
+        context.setRequestBody(context.getOriginalRequestBody());
     }
 
     /**

@@ -48,7 +48,7 @@ class OrgUnitRolesTest {
             assertFalse(roles.allows(List.of(VIEWER), WRITE, namespace), namespace);
         }
         for (String role : List.of(ADMIN, EDITOR, VIEWER)) {
-            assertTrue(roles.allows(List.of(role), READ, ORG_UNITS), role);
+            assertFalse(roles.allows(List.of(role), READ, ORG_UNITS), role);
             assertFalse(roles.allows(List.of(role), WRITE, ORG_UNITS), role);
         }
         assertTrue(roles.covers(List.of(ADMIN), VIEWER));
@@ -152,6 +152,18 @@ class OrgUnitRolesTest {
     }
 
     @Test
+    void testRolesBeyondAdmin() {
+        OrgUnitPermission orgUnits = new OrgUnitPermission(List.of(READ), "org-units/**");
+        OrgUnitPermission files = new OrgUnitPermission(List.of(READ), "files/**");
+        OrgUnitPermission assignments = new OrgUnitPermission(List.of(READ, WRITE), "role-assignments/**");
+
+        assertEquals(List.of(), OrgUnitRoles.of(new Config()).beyondAdmin());
+        assertEquals(List.of(EDITOR, "navigator"), beyondAdmin(Map.of("navigator", role(orgUnits), EDITOR, role(files, orgUnits))));
+        assertEquals(List.of(EDITOR, VIEWER), beyondAdmin(Map.of("navigator", role(orgUnits), ADMIN, role(assignments, orgUnits))));
+        assertEquals(List.of(), beyondAdmin(Map.of("navigator", role(orgUnits), ADMIN, role(files))));
+    }
+
+    @Test
     void testValidation() {
         assertDoesNotThrow(() -> OrgUnitRoles.validate(null));
         assertDoesNotThrow(() -> OrgUnitRoles.validate(Map.of("auditor", role(new OrgUnitPermission(List.of(READ, WRITE), "role-assignments/**")))));
@@ -181,6 +193,12 @@ class OrgUnitRolesTest {
             OrgUnitRole role = ProxyUtil.convertToObject(body, OrgUnitRole.class);
             assertThrows(IllegalArgumentException.class, () -> OrgUnitRoles.validate(Map.of(ADMIN, role)), body);
         }
+    }
+
+    private static List<String> beyondAdmin(Map<String, OrgUnitRole> configured) {
+        Config config = new Config();
+        config.setOrgUnitRoles(configured);
+        return OrgUnitRoles.of(config).beyondAdmin();
     }
 
     private static OrgUnitRole role(OrgUnitPermission... permissions) {

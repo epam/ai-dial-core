@@ -136,12 +136,36 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testRoleAboveStillShowsEveryChildUnit() {
+    void testBuiltInRoleAboveShowsOnlyTheChildUnitOnThePath() {
         assign("public/Acme", "viewer");
 
-        assertEquals(List.of("files/public/Acme/.dial_folder", "files/public/Acme/HR/", "files/public/Acme/Risk/", "files/public/Acme/a.txt"),
+        assertEquals(List.of("files/public/Acme/.dial_folder", "files/public/Acme/Risk/", "files/public/Acme/a.txt"),
                 urls(list("public/Acme/", BOB)));
         assertEquals(List.of("files/public/Acme/Risk/US%20Risk/"), urls(list("public/Acme/Risk/", BOB)));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/org-unit-navigator-role.json")
+    void testRoleReadingOrgUnitsShowsEveryChildUnit() {
+        assign("public/Acme", "navigator");
+
+        assertEquals(List.of("files/public/Acme/HR/", "files/public/Acme/Risk/"), urls(list("public/Acme/", BOB)));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/org-unit-navigator-role.json")
+    void testOnlyHoldersOfRolesReadingOrgUnitsGiveAndRemoveThem() {
+        assign("public/Acme", "admin");
+        Response byDialAdmin = giveNavigator("carol", "admin");
+        assertEquals(200, byDialAdmin.status(), byDialAdmin.body());
+        String carol = new JsonObject(byDialAdmin.body()).getString("id");
+
+        assertEquals(403, giveNavigator("dave", BOB).status());
+        assertEquals(403, removeAssignment(carol, BOB).status());
+
+        assign("public/Acme", "navigator");
+        assertEquals(200, giveNavigator("dave", BOB).status());
+        assertEquals(200, removeAssignment(carol, BOB).status());
     }
 
     @Test
@@ -169,6 +193,16 @@ public class OrgUnitAncestorsApiTest extends ResourceBaseTest {
                         .formatted(roleName), "authorization", "admin");
         assertEquals(200, response.status(), response.body());
         return new JsonObject(response.body()).getString("id");
+    }
+
+    private Response giveNavigator(String target, String caller) {
+        return send(HttpMethod.POST, "/v1/org-units/public/Acme/role-assignments", null,
+                "{\"roleName\": \"navigator\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"%s\"]}}"
+                        .formatted(target), "authorization", caller);
+    }
+
+    private Response removeAssignment(String id, String caller) {
+        return send(HttpMethod.DELETE, "/v1/org-units/public/Acme/role-assignments/" + id, null, null, "authorization", caller);
     }
 
     private Response list(String folder, String caller) {

@@ -11,6 +11,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * The caller's units tell the admin panel how to start and what to show: whether the caller is a DIAL admin, and in
@@ -53,7 +54,7 @@ public class OrgUnitUserOrgUnitsApiTest extends ResourceBaseTest {
         assertEquals(List.of("read", "write"), permissions.getJsonArray("applications").getList());
         assertEquals(List.of("read", "write"), permissions.getJsonArray("publications").getList());
         assertEquals(List.of("read", "write"), permissions.getJsonArray("role-assignments").getList());
-        assertEquals(List.of("read"), permissions.getJsonArray("org-units").getList());
+        assertNull(permissions.getJsonArray("org-units"), "a built-in role doesn't show the units below");
     }
 
     @Test

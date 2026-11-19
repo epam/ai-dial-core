@@ -128,16 +128,16 @@ by role assignments, below.
 
 | Role | Grants in its unit |
 |---|---|
-| `admin` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills`, `projects`, `publications` and `role-assignments`; `read` on `org-units` |
-| `editor` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects`; `read` on `org-units` |
-| `viewer` | `read` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects`; `read` on `org-units` |
+| `admin` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills`, `projects`, `publications` and `role-assignments` |
+| `editor` | `read` and `write` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects` |
+| `viewer` | `read` on `files`, `prompts`, `conversations`, `applications`, `toolsets`, `skills` and `projects` |
 
 `read` and `write publications/**` decide publication requests into the unit; `write role-assignments/**` manages its
-assignments. `read org-units/**` shows the units directly below in the unit list and in the unit folder's listing,
-by name only. `org-units` takes
-only `read`, as only DIAL admins change units. A role body uses the DIAL 2.0 design's grammar; core evaluates `actions` of `read` and `write` on
-`pathPattern`s of the form `<namespace>/**` with the namespaces above, relative to the unit. A config with anything
-else fails to load, so a reload keeps the previous config. For example:
+assignments. `read org-units/**` shows the units directly below in the unit list and in the unit folder's listing, by
+name only; no built-in role holds it, so a role defined in config grants it where the units below should show.
+`org-units` takes only `read`, as only DIAL admins change units. A role body uses the DIAL 2.0 design's grammar; core
+evaluates `actions` of `read` and `write` on `pathPattern`s of the form `<namespace>/**` with the namespaces above,
+relative to the unit. A config with anything else fails to load, so a reload keeps the previous config. For example:
 
 ```json
 {
@@ -165,8 +165,11 @@ grants apply as described in Editing a unit, `role-assignments` below and `publi
 Besides DIAL admins, a holder of `read role-assignments/**` at a unit — by default its `admin` — lists its roles and
 assignments, and a holder of `write role-assignments/**` adds and removes them, in that unit only. They give or remove
 only roles whose permissions their own roles there hold together, so nobody hands out more than they have; an
-assignment of a role that no longer exists can be removed. A unit admin may remove their own assignment, and so lose
-the power. To anyone else the calls answer 403, also for a path that names no unit.
+assignment of a role that no longer exists can be removed. No built-in role holds `read org-units/**`, so a role that
+grants it is given only by DIAL admins and by holders of a role that grants it too: a config that adds it to `editor` or
+`viewer` adds it to `admin` as well, or unit admins can no longer give or remove them. Core logs a warning on loading a
+config with roles that `admin` can't give. A unit admin may remove their own assignment, and so lose the power. To
+anyone else the calls answer 403, also for a path that names no unit.
 
 | Call | Who | What |
 |---|---|---|
@@ -190,15 +193,17 @@ accepted; `CONTAIN`, `REGEX` and `FALSE` are refused with 400 until a consumer n
 has at least one value; values are not blank, have at most 256 characters and no control characters. `TRUE` takes no
 `targets` and matches any caller whose token has the claim, as a `TRUE` read rule does:
 `{"type": "claimsPredicate", "source": "sub", "function": "TRUE"}` is everyone signed in. With `"source": "roles"` it
-is every caller, those without a DIAL role and every API key included, as every caller has a `roles` claim. Other subject
-types are refused for now. The shared space holds no assignments (400). Removing a
+is every caller, those without a DIAL role and every API key included, as every caller has a `roles` claim; a role given
+to it gives every API key that role's full rights, writing and approving included. Other subject types, `apiKey`
+among them, are refused for now. The shared space holds no assignments (400). Removing a
 unit removes its assignments; a unit recorded again in the same place starts with none.
 
 A caller matches a subject when the claim holds one of the targets, ignoring case, read the same way as a read rule
-reads it (`roles` means the caller's DIAL roles). Signed-in people get everything their roles grant. An application's
-per-request key matches with its user's claims and an API key, which has no claims, matches `roles` subjects with its
-configured roles; both only read through what they match. A stored subject with any other function, a source
-that isn't a plain claim name or path, `EQUAL` without targets or `TRUE` with them grants nothing.
+reads it (`roles` means the caller's DIAL roles). Signed-in people and API keys get everything their roles grant; an API
+key has no other claims, so it matches only `roles` subjects, through its configured roles. An application's
+per-request key matches with its user's claims and only reads through what it matches. A stored subject with any
+other function, a source that isn't a plain claim name or path, `EQUAL` without targets or `TRUE` with them grants
+nothing.
 
 ## Editing a unit
 
@@ -212,10 +217,10 @@ items as its roles do. A child unit's folder shows in its parent's listing when 
 or `read org-units/**` in the parent; a holder of only that lists the parent's folder with nothing but its child
 units in it.
 
-A person who holds a role in a unit also sees every unit above it, with no assignment there: in the unit list, and in
-listings, where each unit above holds only the child unit on the way down, not its other child units or any content.
-Taking the role away hides them again. Applications acting for the person and API keys don't get this; they reach a
-unit by its path.
+A person or an API key that holds a role in a unit also sees every unit above it, with no assignment there: in the
+unit list, and in listings, where each unit above holds only the child unit on the way down, not its other child
+units or any content. Taking the role away hides them again. Applications acting for a person don't get this; they
+reach a unit by its path.
 
 Applications and toolsets are edited like any content, every field included, with these limits for anyone who isn't
 a DIAL admin:
@@ -240,8 +245,8 @@ a DIAL admin:
   decide, as before.
 
 An endpoint or credential change takes effect at once, so callers' keys, and tokens where forwarding is on, go to
-the server the role holder chose. Applications and API keys only read through roles; they never write or approve
-through them.
+the server the role holder chose. Applications only read through roles; they never write or approve through them.
+API keys act through their roles as people do.
 
 ## Approvers
 
@@ -274,7 +279,7 @@ menus and buttons without trying calls:
     {"id": "0123", "name": "Acme", "displayName": "Acme", "path": "public/Acme", "folder": "public/Acme/",
      "roles": [], "permissions": {}},
     {"id": "0124", "name": "Risk", "displayName": "Risk", "path": "public/Acme/Risk", "folder": "public/Acme/Risk/",
-     "roles": ["editor"], "permissions": {"applications": ["read", "write"], "files": ["read", "write"], "org-units": ["read"]}}
+     "roles": ["editor"], "permissions": {"applications": ["read", "write"], "files": ["read", "write"]}}
   ]
 }
 ```
@@ -288,4 +293,5 @@ menus and buttons without trying calls:
 - `permissions` maps each namespace to the actions the roles there grant, as roles name them; a DIAL admin gets both
   actions on every namespace. Since roles alone decide inside a unit, these are the caller's rights on everything the
   unit owns: content belongs to the nearest unit above it.
-- Applications and API keys act through no roles, so they get no units. With org units off, the route answers 404.
+- Applications act through no roles, so they get no units; an API key gets its units as a person does. With org
+  units off, the route answers 404.
