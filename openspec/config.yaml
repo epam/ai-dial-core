@@ -25,10 +25,16 @@ context: |
   it appears, or use a simpler one. Concrete over abstract: "Core skips the second Redis call", not "the cache path is
   inert". Keep what the code or a measurement shows apart from what is expected or assumed.
 
+  Size: a change is small when none of these is true: it touches more than one module or adds a pattern; it adds a
+  dependency, a setting, a config field or a stored record; it alters who calls whom or the order of steps; it changes
+  the per-request cost; it needs a migration; it has a choice a reviewer could reasonably make differently. A small
+  change has short artifacts (the rules below say how short); the spec delta and the tests carry the behaviour.
+
   Checks: the commands in CLAUDE.md "Checks" (checkstyle and the touched test classes locally; the full suite in CI).
 
 rules:
   proposal:
+    - 'Small change: at most 20 lines, with Why in one or two sentences.'
     - State what is out of scope, and name the existing capability in openspec/specs each delta touches.
     - Impact links the issue or document that motivated the change and says which of its points this change covers
       and which it leaves out.
@@ -45,13 +51,9 @@ rules:
       config field.
     - A MODIFIED requirement repeats the whole existing requirement block with its exact header.
   design:
-    - 'Small change first. A change is small when none of these is true: it touches more than one module or adds a
-      pattern; it adds a dependency, a setting, a config field or a stored record; it alters who calls whom or the
-      order of steps; it changes the per-request cost; it needs a migration; it has a choice a reviewer could
-      reasonably make differently. For a small change design.md is at most 25 lines in three sections - Context (two
-      or three sentences), Effect per request ("None: <why>") and Code map - and the rules below about the other
-      sections do not apply. The spec delta and the tests carry the behaviour. When a review finds a real choice, it
-      becomes a decision and design.md takes the full form.'
+    - 'Small change (see Size in the context): design.md is at most 25 lines in three sections - Context (two or three
+      sentences), Effect per request ("None: <why>") and Code map - and the rules below about the other sections do
+      not apply. When a review finds a real choice, it becomes a decision and design.md takes the full form.'
     - design.md is read by a reviewer first. Sections, in this order - Context, Decisions, Differences from today,
       Effect per request, Risks / Trade-offs, Migration Plan, Code map. No Goals / Non-Goals (the proposal has the
       scope) and no Open Questions in a change that is ready to apply.
@@ -73,6 +75,7 @@ rules:
     - design.md describes what is built. A review finding or a drift found while applying changes the decision or the
       Code map entry it concerns, in place; design.md has no review log and no implementation notes.
   tasks:
+    - 'Small change: one task group.'
     - Tests are written before or with the code they cover; each spec scenario names its test.
     - Every task group ends with ./gradlew checkstyleMain checkstyleTest and the touched test classes with --tests.
     - Include tasks for docs/dynamic-settings/*.md, docs/*.md and CLAUDE.md where the change affects them, and a
@@ -93,6 +96,7 @@ operations:
       - 'review.md has four sections and nothing else - "## What shipped" (behaviour, docs), "## Verification" (each
         check and the test classes run, with the result), "## Drift from design.md" (what was built differently and
         why, or "None") and "## Not done" (deferred tasks, findings left open, follow-ups, or "None"). No review
-        rounds, finding lists, test counts, re-runs or commit hashes; that discussion is in the PR.'
+        rounds, finding lists, test counts, re-runs or commit hashes; that discussion is in the PR. For a small change
+        review.md is at most 15 lines.'
       - Confirm the merged spec matches the shipped behaviour (review.md and the tests) before archiving; the spec,
         not the change, is what the next change reads.
