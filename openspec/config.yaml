@@ -33,6 +33,8 @@ rules:
     - Impact links the issue or document that motivated the change and says which of its points this change covers
       and which it leaves out.
     - Work that ships as separate PRs is separate changes; name the dependency between them.
+    - 'Scope is stated here only, not again in design.md. When the change overrides a decision of an archived change,
+      Impact has a line "Supersedes: <change-id> D<n>".'
   specs:
     - Requirements describe observable behaviour at one of the two boundaries in the context, not Java internals.
     - Every scenario must be testable by a JUnit 5 / Vert.x JUnit 5 test. A scenario at the HTTP boundary gets an
@@ -43,13 +45,26 @@ rules:
       config field.
     - A MODIFIED requirement repeats the whole existing requirement block with its exact header.
   design:
-    - Cite the Core source of every behaviour the change touches or relies on, and the classes and helpers to reuse, as
-      File.java:method on `development`.
-    - Record each decision with the rejected alternative and why; record every deliberate difference from today's
-      behaviour and from the reference where one exists.
-    - State the effect per request on Core passes, body copies and parses of a body Core only forwards, and Redis /
-      blob round trips, and how it is measured.
+    - design.md is read by a reviewer first. Sections, in this order - Context, Decisions, Differences from today,
+      Effect per request, Risks / Trade-offs, Migration Plan, Code map. No Goals / Non-Goals (the proposal has the
+      scope) and no Open Questions in a change that is ready to apply.
+    - Context is at most eight sentences on how the affected flow works today, in words, with no citations.
+    - 'When the change alters who calls whom or the order of steps across passes or services, Context ends with a
+      Mermaid sequenceDiagram of the flow after the change, and one of today when the comparison is the point. At most
+      five participants and ten arrows each, labels in plain words, no styling. Otherwise no diagram. The diagram
+      illustrates; the text and the spec deltas win.'
+    - 'Each decision is "### D<n>. <the choice, not the topic>" ("The body goes over as a tree, not as bytes", not
+      "Body"): the reason in a few lines, then one "**Rejected: <alternative>** - <why>" line per alternative. A
+      decision is a choice between options; a list of what changes is not one.'
+    - Differences from today is a table (what, today, after, requirement) of every deliberate difference from today's
+      behaviour and from the reference where one exists; "None" when there is none.
+    - 'Effect per request is a table or one line "None: <why>": Core passes, body copies and parses of a body Core only
+      forwards, and Redis / blob round trips, today and after, and how it is measured.'
     - Migration Plan is always present; write "none" when there is nothing.
+    - Code map is the last section and is for the apply step - the Core source of every behaviour the change touches or
+      relies on, and the classes and helpers to reuse, as File.java:method on `development`. Never a line number.
+    - design.md describes what is built. A review finding or a drift found while applying changes the decision or the
+      Code map entry it concerns, in place; design.md has no review log and no implementation notes.
   tasks:
     - Tests are written before or with the code they cover; each spec scenario names its test.
     - Every task group ends with ./gradlew checkstyleMain checkstyleTest and the touched test classes with --tests.
@@ -60,12 +75,17 @@ rules:
 operations:
   apply:
     guidance:
-      - Before coding, compare design.md with the current code; record any drift in design.md, never diverge silently.
+      - Before coding, compare design.md with the current code. On a drift, correct the decision or Code map entry in
+        design.md in place and report it for review.md "Drift from design.md"; never diverge silently.
       - Do not commit and do not run git commands that change the working tree or history (checkout, restore, reset,
         stash, clean); the orchestrator commits, staging files by name.
       - Run checkstyle and the targeted test classes locally; the full suite runs in CI.
   archive:
     guidance:
       - Archive only after all non-deferred tasks are checked and review.md exists in the change folder.
+      - 'review.md has four sections and nothing else - "## What shipped" (behaviour, docs), "## Verification" (each
+        check and the test classes run, with the result), "## Drift from design.md" (what was built differently and
+        why, or "None") and "## Not done" (deferred tasks, findings left open, follow-ups, or "None"). No review
+        rounds, finding lists, test counts, re-runs or commit hashes; that discussion is in the PR.'
       - Confirm the merged spec matches the shipped behaviour (review.md and the tests) before archiving; the spec,
         not the change, is what the next change reads.

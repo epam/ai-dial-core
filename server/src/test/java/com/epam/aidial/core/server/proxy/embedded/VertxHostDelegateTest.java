@@ -77,6 +77,24 @@ class VertxHostDelegateTest {
         host = new VertxHostDelegate(proxy, parent, pluginContext);
     }
 
+    // alias-in-process-hop: the target pass of an alias hop writes on the alias's span, unless that span is a plugin's
+
+    @Test
+    void testAliasTargetWritesOnTheAliasSpanUnlessItIsThePluginsSpan() {
+        ProxyContext aliasWithServerSpan = mock(ProxyContext.class);
+        assertTrue(VertxHostDelegate.writesOnAliasSpan(aliasWithServerSpan));
+
+        ProxyContext aliasCalledByPlugin = mock(ProxyContext.class);
+        when(aliasCalledByPlugin.isChildPass()).thenReturn(true);
+        assertFalse(VertxHostDelegate.writesOnAliasSpan(aliasCalledByPlugin));
+
+        // an alias candidate of a router that is itself an alias's target: the span is still the first alias's
+        ProxyContext aliasCandidate = mock(ProxyContext.class);
+        when(aliasCandidate.isChildPass()).thenReturn(true);
+        when(aliasCandidate.isAliasTargetPass()).thenReturn(true);
+        assertTrue(VertxHostDelegate.writesOnAliasSpan(aliasCandidate));
+    }
+
     @Test
     void testCallOutsideTheCreateRoutesFails() {
         ExecutionException error = assertThrows(ExecutionException.class,

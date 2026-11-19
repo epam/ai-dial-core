@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
@@ -46,6 +47,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 
 @Slf4j
 @Getter
@@ -84,8 +86,8 @@ public class ProxyContext {
     private String userId;
     private List<String> userRoles;
     private String userProject;
-    // the budget that pays for this call, set by the pre-call check and charged after the call
-    private BudgetPayer budgetPayer;
+    // what the pre-call budget check found, for the analytics row and the charge; null when budgets were not considered
+    private BudgetCheck budgetCheck;
     private String userHash;
     private TokenUsage tokenUsage;
     private List<UsagePerModel> usagePerModel;
@@ -123,8 +125,14 @@ public class ProxyContext {
     private final Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
     // the merged chat completions body, or the terminal Responses frame - whichever surface streamed
     private String assembledStreamingResponse;
-    // the body an origin plugin passed to its in-process call, on the child pass Core serves for that call
+    // the body of the in-process call this child pass serves: an origin plugin's call, or an alias pass's to its target
     private ObjectNode callTree;
+    /**
+     * Whether this child pass is the target pass of an alias call, served in process under an alias whose span is a
+     * server span of the alias chain (not an origin plugin's): it writes its span attributes and log enrichment on the
+     * current span, the alias pass's, which an origin plugin's call does not.
+     */
+    private boolean aliasTargetPass;
     // the tree the chain serialised into requestBody, kept for the plugin of an embedded interface until it is called
     private ObjectNode requestTree;
     // the hosts of the in-process calls this pass's plugin makes, one per attempt
@@ -340,6 +348,14 @@ public class ProxyContext {
                 .orElse(null);
     }
 
+    /**
+     * The budget that pays for this call: picked by the pre-call check and charged after the call.
+     */
+    @Nullable
+    public BudgetPayer getBudgetPayer() {
+        return budgetCheck == null ? null : budgetCheck.payer();
+    }
+
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
         return new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
     }
@@ -387,7 +403,8 @@ public class ProxyContext {
     }
 
     /**
-     * Whether Core serves this pass in process, for an origin plugin's call.
+     * Whether Core serves this pass in process, for an origin plugin's call or as the target pass of an alias call
+     * ({@link #isAliasTargetPass}).
      */
     public boolean isChildPass() {
         return callTree != null;

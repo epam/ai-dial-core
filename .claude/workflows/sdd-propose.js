@@ -5,7 +5,7 @@ export const meta = {
   phases: [
     { title: 'Draft', detail: 'proposal, spec deltas, design, tasks per change' },
     { title: 'Review', detail: 'fidelity and simplicity reviewers per change' },
-    { title: 'Revise', detail: 'apply findings, record them in design.md, validate --strict' },
+    { title: 'Revise', detail: 'apply findings in place, validate --strict' },
   ],
 }
 
@@ -113,9 +113,9 @@ const revise = (r, it) => {
     `Revise the OpenSpec change "${it.id}" in openspec/changes/${it.id} of the repository at your current working directory
 with these review findings:
 ${JSON.stringify(findings, null, 1)}
-For each: apply it if it holds (check the evidence yourself), or reject it with a reason. Append a section
-"## Spec review" to design.md that lists every finding with lens, severity, accepted/rejected and what changed.
-Then ${OPENSPEC} validate ${it.id} --strict (from the repository root) until it passes. Do not edit Java code.`,
+For each: apply it if it holds (check the evidence yourself), or reject it with a reason. An accepted
+finding changes the requirement, decision or task it concerns, in place; keep no list of findings in the artifacts.
+Return each rejected finding with its reason. Then ${OPENSPEC} validate ${it.id} --strict (from the repository root) until it passes. Do not edit Java code.`,
     {
       label: `revise:${it.id}`, phase: 'Revise',
       schema: {
@@ -123,6 +123,7 @@ Then ${OPENSPEC} validate ${it.id} --strict (from the repository root) until it 
         properties: {
           accepted: { type: 'number' },
           rejected: { type: 'number' },
+          rejectedReasons: { type: 'array', items: { type: 'string' } },
           validateOutput: { type: 'string' },
           passed: { type: 'boolean' },
         },
