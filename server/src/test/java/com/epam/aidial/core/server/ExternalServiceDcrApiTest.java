@@ -80,6 +80,24 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void testRegisteredPlatformServiceSurvivesConfigRebuild() throws Exception {
+        try (Provider provider = Provider.confidential()) {
+            Response put = send(HttpMethod.PUT, "/v1/applications/platform/dcr-platform-app", null, """
+                    {"endpoint": "http://localhost:7001/v1/x", "display_name": "App", "external_services": {"crm": %s}}
+                    """.formatted(dynamicBody()), "authorization", "admin");
+            assertEquals(200, put.status(), put::body);
+            String scope = "applications/dcr-platform-app/external_services/crm";
+            signIn(scope);
+
+            assertEquals(200, operationRequest("/v1/ops/config/reload", null, "Authorization", "admin").status());
+
+            signIn(scope);
+            assertEquals(2, provider.count("POST /token"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void testAuthorizationServerWithoutRegistrationRejected() throws Exception {
         try (Provider provider = Provider.withoutRegistration()) {
             String appUrl = createPlainDynamicApp("user", "dcr-no-registration");

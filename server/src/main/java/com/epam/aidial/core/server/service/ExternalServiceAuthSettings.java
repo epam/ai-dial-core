@@ -44,6 +44,9 @@ public class ExternalServiceAuthSettings {
         } catch (Exception e) {
             // Every failure is the request's: the provider's own status (a 401, a 5xx) would read as the caller's, and
             // discovery sneaky-throws a refused connection or a connect timeout as checked exceptions.
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             throw new HttpException(HttpStatus.BAD_REQUEST,
                     "External service '%s': %s".formatted(serviceId, e.getMessage()));
         }
