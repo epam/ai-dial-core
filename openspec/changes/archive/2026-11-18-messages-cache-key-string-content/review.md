@@ -79,7 +79,7 @@ high or medium findings.
 
 A maintainer found the string branch of `updateExcludingCacheControl` fragile: it fed the string and a static `"text"`
 node, copying by hand what the object path feeds for a text block. Accepted. The helper now turns a string into
-`{"type": "text", "text": <s>}` and sends it down the object path (design D1). It is done in the helper rather than at
+`{"type": "text", "text": <s>}` and sends it down the object path (design D2). It is done in the helper rather than at
 the `messages` call site the comment suggested, so `system[i]` keeps the fix. Hashes are unchanged, so no test changed;
 checkstyle, `MessagesApiRequestTest` (11) and `MessagesApiTest` (22) pass.
 

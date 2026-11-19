@@ -2,110 +2,81 @@
 
 ## Context
 
-See proposal.md, Why. Facts on `development`:
-
-- `CacheKeyBuilder.java:update` sorts a node's object keys (`JsonUtil.java:sort`, a `TreeMap`), takes its JSON text
-  and feeds it as UTF-8 into one rolling SHA-1. `CacheKeyBuilder.java:buildKey` snapshots the digest without resetting
-  it, so a different input at one position changes the hash at that position and at every later one.
-  `CacheKeyBuilder.java:elements` turns a scalar into one element, so a string `content` is `content[0]` and a string
-  `system` is `system[0]`.
-- `MessagesApiRequest.java:updateExcludingCacheControl` feeds a non-object node as it is: the string `"Hello"` feeds
-  `"Hello"`. It feeds an object as its values in sorted key order without `cache_control`: the block
-  `{"type": "text", "text": "Hello", "cache_control": {...}}` feeds `"Hello"` and then `"text"` (`cache_control` <
-  `text` < `type`). `MessagesApiRequest.java:appendItemCacheKeys` (`tools`, `system`) and
-  `MessagesApiRequest.java:appendMessageCacheKeys` (`messages[i].content[j]`, after the message's other fields such as
-  `role`) both call it.
-- `UpstreamCacheService.java:buildCacheBreakpointContext` makes every position a lookup candidate when the model has
-  `autoCachingSupported`, otherwise only positions with `cache_control`. With `autoCachingSupported` every hash is also
-  scoped to the initiator (`ProxyContext.java:getInitiatorId`: the user, or the API key's project), so the tests send
-  both turns with the same API key.
-- `UpstreamCacheService.java:getCacheEntry` checks the candidates from the last one back, 64 `EXISTS` per Redis batch,
-  and reads the first entry found with one `HMGET`. On a miss it returns `CachedUpstreamEntry(null, null, <last
-  candidate path>, null)`. That path is not dead: `BaseDeploymentPostController.java:sendProxyRequest` sends it to the
-  adapter as `X-DIAL-CACHE-BREAKPOINT-PATH`.
-- `UpstreamRouteProvider.java:get(String, List, int, UpstreamCacheContext)` looks the entry's upstream up by id, then
-  by endpoint, and logs `cached upstream doesn't exist any longer in config` when neither matches. The miss entry has
-  neither, so the warning fires on every request that finds no pin.
-- `UpstreamRoute.java:next` sends the first attempt to the pinned upstream when there is one; otherwise
-  `TieredBalancer.java:next` picks from the lowest tier first. `UpstreamRoute.java:updateUpstreamCache` writes the pin
-  for the upstream that answered, from its `X-DIAL-CACHE-BREAKPOINT-PATH` and `X-DIAL-CACHE-EXPIRE-AT`.
-- `UpstreamRouteProvider.java:get(Deployment, CacheBreakpointContext, Function, String)` with a client
-  `X-UPSTREAM-ID` (read in `MessagesBaseController.java:prepareUpstreamRoute`) narrows the upstreams to that one and
-  keeps the cache context, so a forced upstream still gets its pin written. The integration test relies on this.
-- The anthropic adapter reports the same paths: `aidial_adapter_anthropic/passthrough/_caching.py:_get_cache_controls`
-  counts a scalar as index 0, and `get_cache_headers` reports the last marked block, or the last candidate (which may
-  be a string `content[0]` or `system[0]`) when the request has a top-level `cache_control`. So pins at string
-  positions are written today too; D1 covers both directions (pin on the block and the string later, and the
-  reverse). Paths need no change, only the digest input.
-
-## Goals / Non-Goals
-
-**Goals:**
-
-- A string `content` or `system` and its one-text-block form give the same hash at their own position and at every
-  later one.
-- The pin-lookup warning no longer fires when no pin was found. It still fires when a pin names an upstream that is
-  not in the route's upstream list: one gone from the config, or one that a client `X-UPSTREAM-ID` leaves out (see
-  D3).
-
-**Non-Goals:**
-
-- Any change to the hashes of block-only prefixes, to the paths, or to `ChatCompletionRequest` and
-  `ResponsesApiRequest`.
+Core pins an Anthropic Messages conversation to the upstream that served its prompt prefix, so the provider's prompt
+cache stays warm on that upstream. For each position in the request (each tool, each `system` element, each message
+content block) Core computes a rolling hash of everything up to that position, leaving out `cache_control`, and looks
+the hashes up in Redis from the last one back. With `autoCachingSupported` every position is looked up and the hashes
+are scoped to the user or the key's project; with only `cacheSupported`, only the positions that carry `cache_control`.
+When the upstream answers, Core stores a pin under the hash of the path the adapter reports, and the adapter counts a
+string `content` or `system` as index 0, as Core does. A string hashes as the bare string, but a text block hashes as
+its `text` and `type` values, so Claude Code, which sends the newest user message as a marked text block and the same
+message as a plain string in the next request, misses its pin and gets the balancer's pick. Every such miss also logs
+the warning `cached upstream doesn't exist any longer in config` with an empty id and endpoint.
 
 ## Decisions
 
-### D1. A string feeds the digest as its text block does
+### D1. A string is hashed as its text block, not a text block as its string
 
-In `MessagesApiRequest.java:updateExcludingCacheControl`, a textual node is first turned into the block
-`{"type": "text", "text": <s>}` and then goes down the object path, so the two shapes cannot drift apart whatever that
-path feeds. It is done in the helper, not at its callers, so `system[i]` gets it as well as `messages[i].content[j]`.
+Claude Code sends `system` and the newest user message as blocks, so the pins it relies on are block hashes. Changing
+the string side keeps every prefix without a string at its current hash, and both directions match: a pin written on
+the block is found by the string later, and the reverse. LiteLLM does the same for the same Claude Code behaviour
+(https://github.com/BerriAI/litellm/pull/42080).
 
-Rejected (first version, changed after PR review): feeding the string and then a static `TextNode` `"text"`. Same
-digest and no node per string, but it copies by hand what the object path feeds, so a change to that path would break
-it (caught only by the equality unit test, tasks 1.1).
+**Rejected: hashing a plain text block as its string** - every block pin stored today would move to a new hash, and a
+block with any other field would still need the block hash.
 
-Rejected: the reverse, hashing a plain text block as its string. Claude Code sends `system` and the newest user message
-as blocks, so every stored pin would move to a new hash; with D1, prefixes that hold no string keep their hash. D1 is
-also what LiteLLM PR #42080 does.
+### D2. The string becomes a real block before it is hashed, in the shared helper
 
-### D2. Only a textual node changes
+A string is turned into `{"type": "text", "text": <s>}` and then hashed by the same code as any block, so the two
+shapes stay equal whatever that code feeds. The helper serves both the `system` elements and the message blocks, so
+both get it. A string `tools[i]` goes through it too; the Anthropic API rejects a string tool, so that hash never
+belongs to a served prompt. Numbers, booleans and arrays where a block is expected are hashed as they are.
 
-Numbers, booleans and arrays where a block is expected still feed as they are. A string `tools[i]` also goes through
-the helper, but the Anthropic API rejects a string tool, so that hash never belongs to a served prompt.
+**Rejected: feeding the string and then a constant `"text"`** - the same hash and no object per string, but it copies
+by hand what the block code feeds, so a change there would break it; only the equality unit test would notice.
 
-Rejected: a parameter that limits D1 to `content` and `system`. It adds a branch for input the provider refuses.
+**Rejected: converting at the message-content call site** - a string `system` would keep the bare-string hash.
 
-### D3. Warn only for a pin whose upstream is gone
+**Rejected: a parameter that limits the conversion to `content` and `system`** - a branch for input the provider
+refuses.
 
-In `UpstreamRouteProvider.java:get(String, List, int, UpstreamCacheContext)`, when no upstream matched: `log.warn` as
-today if the entry has an id or an endpoint, else `log.debug` that no pin was found, with the entry's prefix path.
+### D3. The pin warning fires only for a pin that names an upstream
 
-Known leftover: with a client `X-UPSTREAM-ID`, `UpstreamRouteProvider.java:get(Deployment, CacheBreakpointContext,
-Function, String)` narrows the list to that upstream before the pin is matched, so a pin that names another upstream
-still in the config still logs `cached upstream doesn't exist any longer in config`. D3 leaves this case as it is.
+A lookup that finds no pin returns an entry with no id and no endpoint, so the warning on it fired on every request
+without a pin. It now logs at debug with the entry's prefix path. A pin whose upstream is gone from the config still
+warns. So does a pin that names an upstream other than the one a client `X-UPSTREAM-ID` asks for, because the
+upstream list is narrowed to that one before the pin is matched; that case is left as it is.
 
-Rejected: `getCacheEntry` returning `null` on a miss. The miss entry carries the path Core sends to the adapter as
+**Rejected: returning no entry on a miss** - the miss entry carries the path Core sends to the adapter as
 `X-DIAL-CACHE-BREAKPOINT-PATH`, so the origin request would change.
 
-### D4. A deterministic integration test
+### D4. The integration test pins to a tier-1 upstream, so a missed pin always goes elsewhere
 
 A new test model, `claude-cache-tiers`, has `autoCachingSupported: true`, `up-a` on tier 0 and `up-b` on tier 1.
-Without a pin the balancer always picks `up-a`. The first turn forces `up-b` with `X-UPSTREAM-ID`, so the pin names
-`up-b`, and the second turn, sent without the header, reaches `up-b` only if the pin is found.
+Without a pin the balancer always picks `up-a`. The first turn forces `up-b` with `X-UPSTREAM-ID`, which keeps the
+cache context, so the pin names `up-b`; the second turn, sent without the header, reaches `up-b` only if the pin is
+found.
 
-Rejected: the existing `claude-cache` model with two equal upstreams. `MessagesApiTest.testAutoCachingPinsSecondTurnToSameUpstream`
-would pass half the time without the fix. Rejected: seeding the balancer's random generator; the integration stack
-does not expose it.
+**Rejected: the existing `claude-cache` model with two equal upstreams** - the test would pass half the time without
+the fix.
+
+**Rejected: seeding the balancer's random generator** - the integration stack does not expose it.
+
+## Differences from today
+
+| What | Today | After | Requirement |
+| --- | --- | --- | --- |
+| Hash of a prefix that holds a string `messages[i].content` or `system` | the bare string | the string's one text block `{"type": "text", "text": <s>}` | upstream-cache-affinity, "A string and its text block are the same prefix" |
+| Upstream of a later request that sends the same prefix in the other shape | the balancer's pick | the pinned upstream: at any position with `autoCachingSupported`, at a `cache_control` position with only `cacheSupported` | same |
+| Log line of a lookup that finds no pin | `WARN cached upstream doesn't exist any longer in config: id=null, endpoint=null` | `DEBUG no cached upstream found: prefixPath=<path>` | none (a log line is not a spec boundary) |
 
 ## Effect per request
 
-No new Core pass, no body copy and no parse of a body Core only forwards. Per string `content` or `system`: one
-two-field `ObjectNode`, its sorted copy (`JsonUtil.java:sort`) and one more `CacheKeyBuilder.java:update` call (a
-6-byte digest update, `"text"`). That is what a text block already costs today; `JsonUtil.sort` of the message
-already copies every block. No new Redis or blob round trip: the lookup walk is the same, and a request that now finds
-a pin pays the one `HMGET` any pin hit pays today. Measured by inspection of the diff; no load run, since one small
-object per string element against the copies for a prompt of kilobytes does not show in CPU per request.
+| What | Today | After | How measured |
+| --- | --- | --- | --- |
+| Core passes, body copies, parses of a forwarded body | 1 pass, none, none | the same | inspection of the diff |
+| Hashing per string `content` or `system` element | one digest update | one two-field block, its sorted copy and two digest updates, as any text block costs; the sort of the message already copies every block | inspection of the diff; no load run, one small object per string against the copies of a prompt of kilobytes |
+| Redis on a request that now finds its pin | every `EXISTS` batch of 64 candidates, no `HMGET` | the batches up to the one holding the pin, then one `HMGET`, as any pin hit | inspection of the diff |
 
 ## Risks / Trade-offs
 
@@ -117,51 +88,38 @@ object per string element against the copies for a prompt of kilobytes does not 
 
 No config change. After the deploy, a prefix that holds a string `content` or `system` at or before the pinned
 position has a new hash, so its stored pin is not found once: the request goes through the balancer and its answer
-writes a pin under the new hash. Each live conversation re-pins once. Old entries expire by their TTL, the adapter's
-`X-DIAL-CACHE-EXPIRE-AT` or 10 minutes (`UpstreamCacheService.DEFAULT_TTL`). Prefixes with no string keep their hash.
-During a rolling deploy, old and new pods hash such a prefix differently, so a conversation served by both can lose its
-pin more than once until the rollout ends. Rollback has the same one-time cost in reverse.
+writes a pin under the new hash. Each live conversation pins again once. Old entries expire by their TTL, the
+adapter's `X-DIAL-CACHE-EXPIRE-AT` or 10 minutes. Prefixes with no string keep their hash. During a rolling deploy,
+old and new pods hash such a prefix differently, so a conversation served by both can lose its pin more than once
+until the rollout ends. Rollback has the same one-time cost in reverse.
 
-## Implementation notes
+## Code map
 
-- Drift check against the code at `a37f94da8`: none. Every Context bullet holds (`MessagesBaseController` lives in
-  `controller/anthropic/`). `openspec/specs` has no `upstream-cache-affinity` yet, so the delta stays an ADDED
-  requirement of a new capability; no rebase needed.
-- D1 first shipped as `TEXT_TYPE = TextNode.valueOf("text")` fed after the string; after PR review the string is
-  turned into its block instead (D1 now). D3: the debug line is `no cached upstream found: prefixPath={}`.
-- The two integration tests share one helper, `MessagesApiTest.sendPinnedThenUnpinned`, which also asserts the first
-  turn reached `keyB`. Before the fix both returned `keyA`, and `testGet_PinMissLogsNoWarning` saw the warning with
-  `id=null, endpoint=null`.
-
-## Spec review
-
-1. Fidelity, medium, accepted. With only `cacheSupported`, `UpstreamCacheService.java:buildCacheBreakpointContext`
-   makes only `cache_control` positions candidates and `MessagesApiRequest.java:hasCacheControl` is false for a
-   string, so the routing SHALL claimed too much. The spec now keeps the equal-prefix sentence for both flags and states
-   the routing SHALL for `autoCachingSupported`, and for `cacheSupported` alone only when the later request matches at
-   a `cache_control` position. The proposal's first bullet and the docs sentence in tasks 1.3 are scoped the same way.
-2. Fidelity, low, accepted. `UpstreamRouteProvider.java:get(Deployment, CacheBreakpointContext, Function, String)`
-   narrows the list to the `X-UPSTREAM-ID` upstream before the pin is matched. The Goals line and the proposal's
-   logging bullet now say the warning also fires when `X-UPSTREAM-ID` leaves out the pinned upstream, and D3 names
-   this as a known leftover. No code change.
-3. Fidelity, low, accepted. `UpstreamRoute.java:next` sends the attempt to the pinned upstream instead of
-   `balancer.next`. The "String message after its text block" scenario now says the first attempt of the second
-   request goes to the pinned `up-b` in place of the balancer's pick `up-a`, with a pointer to deployment-origin,
-   "Upstream choice and the attempt bound". It sits in the scenario, not the requirement text, because
-   `validate --strict` rejects requirement text over 500 characters.
-4. Fidelity, low, accepted. `CacheKeyBuilder.java:update` runs `JsonUtil.sort`, `toString` and `getBytes` before the
-   digest update. D1 now says the static node only saves creating the node; Effect per request and the tasks
-   follow-up state one more `update` call per string element, the cost of a text block's `type` value today. The
-   no-load-run conclusion stays.
-5. Fidelity, low, accepted. `_caching.py:get_cache_headers` reports `paths[-1]` when the request has a top-level
-   `cache_control`, which can be a string position. The Context bullet now says so and that D1 covers both directions.
-6. Simplicity, medium, accepted. Same defect as finding 1; the same edits cover it, with the routing sentence scoped
-   to `autoCachingSupported` and the `cacheSupported`-only case stated.
-7. Simplicity, low, accepted. Checked: without the fix the string and the block already differ, so the second request
-   goes to `up-a` with or without it. The third scenario and `testTextBlockWithExtraFieldIsNotPinnedForString` are
-   dropped; the requirement keeps the extra-field sentence, covered by
-   `MessagesApiRequestTest.testBuildCacheKeys_textBlockWithExtraFieldDiffersFromString`. Tasks 1.1 now asserts `keyB`
-   in both integration tests.
-8. Simplicity, low, accepted. `UpstreamRouteProviderTest.testGet_CachedUpstreamMissed` already uses an entry with an
-   id no upstream has and asserts the tier 0 upstream. Tasks 2.1 now adds the `WARN` assertion to that test and adds
-   only `testGet_PinMissLogsNoWarning`, with the no-`WARN` assertion.
+- `MessagesApiRequest.java:updateExcludingCacheControl` - the change (D1, D2): a string becomes its text block, then
+  an object feeds its values in sorted key order without `cache_control`.
+- `MessagesApiRequest.java:appendItemCacheKeys` (`tools`, `system`) and `MessagesApiRequest.java:appendMessageCacheKeys`
+  (the message's other fields, then `messages[i].content[j]`) - the two callers.
+- `MessagesApiRequest.java:hasCacheControl` - false for a string, so with only `cacheSupported` a string position is
+  not a lookup candidate.
+- `CacheKeyBuilder.java:update`, `CacheKeyBuilder.java:buildKey`, `CacheKeyBuilder.java:elements` - one rolling SHA-1
+  over each node's sorted JSON text; a snapshot per position without reset; a scalar as one element at index 0.
+- `JsonUtil.java:sort` - the sorted copy of an object.
+- `UpstreamCacheService.java:buildCacheBreakpointContext` - the lookup candidates and the initiator scope
+  (`ProxyContext.java:getInitiatorId`).
+- `UpstreamCacheService.java:getCacheEntry` - the walk from the last candidate back, `EXISTS` batches of 64, `HMGET`
+  on the first hit, and the miss entry with the last candidate path.
+- `BaseDeploymentPostController.java:sendProxyRequest` - sends the route's breakpoint path to the adapter as
+  `X-DIAL-CACHE-BREAKPOINT-PATH`.
+- `UpstreamRouteProvider.java:get(String, List, int, UpstreamCacheContext)` - the match by id, then by endpoint, and the
+  log line (D3).
+- `UpstreamRouteProvider.java:get(Deployment, CacheBreakpointContext, Function, String)` and
+  `MessagesBaseController.java:prepareUpstreamRoute` - a client `X-UPSTREAM-ID` narrows the list and keeps the cache
+  context (D3, D4).
+- `UpstreamRoute.java:next`, `UpstreamRoute.java:updateUpstreamCache`, `TieredBalancer.java:next` - the first attempt
+  goes to the pinned upstream, else the lowest tier; the pin write from `X-DIAL-CACHE-BREAKPOINT-PATH` and
+  `X-DIAL-CACHE-EXPIRE-AT`.
+- Adapter, not in this repo: `aidial_adapter_anthropic/passthrough/_caching.py:_get_cache_controls` and
+  `get_cache_headers` - a scalar counts as index 0; the reported path is the last marked block, or the last candidate
+  when the request has a top-level `cache_control`.
+- Tests to reuse: `MessagesApiTest.testAutoCachingPinsSecondTurnToSameUpstream` (the two-turn pin pattern),
+  `ProxyContextTest.testRespondWithNoContentDoesNotLogWarning` (a logback `ListAppender` on a logger).
