@@ -122,7 +122,7 @@ public class ProxyContext {
     // the merged chat completions body, or the terminal Responses frame - whichever surface streamed
     private String assembledStreamingResponse;
 
-    // the org units above those where the person holds a role, read at most once per request
+    // the org units above those where the caller holds a role, read at most once per request
     private Set<String> unitsAboveHeldRoles;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,

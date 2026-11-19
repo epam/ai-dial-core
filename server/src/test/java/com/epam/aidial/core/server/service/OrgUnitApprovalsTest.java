@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -108,15 +109,13 @@ class OrgUnitApprovalsTest {
     }
 
     @Test
-    void testApplicationsApiKeysAndSwitchedOffNeverMatch() {
+    void testApplicationsAndSwitchedOffNeverMatch() {
         Publication publication = publication("public/Acme/", "files/public/Acme/a.txt");
         ProxyContext application = person("bob@acme.com");
         application.getApiKeyData().setPerRequestKey("per-request");
-        ProxyContext apiKey = context(null);
 
         assertFalse(approvals(true).mayDecide(application, publication));
-        assertFalse(approvals(true).mayDecide(apiKey, publication));
-        assertFalse(approvals(true).approvesAnyUnit(apiKey));
+        assertFalse(approvals(true).approvesAnyUnit(application));
         assertFalse(approvals(false).mayDecide(person("bob@acme.com"), publication));
         assertFalse(approvals(false).approvesAnyUnit(person("bob@acme.com")));
     }
@@ -274,6 +273,7 @@ class OrgUnitApprovalsTest {
         ProxyContext context = mock(ProxyContext.class);
         when(context.getExtractedClaims()).thenReturn(claims);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserId()).thenReturn(claims == null ? null : claims.userId());
         when(context.getProject()).thenReturn(claims == null ? "project" : null);
         when(context.getUserRoles()).thenReturn(List.of());

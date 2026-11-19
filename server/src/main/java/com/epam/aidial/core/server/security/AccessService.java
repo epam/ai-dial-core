@@ -527,13 +527,13 @@ public class AccessService {
     }
 
     public boolean hasAdminAccess(ProxyContext context) {
-        return context.getApiKeyData().getPerRequestKey() == null // not application
+        return context.isOriginalRequest()
                 && RuleMatcher.match(context, adminRules);
     }
 
     public boolean hasGlobalReaderAccess(ProxyContext context) {
         return globalReaderRulesConfigured
-                && context.getApiKeyData().getPerRequestKey() == null // not application
+                && context.isOriginalRequest()
                 && RuleMatcher.match(context, globalReaderRules);
     }
 
