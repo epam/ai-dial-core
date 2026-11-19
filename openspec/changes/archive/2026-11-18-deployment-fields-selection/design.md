@@ -164,6 +164,8 @@ used by an `@ApiParameter(name = "fields", in = QUERY, schema = String.class)` o
   event loop, which blocks every request. Revisit with chunked tasks if the metric shows queuing.
 - [A key with `,`, `(` or `)` in a free-form map cannot be named] → `*(...)` reaches it; no such key exists in the
   fixtures or the documented settings.
+- [A key literally named `*` cannot be selected alone: `*` matches every key at its level, so `m(*)` keeps all of them]
+  → Deliberate; no such key exists in the fixtures or the documented settings.
 - [Caches keyed on the URL] → The parameter is part of the URL, so a cached full listing is never served for a
   `fields` request.
 - [A client takes an absent field for a null one] → Same as today: `NON_NULL` already omits unset fields.
