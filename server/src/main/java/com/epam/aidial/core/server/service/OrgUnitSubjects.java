@@ -20,10 +20,10 @@ public final class OrgUnitSubjects {
     }
 
     /**
-     * No per-request key: the line {@code AccessService.hasAdminAccess} draws.
+     * Not an application, as for {@code AccessService.hasAdminAccess}.
      */
     public static boolean isRoleHolder(ProxyContext context) {
-        return context.getApiKeyData().getPerRequestKey() == null;
+        return context.isOriginalRequest();
     }
 
     /**

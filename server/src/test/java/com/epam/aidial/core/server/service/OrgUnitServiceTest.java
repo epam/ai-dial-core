@@ -58,6 +58,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -816,6 +817,7 @@ class OrgUnitServiceTest {
         ProxyContext apiKey = mock(ProxyContext.class);
         AtomicReference<Set<String>> unitsAbove = new AtomicReference<>();
         when(apiKey.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(apiKey.isOriginalRequest()).thenAnswer(invocation -> apiKey.getApiKeyData().getPerRequestKey() == null);
         when(apiKey.getUserRoles()).thenReturn(List.of("default"));
         when(apiKey.getConfig()).thenReturn(new Config());
         when(apiKey.getUnitsAboveHeldRoles()).thenAnswer(invocation -> unitsAbove.get());
@@ -1013,6 +1015,7 @@ class OrgUnitServiceTest {
         ApiKeyData key = new ApiKeyData();
         key.setPerRequestKey(perRequestKey);
         when(bob.getApiKeyData()).thenReturn(key);
+        lenient().when(bob.isOriginalRequest()).thenAnswer(invocation -> bob.getApiKeyData().getPerRequestKey() == null);
         when(bob.getConfig()).thenReturn(new Config());
         return bob;
     }

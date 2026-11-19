@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -272,6 +273,7 @@ class OrgUnitApprovalsTest {
         ProxyContext context = mock(ProxyContext.class);
         when(context.getExtractedClaims()).thenReturn(claims);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserId()).thenReturn(claims == null ? null : claims.userId());
         when(context.getProject()).thenReturn(claims == null ? "project" : null);
         when(context.getUserRoles()).thenReturn(List.of());
