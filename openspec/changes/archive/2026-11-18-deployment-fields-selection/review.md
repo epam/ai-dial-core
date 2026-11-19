@@ -74,8 +74,7 @@ still cost what they cost today because `fields` does not skip building a field.
   becomes whole in the parser, and at the top that is no selection, so the request takes the unselected path; arrays
   are selected into recursively, nested arrays included; the matching selection lists of a single node are cached on
   the node, so the common case allocates nothing; the size guard of the parsed selection counts members, not seconds;
-  the spec and the OpenAPI text say that an object left with no members stays `{}`; the `fields` parameter has its
-  own document, `docs/deployment-listing.md`. The cost of the conversion on the virtual-thread executor was accepted
+  the spec and the OpenAPI text say that an object left with no members stays `{}`. The cost of the conversion on the virtual-thread executor was accepted
   and is recorded in design.md.
 - A filter-while-serializing version replaced the tree for a while and was dropped again (see above). Along the way a
   model with a decision-tree pricing rate had made every `fields` request fail, which the tree version cannot do;

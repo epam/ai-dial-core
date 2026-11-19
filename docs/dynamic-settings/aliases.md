@@ -175,8 +175,6 @@ who may use its target), and their single-item endpoints answer for that name, f
 alias whose target is missing is left out. Every listing that shows aliases lists and reads the stored aliases, on
 the task executor, except the router listings: an alias in public storage never has the type `router`.
 
-`GET /v1/deployments` takes a `fields` parameter that narrows each entry, alias entries included; see [Deployment listing](../deployment-listing.md).
-
 An entry has the alias's name and display fields (with the fallbacks above) and the target's features, pricing,
 limits, defaults and interfaces. It never shows the target's path or endpoint, nor any default headers (the alias's
 or the target's), nor the target's version as the alias's.

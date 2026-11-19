@@ -47,9 +47,6 @@ The specification is generated automatically from the source code using the `ope
 The latest OpenAPI 3.0 specification is available in docs/open_api_core.yaml:
 https://github.com/epam/ai-dial-core/blob/development/docs/open_api_core.yaml
 
-Behaviour the specification cannot show is described in the docs, for example the `fields` parameter of
-`GET /v1/deployments` in [Deployment listing](docs/deployment-listing.md).
-
 ### Preview endpoints
 
 Endpoints that are still under development are marked with the vendor extension:
