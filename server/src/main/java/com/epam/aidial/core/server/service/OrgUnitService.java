@@ -207,14 +207,14 @@ public class OrgUnitService {
 
     /**
      * The units the tree shows the caller, parents before children; a unit shown only on the way to one below has no
-     * roles. A DIAL admin gets every unit, with every permission; a caller who is not a person gets none.
+     * roles. A DIAL admin gets every unit, with every permission; an application gets none.
      */
     public List<UserOrgUnits.Unit> unitsOf(ProxyContext context, boolean admin) {
-        if (!admin && !OrgUnitSubjects.isPerson(context)) {
+        if (!admin && !OrgUnitSubjects.isRoleHolder(context)) {
             return List.of();
         }
         OrgUnitList list = getUnitList();
-        CallerUnitRoles caller = personsRoles(context, list);
+        CallerUnitRoles caller = loadAllHeldRoles(context, list);
         OrgUnitRoles roleDefinitions = caller.roleDefinitions();
         List<UserOrgUnits.Unit> units = new ArrayList<>();
         for (Map.Entry<String, OrgUnit> entry : list.units().entrySet()) {
@@ -986,15 +986,15 @@ public class OrgUnitService {
      * The units the caller sees through their roles, evaluated once over the list the request reads.
      */
     private Predicate<String> visibleTo(ProxyContext context, OrgUnitList list) {
-        CallerUnitRoles caller = personsRoles(context, list);
+        CallerUnitRoles caller = loadAllHeldRoles(context, list);
         return key -> list.units().containsKey(key) && caller.sees(key);
     }
 
     /**
-     * A person's roles in every unit, read in one batch, as the unit list decides on all units at once; nobody else
-     * holds any.
+     * The caller's roles in every unit, read in one batch, as the unit list decides on all units at once; an application
+     * holds none.
      */
-    private CallerUnitRoles personsRoles(ProxyContext context, OrgUnitList list) {
+    private CallerUnitRoles loadAllHeldRoles(ProxyContext context, OrgUnitList list) {
         OrgUnitRoles roleDefinitions = OrgUnitRoles.of(context.getConfig());
         Map<String, Set<String>> heldRolesByUnit = loadHeldRolesByUnit(context, list.units());
         return new CallerUnitRoles(roleDefinitions, key -> heldRolesByUnit.getOrDefault(key, Set.of()),
@@ -1003,7 +1003,7 @@ public class OrgUnitService {
 
     /**
      * The roles the caller reads shared-space content with, each unit's assignments read when a decision first needs
-     * them. Only a person's roles show units above, so nobody else's decisions read every unit's assignments for them.
+     * them. Only held roles show units above, so an application's decisions never read every unit's assignments.
      */
     CallerUnitRoles callerRoles(ProxyContext context, Map<String, OrgUnit> units) {
         OrgUnitRoles roleDefinitions = OrgUnitRoles.of(context.getConfig());
@@ -1016,7 +1016,7 @@ public class OrgUnitService {
      * Read once per request, as each access decision and listing filter builds its own {@link CallerUnitRoles}.
      */
     private Set<String> unitsAboveHeldRoles(ProxyContext context, OrgUnitRoles roleDefinitions, Map<String, OrgUnit> units) {
-        if (!OrgUnitSubjects.isPerson(context)) {
+        if (!OrgUnitSubjects.isRoleHolder(context)) {
             return Set.of();
         }
         Set<String> unitsAbove = context.getUnitsAboveHeldRoles();
