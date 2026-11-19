@@ -199,8 +199,10 @@ class BudgetEnforcerTest {
         assertTrue(BudgetEnforcer.isApplicable(context, model));
         assertFalse(BudgetEnforcer.isEnforced(context, model));
 
+        // the mode does not change which calls budgets cover, only whether they are checked
         config.getSpendingLimits().setMode(SpendingLimitMode.OFF);
-        assertFalse(BudgetEnforcer.isApplicable(context, model));
+        assertTrue(BudgetEnforcer.isApplicable(context, model));
+        assertFalse(BudgetEnforcer.isEnforced(context, model));
     }
 
     @Test
@@ -508,11 +510,12 @@ class BudgetEnforcerTest {
 
     private static final class ArgumentCaptorHolder {
         static void verifyPayer(ProxyContext context, String instanceId, String costObject, String userId) {
-            var captor = org.mockito.ArgumentCaptor.forClass(BudgetPayer.class);
-            verify(context).setBudgetPayer(captor.capture());
-            assertEquals(instanceId, captor.getValue().instance().id());
-            assertEquals(costObject, captor.getValue().costObject());
-            assertEquals(userId, captor.getValue().userId());
+            var captor = org.mockito.ArgumentCaptor.forClass(BudgetCheck.class);
+            verify(context, org.mockito.Mockito.atLeastOnce()).setBudgetCheck(captor.capture());
+            BudgetPayer payer = captor.getValue().payer();
+            assertEquals(instanceId, payer.instance().id());
+            assertEquals(costObject, payer.costObject());
+            assertEquals(userId, payer.userId());
         }
     }
 }

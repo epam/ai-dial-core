@@ -1014,6 +1014,27 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void failedModelCandidateLeavesNoSpendingLimitsOnTheApplicationThatServes() {
+        verdict.set("{\"candidates\": [\"m1\", \"app\"]}");
+        List<AnalyticsLogContext> rows = captureRows();
+        try (TestWebServer server = server()) {
+            server.map(HttpMethod.POST, "/openai/deployments/m1/chat/completions", request -> {
+                received.add(request);
+                return TestWebServer.createResponse(503, "{\"error\":{\"message\":\"busy\"}}", "content-type", "application/json");
+            });
+            // a token caller: the limit check of m1 records that spending limits are off
+            verify(send(HttpMethod.POST, "/openai/deployments/r1/chat/completions", null, CHAT_BODY,
+                    "content-type", "application/json", "authorization", "user"), 200);
+        }
+
+        awaitRows(rows, 2);
+        // the check was m1's: the application that served after it has no spending limits in its row
+        assertNull(row(rows, "app").getBudgetCheck());
+        assertNull(routerRow(rows).getBudgetCheck());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void failingAliasCandidateSkipped() {
         verdict.set("{\"candidates\": [\"alias-m1\", \"m2\"]}");
         try (TestWebServer server = server()) {

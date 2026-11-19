@@ -27,6 +27,7 @@ import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.data.UserLimitStats;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -1653,6 +1654,72 @@ public class RateLimiterTest {
 
         assertInstanceOf(IllegalStateException.class, error);
         assertEquals("token record", error.getMessage());
+    }
+
+    /**
+     * Shadow and enforce, on a route without spend caps: a token limit rejects before the budget is checked, and the
+     * call still names the mode and its cost object, without an outcome.
+     */
+    @Test
+    public void testTokenLimitRejectionKeepsTheModeAndCostObject() {
+        stubInlineExecutor();
+        for (SpendingLimitMode mode : List.of(SpendingLimitMode.SHADOW, SpendingLimitMode.ENFORCE)) {
+            Config config = budgetConfig(mode, "ORG/a");
+            config.getRoles().get("role").getLimits().get("model").setMinute(10);
+            ProxyContext context = userContext(config, List.of("role"), "tokens-" + mode.toValue());
+            Model model = config.getModels().get("model");
+            context.setDeployment(model);
+            assertNull(rateLimiter.increase(model, BucketBuilder.buildInitiatorBucket(context), pricedUsage(), null, null,
+                    InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+
+            RateLimitResult result = rateLimiter.limit(context, model).result();
+
+            assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+            assertEquals(BudgetCheck.started(mode, "ORG"), context.getBudgetCheck());
+        }
+    }
+
+    /**
+     * A limit that is not positive refuses the call with 403 before any other check; the call still names the mode,
+     * in {@code off} as in {@code shadow}.
+     */
+    @Test
+    public void testAccessDeniedKeepsTheMode() {
+        Config off = budgetConfig(SpendingLimitMode.OFF, "ORG/a");
+        off.getRoles().get("role").getLimits().get("model").setDay(-1);
+        ProxyContext offContext = userContext(off, List.of("role"), "denied-off");
+        Model model = off.getModels().get("model");
+        offContext.setDeployment(model);
+
+        assertEquals(HttpStatus.FORBIDDEN, rateLimiter.limit(offContext, model).result().status());
+        assertEquals(BudgetCheck.OFF, offContext.getBudgetCheck());
+
+        Config shadow = budgetConfig(SpendingLimitMode.SHADOW, "ORG/a");
+        shadow.getRoles().get("role").getLimits().get("model").setDay(-1);
+        ProxyContext shadowContext = userContext(shadow, List.of("role"), "denied-shadow");
+        shadowContext.setDeployment(model);
+
+        assertEquals(HttpStatus.FORBIDDEN, rateLimiter.limit(shadowContext, model).result().status());
+        assertEquals(BudgetCheck.started(SpendingLimitMode.SHADOW, "ORG"), shadowContext.getBudgetCheck());
+    }
+
+    /**
+     * Shadow, with an unreadable budget counter: the check fails, and the call names the mode and its cost object
+     * without an outcome.
+     */
+    @Test
+    public void testUnreadableBudgetCounterLeavesNoOutcome() {
+        stubInlineExecutorReturningFailures();
+        ResourceService resourceSpy = spy(resourceService);
+        doThrow(new IllegalStateException("budget listing")).when(resourceSpy).listResources(any(ResourceDescriptor.class), any());
+        RateLimiter limiter = new RateLimiter(taskExecutor, resourceSpy, mock(ConfigStore.class), BlockingCallTracer.NOOP);
+        Config config = budgetConfig(SpendingLimitMode.SHADOW, "ORG/a");
+        ProxyContext context = userContext(config, List.of("role"), "unreadable");
+        Model model = config.getModels().get("model");
+        context.setDeployment(model);
+
+        assertNotNull(limiter.limit(context, model).cause());
+        assertEquals(BudgetCheck.started(SpendingLimitMode.SHADOW, "ORG"), context.getBudgetCheck());
     }
 
     /**
