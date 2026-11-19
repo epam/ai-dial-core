@@ -495,7 +495,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     /**
      * Serves an authenticated pass: the controller of the request's method and path handles it. A child pass of an
-     * origin plugin's in-process call starts here too.
+     * origin plugin's in-process call, or the in-process target pass of an alias call, starts here too.
      */
     @SneakyThrows
     public Future<?> dispatch(ProxyContext context) {
