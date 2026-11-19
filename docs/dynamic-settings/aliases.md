@@ -39,13 +39,9 @@ A map of aliases and their [parameters](#aliasesalias_name):
   every caller, as any deployment without `userRoles` is, and so is its target through the alias. A resource target
   is the exception: then the callers who can read the resource may use the alias, or, for a resource in the
   `platform` bucket, the callers with one of the resource's `userRoles`. The callers who may use an alias may call
-  its target through it, also when a router chooses the alias; limits are checked under the target's name.
-
-  **Changed behaviour.** Earlier versions of DIAL Core gave an alias without `userRoles` the `userRoles` of its config
-  target. After the upgrade, such an alias opens a target that has `userRoles` to every caller. Before upgrading, copy
-  the target's `userRoles` (`[]` included) onto every alias without `userRoles` whose config target has them: in the
-  config file, in `aliases/platform/` and in `aliases/public/`. Copied roles do not follow later changes of the
-  target.
+  its target through it, also when a router chooses the alias; limits are checked under the target's name. An
+  alias's `userRoles` are its own and do not follow the target's: to limit an alias to the callers of its target,
+  give it the same `userRoles`.
 * `defaultHeaders`: Headers the alias sets on each call under every name the client did not send, as a deployment's
   `defaultHeaders` do; a value the client sent wins. The target receives them as client headers. Not for an alias
   of type `toolset`: the config file ignores them there, and a stored alias with them answers `400`.
@@ -246,7 +242,7 @@ Callers with the role `default-user` then use `POST /v1/toolset/aliases/public/s
 
 Who may use a stored alias is decided by its `userRoles`, exactly as for an alias of the config file: a caller with
 one of them may call it and sees it in listings, others get `403`; an alias without `userRoles` is open to every
-caller unless its target is a resource (see `userRoles` above, and the change described there).
+caller unless its target is a resource (see `userRoles` above).
 The public access rules of the public bucket (publication rules) do not apply to stored aliases: they cannot be set
 on the root of the public bucket, where aliases are stored.
 
