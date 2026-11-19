@@ -58,22 +58,25 @@ public class BudgetEnforcer {
     }
 
     /**
-     * Whether budgets take part in the call. API key callers, calls to anything but a model and the {@code off}
-     * mode stay on the legacy cost limit.
+     * Whether budgets cover the call when they are on: a JWT caller's call to a model. API key callers and calls to
+     * anything but a model stay on the legacy cost limit whatever the mode.
      */
     public static boolean isApplicable(ProxyContext context, RoleBasedEntity entity) {
-        return context.getConfig().getSpendingLimits().getMode() != SpendingLimitMode.OFF && isBudgetCall(context, entity);
-    }
-
-    /**
-     * Whether budgets would take part in the call if they were on: a JWT caller's call to a model.
-     */
-    public static boolean isBudgetCall(ProxyContext context, RoleBasedEntity entity) {
         return context.getExtractedClaims() != null && entity instanceof Model;
     }
 
     public static boolean isEnforced(ProxyContext context, RoleBasedEntity entity) {
-        return isApplicable(context, entity) && context.getConfig().getSpendingLimits().getMode() == SpendingLimitMode.ENFORCE;
+        return context.getConfig().getSpendingLimits().getMode() == SpendingLimitMode.ENFORCE && isApplicable(context, entity);
+    }
+
+    /**
+     * The check of a call budgets cover, before any budget counter is read: the mode only in {@code off}, the mode
+     * and the cost object without an outcome otherwise.
+     */
+    public static BudgetCheck startCheck(ProxyContext context) {
+        SpendingLimits settings = context.getConfig().getSpendingLimits();
+        return settings.getMode() == SpendingLimitMode.OFF
+                ? BudgetCheck.OFF : BudgetCheck.started(settings.getMode(), resolveCostObject(context, settings));
     }
 
     /**
@@ -100,10 +103,11 @@ public class BudgetEnforcer {
         ExtractedClaims claims = context.getExtractedClaims();
         String costObject = resolveCostObject(context, settings);
         // without an outcome until the counters are read, so a failed read leaves the row without one
-        context.setBudgetCheck(new BudgetCheck(settings.getMode(), costObject, null, null));
+        BudgetCheck started = BudgetCheck.started(settings.getMode(), costObject);
+        context.setBudgetCheck(started);
         List<BudgetInstance> candidates = resolveCandidates(context, costObject, model, timestamp);
         if (candidates.isEmpty()) {
-            context.setBudgetCheck(new BudgetCheck(settings.getMode(), costObject, BudgetCheck.Outcome.NO_BUDGET, null));
+            context.setBudgetCheck(started.noBudget());
             return Future.succeededFuture(rejectNoBudget(settings, claims, costObject, model));
         }
         // the candidates are a subset of the cost object's budgets, so with several the caller has several
@@ -116,14 +120,14 @@ public class BudgetEnforcer {
         }
         return picked.map(outcome -> {
             if (outcome.payer != null) {
-                context.setBudgetCheck(new BudgetCheck(settings.getMode(), costObject, BudgetCheck.Outcome.PAID, outcome.payer));
+                context.setBudgetCheck(started.paidBy(outcome.payer));
                 if (!isWithSpendCaps) {
                     return RateLimitResult.SUCCESS;
                 }
                 return RateLimitResult.SUCCESS.withSpendCaps(
                         isReported ? toSpendCaps(outcome.payer.instance(), outcome.payerUsage) : SpendCaps.EMPTY);
             }
-            context.setBudgetCheck(new BudgetCheck(settings.getMode(), costObject, BudgetCheck.Outcome.EXHAUSTED, null));
+            context.setBudgetCheck(started.exhausted());
             // with spend caps there is no display message: a client builds it from the cap's period
             RateLimitResult exhausted = buildExhaustedResult(costObject, isWithSpendCaps ? null : "You've exceeded your budget",
                     outcome, timestamp);

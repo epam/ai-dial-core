@@ -199,8 +199,10 @@ class BudgetEnforcerTest {
         assertTrue(BudgetEnforcer.isApplicable(context, model));
         assertFalse(BudgetEnforcer.isEnforced(context, model));
 
+        // the mode does not change which calls budgets cover, only whether they are checked
         config.getSpendingLimits().setMode(SpendingLimitMode.OFF);
-        assertFalse(BudgetEnforcer.isApplicable(context, model));
+        assertTrue(BudgetEnforcer.isApplicable(context, model));
+        assertFalse(BudgetEnforcer.isEnforced(context, model));
     }
 
     @Test

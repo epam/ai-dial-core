@@ -200,7 +200,7 @@ class BudgetAnalyticsLogApiTest extends ResourceBaseTest {
         BudgetPayer payer = check.payer();
         assertNotNull(payer);
         assertEquals(policy, payer.instance().policyPath());
-        assertEquals(assignment, payer.instance().assignment() == null ? null : payer.instance().id());
+        assertEquals(assignment, payer.instance().assignmentPath());
     }
 
     private static BudgetCheck assertCheck(AnalyticsLogContext row, SpendingLimitMode mode, String costObject, BudgetCheck.Outcome outcome) {

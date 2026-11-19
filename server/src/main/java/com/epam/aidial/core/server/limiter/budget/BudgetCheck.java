@@ -15,6 +15,25 @@ public record BudgetCheck(SpendingLimitMode mode, @Nullable String costObject, @
 
     public static final BudgetCheck OFF = new BudgetCheck(SpendingLimitMode.OFF, null, null, null);
 
+    /**
+     * The check of a call in {@code shadow} or {@code enforce} mode before a budget counter is read: no outcome yet.
+     */
+    public static BudgetCheck started(SpendingLimitMode mode, String costObject) {
+        return new BudgetCheck(mode, costObject, null, null);
+    }
+
+    public BudgetCheck paidBy(BudgetPayer payer) {
+        return new BudgetCheck(mode, costObject, Outcome.PAID, payer);
+    }
+
+    public BudgetCheck noBudget() {
+        return new BudgetCheck(mode, costObject, Outcome.NO_BUDGET, null);
+    }
+
+    public BudgetCheck exhausted() {
+        return new BudgetCheck(mode, costObject, Outcome.EXHAUSTED, null);
+    }
+
     public enum Outcome {
         PAID("paid"),
         NO_BUDGET("no_budget"),

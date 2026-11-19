@@ -50,6 +50,11 @@ public class GfLogStore implements LogStore {
     private static final int MAX_HEADER_VALUE_LENGTH = 4 * 1024;
     // Max allowed size for a single collected claim value, matching the header limit
     private static final int MAX_CLAIM_VALUE_LENGTH = 4 * 1024;
+    // the ,"name":" fragments of the optional spending_limits fields
+    private static final String COST_OBJECT_KEY = ",\"cost_object\":\"";
+    private static final String OUTCOME_KEY = ",\"outcome\":\"";
+    private static final String POLICY_KEY = ",\"policy\":\"";
+    private static final String ASSIGNMENT_KEY = ",\"assignment\":\"";
 
     private static final String[] CONTROL_SYMBOLS = new String[0x1F + 1];
 
@@ -197,12 +202,12 @@ public class GfLogStore implements LogStore {
             append(entry, ",\"spending_limits\":{\"mode\":\"", false);
             append(entry, budgetCheck.mode().toValue(), true);
             append(entry, "\"", false);
-            appendField(entry, "cost_object", budgetCheck.costObject());
-            appendField(entry, "outcome", budgetCheck.outcome() == null ? null : budgetCheck.outcome().toValue());
+            appendField(entry, COST_OBJECT_KEY, budgetCheck.costObject());
+            appendField(entry, OUTCOME_KEY, budgetCheck.outcome() == null ? null : budgetCheck.outcome().toValue());
             BudgetPayer payer = budgetCheck.payer();
             if (payer != null) {
-                appendField(entry, "policy", payer.instance().policyPath());
-                appendField(entry, "assignment", payer.instance().assignment() == null ? null : payer.instance().id());
+                appendField(entry, POLICY_KEY, payer.instance().policyPath());
+                appendField(entry, ASSIGNMENT_KEY, payer.instance().assignmentPath());
             }
             append(entry, "}", false);
         }
@@ -596,10 +601,12 @@ public class GfLogStore implements LogStore {
 
     /**
      * Appends {@code ,"name":"value"} to an open object, or nothing when the value is null.
+     *
+     * @param key the {@code ,"name":"} fragment, one of the {@code *_KEY} constants
      */
-    private static void appendField(LogEntry entry, String name, String value) {
+    private static void appendField(LogEntry entry, String key, String value) {
         if (value != null) {
-            append(entry, ",\"" + name + "\":\"", false);
+            append(entry, key, false);
             append(entry, value, true);
             append(entry, "\"", false);
         }
