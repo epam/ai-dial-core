@@ -57,13 +57,13 @@ See proposal.md, Why. Facts on `development`:
 
 ### D1. A string feeds the digest as its text block does
 
-In `MessagesApiRequest.java:updateExcludingCacheControl`, a textual node feeds itself and then a constant text node
-`"text"`, the same two inputs, in the same order, as the sorted block `{"text": <s>, "type": "text"}`. A static
-`TextNode` constant saves creating that node per string; `CacheKeyBuilder.java:update` still runs on it as on any
-node (see Effect per request).
+In `MessagesApiRequest.java:updateExcludingCacheControl`, a textual node is first turned into the block
+`{"type": "text", "text": <s>}` and then goes down the object path, so the two shapes cannot drift apart whatever that
+path feeds. It is done in the helper, not at its callers, so `system[i]` gets it as well as `messages[i].content[j]`.
 
-Rejected: turning the string into an `ObjectNode` and sending it down the object path. Same digest, but one node and
-one sorted copy per string element. The equality unit test (tasks 1.1) catches any later drift between the two paths.
+Rejected (first version, changed after PR review): feeding the string and then a static `TextNode` `"text"`. Same
+digest and no node per string, but it copies by hand what the object path feeds, so a change to that path would break
+it (caught only by the equality unit test, tasks 1.1).
 
 Rejected: the reverse, hashing a plain text block as its string. Claude Code sends `system` and the newest user message
 as blocks, so every stored pin would move to a new hash; with D1, prefixes that hold no string keep their hash. D1 is
@@ -100,20 +100,18 @@ does not expose it.
 
 ## Effect per request
 
-No new Core pass, no body copy and no parse of a body Core only forwards. Per string `content` or `system`: one more
-`CacheKeyBuilder.java:update` call, which runs `JsonUtil.java:sort` (returns a scalar as it is), a Jackson
-`toString` of the 4-character `TextNode` and a 6-byte digest update (`"text"`). That is what the `type` value of a
-text block already costs today. No new Redis or blob round trip: the lookup walk is the same, and a request that now
-finds a pin pays the one `HMGET` any pin hit pays today. Measured by inspection of the diff; no load run, since one
-small update per string element against the updates for a prompt of kilobytes does not show in CPU per request.
+No new Core pass, no body copy and no parse of a body Core only forwards. Per string `content` or `system`: one
+two-field `ObjectNode`, its sorted copy (`JsonUtil.java:sort`) and one more `CacheKeyBuilder.java:update` call (a
+6-byte digest update, `"text"`). That is what a text block already costs today; `JsonUtil.sort` of the message
+already copies every block. No new Redis or blob round trip: the lookup walk is the same, and a request that now finds
+a pin pays the one `HMGET` any pin hit pays today. Measured by inspection of the diff; no load run, since one small
+object per string element against the copies for a prompt of kilobytes does not show in CPU per request.
 
 ## Risks / Trade-offs
 
 - [The provider renders the two shapes differently] → Anthropic documents a string `content` as shorthand for one
   text block, and the report says Bedrock's cache hits on either shape (reported, not checked from code). If a provider
   did differ, the pinned upstream would miss its cache once, which costs no more than today's random pick.
-- [The two digest paths drift apart] → `MessagesApiRequestTest` asserts the equal hashes at the element and at a later
-  position.
 
 ## Migration Plan
 
@@ -129,8 +127,8 @@ pin more than once until the rollout ends. Rollback has the same one-time cost i
 - Drift check against the code at `a37f94da8`: none. Every Context bullet holds (`MessagesBaseController` lives in
   `controller/anthropic/`). `openspec/specs` has no `upstream-cache-affinity` yet, so the delta stays an ADDED
   requirement of a new capability; no rebase needed.
-- D1 as designed: `TEXT_TYPE = TextNode.valueOf("text")`, fed after the string. D3: the debug line is
-  `no cached upstream found: prefixPath={}`.
+- D1 first shipped as `TEXT_TYPE = TextNode.valueOf("text")` fed after the string; after PR review the string is
+  turned into its block instead (D1 now). D3: the debug line is `no cached upstream found: prefixPath={}`.
 - The two integration tests share one helper, `MessagesApiTest.sendPinnedThenUnpinned`, which also asserts the first
   turn reached `keyB`. Before the fix both returned `keyA`, and `testGet_PinMissLogsNoWarning` saw the warning with
   `id=null, endpoint=null`.

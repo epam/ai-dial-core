@@ -23,8 +23,8 @@ another field is a different prefix is covered by the unit test
   `system[0]` and at `messages[0].content[0]`), `testBuildCacheKeys_textBlockWithExtraFieldDiffersFromString` (a
   block with `citations: []`: different at `messages[0].content[0]`). Verify the two string-message and string-system
   tests of each class fail before 1.2 (the integration tests see `keyA`).
-- [x] 1.2 `MessagesApiRequest.java:updateExcludingCacheControl`: a textual node feeds itself and then a static
-  `TextNode` `"text"` (design D1, D2). Verify with 1.4.
+- [x] 1.2 `MessagesApiRequest.java:updateExcludingCacheControl`: a textual node is turned into its text block and
+  goes down the object path (design D1, D2). Verify with 1.4.
 - [x] 1.3 `docs/dynamic-settings/models.md`, the `fieldsHashingOrder` paragraph on the hash: one sentence that on
   Anthropic Messages a string `content` or `system` hashes as its one-text-block form, so a client that sends the same
   text in either shape keeps its pinned upstream wherever Core looks the pin up: at every position with
@@ -52,6 +52,6 @@ another field is a different prefix is covered by the unit test
 
 ## Workflow follow-up
 
-- No measurement task: the only cost is one more `CacheKeyBuilder.update` per string element (a `toString` of a
-  4-character node and a 6-byte digest update), by inspection (design, Effect per request).
+- No measurement task: the only cost is one small block and its sorted copy per string element, by inspection
+  (design, Effect per request).
 - Write `review.md`, archive, `validate --specs --strict`, one commit staging explicit paths.

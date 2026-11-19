@@ -75,6 +75,14 @@ high or medium findings.
 | nit | MessagesApiTest.java | `Thread.sleep(1000)` waits for the async pin write. | Not changed: same pattern as the existing pin test. |
 | nit | PR description | "six touched classes": three were touched, six run; rollback not mentioned. | Fixed in the PR description. |
 
+## PR review: string normalization
+
+A maintainer found the string branch of `updateExcludingCacheControl` fragile: it fed the string and a static `"text"`
+node, copying by hand what the object path feeds for a text block. Accepted. The helper now turns a string into
+`{"type": "text", "text": <s>}` and sends it down the object path (design D1). It is done in the helper rather than at
+the `messages` call site the comment suggested, so `system[i]` keeps the fix. Hashes are unchanged, so no test changed;
+checkstyle, `MessagesApiRequestTest` (11) and `MessagesApiTest` (22) pass.
+
 Questions outside this change: the adapter drops unsupported tools before it reports the breakpoint path, so a
 `tools[i]` path can point at a different prefix than Core hashed; a top-level `cache_control` with only
 `cacheSupported` writes a pin that is never looked up; a string `tool_result.content` is not normalized.
