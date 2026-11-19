@@ -103,7 +103,7 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
                 .redirectUri(clientRegistrationResponse.getRedirectUris().getFirst())
                 .authorizationEndpoint(authServerMetadata.getAuthorizationEndpoint())
                 .tokenEndpoint(authServerMetadata.getTokenEndpoint())
-                .resource(resolveResource(protectedResourceMetadata, policy.endpointAsResource() ? resourceEndpoint : null))
+                .resource(resolveResource(protectedResourceMetadata, policy.isEndpointAsResource() ? resourceEndpoint : null))
                 .scopesSupported(supportedScopes)
                 .tokenEndpointAuthMethod(tokenEndpointAuthMethod)
                 .build();
@@ -131,13 +131,13 @@ public class DynamicResourceRegistrationStrategy implements ResourceRegistration
         List<String> uris = new ArrayList<>(allowedRedirectUris);
         String resourceRedirectUri = resourceAuthSettings.getRedirectUri();
         if (StringUtils.isNotBlank(resourceRedirectUri) && !uris.contains(resourceRedirectUri)) {
-            if (!policy.anyResourceRedirectUri()) {
+            if (!policy.isAnyResourceRedirectUri()) {
                 throw new IllegalArgumentException(
                         "redirect_uri %s is not in toolsets.security.allowedRedirectUris".formatted(resourceRedirectUri));
             }
             uris.add(resourceRedirectUri);
         }
-        if (uris.isEmpty() && !policy.anyResourceRedirectUri()) {
+        if (uris.isEmpty() && !policy.isAnyResourceRedirectUri()) {
             throw new IllegalArgumentException(
                     "Dynamic client registration requires toolsets.security.allowedRedirectUris to be configured");
         }

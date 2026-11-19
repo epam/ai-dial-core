@@ -122,10 +122,9 @@ public class ExternalServiceService {
     // Same resource id/bucket as CredentialsLocatorFactory.fromExternalServiceScope for a dynamic app, so the
     // purge hits the path sign-in wrote to. No-op for config apps (their secrets live in the public bucket).
     private static CredentialsLocator applicationCredentialsLocator(ResourceDescriptor resource, String serviceId) {
-        String resourceId = resource.getUrl() + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + UrlUtil.encodePath(serviceId);
         Map<CredentialsLevel, BucketInfo> buckets = new EnumMap<>(CredentialsLevel.class);
         buckets.put(CredentialsLevel.APPLICATION, bucketInfo(resource));
-        return new CredentialsLocator(resourceId, buckets);
+        return new CredentialsLocator(serviceResourceId(resource, serviceId), buckets);
     }
 
     /**
@@ -152,7 +151,7 @@ public class ExternalServiceService {
             boolean existingSecretUnreadable = !tryDecryptSecretOrDrop(resource, serviceId, existing);
             ExternalServiceValidation.validate(serviceId, service);
             typeChanged.setValue(authTypeChanged(existing, service));
-            setUpAuthSettings(secretAad(resource, serviceId), serviceId, service, existing, existingSecretUnreadable);
+            setUpAuthSettings(serviceResourceId(resource, serviceId), serviceId, service, existing, existingSecretUnreadable);
             app.getExternalServices().put(serviceId, service);
             persisted.capture(service);
             encryptSecret(resource, serviceId, service);
@@ -268,15 +267,16 @@ public class ExternalServiceService {
         }
         Map<String, ExternalService> existingServices = existing == null || existing.getExternalServices() == null
                 ? Map.of() : existing.getExternalServices();
-        services.forEach((serviceId, service) -> setUpAuthSettings(secretAad(resource, serviceId), serviceId, service,
+        services.forEach((serviceId, service) -> setUpAuthSettings(serviceResourceId(resource, serviceId), serviceId, service,
                 existingServices.get(serviceId), unreadableServices.contains(serviceId)));
     }
 
     /**
      * Runs the toolset client setup on {@code service}: validation for the change, registration or metadata lookup
      * when the service has a {@code discovery_url}, PKCE, and on an update the stored fields the body omits.
-     * {@code existing} must be decrypted; when its secrets could not be, they are dropped and
-     * {@code existingSecretUnreadable} is set, so an update that would have kept them is refused.
+     * {@code service} must have passed {@link ExternalServiceValidation#validate}. {@code existing} must be decrypted;
+     * when its secrets could not be, they are dropped and {@code existingSecretUnreadable} is set, so an update that
+     * would have kept them is refused. {@code resourceId} names the registered client at the provider.
      */
     public void setUpAuthSettings(String resourceId, String serviceId, ExternalService service, ExternalService existing,
                                   boolean existingSecretUnreadable) {
@@ -355,6 +355,11 @@ public class ExternalServiceService {
     static boolean hasSecret(ExternalService service) {
         ResourceAuthSettings authSettings = service == null ? null : service.getAuthSettings();
         return authSettings != null && (authSettings.getClientSecret() != null || authSettings.getCodeVerifier() != null);
+    }
+
+    // The service's id for its credentials and its registered client name; carries no user id.
+    private static String serviceResourceId(ResourceDescriptor resource, String serviceId) {
+        return resource.getUrl() + CredentialsLocatorFactory.EXTERNAL_SERVICES_SEPARATOR + UrlUtil.encodePath(serviceId);
     }
 
     // AAD binds each secret to its owning application resource and external-service id.
