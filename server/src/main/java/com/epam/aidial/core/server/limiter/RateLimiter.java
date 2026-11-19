@@ -1,13 +1,13 @@
 package com.epam.aidial.core.server.limiter;
 
 import com.epam.aidial.core.config.CostLimit;
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Limit;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
+import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.CostItemLimitStats;
@@ -170,6 +170,12 @@ public class RateLimiter {
             if (resourceService == null) {
                 return Future.succeededFuture(RateLimitResult.SUCCESS);
             }
+            boolean isBudgetApplicable = BudgetEnforcer.isApplicable(context, roleBasedEntity);
+            if (isBudgetApplicable) {
+                // before any check can refuse the call, so whichever check decides, the call names the mode and, in
+                // shadow and enforce, its cost object
+                context.setBudgetCheck(BudgetEnforcer.startCheck(context));
+            }
             String name = roleBasedEntity.getName();
             Limit limit = getLimitByUser(context, roleBasedEntity);
 
@@ -182,14 +188,14 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
-            if (withSpendCaps && BudgetEnforcer.isEnforced(context, roleBasedEntity)) {
+            boolean isEnforced = BudgetEnforcer.isEnforced(context, roleBasedEntity);
+            if (withSpendCaps && isEnforced) {
                 return checkBudgetsWithSpendCaps(context, (Model) roleBasedEntity, limit);
             }
             // in shadow the budget is checked and its payer charged on every route, while the legacy cost limit,
             // and the spend caps read from it, still decide
-            boolean isBudgetCheck = BudgetEnforcer.isApplicable(context, roleBasedEntity);
-            boolean isLegacyCostSkipped = isBudgetCheck && BudgetEnforcer.isEnforced(context, roleBasedEntity);
-            Future<RateLimitResult> legacyResult = submitCheck(context, limit, roleBasedEntity, withSpendCaps, isLegacyCostSkipped);
+            boolean isBudgetCheck = isBudgetApplicable && context.getConfig().getSpendingLimits().getMode() != SpendingLimitMode.OFF;
+            Future<RateLimitResult> legacyResult = submitCheck(context, limit, roleBasedEntity, withSpendCaps, isEnforced);
             if (!isBudgetCheck) {
                 return legacyResult;
             }
