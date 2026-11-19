@@ -13,4 +13,12 @@ import java.util.List;
  */
 public record BudgetInstance(String id, String policyPath, Policy policy, PolicyAssignment assignment,
                              List<PolicySubjectRule> subject) {
+
+    /**
+     * The path of the assignment that grants the budget, {@code <costObject>/<id>}, or {@code null} for a
+     * self-applying policy. The assignment's own {@code id} field is optional, so the path is the instance's.
+     */
+    public String assignmentPath() {
+        return assignment == null ? null : id;
+    }
 }
