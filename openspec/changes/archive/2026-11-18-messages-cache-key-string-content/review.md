@@ -21,7 +21,8 @@
 - `./gradlew checkstyleMain checkstyleTest`: passed.
 - `./gradlew :server:test` on `MessagesApiRequestTest`, `MessagesApiTest`, `UpstreamRouteProviderTest`,
   `UpstreamRouteTest`, `UpstreamCacheServiceTest` and `ListingTest`: passed. `MessagesApiTest` covers both spec
-  scenarios (`testStringMessagePinnedAfterItsTextBlock`, `testStringSystemPinnedAfterItsTextBlock`);
+  scenarios (`testStringMessagePinnedAfterItsTextBlock`, `testStringSystemPinnedAfterItsTextBlock`), and its
+  two-turn tests wait until the first turn's pin is in Redis (`awaitPin`) rather than for a fixed time;
   `MessagesApiRequestTest` the equal hashes and the extra-field block; `UpstreamRouteProviderTest` no warning on a miss
   and one warning for an endpoint-only and for an id-only pin of a removed upstream.
 - The classes that read the same test config for the new model: `CanonicalIdListingTest`, `ConfigModelListTest`,
@@ -36,8 +37,8 @@
 ## Drift from design.md
 
 - D2: the string first fed itself and then a constant `"text"`, the values a text block feeds. It now becomes a real
-  block and goes through the block code, so a later change to that code cannot split the two shapes. design.md D2
-  says so; the hashes are the same either way.
+  block (`asBlock`, at both callers of the hashing helper) and goes through the block code, so a later change to that
+  code cannot split the two shapes. design.md D2 says so; the hashes are the same either way.
 
 ## Not done
 

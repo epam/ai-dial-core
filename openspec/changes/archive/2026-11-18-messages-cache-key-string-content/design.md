@@ -25,17 +25,21 @@ the block is found by the string later, and the reverse. LiteLLM does the same f
 **Rejected: hashing a plain text block as its string** - every block pin stored today would move to a new hash, and a
 block with any other field would still need the block hash.
 
-### D2. The string becomes a real block before it is hashed, in the shared helper
+### D2. The string becomes a real block before it is hashed, at both callers of the hashing helper
 
 A string is turned into `{"type": "text", "text": <s>}` and then hashed by the same code as any block, so the two
-shapes stay equal whatever that code feeds. The helper serves both the `system` elements and the message blocks, so
-both get it. A string `tools[i]` goes through it too; the Anthropic API rejects a string tool, so that hash never
+shapes stay equal whatever that code feeds. The conversion is one small function, called where the `system` elements
+and where the message blocks are read, so the hashing helper only skips `cache_control`. The `system` caller also
+reads `tools`, so a string `tools[i]` is converted too; the Anthropic API rejects a string tool, so that hash never
 belongs to a served prompt. Numbers, booleans and arrays where a block is expected are hashed as they are.
 
 **Rejected: feeding the string and then a constant `"text"`** - the same hash and no object per string, but it copies
 by hand what the block code feeds, so a change there would break it; only the equality unit test would notice.
 
-**Rejected: converting at the message-content call site** - a string `system` would keep the bare-string hash.
+**Rejected: converting inside the hashing helper** - the same hash, but the conversion hides in a function about
+`cache_control` and reassigns its parameter.
+
+**Rejected: converting at the message-content caller only** - a string `system` would keep the bare-string hash.
 
 **Rejected: a parameter that limits the conversion to `content` and `system`** - a branch for input the provider
 refuses.
@@ -95,10 +99,11 @@ until the rollout ends. Rollback has the same one-time cost in reverse.
 
 ## Code map
 
-- `MessagesApiRequest.java:updateExcludingCacheControl` - the change (D1, D2): a string becomes its text block, then
-  an object feeds its values in sorted key order without `cache_control`.
+- `MessagesApiRequest.java:asBlock` - the change (D1, D2): a string becomes its text block.
 - `MessagesApiRequest.java:appendItemCacheKeys` (`tools`, `system`) and `MessagesApiRequest.java:appendMessageCacheKeys`
-  (the message's other fields, then `messages[i].content[j]`) - the two callers.
+  (the message's other fields, then `messages[i].content[j]`) - call `asBlock`, then the hashing helper.
+- `MessagesApiRequest.java:updateExcludingCacheControl` - feeds an object's values in sorted key order without
+  `cache_control`, any other node as it is.
 - `MessagesApiRequest.java:hasCacheControl` - false for a string, so with only `cacheSupported` a string position is
   not a lookup candidate.
 - `CacheKeyBuilder.java:update`, `CacheKeyBuilder.java:buildKey`, `CacheKeyBuilder.java:elements` - one rolling SHA-1
@@ -122,4 +127,5 @@ until the rollout ends. Rollback has the same one-time cost in reverse.
   `get_cache_headers` - a scalar counts as index 0; the reported path is the last marked block, or the last candidate
   when the request has a top-level `cache_control`.
 - Tests to reuse: `MessagesApiTest.testAutoCachingPinsSecondTurnToSameUpstream` (the two-turn pin pattern),
+  `MessagesApiTest.awaitPin` (waits for the async pin write in Redis),
   `ProxyContextTest.testRespondWithNoContentDoesNotLogWarning` (a logback `ListAppender` on a logger).

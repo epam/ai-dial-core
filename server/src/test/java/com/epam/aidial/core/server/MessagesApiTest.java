@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
@@ -12,9 +13,12 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.Test;
+import org.redisson.api.RKeys;
+import org.redisson.api.RedissonClient;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -138,7 +142,7 @@ public class MessagesApiTest extends ResourceBaseTest {
                     + "\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}";
             Response first = post(client, MESSAGES_PATH, firstTurn, "api-key", "proxyKey1");
             assertEquals(200, first.status());
-            Thread.sleep(1000); // wait for the async Redis update after the first turn
+            awaitPin();
 
             String secondTurn = "{\"model\":\"claude-cache\",\"max_tokens\":100,\"stream\":false,"
                     + "\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"},{\"role\":\"assistant\",\"content\":\"Hi there\"}]}";
@@ -195,11 +199,24 @@ public class MessagesApiTest extends ResourceBaseTest {
             Response first = post(client, MESSAGES_PATH, firstTurn, "api-key", "proxyKey1", "X-UPSTREAM-ID", "up-b");
             assertEquals(200, first.status());
             assertEquals("keyB", upstreamKey.get());
-            Thread.sleep(1000); // wait for the async Redis update after the first turn
+            awaitPin();
 
             Response second = post(client, MESSAGES_PATH, secondTurn, "api-key", "proxyKey1");
             assertEquals(200, second.status());
             return upstreamKey.get();
+        }
+    }
+
+    /** Waits for the pin the first turn writes asynchronously; Redis starts empty for each test, so any pin key is it. */
+    @SneakyThrows
+    private void awaitPin() {
+        Field field = AiDial.class.getDeclaredField("redis");
+        field.setAccessible(true);
+        RKeys keys = ((RedissonClient) field.get(dial)).getKeys();
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (!keys.getKeysByPattern("upstream_cache:*").iterator().hasNext()) {
+            assertTrue(System.currentTimeMillis() < deadline, "no pin written in 10 s");
+            Thread.sleep(20);
         }
     }
 
