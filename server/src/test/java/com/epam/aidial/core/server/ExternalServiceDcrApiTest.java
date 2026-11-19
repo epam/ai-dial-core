@@ -452,7 +452,7 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void testStaticClientWithUnreachableMetadataStoredAsSent() throws Exception {
+    void testStaticClientWithFailingMetadataStoredAsSent() throws Exception {
         try (Provider provider = Provider.confidential()) {
             provider.server.map(HttpMethod.GET, "/.well-known/oauth-protected-resource/api", 500, "boom");
             provider.server.map(HttpMethod.GET, "/.well-known/oauth-authorization-server", 500, "boom");
@@ -468,6 +468,31 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
             assertNull(auth.get("code_challenge"));
             assertNull(auth.get("resource"));
         }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testUnreachableDiscoveryUrlRejected() throws Exception {
+        String unreachable = "http://localhost:1/api";
+        String appUrl = createPlainDynamicApp("user", "dcr-unreachable");
+
+        Response dynamic = putService(appUrl, "crm", """
+                {"auth_settings": {"authentication_type": "OAUTH", "discovery_url": "%s"}}
+                """.formatted(unreachable));
+        assertEquals(400, dynamic.status(), dynamic::body);
+        assertTrue(dynamic.body().startsWith("External service 'crm': "), dynamic::body);
+
+        Response staticClient = putService(appUrl, "crm", """
+                {"auth_settings": %s}
+                """.formatted(staticSettings(", \"discovery_url\": \"" + unreachable + "\"")));
+        assertEquals(400, staticClient.status(), staticClient::body);
+        assertEquals(404, serviceStatus(appUrl, "crm"));
+
+        Response appWrite = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {"endpoint": "http://localhost:7001/v1/x", "display_name": "App",
+                 "external_services": {"crm": {"auth_settings": {"authentication_type": "OAUTH", "discovery_url": "%s"}}}}
+                """.formatted(unreachable), "authorization", "user");
+        assertEquals(400, appWrite.status(), appWrite::body);
     }
 
     @Test
