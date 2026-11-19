@@ -182,7 +182,7 @@ class AliasPlatformApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void platformAliasWithoutUserRolesTakesTheTargetRoles() {
+    void platformAliasWithoutUserRolesIsOpenToAnyone() {
         assertEquals(200, putAlias("open-v1", "{\"target\":{\"path\":\"models/gpt-4-internal\"}}").status());
         reload();
 
@@ -191,11 +191,10 @@ class AliasPlatformApiTest extends ResourceBaseTest {
                     "Content-Type", "application/json");
 
             // gpt-4-internal is for power-user only
-            assertEquals(403, chat("open-v1", "default-key").status());
+            assertEquals(200, chat("open-v1", "default-key").status());
             assertEquals(200, chat("open-v1", "power-key").status());
         }
-        assertTrue(ids(models("power-key")).contains("open-v1"));
-        assertFalse(ids(models("default-key")).contains("open-v1"));
+        assertTrue(ids(models("default-key")).contains("open-v1"));
     }
 
     @Test

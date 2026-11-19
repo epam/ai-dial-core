@@ -161,8 +161,8 @@ public class ResourceCredentialsController {
     }
 
     /**
-     * Signs the caller in to the toolset a toolset alias points to. The alias decides who may (its {@code userRoles},
-     * or the target's), so a caller who reaches the toolset only through the alias can sign in to it; the credentials
+     * Signs the caller in to the toolset a toolset alias points to. The alias decides who may (see
+     * {@link AliasService}), so a caller who reaches the toolset only through the alias can sign in to it; the credentials
      * are stored under the target, where the target pass of an alias call looks them up.
      */
     private void signInThroughAlias(Alias alias, ResourceSignInRequest request) {

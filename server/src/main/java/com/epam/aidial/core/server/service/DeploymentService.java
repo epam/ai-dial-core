@@ -90,9 +90,9 @@ public class DeploymentService {
     }
 
     /**
-     * Whether the caller may use a config deployment by its {@code userRoles}. An alias without {@code userRoles} takes
-     * those of its config target; when its target is a resource, or missing, it is let through here, and checked when
-     * the target is resolved ({@link AliasService#toPass}, {@link AliasService#toView}).
+     * Whether the caller may use a config deployment by its {@code userRoles}. An alias without {@code userRoles} over a
+     * config target is open; when its target is a resource, it is let through here, and checked when the target is
+     * resolved ({@link AliasService#toPass}, {@link AliasService#toView}).
      */
     private boolean hasAccess(ProxyContext context, Deployment deployment) {
         if (deployment instanceof Alias alias) {
@@ -137,8 +137,8 @@ public class DeploymentService {
     }
 
     /**
-     * The listing views of the aliases shown as {@code presentation} that the caller may use (by their
-     * {@code userRoles}, or the target's): those of the config file (which includes platform aliases merged at reload)
+     * The listing views of the aliases shown as {@code presentation} that the caller may use ({@link AliasService}
+     * says who may): those of the config file (which includes platform aliases merged at reload)
      * and those stored in {@code aliases/public/}. An alias whose target is missing or does not fit is left out.
      * Lists and reads the stored aliases and reads a resource target, so it runs on the task executor.
      */

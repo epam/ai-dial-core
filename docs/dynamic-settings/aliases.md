@@ -35,9 +35,17 @@ A map of aliases and their [parameters](#aliasesalias_name):
   with the models (or applications) instead.
 
   Changing `presentAs` changes where the alias is listed and which endpoints serve it, not its name.
-* `userRoles`: The roles that may use the alias. If not defined, the alias takes the target's: the `userRoles` of a
-  config target, or, for a resource target, read access to the resource. An alias never opens its target to more
-  callers than the admin listed.
+* `userRoles`: The roles that may use the alias; `[]` lets no caller use it. If not defined, the alias is open to
+  every caller, as any deployment without `userRoles` is, and so is its target through the alias. A resource target
+  is the exception: then the callers who can read the resource may use the alias, or, for a resource in the
+  `platform` bucket, the callers with one of the resource's `userRoles`. The callers who may use an alias may call
+  its target through it, also when a router chooses the alias; limits are checked under the target's name.
+
+  **Changed behaviour.** Earlier versions of DIAL Core gave an alias without `userRoles` the `userRoles` of its config
+  target. After the upgrade, such an alias opens a target that has `userRoles` to every caller. Before upgrading, copy
+  the target's `userRoles` (`[]` included) onto every alias without `userRoles` whose config target has them: in the
+  config file, in `aliases/platform/` and in `aliases/public/`. Copied roles do not follow later changes of the
+  target.
 * `defaultHeaders`: Headers the alias sets on each call under every name the client did not send, as a deployment's
   `defaultHeaders` do; a value the client sent wins. The target receives them as client headers. Not for an alias
   of type `toolset`: the config file ignores them there, and a stored alias with them answers `400`.
@@ -169,8 +177,8 @@ Not served through an alias yet: `/v1/toolset/<alias>/tools`.
 
 `/openai/models`, `/openai/deployments`, `/anthropic/v1/models`, `/openai/applications`, `/openai/toolsets`,
 `/v1/routers`, `/v1/deployments` and `/v1/deployment-names` list an alias under its type, by its name (the name of a config alias,
-the url of a stored one), for the callers who may use it (one of its `userRoles`, or, when it has none, the callers
-who may use its target), and their single-item endpoints answer for that name, for example
+the url of a stored one), for the callers who may use it (see `userRoles` above), and their single-item endpoints
+answer for that name, for example
 `/openai/models/aliases/public/assistant-v1`. Aliases to config deployments and to resources are both listed. An
 alias whose target is missing is left out. Every listing that shows aliases lists and reads the stored aliases, on
 the task executor, except the router listings: an alias in public storage never has the type `router`.
@@ -237,7 +245,8 @@ Callers with the role `default-user` then use `POST /v1/toolset/aliases/public/s
 ### Access
 
 Who may use a stored alias is decided by its `userRoles`, exactly as for an alias of the config file: a caller with
-one of them may call it and sees it in listings, others get `403`; an alias without `userRoles` takes the target's.
+one of them may call it and sees it in listings, others get `403`; an alias without `userRoles` is open to every
+caller unless its target is a resource (see `userRoles` above, and the change described there).
 The public access rules of the public bucket (publication rules) do not apply to stored aliases: they cannot be set
 on the root of the public bucket, where aliases are stored.
 

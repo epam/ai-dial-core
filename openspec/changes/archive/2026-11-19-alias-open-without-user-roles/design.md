@@ -56,8 +56,9 @@ reads the same config.
 
 ## Code map
 
-- `AliasService.java:hasConfigAccess`, `hasAccess`, `toView`: the checks; `toView` stops copying a config target's
-  `userRoles` to the view that `DeploymentService.java:listAliasViews` and `listAliasNames` filter by.
+- `AliasService.java:hasConfigAccess`, `hasAccess`, `toView`: the checks; `toView` stops copying the target's
+  `userRoles` to the view that `DeploymentService.java:listAliasViews` and `listAliasNames` filter by (for a
+  `platform` resource it already gives no view to a caller without them).
 - Callers, unchanged: `DeploymentService.java:findDeployment`, `findStoredAlias`, `findAliasView`, `listUsableAliases`;
   `RouterController.java:getRouterAlias`; `AliasService.java:toSecuredTarget` (from
   `ResourceCredentialsController.java:signInThroughAlias`); `ConsentService.java:buildConsent`; a router candidate,
