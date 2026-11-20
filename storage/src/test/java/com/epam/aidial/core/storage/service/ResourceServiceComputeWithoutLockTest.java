@@ -295,6 +295,24 @@ class ResourceServiceComputeWithoutLockTest {
     }
 
     @Test
+    void testSyncKeepsTheEntryQueued_WhenMarkingSyncedFails() throws IOException {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+
+        // the upload succeeds and the mark fails, as on a Redis timeout
+        ResourceService failingPod = Mockito.spy(service);
+        Mockito.doThrow(new IllegalStateException("timeout")).when(failingPod).markSynced(eq(redisKey), any());
+        failingPod.sync();
+        assertTrue(queue().contains(redisKey), "a record that was not marked synced must stay queued");
+
+        sync.run();
+        assertEquals("1", blobBody(descriptor));
+        assertEquals("true", new String(record(redisKey).get("synced"), StandardCharsets.UTF_8));
+        assertFalse(queue().contains(redisKey));
+    }
+
+    @Test
     void testReadReturnsTheNewerRecord_WhenWriteLandsDuringTheCacheFill() {
         ResourceDescriptor descriptor = limit("requests");
         service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
