@@ -854,6 +854,102 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
         assertEquals("projA", userUsage(USER_A).get("costObject").asText());
     }
 
+    // --- Spend headers through an alias ---------------------------------------------------------------------------------------
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testMessagesThroughAnAlias() {
+        budget("projA/a1", 10, "10", null);
+        spend("projA/a1", "m1", "8.2");
+        try (TestWebServer server = upstreams(null)) {
+            Response response = postMessages("alias-m1", USER_A);
+
+            assertEquals(200, response.status(), response.body());
+            assertEquals("0.82", header(response, OVERAGE + "utilization"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testResponsesThroughAliasAndRouter() {
+        budget("projA/a1", 10, "10", null);
+        spend("projA/a1", "m1", "8.2");
+        try (TestWebServer server = upstreams(null)) {
+            AtomicInteger decisions = decideAliasOfM1(server);
+
+            Response response = postResponses("strong", USER_A);
+
+            assertEquals(200, response.status(), response.body());
+            assertEquals(1, decisions.get());
+            assertEquals("82", header(response, PRIMARY + "used-percent"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testUpstreamHeadersRemovedBehindTheAlias() {
+        budget("projA/a1", 10, TWO_POW_53, null);
+        try (TestWebServer server = upstreams(null)) {
+            server.map(HttpMethod.POST, RESPONSES_PATH, request -> TestWebServer.createResponse(200, RESPONSES_ANSWER,
+                    "Content-Type", "application/json", "x-codex-primary-used-percent", "5"));
+
+            Response response = postResponses("alias-m1", USER_A);
+
+            assertEquals(200, response.status(), response.body());
+            assertFalse(hasHeaderWithPrefix(response, "x-codex-"), response.headers().toString());
+        }
+    }
+
+    // --- No limit check on an alias pass ------------------------------------------------------------------------------------------
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testBudgetUsedUpThroughAliasAndRouter() {
+        budget("projA/a1", 10, "10", null);
+        spend("projA/a1", "m1", "10");
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            AtomicInteger decisions = decideAliasOfM1(server);
+
+            Response response = postMessages("strong", USER_A);
+
+            assertEquals(429, response.status(), response.body());
+            assertEquals(3, decisions.get());
+            assertEquals(0, upstreamCalls.get());
+            assertEquals("billing_error", parse(response.body()).get("error").get("type").asText());
+            assertEquals("rejected", header(response, UNIFIED + "status"));
+            assertEquals("false", header(response, "x-should-retry"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testRoleCostLimitReachedBudgetNotThroughAnAlias() {
+        roleSpend("Users/user/", "10");
+        budget("projA/a1", 10, "10", null);
+        spend("projA/a1", "m1", "1");
+        try (TestWebServer server = upstreams(null)) {
+            Response response = postMessages("alias-m1", USER_A);
+
+            assertEquals(200, response.status(), response.body());
+            assertEquals("0.10", header(response, OVERAGE + "utilization"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testAliasRequestLimitDoesNotApply() {
+        // the role allows one request a day under the name alias-m1
+        budget("projA/a1", 10, "10", null);
+        try (TestWebServer server = upstreams(null)) {
+            Response first = postMessages("alias-m1", USER_A);
+            Response second = postMessages("alias-m1", USER_A);
+
+            assertEquals(200, first.status(), first.body());
+            assertEquals(200, second.status(), second.body());
+        }
+    }
+
     // --- helpers ------------------------------------------------------------------------------------------------------------------
 
     // an API key stays on the role cost limit in every mode, so it reaches the models whatever the budgets
@@ -903,6 +999,18 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
             return TestWebServer.createResponse(200, RESPONSES_ANSWER, "Content-Type", "application/json");
         });
         return server;
+    }
+
+    /**
+     * Has the router {@code r1} choose {@code alias-m1} on every decide request, and counts them.
+     */
+    private static AtomicInteger decideAliasOfM1(TestWebServer server) {
+        AtomicInteger decisions = new AtomicInteger();
+        server.map(HttpMethod.POST, "/decide", request -> {
+            decisions.incrementAndGet();
+            return TestWebServer.createResponse(200, "{\"candidates\": [\"alias-m1\"]}", "Content-Type", "application/json");
+        });
+        return decisions;
     }
 
     private void budget(String instanceId, int priority, String day, String month) {
