@@ -176,21 +176,20 @@ public class ResourceService implements AutoCloseable {
             redis.call('pexpire', KEYS[1], ARGV[3])
             return 1
             """.formatted(ETAG_ATTRIBUTE, SYNCED_ATTRIBUTE);
-    // ARGV[1]: the synced flag; ARGV[2]: expiration in milliseconds
+    // ARGV[1]: the synced flag; ARGV[2]: expiration in milliseconds. Returns 0 only for a record that is not synced
     private static final String EXPIRE_IF_SYNCED_SCRIPT = """
-            if redis.call('hget', KEYS[1], '%s') == ARGV[1] and redis.call('pttl', KEYS[1]) == -1 then
+            local synced = redis.call('hget', KEYS[1], '%s')
+            if not synced then
+              return 1
+            end
+            if synced ~= ARGV[1] then
+              return 0
+            end
+            if redis.call('pttl', KEYS[1]) == -1 then
               redis.call('pexpire', KEYS[1], ARGV[2])
             end
             return 1
             """.formatted(SYNCED_ATTRIBUTE);
-    // ARGV[1]: the record's redis key; ARGV[2]: the latest score the sync treats as due
-    private static final String DEQUEUE_IF_DUE_SCRIPT = """
-            local score = redis.call('zscore', KEYS[1], ARGV[1])
-            if score and tonumber(score) <= tonumber(ARGV[2]) then
-              redis.call('zrem', KEYS[1], ARGV[1])
-            end
-            return 1
-            """;
 
     private static final ExecutorService VIRTUAL_THREAD_PER_TASK_EXECUTOR;
 
@@ -1000,13 +999,13 @@ public class ResourceService implements AutoCloseable {
 
     private Void computeResourceWithoutLockTraced(ResourceDescriptor descriptor, Function<String, String> fn) {
         String redisKey = redisKey(descriptor);
-        Runnable publish;
+        Runnable afterWrite;
         // writers of this pod take turns, so only one writer per pod races in the compare-and-set
         try (var ignore = lockService.lockLocally(redisKey)) {
-            publish = computeResourceWithoutLockAttempts(descriptor, redisKey, fn);
+            afterWrite = computeResourceWithoutLockAttempts(descriptor, redisKey, fn);
         }
-        // after the turn, so the next writer of this pod does not wait for the stub or the event
-        publish.run();
+        // after the turn, so the next writer of this pod does not wait for the queue entry, the stub or the event
+        afterWrite.run();
         return null;
     }
 
@@ -1039,19 +1038,20 @@ public class ResourceService implements AutoCloseable {
             Result next = new Result(body, EtagBuilder.generateEtag(body), current.exists() ? current.createdAt : updatedAt,
                     updatedAt, "application/json", descriptor.getType().requireCompression(), (long) body.length,
                     descriptor.getType().name(), current.author, false);
-            // before the write: a crash in between leaves a queue entry for a record already synced, which sync drops
-            redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).add(time() + syncDelay, redisKey);
-
             byte[] expectedEtag = fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
             if (compareAndSet(redisKey, expectedEtag, next)) {
-                if (current.exists()) {
-                    return () -> publishEvent(descriptor, ResourceEvent.Action.UPDATE, updatedAt, next.etag);
-                }
-                // only the writer that created the record writes the stub, after its write as a locked write does;
-                // the sync of this write comes syncDelay later at the earliest, so the stub does not land on top of it
+                boolean created = !current.exists();
                 return () -> {
-                    blobPut(blobKey(descriptor), next.toStub()); // create an empty object for listing
-                    publishEvent(descriptor, ResourceEvent.Action.CREATE, updatedAt, next.etag);
+                    // after the write, so a sync that dropped the entry meanwhile cannot leave the write unqueued, and
+                    // only if absent: the first unsynced write sets the deadline, so a counter written more often than
+                    // syncDelay is still synced. A crash before this leaves the write for the record's next write to queue
+                    redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).addIfAbsent(time() + syncDelay, redisKey);
+                    if (created) {
+                        // only the writer that created the record writes the stub, after its write as a locked write
+                        // does; the sync of this write comes syncDelay later, so the stub does not land on top of it
+                        blobPut(blobKey(descriptor), next.toStub()); // create an empty object for listing
+                    }
+                    publishEvent(descriptor, created ? ResourceEvent.Action.CREATE : ResourceEvent.Action.UPDATE, updatedAt, next.etag);
                 };
             }
         }
@@ -1259,7 +1259,7 @@ public class ResourceService implements AutoCloseable {
                         continue;
                     }
 
-                    sync(redisKey, now);
+                    sync(redisKey);
                 } catch (Throwable e) {
                     log.warn("Failed to sync resource: {}", redisKey, e);
                 }
@@ -1273,45 +1273,49 @@ public class ResourceService implements AutoCloseable {
 
     /**
      * Uploads the record if it is not synced yet. A write without the lock ({@link #computeResourceWithoutLock}) can
-     * land at any point of this: the record is marked synced only if it still has the etag that was uploaded, and its
-     * queue entry is dropped only if the score is still one the sync treats as due, since such a write moves it
-     * {@code syncDelay} into the future.
-     *
-     * @param dueBy the latest queue score this sync treats as due
+     * land at any point of this, and it queues the record only after its write. So the queue entry is dropped first,
+     * the record is marked synced only if it still has the etag that was uploaded, and the entry is put back if the
+     * record is not synced after that.
      */
-    private RMap<String, byte[]> sync(String redisKey, long dueBy) {
+    private RMap<String, byte[]> sync(String redisKey) {
         log.debug("Syncing resource: {}", redisKey);
         RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
+        byte[] uploadedEtag = null;
         Result result = redisGet(redisKey, false);
-        if (result == null || result.synced) {
-            expireIfSynced(redisKey);
-            dequeueIfDue(redisKey, dueBy);
-            return map;
+        if (result != null && !result.synced) {
+            String blobKey = blobKeyFromRedisKey(redisKey);
+            Map<String, byte[]> fields = map.getAll(REDIS_FIELDS);
+            result = toResult(fields, redisKey);
+            if (result == null) {
+                return map;
+            }
+            if (result.exists()) {
+                log.debug("Syncing resource: {}. Blob updating", redisKey);
+                blobPut(blobKey, result);
+            } else {
+                log.debug("Syncing resource: {}. Blob deleting", redisKey);
+                blobDelete(blobKey);
+            }
+            uploadedEtag = fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
         }
 
-        String blobKey = blobKeyFromRedisKey(redisKey);
-        Map<String, byte[]> fields = map.getAll(REDIS_FIELDS);
-        result = toResult(fields, redisKey);
-        if (result == null) {
-            return map;
-        }
-        if (result.exists()) {
-            log.debug("Syncing resource: {}. Blob updating", redisKey);
-            blobPut(blobKey, result);
-        } else {
-            log.debug("Syncing resource: {}. Blob deleting", redisKey);
-            blobDelete(blobKey);
-        }
-
-        if (markSynced(redisKey, fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY))) {
-            dequeueIfDue(redisKey, dueBy);
+        RScoredSortedSet<String> queue = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
+        queue.remove(redisKey);
+        boolean synced = (uploadedEtag == null) ? expireIfSynced(redisKey) : markSynced(redisKey, uploadedEtag);
+        if (!synced) {
+            queue.addIfAbsent(time() + syncDelay, redisKey);
         }
         return map;
     }
 
+    /**
+     * Sets the expiration of a synced record that has none.
+     *
+     * @return false if the record is not synced
+     */
     @VisibleForTesting
-    void expireIfSynced(String redisKey) {
-        evalBoolean(EXPIRE_IF_SYNCED_SCRIPT, redisKey,
+    boolean expireIfSynced(String redisKey) {
+        return evalBoolean(EXPIRE_IF_SYNCED_SCRIPT, redisKey,
                 List.of(RedisUtil.BOOLEAN_TRUE_ARRAY, RedisUtil.longToRedis(getExpiration(redisKey).toMillis())));
     }
 
@@ -1319,12 +1323,6 @@ public class ResourceService implements AutoCloseable {
     boolean markSynced(String redisKey, byte[] uploadedEtag) {
         return evalBoolean(MARK_SYNCED_SCRIPT, redisKey,
                 List.of(uploadedEtag, RedisUtil.BOOLEAN_TRUE_ARRAY, RedisUtil.longToRedis(getExpiration(redisKey).toMillis())));
-    }
-
-    @VisibleForTesting
-    void dequeueIfDue(String redisKey, long dueBy) {
-        redis.getScript(StringCodec.INSTANCE).eval(RScript.Mode.READ_WRITE, DEQUEUE_IF_DUE_SCRIPT,
-                RScript.ReturnType.LONG, List.of(resourceQueue), redisKey, Long.toString(dueBy));
     }
 
     private <T> T trace(String name, ResourceDescriptor descriptor, Callable<T> work) {
@@ -1515,8 +1513,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     private void flushToBlobStore(String redisKey) {
-        // under the lock, so the entry is dropped whatever its score
-        RMap<String, byte[]> map = sync(redisKey, Long.MAX_VALUE);
+        RMap<String, byte[]> map = sync(redisKey);
         map.delete();
     }
 
@@ -1760,7 +1757,9 @@ public class ResourceService implements AutoCloseable {
          */
         private int syncPeriod;
         /**
-         * Delay in milliseconds for a resource to be written back in object storage after last modification.
+         * Delay in milliseconds for a resource to be written back in object storage after last modification. A rate-limit
+         * counter is written back this long after its first change since the last write-back, so one written more
+         * often still reaches object storage.
          */
         private long syncDelay;
         /**

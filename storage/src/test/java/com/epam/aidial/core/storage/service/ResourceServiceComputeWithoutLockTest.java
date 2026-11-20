@@ -35,13 +35,16 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 
 class ResourceServiceComputeWithoutLockTest {
@@ -101,10 +104,13 @@ class ResourceServiceComputeWithoutLockTest {
                 """, ResourceService.Settings.class);
         TimerService timerService = Mockito.mock(TimerService.class);
         service = newPod(timerService);
+        sync = syncTask(timerService);
+    }
 
+    private static Runnable syncTask(TimerService timerService) {
         ArgumentCaptor<Runnable> tasks = ArgumentCaptor.forClass(Runnable.class);
         verify(timerService, Mockito.times(2)).scheduleWithFixedDelay(anyLong(), anyLong(), tasks.capture());
-        sync = tasks.getAllValues().get(0);
+        return tasks.getAllValues().get(0);
     }
 
     private ResourceService newPod(TimerService timerService) {
@@ -238,22 +244,51 @@ class ResourceServiceComputeWithoutLockTest {
 
         // the sync read the record as synced, and then a write landed
         service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
-        service.expireIfSynced(redisKey);
 
+        assertFalse(service.expireIfSynced(redisKey), "the sync puts the entry back when this returns false");
         assertEquals(-1, record(redisKey).remainTimeToLive(), "an unsynced record must not expire");
+        assertTrue(service.expireIfSynced(RedisUtil.redisKey(limit("missing"), null)), "a missing record has nothing to sync");
     }
 
     @Test
-    void testDequeueKeepsAnEntry_WhenWriteMovedItIntoTheFuture() {
-        RScoredSortedSet<String> queue = queue();
-        queue.add(100, "due");
-        queue.add(300, "moved");
+    void testQueueKeepsTheFirstDeadline_WhileWritesContinue() {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+        // the deadline the first unsynced write set
+        queue().add(100, redisKey);
 
-        service.dequeueIfDue("due", 200);
-        service.dequeueIfDue("moved", 200);
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
 
-        assertFalse(queue.contains("due"));
-        assertTrue(queue.contains("moved"));
+        assertEquals(100.0, queue().getScore(redisKey), "a later write must not move the deadline");
+    }
+
+    @Test
+    void testSyncRequeues_WhenWriteLandsDuringTheUpload() throws IOException {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+
+        // another pod's sync uploads "1", and a write lands while it does
+        BlobStorage uploadingStorage = Mockito.spy(storage);
+        AtomicBoolean written = new AtomicBoolean();
+        Mockito.doAnswer(invocation -> {
+            invocation.callRealMethod();
+            if (written.compareAndSet(false, true)) {
+                service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+            }
+            return null;
+        }).when(uploadingStorage).store(eq(descriptor.getAbsoluteFilePath()), any(), any(), any(), any());
+        TimerService timerService = Mockito.mock(TimerService.class);
+        new ResourceService(timerService, client, uploadingStorage, new LockService(client, null), settings, null);
+        syncTask(timerService).run();
+
+        assertEquals("1", blobBody(descriptor));
+        assertEquals("false", new String(record(redisKey).get("synced"), StandardCharsets.UTF_8));
+        assertTrue(queue().contains(redisKey), "the write that landed during the upload must stay queued");
+
+        sync.run();
+        assertEquals("2", blobBody(descriptor));
     }
 
     @Test
