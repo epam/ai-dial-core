@@ -13,7 +13,7 @@
       headers through an alias"); "Budget used up, through an alias and a router"
       (`testBudgetUsedUpThroughAliasAndRouter`), "Role cost limit reached, budget not"
       (`testRoleCostLimitReachedBudgetNotThroughAnAlias`), "Request limit under the alias's name"
-      (`testRequestLimitUnderTheAliasName`) (requirement "No limit check on an alias pass")
+      (`testAliasRequestLimitDoesNotApply`) (requirement "No limit check on an alias pass")
 - [x] 1.4 `SpendCapCheck.verify` returns no caps and checks nothing when the pass's deployment is an `AliasPass`;
       `MessagesController.putLimitHeaders` and `ResponsesController.putLimitHeaders` leave the headers as they are for
       an `AliasPass`

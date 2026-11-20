@@ -938,7 +938,7 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void testRequestLimitUnderTheAliasName() {
+    void testAliasRequestLimitDoesNotApply() {
         // the role allows one request a day under the name alias-m1
         budget("projA/a1", 10, "10", null);
         try (TestWebServer server = upstreams(null)) {
