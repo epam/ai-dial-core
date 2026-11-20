@@ -239,7 +239,7 @@ class BackgroundJobScheduler {
 
                         return {attempts or '0', errors or '0'}
                         """,
-                RScript.ReturnType.MULTI,
+                RScript.ReturnType.LIST,
                 List.of(scheduleKey, stateKey(jobId)),
                 String.valueOf(entry.getScore()),
                 String.valueOf(leaseUntil),
@@ -270,7 +270,7 @@ class BackgroundJobScheduler {
 
                         return 1
                         """,
-                RScript.ReturnType.INTEGER,
+                RScript.ReturnType.LONG,
                 List.of(scheduleKey, stateKey(jobId)),
                 jobId,
                 String.valueOf(owner),
@@ -302,7 +302,7 @@ class BackgroundJobScheduler {
 
                         return 1
                         """,
-                RScript.ReturnType.INTEGER,
+                RScript.ReturnType.LONG,
                 List.of(scheduleKey, stateKey(dialId)),
                 dialId,
                 String.valueOf(owner)))

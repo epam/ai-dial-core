@@ -123,7 +123,7 @@ public class RateLimiterTest {
                 .build();
         redisServer.start();
         ConfigSupport configSupport = new ConfigSupport();
-        org.redisson.config.Config redisClientConfig = configSupport.fromJSON("""
+        org.redisson.config.Config redisClientConfig = configSupport.fromYAML("""
                 {
                   "singleServerConfig": {
                      "address": "redis://localhost:16370"
