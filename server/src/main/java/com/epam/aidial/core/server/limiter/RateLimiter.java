@@ -656,7 +656,7 @@ public class RateLimiter {
         }
 
         // Check request limits
-        RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, schedule, roleBasedEntity);
+        RateLimitResult requestResult = checkRequestLimit(context, limit, schedule, roleBasedEntity);
         if (requestResult.status() != HttpStatus.OK) {
             return requestResult;
         }
@@ -698,7 +698,7 @@ public class RateLimiter {
             return tokenResult.withSpendCaps(spendCaps);
         }
 
-        RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, schedule, roleBasedEntity);
+        RateLimitResult requestResult = checkRequestLimit(context, limit, schedule, roleBasedEntity);
         if (requestResult.status() != HttpStatus.OK) {
             return requestResult.withSpendCaps(spendCaps);
         }
@@ -747,22 +747,23 @@ public class RateLimiter {
         return rateLimit.update(timestamp, schedule, limit);
     }
 
-    private RateLimitResult checkRequestLimit(
-            ProxyContext context, Limit limit, long timestamp, RateLimitSchedule schedule, RoleBasedEntity roleBasedEntity) {
+    private RateLimitResult checkRequestLimit(ProxyContext context, Limit limit, RateLimitSchedule schedule, RoleBasedEntity roleBasedEntity) {
         String tokensPath = getPathToRequests(roleBasedEntity.getName());
         ResourceDescriptor resourceDescription = getResourceDescription(context, tokensPath);
         // pass array to hold rate limit result returned by the function to compute the resource
         RateLimitResult[] result = new RateLimitResult[1];
-        resourceService.computeResourceWithoutLock(resourceDescription, json -> updateRequestLimit(json, timestamp, schedule, limit, result));
+        resourceService.computeResourceWithoutLock(resourceDescription, json -> updateRequestLimit(json, schedule, limit, result));
         return result[0];
     }
 
-    private String updateRequestLimit(String json, long timestamp, RateLimitSchedule schedule, Limit limit, RateLimitResult[] result) {
+    private String updateRequestLimit(String json, RateLimitSchedule schedule, Limit limit, RateLimitResult[] result) {
         RequestRateLimit rateLimit = ProxyUtil.convertToObject(json, RequestRateLimit.class);
         if (rateLimit == null) {
             rateLimit = new RequestRateLimit();
         }
-        result[0] = rateLimit.check(timestamp, schedule, limit, 1);
+        // the time of this attempt: the function runs after a wait for the pod's turn and again after each lost round,
+        // and an older time could reset a window that another request already rolled
+        result[0] = rateLimit.check(System.currentTimeMillis(), schedule, limit, 1);
         return ProxyUtil.convertToString(rateLimit);
     }
 
@@ -790,11 +791,24 @@ public class RateLimiter {
                 getResourceDescription(bucket, getPathToDeploymentCosts(roleBasedEntity.getName()));
         // the enforcing document is written first, since the deployment-scoped one only reports
         return taskExecutor.submit(() -> {
+            RuntimeException failure = null;
             try {
                 updateCostLimit(userCostDescriptor, cost, schedule);
-            } finally {
+            } catch (RuntimeException e) {
+                failure = e;
+            }
+            try {
                 // also when the busier caller-wide update gave up, so that failure does not drop this one too
                 updateCostLimit(deploymentCostDescriptor, cost, schedule);
+            } catch (RuntimeException e) {
+                if (failure == null) {
+                    throw e;
+                }
+                // the failure of the enforcing document is the one to report
+                failure.addSuppressed(e);
+            }
+            if (failure != null) {
+                throw failure;
             }
             return null;
         });

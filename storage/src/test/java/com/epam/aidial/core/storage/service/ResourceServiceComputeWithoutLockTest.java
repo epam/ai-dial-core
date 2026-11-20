@@ -220,6 +220,24 @@ class ResourceServiceComputeWithoutLockTest {
     }
 
     @Test
+    void testDoesNotPutTheStub_WhenSyncAlreadyUploadedTheRecord() throws IOException {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        // an entry left by an earlier write, so a sync is due as soon as the record is created
+        queue().add(0, redisKey);
+        ResourceService creatingPod = Mockito.spy(service);
+        Mockito.doAnswer(invocation -> {
+            Object written = invocation.callRealMethod();
+            sync.run();
+            return written;
+        }).when(creatingPod).compareAndSet(eq(redisKey), any(), anyBoolean(), any());
+
+        creatingPod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+
+        assertEquals("1", blobBody(descriptor), "the stub must not replace the record the sync uploaded");
+    }
+
+    @Test
     void testQueuesTheRecord_WhenTheWriteOutcomeIsUnknown() {
         ResourceDescriptor descriptor = limit("requests");
         String redisKey = RedisUtil.redisKey(descriptor, null);

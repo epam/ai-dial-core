@@ -144,9 +144,16 @@ public class ResourceService implements AutoCloseable {
     private static final int MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT = 6;
     // in a fixed order, for HMGET
     private static final List<String> REDIS_FIELD_LIST = List.copyOf(REDIS_FIELDS);
-    private static final Object[] REDIS_FIELD_NAMES = REDIS_FIELD_LIST.stream().map(name -> name.getBytes(StandardCharsets.UTF_8)).toArray();
-    // ARGV: the field names. Run as a write, so it reads the master: a replica can lag behind the last compare-and-set
-    private static final String READ_FIELDS_SCRIPT = "return redis.call('hmget', KEYS[1], unpack(ARGV))";
+    // ARGV[1]: the synced flag of a record to skip ('' to skip none); ARGV[2..]: the field names. Run as a write, so it
+    // reads the master: a replica can lag behind the last compare-and-set
+    private static final String READ_FIELDS_SCRIPT = """
+            if ARGV[1] ~= '' and redis.call('hget', KEYS[1], '%s') == ARGV[1] then
+              return {}
+            end
+            return redis.call('hmget', KEYS[1], unpack(ARGV, 2))
+            """.formatted(SYNCED_ATTRIBUTE);
+    private static final Object[] READ_FIELDS_ARGS = readFieldsArgs(RedisUtil.EMPTY_ARRAY);
+    private static final Object[] READ_UNSYNCED_FIELDS_ARGS = readFieldsArgs(RedisUtil.BOOLEAN_TRUE_ARRAY);
     // ARGV[1]: the etag the value was read with ('' for none); ARGV[2]: 'true' if the value came from blob storage, so
     // the record is created when Redis has none; ARGV[3..]: field, value pairs.
     // Redisson resends a command after a response timeout. A resend of a write that was applied sees a conflict, and
@@ -1029,7 +1036,7 @@ public class ResourceService implements AutoCloseable {
                 LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(backoffMillis));
             }
             BlockingCallTracer.currentSpan().setAttribute("dial.resource.attempts", attempt);
-            Map<String, byte[]> fields = readFieldsOnMaster(redisKey);
+            Map<String, byte[]> fields = readFieldsOnMaster(redisKey, false);
             // with no record in Redis the value comes from blob storage, and the compare-and-set creates the record
             boolean fromBlob = fields.isEmpty();
             Result current = fromBlob ? blobGet(blobKey(descriptor), true) : toResult(fields, redisKey);
@@ -1078,9 +1085,8 @@ public class ResourceService implements AutoCloseable {
                     // crashes first, the record stays persisted and its next write queues it
                     queueIfAbsent(redisKey);
                     if (created) {
-                        // only the writer that created the record writes the stub, after its write as a locked write
-                        // does; the sync of this write comes syncDelay later, so the stub does not land on top of it
-                        blobPut(blobKey(descriptor), next.toStub()); // create an empty object for listing
+                        // only the writer that created the record writes the stub, after its write as a locked write does
+                        putStubUnlessSynced(descriptor, redisKey, next);
                     }
                     // no resource event: limit records are not in ResourceTypes.EVENT_TYPES
                 };
@@ -1098,14 +1104,36 @@ public class ResourceService implements AutoCloseable {
     }
 
     /**
+     * Creates the empty object that makes a new record listable before its first sync. Under the lock a sync takes
+     * and only while the record is unsynced, so the stub cannot land on top of the record a sync uploaded. With the
+     * lock busy a sync is at the record, and its upload makes the record listable.
+     */
+    private void putStubUnlessSynced(ResourceDescriptor descriptor, String redisKey, Result result) {
+        try (var lock = lockService.tryLock(redisKey)) {
+            if (lock != null && !readFieldsOnMaster(redisKey, true).isEmpty()) {
+                blobPut(blobKey(descriptor), result.toStub());
+            }
+        }
+    }
+
+    private static Object[] readFieldsArgs(byte[] skippedSyncedFlag) {
+        List<Object> args = new ArrayList<>();
+        args.add(skippedSyncedFlag);
+        REDIS_FIELD_LIST.forEach(name -> args.add(name.getBytes(StandardCharsets.UTF_8)));
+        return args.toArray();
+    }
+
+    /**
      * The record's fields, read on the master (Redisson reads replicas by default), so they include the last write.
      * Empty if Redis has no record.
+     *
+     * @param unsyncedOnly also empty for a synced record, so its body is not transferred
      */
-    private Map<String, byte[]> readFieldsOnMaster(String redisKey) {
-        List<Object> values = redis.getScript(ByteArrayCodec.INSTANCE)
-                .eval(RScript.Mode.READ_WRITE, READ_FIELDS_SCRIPT, RScript.ReturnType.LIST, List.of(redisKey), REDIS_FIELD_NAMES);
+    private Map<String, byte[]> readFieldsOnMaster(String redisKey, boolean unsyncedOnly) {
+        List<Object> values = redis.getScript(ByteArrayCodec.INSTANCE).eval(RScript.Mode.READ_WRITE, READ_FIELDS_SCRIPT,
+                RScript.ReturnType.LIST, List.of(redisKey), unsyncedOnly ? READ_UNSYNCED_FIELDS_ARGS : READ_FIELDS_ARGS);
         Map<String, byte[]> fields = new HashMap<>();
-        for (int i = 0; i < REDIS_FIELD_LIST.size(); i++) {
+        for (int i = 0; i < values.size(); i++) {
             if (values.get(i) instanceof byte[] value) {
                 fields.put(REDIS_FIELD_LIST.get(i), value);
             }
@@ -1329,10 +1357,11 @@ public class ResourceService implements AutoCloseable {
         log.debug("Syncing resource: {}", redisKey);
         RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
         byte[] uploadedEtag = null;
-        // on the master: a lagging replica would upload an older body, and flushToBlobStore deletes the record after this
-        Map<String, byte[]> fields = readFieldsOnMaster(redisKey);
+        // on the master: a lagging replica would upload an older body, and flushToBlobStore deletes the record after this.
+        // Nothing is read of a synced record: it has nothing to upload, and its body can be large
+        Map<String, byte[]> fields = readFieldsOnMaster(redisKey, true);
         Result result = toResult(fields, redisKey);
-        if (result != null && !result.synced) {
+        if (result != null) {
             String blobKey = blobKeyFromRedisKey(redisKey);
             if (result.exists()) {
                 log.debug("Syncing resource: {}. Blob updating", redisKey);
