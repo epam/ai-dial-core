@@ -20679,6 +20679,9 @@ components:
       type: boolean
       description: Whether to enable parallel `function` calling during the `tool` use.
       default: true
+    Pattern:
+      type: string
+      format: regex
     PerRequestReceiver:
       type: object
       properties:
@@ -21434,8 +21437,7 @@ components:
         paths:
           type: array
           items:
-            type: string
-            format: regex
+            $ref: "#/components/schemas/Pattern"
         permissions:
           type: array
           items:
