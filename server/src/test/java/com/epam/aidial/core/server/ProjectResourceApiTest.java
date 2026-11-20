@@ -477,8 +477,9 @@ public class ProjectResourceApiTest extends ResourceBaseTest {
         // a grouping folder has no marker document and keeps its folder marker blob's timestamps
         ResourceItemMetadata folderBlob = storedBlobMetadata(projectUrl("listed/sub/"), ComplexResourceService.FOLDER_MARKER_NAME);
         JsonNode folder = listedItem(listing, projectUrl("listed/sub/"));
-        assertEquals(folderBlob.getCreatedAt(), folder.path("createdAt").asLong());
-        assertEquals(folderBlob.getUpdatedAt(), folder.path("updatedAt").asLong());
+        assertNotNull(folderBlob.getUpdatedAt());
+        assertEquals(folderBlob.getCreatedAt(), timestamp(folder, "createdAt"));
+        assertEquals(folderBlob.getUpdatedAt(), timestamp(folder, "updatedAt"));
     }
 
     @Test
@@ -486,11 +487,12 @@ public class ProjectResourceApiTest extends ResourceBaseTest {
         Map<String, byte[]> files = Map.of("README.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         verify(uploadProject("/listed/legacy", files), 200);
         ResourceItemMetadata blob = markerBlob("listed/legacy");
+        assertNotNull(blob.getUpdatedAt());
         stripMarkerTimestamps(blob.getDescriptor());
 
         JsonNode listed = listedItem(listMetadata("listed"), projectUrl("listed/legacy/"));
-        assertEquals(blob.getCreatedAt(), listed.path("createdAt").asLong());
-        assertEquals(blob.getUpdatedAt(), listed.path("updatedAt").asLong());
+        assertEquals(blob.getCreatedAt(), timestamp(listed, "createdAt"));
+        assertEquals(blob.getUpdatedAt(), timestamp(listed, "updatedAt"));
     }
 
     @Test

@@ -427,6 +427,14 @@ public class ResourceBaseTest {
     }
 
     /**
+     * A timestamp field of a metadata JSON item, or null when the item has none.
+     */
+    protected static Long timestamp(JsonNode item, String field) {
+        JsonNode value = item.get(field);
+        return value == null || value.isNull() ? null : value.asLong();
+    }
+
+    /**
      * Spins until the wall clock moves past the current millisecond, so the next write gets a later timestamp
      * than every write before it.
      */
