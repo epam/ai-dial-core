@@ -6,6 +6,8 @@ import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.util.EtagBuilder;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.tuple.Pair;
@@ -31,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -308,8 +311,96 @@ class ResourceServiceComputeWithoutLockTest {
         ResourceService reader = new ResourceService(Mockito.mock(TimerService.class), client, loadingStorage,
                 new LockService(client, null), settings, null);
 
-        assertEquals("2", reader.getResource(descriptor));
+        // the reader returns its blob copy, and Redis keeps the newer write
+        assertEquals("1", reader.getResource(descriptor));
         assertEquals("2", service.getResource(descriptor));
+    }
+
+    @Test
+    void testConcurrentCounterMissesOnOnePodLoadTheBlobOnce() throws Exception {
+        ResourceDescriptor descriptor = limit("requests");
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+        sync.run();
+        client.getKeys().delete(RedisUtil.redisKey(descriptor, null));
+
+        BlobStorage loadingStorage = Mockito.spy(storage);
+        CountDownLatch loading = new CountDownLatch(1);
+        Mockito.doAnswer(invocation -> {
+            loading.countDown();
+            Thread.sleep(200); // the other reader misses meanwhile
+            return invocation.callRealMethod();
+        }).when(loadingStorage).load(descriptor.getAbsoluteFilePath());
+        ResourceService reader = new ResourceService(Mockito.mock(TimerService.class), client, loadingStorage,
+                new LockService(client, null), settings, null);
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<String> first = executor.submit(() -> reader.getResource(descriptor, EtagHeader.ANY, false));
+            loading.await();
+            Future<String> second = executor.submit(() -> reader.getResource(descriptor, EtagHeader.ANY, false));
+            assertEquals("1", first.get());
+            assertEquals("1", second.get());
+        }
+
+        verify(loadingStorage, Mockito.times(1)).load(descriptor.getAbsoluteFilePath());
+    }
+
+    @Test
+    void testUpdatesRecordWithNoCreationTime() {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        // a blob written before created_at was kept in its metadata
+        ResourceService.Result noCreatedAt = ResourceService.Result.builder()
+                .body("1".getBytes(StandardCharsets.UTF_8)).etag("\"old\"").updatedAt(1L).contentType("application/json")
+                .compress(true).contentLength(1L).resourceType("LIMIT").synced(true).build();
+        service.putIfAbsent(redisKey, noCreatedAt);
+
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+
+        assertEquals("2", service.getResource(descriptor));
+    }
+
+    @Test
+    void testResentCompareAndSetReportsItsOwnWrite() {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+        byte[] etag = record(redisKey).get("etag");
+        byte[] body = "2".getBytes(StandardCharsets.UTF_8);
+        ResourceService.Result next = ResourceService.Result.builder()
+                .body(body).etag(EtagBuilder.generateEtag(body)).createdAt(1L).updatedAt(2L).contentType("application/json")
+                .compress(true).contentLength(1L).resourceType("LIMIT").synced(false).build();
+
+        assertTrue(service.compareAndSet(redisKey, etag, false, "attempt", next));
+        // Redisson resends the command after a response timeout, and the first one was applied
+        assertTrue(service.compareAndSet(redisKey, etag, false, "attempt", next));
+        assertFalse(service.compareAndSet(redisKey, etag, false, "another attempt", next));
+        assertEquals("2", service.getResource(descriptor));
+    }
+
+    @Test
+    void testUpdatesWhenTheCachedCopyExpiresAtOnce() throws IOException {
+        settings.setResourceTypesExpiration(Map.of("LIMIT", 0L));
+        TimerService timerService = Mockito.mock(TimerService.class);
+        ResourceService pod = newPod(timerService);
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+
+        pod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+        syncTask(timerService).run();
+        assertFalse(record(redisKey).isExists(), "a synced record with expiration 0 is gone at once");
+
+        pod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+
+        assertEquals("2", pod.getResource(descriptor));
+        assertEquals("1", blobBody(descriptor));
+    }
+
+    @Test
+    void testCachesNoPlaceholder_WhenTheBlobIsMissingAndNothingIsWritten() {
+        ResourceDescriptor descriptor = limit("requests");
+
+        service.computeResourceWithoutLock(descriptor, value -> value);
+
+        assertFalse(record(RedisUtil.redisKey(descriptor, null)).isExists());
     }
 
     @Test

@@ -515,7 +515,7 @@ public class RateLimiter {
     private void collectTokenLimitStats(
             ProxyContext context, LimitStats limitStats, long timestamp, String name, RateLimitSchedule schedule) {
         ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToTokens(name));
-        collectTokenLimitStats(resourceService.getResource(resourceDescription), limitStats, timestamp, schedule);
+        collectTokenLimitStats(getCounter(resourceDescription), limitStats, timestamp, schedule);
     }
 
     private static void collectTokenLimitStats(String json, LimitStats limitStats, long timestamp, RateLimitSchedule schedule) {
@@ -529,7 +529,7 @@ public class RateLimiter {
     private void collectRequestLimitStats(
             ProxyContext context, LimitStats limitStats, long timestamp, String name, RateLimitSchedule schedule) {
         ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToRequests(name));
-        collectRequestLimitStats(resourceService.getResource(resourceDescription), limitStats, timestamp, schedule);
+        collectRequestLimitStats(getCounter(resourceDescription), limitStats, timestamp, schedule);
     }
 
     private static void collectRequestLimitStats(String json, LimitStats limitStats, long timestamp, RateLimitSchedule schedule) {
@@ -542,7 +542,7 @@ public class RateLimiter {
 
     private void collectCostLimitStats(ProxyContext context, LimitStats limitStats, long timestamp, RateLimitSchedule schedule) {
         ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToCosts());
-        collectCostLimitStats(resourceService.getResource(resourceDescription), limitStats, timestamp, schedule);
+        collectCostLimitStats(getCounter(resourceDescription), limitStats, timestamp, schedule);
     }
 
     private static void collectCostLimitStats(String json, LimitStats limitStats, long timestamp, RateLimitSchedule schedule) {
@@ -790,8 +790,13 @@ public class RateLimiter {
                 getResourceDescription(bucket, getPathToDeploymentCosts(roleBasedEntity.getName()));
         // the enforcing document is written first, since the deployment-scoped one only reports
         return taskExecutor.submit(() -> {
-            updateCostLimit(userCostDescriptor, cost, schedule);
-            return updateCostLimit(deploymentCostDescriptor, cost, schedule);
+            try {
+                updateCostLimit(userCostDescriptor, cost, schedule);
+            } finally {
+                // also when the busier caller-wide update gave up, so that failure does not drop this one too
+                updateCostLimit(deploymentCostDescriptor, cost, schedule);
+            }
+            return null;
         });
     }
 

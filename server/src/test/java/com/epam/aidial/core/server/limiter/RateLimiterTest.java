@@ -1612,7 +1612,15 @@ public class RateLimiterTest {
         assertEquals(count(off, "getResource"), count(shadow, "getResource"));
         assertTrue(count(enforce, "getResource") < count(off, "getResource"), checks.toString());
         assertEquals(count(off, "computeResource"), count(enforce, "computeResource"));
-        // after the call: the budget row besides the role records, in shadow and enforce alike
+        // the request counter, written without the lock, in every mode
+        assertEquals(1, count(off, "computeResourceWithoutLock"), checks.toString());
+        assertEquals(1, count(shadow, "computeResourceWithoutLock"));
+        assertEquals(1, count(enforce, "computeResourceWithoutLock"));
+        // after the call: the token, cost and deployment-cost counters in every mode, and the budget row besides
+        // them in shadow and enforce
+        for (SpendingLimitMode mode : SpendingLimitMode.values()) {
+            assertEquals(3, count(charges.get(mode), "computeResourceWithoutLock"), charges.toString());
+        }
         long offCharge = count(charges.get(SpendingLimitMode.OFF), "computeResource");
         long budgetCharge = count(charges.get(SpendingLimitMode.SHADOW), "computeResource");
         assertTrue(budgetCharge > offCharge, charges.toString());
@@ -1701,6 +1709,28 @@ public class RateLimiterTest {
 
         assertEquals(HttpStatus.FORBIDDEN, rateLimiter.limit(shadowContext, model).result().status());
         assertEquals(BudgetCheck.started(SpendingLimitMode.SHADOW, "ORG"), shadowContext.getBudgetCheck());
+    }
+
+    /**
+     * A caller-wide cost update that gives up does not drop the deployment-scoped one, which runs in the same task.
+     */
+    @Test
+    public void testIncreaseWritesTheDeploymentCost_WhenTheCallerWideCostUpdateGivesUp() {
+        stubInlineExecutorReturningFailures();
+        Model model = budgetConfig(SpendingLimitMode.OFF).getModels().get("model");
+        String bucket = BucketBuilder.USER_BUCKET_PATTERN.formatted("busy-hash");
+        ResourceDescriptor callerCosts = ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "costs");
+        ResourceService resourceSpy = spy(resourceService);
+        doThrow(new IllegalStateException("Resource changed concurrently on every attempt"))
+                .when(resourceSpy).computeResourceWithoutLock(eq(callerCosts), any());
+        ConfigStore configStore = mock(ConfigStore.class);
+        when(configStore.get()).thenReturn(new Config());
+        RateLimiter limiter = new RateLimiter(taskExecutor, resourceSpy, configStore, BlockingCallTracer.NOOP);
+
+        assertNotNull(limiter.increase(model, bucket, pricedUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+
+        assertNull(resourceService.getResource(callerCosts));
+        assertNotNull(resourceService.getResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "model/costs")));
     }
 
     /**
@@ -1803,7 +1833,7 @@ public class RateLimiterTest {
         Map<String, Long> calls = new TreeMap<>();
         for (Invocation invocation : mockingDetails(resourceSpy).getInvocations()) {
             String name = invocation.getMethod().getName();
-            if (Set.of("getResource", "listResources", "computeResource").contains(name)) {
+            if (Set.of("getResource", "listResources", "computeResource", "computeResourceWithoutLock").contains(name)) {
                 calls.merge(name, 1L, Long::sum);
             }
         }

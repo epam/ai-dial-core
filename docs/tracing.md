@@ -157,7 +157,7 @@ stays at 0 unless `analytics.maxPendingBodyHeapPercent` is set.
 | `dial_lock_wait{phase="redis"}`       | timer | Time `lock()` spends on the Redis lock: one round-trip, plus the backoff spin while another holder has the key |
 | `dial_lock_queue_size{phase="local"}` | gauge | Threads of this pod blocked in `lock()` until another thread of this pod releases the key                      |
 | `dial_lock_queue_size{phase="redis"}` | gauge | Threads of this pod spinning in `lock()` until another holder releases the Redis key                           |
-| `dial_lock_wait{phase="local_only"}`  | timer | Time `LockService.lockLocally()` (rate-limit counter updates) waits for other threads of this pod on the key   |
+| `dial_lock_wait{phase="local_only"}`  | timer | Time `LockService.lockLocally()` (rate-limit counter updates, and counter reads that miss the cache) waits for other threads of this pod on the key   |
 | `dial_lock_queue_size{phase="local_only"}` | gauge | Threads of this pod blocked in `lockLocally()` until another thread of this pod releases the key       |
 | `dial_lock_hold`                      | timer | Time a lock taken with `lock()` is held                                                                        |
 | `dial_async_tasks_queued`             | gauge | `AsyncTaskExecutor` tasks submitted and not started yet                                                        |
@@ -173,7 +173,7 @@ Locks:
 - `dial_lock_wait` is tagged with `outcome`: `success`, or `error` when the `redis` phase throws, e.g. while Redis is
   down. The `local` phase always succeeds.
   The waits are recorded when `lock()` returns or throws, the hold when the lock is released.
-- `lockLocally()` (rate-limit counter updates) waits only for threads of this pod. Its `local_only` wait is recorded
+- `lockLocally()` (rate-limit counter updates, and counter reads that miss the cache) waits only for threads of this pod. Its `local_only` wait is recorded
   when it returns and always succeeds, and its hold is not measured.
 - A thread that takes a free lock is not queued. A thread waiting for the Redis key counts in
   `dial_lock_queue_size{phase="redis"}` while it spins, not during the first round-trip.

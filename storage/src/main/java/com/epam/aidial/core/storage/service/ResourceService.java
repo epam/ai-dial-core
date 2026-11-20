@@ -142,18 +142,30 @@ public class ResourceService implements AutoCloseable {
     // waits a random 0 to 2^n - 1 ms, at most 63 ms, so the pods that collided spread out
     private static final int MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS = 32;
     private static final int MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT = 6;
-    // ARGV[1]: the etag the value was read with ('' for a deleted record); ARGV[2..]: field, value pairs
+    // the compare-and-set that made the record's last write; a resent command finds its own token there
+    private static final String COMPUTE_TOKEN_ATTRIBUTE = "compute_token";
+    // in a fixed order, for HMGET
+    private static final List<String> REDIS_FIELD_LIST = List.copyOf(REDIS_FIELDS);
+    // ARGV: the field names. Run as a write, so it reads the master: a replica can lag behind the last compare-and-set
+    private static final String READ_FIELDS_SCRIPT = "return redis.call('hmget', KEYS[1], unpack(ARGV))";
+    // ARGV[1]: the etag the value was read with ('' for none); ARGV[2]: 'true' if the value came from blob storage, so
+    // the record is created when Redis has none; ARGV[3]: a token unique to this attempt; ARGV[4..]: field, value pairs.
+    // Redisson resends a command after a response timeout: a resend that finds its token reports the write it made
     private static final String COMPARE_AND_SET_SCRIPT = """
+            if redis.call('hget', KEYS[1], '%1$s') == ARGV[3] then
+              return 1
+            end
             if redis.call('exists', KEYS[1]) == 0 then
+              if ARGV[2] ~= 'true' then
+                return 0
+              end
+            elseif (redis.call('hget', KEYS[1], '%2$s') or '') ~= ARGV[1] then
               return 0
             end
-            if (redis.call('hget', KEYS[1], '%s') or '') ~= ARGV[1] then
-              return 0
-            end
-            redis.call('hset', KEYS[1], unpack(ARGV, 2))
+            redis.call('hset', KEYS[1], '%1$s', ARGV[3], unpack(ARGV, 4))
             redis.call('persist', KEYS[1])
             return 1
-            """.formatted(ETAG_ATTRIBUTE);
+            """.formatted(COMPUTE_TOKEN_ATTRIBUTE, ETAG_ATTRIBUTE);
     // ARGV[1]: expiration in milliseconds; ARGV[2..]: field, value pairs
     private static final String PUT_IF_ABSENT_SCRIPT = """
             if redis.call('exists', KEYS[1]) == 1 then
@@ -668,16 +680,22 @@ public class ResourceService implements AutoCloseable {
             boolean cacheHit = true;
 
             if (result == null) {
-                try (var ignore = lock ? lockService.lock(redisKey) : null) {
+                // rate-limit counters are written without the lock (computeResourceWithoutLock); a counter read that
+                // skips it takes the pod-local one, so concurrent misses of one counter on a pod load the blob once
+                boolean counter = descriptor.getType() == ResourceTypes.LIMIT;
+                try (var ignore = lock ? lockService.lock(redisKey) : counter ? lockService.lockLocally(redisKey) : null) {
                     result = redisGet(redisKey, true);
 
                     if (result == null) {
                         cacheHit = false;
                         String blobKey = blobKey(descriptor);
                         result = blobGet(blobKey, true);
-                        // a write without the lock may have landed since the miss, and it is newer than the blob
-                        if (!putIfAbsent(redisKey, result)) {
-                            result = Objects.requireNonNullElse(redisGet(redisKey, true), result);
+                        if (counter) {
+                            // a counter write since the miss is newer than the blob, so the blob copy must not replace
+                            // it; returning the blob copy is fine, a counter read may be a few updates behind
+                            putIfAbsent(redisKey, result);
+                        } else {
+                            redisPut(redisKey, result);
                         }
                     }
                 }
@@ -1016,16 +1034,18 @@ public class ResourceService implements AutoCloseable {
                 LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(backoffMillis));
             }
             BlockingCallTracer.currentSpan().setAttribute("dial.resource.attempts", attempt);
-            Map<String, byte[]> fields = loadForCompute(descriptor, redisKey);
-            Result current = toResult(fields, redisKey);
-            if (current == null) {
-                // expired between the cache fill and the read
-                continue;
-            }
+            Map<String, byte[]> fields = readFieldsOnMaster(redisKey);
+            // with no record in Redis the value comes from blob storage, and the compare-and-set creates the record
+            boolean fromBlob = fields.isEmpty();
+            Result current = fromBlob ? blobGet(blobKey(descriptor), true) : toResult(fields, redisKey);
 
             String oldValue = current.exists() ? new String(current.body, StandardCharsets.UTF_8) : null;
             String newValue = fn.apply(oldValue);
             if (Objects.equals(oldValue, newValue)) {
+                if (fromBlob && current.exists()) {
+                    // nothing to write, so cache the blob copy as a read would, and the next writer finds it in Redis
+                    putIfAbsent(redisKey, current);
+                }
                 return () -> {};
             }
 
@@ -1034,12 +1054,16 @@ public class ResourceService implements AutoCloseable {
                 throw new IllegalArgumentException("Resource is too large to compute without a lock: " + body.length);
             }
 
-            long updatedAt = time();
+            // boxed, so a record with no creation time (a blob written before created_at was kept) keeps none
+            Long updatedAt = time();
             Result next = new Result(body, EtagBuilder.generateEtag(body), current.exists() ? current.createdAt : updatedAt,
                     updatedAt, "application/json", descriptor.getType().requireCompression(), (long) body.length,
                     descriptor.getType().name(), current.author, false);
-            byte[] expectedEtag = fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
-            if (compareAndSet(redisKey, expectedEtag, next)) {
+            byte[] expectedEtag = fromBlob
+                    ? RedisUtil.stringToRedis(Objects.requireNonNullElse(current.etag, ""))
+                    : fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
+            String token = Long.toHexString(ThreadLocalRandom.current().nextLong());
+            if (compareAndSet(redisKey, expectedEtag, fromBlob, token, next)) {
                 boolean created = !current.exists();
                 return () -> {
                     // after the write, so a sync that dropped the entry meanwhile cannot leave the write unqueued, and
@@ -1059,21 +1083,32 @@ public class ResourceService implements AutoCloseable {
     }
 
     /**
-     * The record's fields in Redis, loaded from blob storage first if Redis does not have it.
+     * The record's fields, read on the master (Redisson reads replicas by default), so the etag is the one the
+     * compare-and-set will see. Empty if Redis has no record.
      */
-    private Map<String, byte[]> loadForCompute(ResourceDescriptor descriptor, String redisKey) {
-        RMap<String, byte[]> redisRecord = redis.getMap(redisKey, REDIS_MAP_CODEC);
-        Map<String, byte[]> fields = redisRecord.getAll(REDIS_FIELDS);
-        if (fields.isEmpty()) {
-            putIfAbsent(redisKey, blobGet(blobKey(descriptor), true));
-            fields = redisRecord.getAll(REDIS_FIELDS);
+    private Map<String, byte[]> readFieldsOnMaster(String redisKey) {
+        Object[] names = REDIS_FIELD_LIST.stream().map(name -> name.getBytes(StandardCharsets.UTF_8)).toArray();
+        List<Object> values = redis.getScript(ByteArrayCodec.INSTANCE)
+                .eval(RScript.Mode.READ_WRITE, READ_FIELDS_SCRIPT, RScript.ReturnType.LIST, List.of(redisKey), names);
+        Map<String, byte[]> fields = new HashMap<>();
+        for (int i = 0; i < REDIS_FIELD_LIST.size(); i++) {
+            if (values.get(i) instanceof byte[] value) {
+                fields.put(REDIS_FIELD_LIST.get(i), value);
+            }
         }
         return fields;
     }
 
-    private boolean compareAndSet(String redisKey, byte[] expectedEtag, Result result) {
+    /**
+     * @param createIfAbsent the value came from blob storage: the record is created if Redis still has none
+     * @param token unique to this attempt, so a resend of an applied write reports success instead of a conflict
+     */
+    @VisibleForTesting
+    boolean compareAndSet(String redisKey, byte[] expectedEtag, boolean createIfAbsent, String token, Result result) {
         List<Object> args = new ArrayList<>();
         args.add(expectedEtag);
+        args.add(RedisUtil.booleanToRedis(createIfAbsent));
+        args.add(RedisUtil.stringToRedis(token));
         addFieldArgs(args, result);
         return evalBoolean(COMPARE_AND_SET_SCRIPT, redisKey, args);
     }
