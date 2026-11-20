@@ -919,24 +919,32 @@ public class ComplexResourceService {
     }
 
     /**
-     * Builds a listing item for a DIAL node from its marker's listing metadata (author) and, for an
-     * {@code ITEM}, the marker document: its timestamps and its manifest-derived attributes (e.g. a skill's
-     * name/description/version). The document's timestamps are taken over the marker blob's: a write updates
-     * the document in Redis at once, while the blob's own metadata only catches up on the next sync.
+     * Builds a listing item for a DIAL node from its marker blob's listing metadata ({@code blobMetadata}:
+     * author and timestamps) and, for an {@code ITEM}, the marker document: its timestamps and its
+     * manifest-derived attributes (e.g. a skill's name/description/version). The document's timestamps are
+     * taken over the blob's: a write updates the document in Redis at once, while the blob's own metadata only
+     * catches up on the next sync. A document written before markers carried timestamps falls back to the blob's.
      * The {@code nodeType} ({@code ITEM} for a resource, {@code FOLDER} for a grouping folder) already
      * conveys the kind. The aggregate etag is not included: it lives inside the marker and is available
      * via a whole-resource GET.
      */
-    private static ResourceItemMetadata nodeMetadata(ResourceDescriptor node, NodeType nodeType, ResourceItemMetadata itemMetadata,
+    private static ResourceItemMetadata nodeMetadata(ResourceDescriptor node, NodeType nodeType, ResourceItemMetadata blobMetadata,
             @Nullable FolderResourceMarker marker) {
-        Map<String, Object> attributes = marker == null ? null : marker.getMetadata();
+        Map<String, Object> attributes = null;
+        Long createdAt = blobMetadata.getCreatedAt();
+        Long updatedAt = blobMetadata.getUpdatedAt();
+        if (marker != null) {
+            attributes = marker.getMetadata();
+            createdAt = ObjectUtils.firstNonNull(marker.getCreatedAt(), createdAt);
+            updatedAt = ObjectUtils.firstNonNull(marker.getUpdatedAt(), updatedAt);
+        }
         ResourceItemMetadata metadata = attributes == null
                 ? new ResourceItemMetadata(node)
                 : new ComplexResourceItemMetadata(node).setAttributes(attributes);
         metadata.setNodeType(nodeType);
-        metadata.setCreatedAt(marker == null ? itemMetadata.getCreatedAt() : ObjectUtils.firstNonNull(marker.getCreatedAt(), itemMetadata.getCreatedAt()));
-        metadata.setUpdatedAt(marker == null ? itemMetadata.getUpdatedAt() : ObjectUtils.firstNonNull(marker.getUpdatedAt(), itemMetadata.getUpdatedAt()));
-        metadata.setAuthor(itemMetadata.getAuthor());
+        metadata.setCreatedAt(createdAt);
+        metadata.setUpdatedAt(updatedAt);
+        metadata.setAuthor(blobMetadata.getAuthor());
         return metadata;
     }
 

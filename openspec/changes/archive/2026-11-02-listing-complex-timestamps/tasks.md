@@ -1,8 +1,8 @@
 ## 1. Timestamps of complex items in metadata listings
 
 - [x] 1.1 `ComplexResourceService.nodeMetadata`: `createdAt` / `updatedAt` from the marker document `listChildren` already read, the marker blob's values as fallback
-- [x] 1.2 Tests for scenario "Listing after a write": `ProjectResourceApiTest.testMetadataListingTimestampsFollowWrites`, `SkillResourceApiTest.testMetadataListingTimestampsFollowWrites`
-- [ ] 1.3 `./gradlew checkstyleMain checkstyleTest` and `--tests` `ProjectResourceApiTest`, `SkillResourceApiTest` (deferred: needs JDK 21 and GitHub Packages credentials; runs in PR CI)
+- [x] 1.2 Tests for scenario "Listing after a write", in `ProjectResourceApiTest` and `SkillResourceApiTest`: `testMetadataListingTimestampsFollowWrites` (asserts the marker blob is stale), `testRecursiveMetadataListingTimestampsFollowWrites` (recursive listing, and a folder node keeps its blob values), `testMetadataListingTimestampsFallBackToMarkerBlob` (a marker document without timestamps)
+- [x] 1.3 `./gradlew checkstyleMain checkstyleTest` and `--tests` `ProjectResourceApiTest`, `SkillResourceApiTest`: in PR CI (`style_checks`, `code_checks`), green at 09d73ff2; not runnable locally (needs JDK 21 and GitHub Packages credentials). The review-round tests run on the next CI run
 
 ## 2. Docs
 

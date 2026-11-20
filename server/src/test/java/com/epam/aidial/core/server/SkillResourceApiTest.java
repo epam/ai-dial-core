@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
@@ -501,17 +503,53 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     void testMetadataListingTimestampsFollowWrites() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         verify(uploadSkill("/listed/skill-a", files), 200);
+        awaitNextMillisecond();
         verify(putSkillFile("/listed/skill-a", "docs/notes.md", "hello".getBytes(StandardCharsets.UTF_8)), 200);
 
-        // the write is not yet synced to the marker blob; the listing must still report the item's own timestamps
-        Response itemResponse = listMetadata("listed/skill-a");
-        verify(itemResponse, 200);
-        JsonNode item = ProxyUtil.MAPPER.readTree(itemResponse.body());
-        JsonNode listed = ProxyUtil.MAPPER.readTree(listMetadata("listed").body()).get("items").get(0);
+        // the write moved updatedAt past createdAt, and the marker blob has not caught up with it yet,
+        // so a listing built from the blob alone would report the creation time
+        JsonNode item = itemMetadata("listed/skill-a");
+        assertTrue(item.get("updatedAt").asLong() > item.get("createdAt").asLong(), item.toString());
+        assertTrue(markerBlob("listed/skill-a").getUpdatedAt() < item.get("updatedAt").asLong(), item.toString());
 
-        assertEquals("skill-a", listed.get("name").asText());
+        JsonNode listed = listedItem(listMetadata("listed"), skillUrl("listed/skill-a/"));
         assertEquals(item.get("createdAt"), listed.get("createdAt"));
         assertEquals(item.get("updatedAt"), listed.get("updatedAt"));
+    }
+
+    @Test
+    void testRecursiveMetadataListingTimestampsFollowWrites() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/listed/sub/skill-b", files), 200);
+        awaitNextMillisecond();
+        verify(putSkillFile("/listed/sub/skill-b", "docs/notes.md", "hello".getBytes(StandardCharsets.UTF_8)), 200);
+
+        JsonNode item = itemMetadata("listed/sub/skill-b");
+        assertTrue(markerBlob("listed/sub/skill-b").getUpdatedAt() < item.get("updatedAt").asLong(), item.toString());
+
+        Response listing = send(HttpMethod.GET, "/v2/metadata/skills/" + bucket + "/listed", "recursive=true", "");
+        verify(listing, 200);
+        JsonNode listed = listedItem(listing, skillUrl("listed/sub/skill-b/"));
+        assertEquals(item.get("createdAt"), listed.get("createdAt"));
+        assertEquals(item.get("updatedAt"), listed.get("updatedAt"));
+
+        // a grouping folder has no marker document and keeps its folder marker blob's timestamps
+        ResourceItemMetadata folderBlob = storedBlobMetadata(skillUrl("listed/sub/"), ComplexResourceService.FOLDER_MARKER_NAME);
+        JsonNode folder = listedItem(listing, skillUrl("listed/sub/"));
+        assertEquals(folderBlob.getCreatedAt(), folder.path("createdAt").asLong());
+        assertEquals(folderBlob.getUpdatedAt(), folder.path("updatedAt").asLong());
+    }
+
+    @Test
+    void testMetadataListingTimestampsFallBackToMarkerBlob() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/listed/legacy", files), 200);
+        ResourceItemMetadata blob = markerBlob("listed/legacy");
+        stripMarkerTimestamps(blob.getDescriptor());
+
+        JsonNode listed = listedItem(listMetadata("listed"), skillUrl("listed/legacy/"));
+        assertEquals(blob.getCreatedAt(), listed.path("createdAt").asLong());
+        assertEquals(blob.getUpdatedAt(), listed.path("updatedAt").asLong());
     }
 
     @Test
@@ -811,6 +849,21 @@ public class SkillResourceApiTest extends ResourceBaseTest {
 
     private Response listMetadata(String relativePath, String... headers) {
         return send(HttpMethod.GET, "/v2/metadata/skills/" + bucket + "/" + relativePath, null, "", headers);
+    }
+
+    @SneakyThrows
+    private JsonNode itemMetadata(String relativePath) {
+        Response response = listMetadata(relativePath);
+        verify(response, 200);
+        return ProxyUtil.MAPPER.readTree(response.body());
+    }
+
+    private ResourceItemMetadata markerBlob(String skillPath) {
+        return storedBlobMetadata(skillUrl(skillPath + "/"), ComplexResourceService.MARKER_NAME);
+    }
+
+    private String skillUrl(String relativePath) {
+        return "skills/" + bucket + "/" + relativePath;
     }
 
     private Response listSkillFiles(String skillPath, String... headers) {
