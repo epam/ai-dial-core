@@ -102,6 +102,11 @@ public class GfLogStore implements LogStore {
     }
 
     @Override
+    public boolean isErrorRowsEnabled() {
+        return settings.errorRows();
+    }
+
+    @Override
     public void save(AnalyticsLogContext logContext) {
         if (!LOGGER.isInfoEnabled() || !"POST".equals(logContext.getRequestMethod())) {
             return;

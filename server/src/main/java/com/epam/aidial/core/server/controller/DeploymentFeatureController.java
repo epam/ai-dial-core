@@ -368,11 +368,13 @@ public class DeploymentFeatureController {
     private void respond(HttpStatus status, String errorMessage) {
         finalizeRequest();
         context.respond(status, errorMessage);
+        proxy.getLogStore().saveErrorResponse(context);
     }
 
     private void respond(HttpStatus status) {
         finalizeRequest();
         context.respond(status);
+        proxy.getLogStore().saveErrorResponse(context);
     }
 
     private void finalizeRequest() {
