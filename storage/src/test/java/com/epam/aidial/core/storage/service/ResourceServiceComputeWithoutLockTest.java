@@ -41,9 +41,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -173,18 +175,66 @@ class ResourceServiceComputeWithoutLockTest {
     @Test
     void testRetriesOnTheNewerValueWhenAnotherWriteLandsFirst() {
         ResourceDescriptor descriptor = limit("requests");
+        ResourceService otherPod = newPod(Mockito.mock(TimerService.class));
         AtomicInteger calls = new AtomicInteger();
 
         service.computeResourceWithoutLock(descriptor, value -> {
             if (calls.incrementAndGet() == 1) {
                 // another pod writes between this read and this write
-                service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+                otherPod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
             }
             return increment(value);
         });
 
         assertEquals("2", service.getResource(descriptor));
         assertEquals(2, calls.get());
+    }
+
+    @Test
+    void testGivesUp_WhenAnotherWriteLandsFirstOnEveryAttempt() {
+        ResourceDescriptor descriptor = limit("requests");
+        ResourceService otherPod = newPod(Mockito.mock(TimerService.class));
+        AtomicInteger calls = new AtomicInteger();
+
+        assertThrows(IllegalStateException.class, () -> service.computeResourceWithoutLock(descriptor, value -> {
+            calls.incrementAndGet();
+            otherPod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+            return increment(value);
+        }));
+
+        // only the other pod's writes landed
+        assertEquals(32, calls.get());
+        assertEquals("32", service.getResource(descriptor));
+    }
+
+    @Test
+    void testCreatesTheRecord_WhenReadLeftPlaceholderForMissingBlob() {
+        ResourceDescriptor descriptor = limit("requests");
+        // a limit check or a limit stats read comes before the first write
+        assertNull(service.getResource(descriptor));
+        assertTrue(record(RedisUtil.redisKey(descriptor, null)).isExists(), "the read caches a placeholder");
+
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+
+        assertEquals("1", service.getResource(descriptor));
+    }
+
+    @Test
+    void testQueuesTheRecord_WhenTheWriteOutcomeIsUnknown() {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        // the write is applied and its reply is lost, as on a Redis timeout
+        ResourceService failingPod = Mockito.spy(service);
+        Mockito.doAnswer(invocation -> {
+            invocation.callRealMethod();
+            throw new IllegalStateException("timeout");
+        }).when(failingPod).compareAndSet(eq(redisKey), any(), anyBoolean(), any());
+
+        assertThrows(IllegalStateException.class,
+                () -> failingPod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment));
+
+        assertEquals("1", service.getResource(descriptor));
+        assertTrue(queue().contains(redisKey), "a write that may have been applied must be queued for sync");
     }
 
     @Test
@@ -311,7 +361,42 @@ class ResourceServiceComputeWithoutLockTest {
     }
 
     @Test
-    void testReadReturnsTheNewerRecord_WhenWriteLandsDuringTheCacheFill() {
+    void testSyncRequeues_WhenWriteLandsBetweenTheMarkAndTheRemoval() throws IOException {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+
+        // the write finds the entry of the first write still queued and adds nothing, then the sync drops that entry
+        ResourceService syncingPod = Mockito.spy(service);
+        Mockito.doAnswer(invocation -> {
+            Object marked = invocation.callRealMethod();
+            service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+            return marked;
+        }).when(syncingPod).markSynced(eq(redisKey), any());
+        syncingPod.sync();
+
+        assertEquals("1", blobBody(descriptor));
+        assertTrue(queue().contains(redisKey), "the write that landed after the mark must be queued");
+
+        sync.run();
+        assertEquals("2", blobBody(descriptor));
+    }
+
+    @Test
+    void testSyncKeepsTheEntryQueued_WhenTheCheckAfterTheRemovalFails() {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+
+        ResourceService failingPod = Mockito.spy(service);
+        Mockito.doThrow(new IllegalStateException("timeout")).when(failingPod).expireIfSynced(redisKey);
+        failingPod.sync();
+
+        assertTrue(queue().contains(redisKey), "a record that was not checked after the removal must stay queued");
+    }
+
+    @Test
+    void testReadReturnsItsBlobCopyAndKeepsTheNewerRecord_WhenWriteLandsDuringTheCacheFill() {
         ResourceDescriptor descriptor = limit("requests");
         service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
         sync.run();

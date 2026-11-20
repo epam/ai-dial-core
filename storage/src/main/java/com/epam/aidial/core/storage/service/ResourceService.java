@@ -144,6 +144,7 @@ public class ResourceService implements AutoCloseable {
     private static final int MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT = 6;
     // in a fixed order, for HMGET
     private static final List<String> REDIS_FIELD_LIST = List.copyOf(REDIS_FIELDS);
+    private static final Object[] REDIS_FIELD_NAMES = REDIS_FIELD_LIST.stream().map(name -> name.getBytes(StandardCharsets.UTF_8)).toArray();
     // ARGV: the field names. Run as a write, so it reads the master: a replica can lag behind the last compare-and-set
     private static final String READ_FIELDS_SCRIPT = "return redis.call('hmget', KEYS[1], unpack(ARGV))";
     // ARGV[1]: the etag the value was read with ('' for none); ARGV[2]: 'true' if the value came from blob storage, so
@@ -684,9 +685,9 @@ public class ResourceService implements AutoCloseable {
                         String blobKey = blobKey(descriptor);
                         result = blobGet(blobKey, true);
                         if (descriptor.getType() == ResourceTypes.LIMIT) {
-                            // rate-limit counters are written without the lock (computeResourceWithoutLock), so a write
-                            // since the miss is newer than the blob and the blob copy must not replace it; returning
-                            // the blob copy is fine, a counter read may be a few updates behind
+                            // limit records can be written without the lock (computeResourceWithoutLock, the rate-limit
+                            // counters), so a write since the miss is newer than the blob and the blob copy must not
+                            // replace it; returning the blob copy is fine, a counter read may be a few updates behind
                             putIfAbsent(redisKey, result);
                         } else {
                             redisPut(redisKey, result);
@@ -1016,7 +1017,7 @@ public class ResourceService implements AutoCloseable {
         try (var ignore = lockService.lockLocally(redisKey)) {
             afterWrite = computeResourceWithoutLockAttempts(descriptor, redisKey, fn);
         }
-        // after the turn, so the next writer of this pod does not wait for the queue entry, the stub or the event
+        // after the turn, so the next writer of this pod does not wait for the queue entry or the stub
         afterWrite.run();
         return null;
     }
@@ -1056,20 +1057,32 @@ public class ResourceService implements AutoCloseable {
             byte[] expectedEtag = fromBlob
                     ? RedisUtil.stringToRedis(Objects.requireNonNullElse(current.etag, ""))
                     : fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
-            if (compareAndSet(redisKey, expectedEtag, fromBlob, next)) {
+            boolean written;
+            try {
+                written = compareAndSet(redisKey, expectedEtag, fromBlob, next);
+            } catch (RuntimeException e) {
+                // the write may have been applied (a reply lost to a timeout), and nothing else would queue it. An
+                // entry for a record that was not written is harmless: the sync drops it
+                try {
+                    queueIfAbsent(redisKey);
+                } catch (RuntimeException queueError) {
+                    e.addSuppressed(queueError);
+                }
+                throw e;
+            }
+            if (written) {
                 boolean created = !current.exists();
                 return () -> {
-                    // after the write, so a sync that dropped the entry meanwhile cannot leave the write unqueued, and
-                    // only if absent: the first unsynced write sets the deadline, so a counter written more often than
-                    // syncDelay is still synced. Redisson resends it after a timeout (adding twice is harmless); if it
-                    // still fails or the pod crashes first, the record stays persisted and its next write queues it
-                    redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).addIfAbsent(time() + syncDelay, redisKey);
+                    // after the write, so a sync that dropped the entry meanwhile cannot leave the write unqueued.
+                    // Redisson resends it after a timeout (adding twice is harmless); if it still fails or the pod
+                    // crashes first, the record stays persisted and its next write queues it
+                    queueIfAbsent(redisKey);
                     if (created) {
                         // only the writer that created the record writes the stub, after its write as a locked write
                         // does; the sync of this write comes syncDelay later, so the stub does not land on top of it
                         blobPut(blobKey(descriptor), next.toStub()); // create an empty object for listing
                     }
-                    publishEvent(descriptor, created ? ResourceEvent.Action.CREATE : ResourceEvent.Action.UPDATE, updatedAt, next.etag);
+                    // no resource event: limit records are not in ResourceTypes.EVENT_TYPES
                 };
             }
         }
@@ -1077,13 +1090,20 @@ public class ResourceService implements AutoCloseable {
     }
 
     /**
+     * Queues the record for sync unless it is queued already: the first unsynced write sets the deadline, so a
+     * counter written more often than {@code syncDelay} is still synced.
+     */
+    private void queueIfAbsent(String redisKey) {
+        redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).addIfAbsent(time() + syncDelay, redisKey);
+    }
+
+    /**
      * The record's fields, read on the master (Redisson reads replicas by default), so they include the last write.
      * Empty if Redis has no record.
      */
     private Map<String, byte[]> readFieldsOnMaster(String redisKey) {
-        Object[] names = REDIS_FIELD_LIST.stream().map(name -> name.getBytes(StandardCharsets.UTF_8)).toArray();
         List<Object> values = redis.getScript(ByteArrayCodec.INSTANCE)
-                .eval(RScript.Mode.READ_WRITE, READ_FIELDS_SCRIPT, RScript.ReturnType.LIST, List.of(redisKey), names);
+                .eval(RScript.Mode.READ_WRITE, READ_FIELDS_SCRIPT, RScript.ReturnType.LIST, List.of(redisKey), REDIS_FIELD_NAMES);
         Map<String, byte[]> fields = new HashMap<>();
         for (int i = 0; i < REDIS_FIELD_LIST.size(); i++) {
             if (values.get(i) instanceof byte[] value) {
@@ -1096,7 +1116,8 @@ public class ResourceService implements AutoCloseable {
     /**
      * @param createIfAbsent the value came from blob storage: the record is created if Redis still has none
      */
-    private boolean compareAndSet(String redisKey, byte[] expectedEtag, boolean createIfAbsent, Result result) {
+    @VisibleForTesting
+    boolean compareAndSet(String redisKey, byte[] expectedEtag, boolean createIfAbsent, Result result) {
         List<Object> args = new ArrayList<>();
         args.add(expectedEtag);
         args.add(RedisUtil.booleanToRedis(createIfAbsent));
@@ -1299,9 +1320,10 @@ public class ResourceService implements AutoCloseable {
 
     /**
      * Uploads the record if it is not synced yet. A write without the lock ({@link #computeResourceWithoutLock}) can
-     * land at any point of this, and it queues the record only after its write. So the queue entry is dropped first,
-     * the record is marked synced only if it still has the etag that was uploaded, and the entry is put back if the
-     * record is not synced after that.
+     * land at any point of this, and it queues the record only if it is not queued yet. So the record is marked synced
+     * only if it still has the etag that was uploaded, the queue entry is dropped only after that, and it is put back
+     * if the record is not synced any more. The entry outlives a crash at any point before the mark, so an unsynced
+     * record is never left out of the queue by a sync alone.
      */
     private RMap<String, byte[]> sync(String redisKey) {
         log.debug("Syncing resource: {}", redisKey);
@@ -1323,14 +1345,17 @@ public class ResourceService implements AutoCloseable {
         }
 
         RScoredSortedSet<String> queue = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
-        boolean synced = false;
-        try {
+        // a record that is not synced (a write landed since the read, or the mark failed) keeps its entry for the next sync
+        if ((uploadedEtag == null) ? expireIfSynced(redisKey) : markSynced(redisKey, uploadedEtag)) {
             queue.remove(redisKey);
-            synced = (uploadedEtag == null) ? expireIfSynced(redisKey) : markSynced(redisKey, uploadedEtag);
-        } finally {
-            // also when the mark fails: a write that landed after the removal may have found the entry and queued nothing
-            if (!synced) {
-                queue.addIfAbsent(time() + syncDelay, redisKey);
+            boolean synced = false;
+            try {
+                synced = expireIfSynced(redisKey);
+            } finally {
+                // also when the check fails: a write that landed before the removal found the entry and queued nothing
+                if (!synced) {
+                    queue.addIfAbsent(time() + syncDelay, redisKey);
+                }
             }
         }
         return map;
