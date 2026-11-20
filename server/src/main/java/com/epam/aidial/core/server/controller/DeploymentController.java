@@ -203,13 +203,13 @@ public class DeploymentController {
 
     void respondListing(List<DeploymentData> deployments, @Nullable FieldSelection selection) {
         if (selection == null) {
-            respondOk(deployments);
+            context.respond(HttpStatus.OK, deployments);
             return;
         }
         try {
             proxy.getTaskExecutor()
                     .submit(() -> project(selection, deployments))
-                    .onSuccess(this::respondOk)
+                    .onSuccess(projected -> context.respond(HttpStatus.OK, projected))
                     .onFailure(this::respondListingError);
         } catch (Exception e) {
             respondListingError(e);
@@ -222,14 +222,6 @@ public class DeploymentController {
             projected.add(selection.project(ProxyUtil.MAPPER.valueToTree(deployment)));
         }
         return projected;
-    }
-
-    private void respondOk(Object body) {
-        try {
-            context.respond(HttpStatus.OK, body);
-        } catch (Exception e) {
-            respondListingError(e);
-        }
     }
 
     private void respondListingError(Throwable error) {

@@ -28,7 +28,7 @@ entries). "No parameter": the existing `testListDeployments`, which must pass un
 - [x] 2.1 `DeploymentController.listDeployments` (design D4): parse `fields` after `build` and before `execute`, answer
   `400` with the exception message on `IllegalArgumentException`; with a selection, convert and prune row by row on
   `proxy.getTaskExecutor()` and respond with the `ArrayNode`; a failure of the listing, of submitting or running the
-  conversion and pruning, or of writing the answer, with or without `fields`, is logged and answered with
+  conversion and pruning, with or without `fields`, is logged and answered with
   `context.respond(error, "Internal error")`; without a selection, the current `respond` call stays but for that
   failure handling.
   Tests first in `DeploymentApiTest`: one method on `deployment-interfaces-listing.json` for the scenarios of the

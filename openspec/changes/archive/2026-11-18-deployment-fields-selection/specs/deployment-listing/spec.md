@@ -129,7 +129,7 @@ five levels. A top-level name is level one, and each parenthesis opens the next 
 
 ### Requirement: A listing that cannot be written answers 500
 `GET /v1/deployments` SHALL answer `500` with the text `Internal error` when it fails to build the listing, to
-convert it for `fields` or to write the answer, with or without `fields`. A failure that is an `HttpException` keeps its own status.
+convert it for `fields`, with or without `fields`. A failure that is an `HttpException` keeps its own status.
 
 #### Scenario: Conversion fails
 - **WHEN** converting the listing for a `fields` request fails

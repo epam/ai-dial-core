@@ -66,7 +66,7 @@ still cost what they cost today because `fields` does not skip building a field.
   parsed tree, so the parsed selection is immutable. Merging at parse time copies the `*` subtree into every named
   sibling at every level: a simulation turned a 1,004-byte selection of 152 nodes into 125,051 nodes with three `*`
   levels and 2,086,619 with four. `FieldSelectionTest.wildcardsAtSeveralLevelsAreNotMergedIntoTheParsedSelection` guards this.
-- A failure of the listing, of submitting or running the conversion and pruning, or of writing the answer, with or
+- A failure of the listing, or of submitting or running the conversion and pruning, with or
   without `fields`, is logged and answered with `context.respond(error, "Internal error")`, as the controller's other
   failures are: `500` `Internal error`, or the status of an `HttpException`. `DeploymentControllerTest` covers it
   through the package-private `respondListing`.

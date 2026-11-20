@@ -125,7 +125,7 @@ no selection and the code that follows is the code of today.
 
 When there is a selection, the `onSuccess` of the combined future submits the conversion and pruning, row by row, to
 `proxy.getTaskExecutor()` and responds with the resulting `ArrayNode`. The event loop then serializes the pruned tree,
-which is smaller than the full list it serializes today. A failure of the listing, of submitting or running the conversion and pruning, or of writing the answer, with
+which is smaller than the full list it serializes today. A failure of the listing, of submitting or running the conversion and pruning, with
 or without `fields`, is logged and answered the way the controller answers its other failures,
 `context.respond(error, "Internal error")`: `500` with the text `Internal error`, or the status of an `HttpException`.
 

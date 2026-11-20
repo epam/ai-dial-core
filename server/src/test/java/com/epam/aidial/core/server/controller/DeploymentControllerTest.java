@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.data.DeploymentData;
 import com.epam.aidial.core.server.data.ModelData;
 import com.epam.aidial.core.server.util.FieldSelection;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -24,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -90,16 +88,5 @@ public class DeploymentControllerTest {
         controller.respondListing(List.of(new ModelData()), FieldSelection.parse("display_name", Set.of("id")));
 
         verify(context).respond(any(RejectedExecutionException.class), eq("Internal error"));
-    }
-
-    @Test
-    void failedWriteOfTheFullListingAnswersInternalError() {
-        List<DeploymentData> deployments = List.of(new ModelData());
-        doThrow(new IllegalStateException("boom")).when(context).respond(eq(HttpStatus.OK), any(Object.class));
-
-        controller.respondListing(deployments, null);
-
-        verify(executor, never()).submit(any(Callable.class));
-        verify(context).respond(any(IllegalStateException.class), eq("Internal error"));
     }
 }
