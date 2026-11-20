@@ -203,7 +203,8 @@ sections). Exactly four sections, as the archive guidance of openspec/config.yam
 docs, as built), "## Verification" (each check and the test classes run, with the final result, and the cost-claim
 check), "## Drift from design.md" (what was built differently and why, or "None") and "## Not done" (deferred tasks,
 high/medium findings still open, low findings left, what CI must still confirm, or "None"). No review rounds, finding
-tables, test counts or commit hashes. Plain, factual, no praise. Edit no other file.
+tables, test counts or commit hashes. At most 15 lines for a small change, as openspec/config.yaml defines it. Plain,
+factual, no praise. Edit no other file.
 Report: ${JSON.stringify(report)}`,
   { label: 'record', phase: 'Record', effort: 'low' },
 )
