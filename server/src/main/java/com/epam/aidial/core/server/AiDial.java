@@ -305,8 +305,10 @@ public class AiDial {
                     tokenRefreshStrategyFactory, credentialEncryptionService, timeProvider, tokenService);
             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
                     credentialEncryptionService);
-            ExternalServiceService externalServiceService = new ExternalServiceService(
-                    resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor);
+            ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
+                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
+            ExternalServiceService externalServiceService = new ExternalServiceService(resourceService,
+                    resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor, resourceAuthSettingsService);
 
             // Before the config stores: they validate every plugins entry against the provider of its type
             PluginRegistry pluginRegistry = PluginRegistry.load(settings("plugins"));
@@ -341,8 +343,6 @@ public class AiDial {
                     resourceService, mergedConfigStore, complexResourceService, encryptionService, httpProxySelector);
             CatalogSchemaService catalogSchemaService = new CatalogSchemaService(resourceService, mergedConfigStore, encryptionService);
 
-            ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
-                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
             AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
             AuthSettingsResolver authSettingsResolver = new AuthSettingsResolver(
                     encryptionService, resourceAuthSettingsEncryptionService);
@@ -355,7 +355,7 @@ public class AiDial {
                     resourceRegistrationService, resourceAuthSettingsService);
 
             UserExternalServiceService userExternalServiceService = new UserExternalServiceService(
-                    resourceService, resourceAuthSettingsEncryptionService, encryptionService);
+                    resourceService, resourceAuthSettingsEncryptionService, encryptionService, externalServiceService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     secretFieldProcessor, externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));

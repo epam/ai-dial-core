@@ -194,6 +194,72 @@ class PublicationApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    void testUpdatePublicationWithPkceExternalServiceKeepsVerifier() throws Exception {
+        // The link re-put sends back the verifier decrypted on read; it must count as the stored one, not as a new value.
+        AtomicReference<String> tokenBody = new AtomicReference<>();
+        TestWebServer.Handler handler = request -> {
+            tokenBody.set(request.getBody().readUtf8());
+            return new MockResponse()
+                    .setBody("{\"access_token\":\"a\",\"refresh_token\":\"r\",\"expires_in\":3600}")
+                    .setHeader("Content-Type", "application/json");
+        };
+        try (TestWebServer ignore = new TestWebServer(9876, handler)) {
+            Response r = send(HttpMethod.PUT, "/v1/applications/%s/pkce-ext-app".formatted(bucket), null, """
+                    {
+                        "endpoint": "http://localhost:7001/v1/x",
+                        "display_name": "Pkce Ext App",
+                        "external_services": {
+                            "sf": {
+                                "auth_settings": {
+                                    "authentication_type": "OAUTH",
+                                    "client_id": "cid",
+                                    "client_secret": "pkce-value-1",
+                                    "authorization_endpoint": "http://localhost:9876/authorize",
+                                    "token_endpoint": "http://localhost:9876/token",
+                                    "code_challenge_method": "S256"
+                                }
+                            }
+                        }
+                    }
+                    """);
+            assertEquals(200, r.status(), r.body());
+
+            String resources = """
+                    "resources": [
+                        {"action":"ADD","sourceUrl":"applications/%s/pkce-ext-app","targetUrl":"applications/public/folder/pkce-ext-app"}
+                    ],
+                    "rules": [{"source":"roles","function":"TRUE"}]
+                    """.formatted(bucket);
+            r = send(HttpMethod.POST, "/v1/ops/publication/create", null,
+                    "{\"name\":\"Pkce\",\"targetFolder\":\"public/folder/\"," + resources + "}");
+            assertEquals(200, r.status(), r.body());
+            r = send(HttpMethod.POST, "/v1/ops/publication/update", null,
+                    "{\"url\":\"publications/" + bucket + "/0123\",\"targetFolder\":\"public/folder/\"," + resources + "}",
+                    "authorization", "admin");
+            assertEquals(200, r.status(), r.body());
+            r = send(HttpMethod.POST, "/v1/ops/publication/approve", null,
+                    "{\"url\":\"publications/" + bucket + "/0123\"}", "authorization", "admin");
+            assertEquals(200, r.status(), r.body());
+
+            Response signIn = send(HttpMethod.POST, "/v1/ops/external-service/signin", null, """
+                    {
+                        "url": "applications/public/folder/pkce-ext-app/external_services/sf",
+                        "credentials_level": "USER",
+                        "authentication_type": "OAUTH",
+                        "code": "auth-code"
+                    }
+                    """, "authorization", "admin");
+            assertEquals(200, signIn.status(), signIn.body());
+            String verifier = parseForm(tokenBody.get()).get("code_verifier");
+            Response published = send(HttpMethod.GET, "/v1/applications/public/folder/pkce-ext-app", null, "", "authorization", "admin");
+            String challenge = ProxyUtil.MAPPER.readTree(published.body())
+                    .at("/external_services/sf/auth_settings/code_challenge").asText();
+            assertEquals(challenge, s256(verifier),
+                    "sign-in must send the verifier matching the stored challenge, got: " + tokenBody.get());
+        }
+    }
+
     private static final String PUBLICATION_REQUEST = """
             {
               "name": "Publication name",

@@ -13,6 +13,7 @@ import org.apache.hc.core5.http.ContentType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -21,6 +22,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +32,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,7 +52,7 @@ class DynamicResourceRegistrationStrategyTest {
     @BeforeEach
     void setUp() {
         resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(
-                authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, List.of());
+                authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, List.of(), RegistrationPolicy.TOOLSET);
     }
 
     @Test
@@ -146,14 +149,72 @@ class DynamicResourceRegistrationStrategyTest {
         assertEquals("https://test.endpoint.com", result.getResource());
     }
 
+    @Test
+    void testRegister_noPublishedResource_externalServicePolicy_hasNoResource() {
+        resourceRegistrationStrategy = externalServiceStrategy(List.of("https://redirect.uri"));
+
+        ClientRegistration result = runRegistration("client_secret_basic", null);
+
+        assertNull(result.getResource());
+    }
+
+    @Test
+    void testRegister_publishedResource_externalServicePolicy_usesMetadata() {
+        resourceRegistrationStrategy = externalServiceStrategy(List.of("https://redirect.uri"));
+
+        ClientRegistration result = runRegistration("client_secret_basic", "https://test.endpoint.com/mcp");
+
+        assertEquals("https://test.endpoint.com/mcp", result.getResource());
+    }
+
+    @Test
+    void testRegister_externalServicePolicy_unlistedRedirectUriRejectedBeforeAnyRequest() {
+        resourceRegistrationStrategy = externalServiceStrategy(List.of("https://chat/callback"));
+        ResourceAuthSettings settings = mock(ResourceAuthSettings.class);
+        when(settings.getRedirectUri()).thenReturn("https://attacker.example/cb");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> resourceRegistrationStrategy.register("testResource", "https://test.endpoint.com", settings));
+        verifyNoInteractions(protectedResourceMetadataService, authorizationServerMetadataService, resourceAuthorizationClient);
+    }
+
+    @Test
+    void testRegister_externalServicePolicy_noAllowedRedirectUriRejectedBeforeAnyRequest() {
+        resourceRegistrationStrategy = externalServiceStrategy(List.of());
+
+        assertThrows(IllegalArgumentException.class, () -> resourceRegistrationStrategy.register(
+                "testResource", "https://test.endpoint.com", mock(ResourceAuthSettings.class)));
+        verifyNoInteractions(protectedResourceMetadataService, authorizationServerMetadataService, resourceAuthorizationClient);
+    }
+
+    @Test
+    void testRegister_toolsetPolicy_blankRedirectUriNotRegistered() {
+        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(authorizationServerMetadataService,
+                resourceAuthorizationClient, protectedResourceMetadataService, List.of("https://chat/callback"), RegistrationPolicy.TOOLSET);
+
+        runRegistration("client_secret_basic", null, "");
+
+        ArgumentCaptor<ClientRegistrationRequest> request = ArgumentCaptor.forClass(ClientRegistrationRequest.class);
+        verify(resourceAuthorizationClient).executePost(anyString(), request.capture(), anyString(), eq(ClientRegistrationResponse.class));
+        assertEquals(List.of("https://chat/callback"), request.getValue().getRedirectUris());
+    }
+
+    private DynamicResourceRegistrationStrategy externalServiceStrategy(List<String> allowedRedirectUris) {
+        return new DynamicResourceRegistrationStrategy(authorizationServerMetadataService, resourceAuthorizationClient,
+                protectedResourceMetadataService, allowedRedirectUris, RegistrationPolicy.EXTERNAL_SERVICE);
+    }
+
     private ClientRegistration runRegistrationWithResponseMethod(String responseMethod) {
         return runRegistration(responseMethod, null);
     }
 
     private ClientRegistration runRegistration(String responseMethod, String publishedResource) {
+        return runRegistration(responseMethod, publishedResource, "https://redirect.uri");
+    }
+
+    private ClientRegistration runRegistration(String responseMethod, String publishedResource, String resourceRedirectUri) {
         String resourceId = "testResource";
         String resourceEndpoint = "https://test.endpoint.com";
-        String resourceRedirectUri = "https://redirect.uri";
 
         ResourceAuthSettings resourceAuthSettings = mock(ResourceAuthSettings.class);
         when(resourceAuthSettings.getRedirectUri()).thenReturn(resourceRedirectUri);
