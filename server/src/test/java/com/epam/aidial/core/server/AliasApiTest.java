@@ -93,21 +93,27 @@ class AliasApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void aliasWithoutUserRolesTakesTheTargetRoles() {
+    void aliasWithoutUserRolesIsOpenToAnyone() {
+        // gpt-4-internal is for power-user only; res-app is in the bucket of proxyKey1, which default-key cannot read
+        verify(send(HttpMethod.PUT, "/v1/applications/" + bucket + "/res-app", null,
+                "{\"endpoint\": \"http://localhost:4848/res-app/chat/completions\"}"), 200);
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
                     "Content-Type", "application/json");
 
-            assertEquals(403, chat("inherited-alias", "default-key").status());
-            Response allowed = chat("inherited-alias", "power-key");
+            Response allowed = chat("open-alias", "default-key");
             assertEquals(200, allowed.status(), allowed.body());
+            assertEquals(403, chat("gpt-4-internal", "default-key").status());
+            assertEquals(403, chat("open-resource-alias", "default-key").status());
         }
 
-        assertFalse(ids(send(HttpMethod.GET, "/openai/models", null, "", "api-key", "default-key")).contains("inherited-alias"));
-        assertTrue(ids(send(HttpMethod.GET, "/openai/models", null, "", "api-key", "power-key")).contains("inherited-alias"));
-        assertEquals(403, send(HttpMethod.GET, "/openai/models/inherited-alias", null, "", "api-key", "default-key").status());
+        assertTrue(ids(send(HttpMethod.GET, "/openai/models", null, "", "api-key", "default-key")).contains("open-alias"));
+        assertEquals(200, send(HttpMethod.GET, "/openai/models/open-alias", null, "", "api-key", "default-key").status());
         Response names = send(HttpMethod.GET, "/v1/deployment-names", null, null, "api-key", "default-key");
-        assertFalse(names.body().contains("\"inherited-alias\""), names.body());
+        assertTrue(names.body().contains("\"open-alias\""), names.body());
+        Response applications = send(HttpMethod.GET, "/openai/applications", null, "", "api-key", "default-key");
+        assertEquals(200, applications.status(), applications.body());
+        assertFalse(ids(applications).contains("open-resource-alias"), applications.body());
     }
 
     @Test

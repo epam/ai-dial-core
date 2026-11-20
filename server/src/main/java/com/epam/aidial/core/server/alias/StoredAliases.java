@@ -26,8 +26,8 @@ import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_
  * The body of an alias stored under {@code aliases/public/<name>} or {@code aliases/platform/<name>}:
  * {@code presentAs}, {@code target}, {@code userRoles}, {@code defaultHeaders} and the display fields, nothing else.
  * {@code userRoles} decides who may call it and {@code defaultHeaders} what its calls send, as for an alias of the
- * config file (no {@code userRoles} means the target's); pricing, features and interfaces come from the target, so it
- * has none of those.
+ * config file (without {@code userRoles}, as {@link AliasService} says); pricing, features and interfaces come from
+ * the target, so it has none of those.
  */
 @UtilityClass
 public class StoredAliases {

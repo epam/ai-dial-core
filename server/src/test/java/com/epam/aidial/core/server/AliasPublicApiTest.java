@@ -310,19 +310,22 @@ class AliasPublicApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void storedAliasWithoutUserRolesTakesTheTargetRoles() {
+    void storedAliasWithoutUserRolesIsOpenToAnyone() {
         assertEquals(200, putAlias("open-v1", "{\"target\":{\"path\":\"models/gpt-4-internal\"}}").status());
+        assertEquals(200, putAlias("closed-v1", "{\"userRoles\":[],\"target\":{\"path\":\"models/gpt-4-internal\"}}").status());
 
         try (TestWebServer server = new TestWebServer(4848)) {
             server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
                     "Content-Type", "application/json");
 
             // gpt-4-internal is for power-user only
-            assertEquals(403, chat("aliases/public/open-v1", "default-key").status());
-            assertEquals(200, chat("aliases/public/open-v1", "power-key").status());
+            assertEquals(200, chat("aliases/public/open-v1", "default-key").status());
+            assertEquals(403, chat("aliases/public/closed-v1", "default-key").status());
+            assertEquals(403, chat("aliases/public/closed-v1", "power-key").status());
         }
-        assertTrue(ids(models("power-key")).contains("aliases/public/open-v1"));
-        assertFalse(ids(models("default-key")).contains("aliases/public/open-v1"));
+        assertTrue(ids(models("default-key")).contains("aliases/public/open-v1"));
+        assertFalse(ids(models("default-key")).contains("aliases/public/closed-v1"));
+        assertFalse(ids(models("power-key")).contains("aliases/public/closed-v1"));
     }
 
     @Test
