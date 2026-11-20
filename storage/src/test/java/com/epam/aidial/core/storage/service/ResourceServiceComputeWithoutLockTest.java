@@ -39,6 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.verify;
@@ -211,6 +212,21 @@ class ResourceServiceComputeWithoutLockTest {
         assertFalse(service.markSynced(redisKey, uploadedEtag));
         assertEquals("false", new String(record(redisKey).get("synced"), StandardCharsets.UTF_8));
         assertEquals(-1, record(redisKey).remainTimeToLive());
+    }
+
+    @Test
+    void testRejectsRecordsOtherThanLimits() {
+        ResourceDescriptor file = new ResourceDescriptor(ResourceTypes.FILE, "a", List.of(), "bucket", "bucket/", false);
+        assertThrows(IllegalArgumentException.class, () -> service.computeResourceWithoutLock(file, ResourceServiceComputeWithoutLockTest::increment));
+    }
+
+    @Test
+    void testSyncDoesNotRecreate_WhenTheKeyWasDeletedDuringTheSync() {
+        String redisKey = RedisUtil.redisKey(limit("requests"), null);
+
+        // the sync uploaded a deleted record (no etag), and then the key was invalidated
+        assertFalse(service.markSynced(redisKey, new byte[0]));
+        assertFalse(record(redisKey).isExists());
     }
 
     @Test

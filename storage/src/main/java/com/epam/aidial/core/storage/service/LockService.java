@@ -122,8 +122,9 @@ public class LockService {
     /**
      * A lock on {@code key} within this pod: threads of this pod take turns, threads of other pods do not wait.
      * It does not exclude {@link #lock} on the same key, so it never queues behind a lock() that waits for Redis.
+     * Package-private: only {@link ResourceService#computeResourceWithoutLock} takes it, for records no lock() guards.
      */
-    public Lock lockLocally(String key) {
+    Lock lockLocally(String key) {
         String id = "local:" + key;
         LocalLock localLock = acquireLocalLock(id);
         long waitStart = System.nanoTime();

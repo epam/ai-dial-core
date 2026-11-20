@@ -163,8 +163,12 @@ public class ResourceService implements AutoCloseable {
             redis.call('pexpire', KEYS[1], ARGV[1])
             return 1
             """;
-    // ARGV[1]: the etag that was uploaded; ARGV[2]: the synced flag; ARGV[3]: expiration in milliseconds
+    // ARGV[1]: the etag that was uploaded; ARGV[2]: the synced flag; ARGV[3]: expiration in milliseconds.
+    // A key deleted during the sync stays deleted: a hash holding only the synced flag would break every read of it
     private static final String MARK_SYNCED_SCRIPT = """
+            if redis.call('exists', KEYS[1]) == 0 then
+              return 0
+            end
             if (redis.call('hget', KEYS[1], '%s') or '') ~= ARGV[1] then
               return 0
             end
@@ -980,13 +984,17 @@ public class ResourceService implements AutoCloseable {
     /**
      * Like {@link #computeResource}, without the resource lock: writers on this pod take turns, the value is read,
      * {@code fn} runs, and the result is written only if the record still has the etag it was read with. Otherwise
-     * {@code fn} runs again on the newer value. Only for records that no other method writes, such as rate-limit
-     * counters: a locked write does not check the etag and could overwrite a concurrent write made here.
+     * {@code fn} runs again on the newer value. Only for {@link ResourceTypes#LIMIT} records that no other method
+     * writes, such as rate-limit counters: a locked write does not check the etag and could overwrite a concurrent
+     * write made here.
      *
      * <p>{@code fn} may run several times, so it must not depend on running once, and it must not delete the
      * record. A value larger than {@code maxSizeToCache} is rejected, since it would go straight to blob storage.
      */
     public void computeResourceWithoutLock(ResourceDescriptor descriptor, Function<String, String> fn) {
+        if (descriptor.getType() != ResourceTypes.LIMIT) {
+            throw new IllegalArgumentException("Only limit records are computed without a lock: " + descriptor.getUrl());
+        }
         trace("resource.compute", descriptor, () -> computeResourceWithoutLockTraced(descriptor, fn));
     }
 
@@ -997,7 +1005,7 @@ public class ResourceService implements AutoCloseable {
         try (var ignore = lockService.lockLocally(redisKey)) {
             publish = computeResourceWithoutLockAttempts(descriptor, redisKey, fn);
         }
-        // after the turn, so the next writer of this pod does not wait for the event
+        // after the turn, so the next writer of this pod does not wait for the stub or the event
         publish.run();
         return null;
     }
@@ -1031,22 +1039,20 @@ public class ResourceService implements AutoCloseable {
             Result next = new Result(body, EtagBuilder.generateEtag(body), current.exists() ? current.createdAt : updatedAt,
                     updatedAt, "application/json", descriptor.getType().requireCompression(), (long) body.length,
                     descriptor.getType().name(), current.author, false);
-            if (!current.exists()) {
-                // before the write, so the stub cannot land on top of a sync of this write
-                try {
-                    blobPut(blobKey(descriptor), next.toStub()); // create an empty object for listing
-                } catch (Exception e) {
-                    // writers creating the record at once race for the stub; without it the record is listed after its first sync
-                    log.warn("Failed to create the listing stub: {}", redisKey, e);
-                }
-            }
             // before the write: a crash in between leaves a queue entry for a record already synced, which sync drops
             redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).add(time() + syncDelay, redisKey);
 
             byte[] expectedEtag = fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
             if (compareAndSet(redisKey, expectedEtag, next)) {
-                ResourceEvent.Action action = current.exists() ? ResourceEvent.Action.UPDATE : ResourceEvent.Action.CREATE;
-                return () -> publishEvent(descriptor, action, updatedAt, next.etag);
+                if (current.exists()) {
+                    return () -> publishEvent(descriptor, ResourceEvent.Action.UPDATE, updatedAt, next.etag);
+                }
+                // only the writer that created the record writes the stub, after its write as a locked write does;
+                // the sync of this write comes syncDelay later at the earliest, so the stub does not land on top of it
+                return () -> {
+                    blobPut(blobKey(descriptor), next.toStub()); // create an empty object for listing
+                    publishEvent(descriptor, ResourceEvent.Action.CREATE, updatedAt, next.etag);
+                };
             }
         }
         throw new IllegalStateException("Resource changed concurrently on every attempt: " + redisKey);
