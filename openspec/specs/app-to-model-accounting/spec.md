@@ -45,13 +45,18 @@ granted with the key, attachments auto-shared from an answer), a background Resp
 For a request authenticated by a project API key or a JWT, Core SHALL write into the key it mints: the client's
 project key as `originalKey` (none for a JWT), the JWT claims as `extractedClaims`, Core's trace id as `traceId`,
 the server span of this pass as `spanId`, the deployment (or route) name as `sourceDeployment`, `executionPath`
-`[<deployment>]`, and `httpHeaders` holding `X-CONVERSATION-ID` and `X-JOB-TITLE` when the client sent them.
+`[<deployment>]` (`[<router>, <deployment>]` after a router's decision) and `httpHeaders` holding
+`X-CONVERSATION-ID` and `X-JOB-TITLE` when the client sent them.
 
 #### Scenario: Root key record
 - **WHEN** a user with a JWT whose `sub` is `u1` sends `X-CONVERSATION-ID: c1` to
   `POST /openai/deployments/app/chat/completions`, Core's span is `s1` in trace `t1`
 - **THEN** the key record has `traceId: "t1"`, `spanId: "s1"`, `sourceDeployment: "app"`, `executionPath: ["app"]`,
   the `u1` claims and `httpHeaders: {"X-CONVERSATION-ID": "c1"}`
+
+#### Scenario: Root key record after a decision
+- **WHEN** a user calls router `r1` and its decision chooses `gpt-4`
+- **THEN** the key Core sends to `gpt-4` has `sourceDeployment: "gpt-4"` and `executionPath: ["r1", "gpt-4"]`
 
 ### Requirement: Key contents for a child request
 For a request authenticated by a per-request key, Core SHALL copy `originalKey`, `extractedClaims` and `traceId`
@@ -94,6 +99,16 @@ entries for the called deployment and for `initialDeployment`.
 #### Scenario: Resource shared to the next deployment
 - **WHEN** the incoming key's `perRequestReceivers` maps `gpt-4` to resource `r`, and the request calls `gpt-4`
 - **THEN** the key sent to `gpt-4` has `r` in `perRequestSharedResources`
+
+### Requirement: Dependency grants in the key
+For a called application that declares `resource_dependencies`, Core SHALL add to `perRequestSharedResources` each
+granted dependency with its declared rights (see resource-dependencies), adding them to an entry already there for the
+same target.
+
+#### Scenario: Granted dependency in the key
+- **WHEN** a user calls an approved application declaring `prompts/{current-user}/dep-smoke/` with `write`
+- **THEN** the key the application receives can write under `prompts/<user bucket>/dep-smoke/` and nowhere else in the
+  user's bucket
 
 ### Requirement: Authentication by a per-request key
 Core SHALL accept a per-request key in `API-KEY` alone or with any `Authorization` header, taking the identity from
@@ -154,12 +169,17 @@ token and cost usage.
 ### Requirement: Which requests are limit-checked
 On deployments-POST Core SHALL limit-check only a `Model`; `POST /openai/v1/chat/completions`,
 `/openai/v1/responses` and `/anthropic/v1/messages` SHALL check the limits of the deployment they call whatever its
-kind.
+kind, except a router, which is never checked or charged on any API (see router-deployment).
 
 #### Scenario: Application not checked on deployments-POST
 - **WHEN** user `u1`'s role declares `limits.app.requestHour: 1` and `u1` has already sent one request to `app` this hour, and `u1` sends
   `POST /openai/deployments/app/chat/completions`
 - **THEN** Core forwards the request to `app`
+
+#### Scenario: Router not checked on the Messages API
+- **WHEN** user `u1`'s role declares `limits.r1.requestHour: 1` and `u1` sends two `POST /anthropic/v1/messages`
+  requests with `{"model": "r1", ...}` within one hour
+- **THEN** Core forwards both to `r1`
 
 ### Requirement: Translated interface not limit-checked
 A request for an interface the deployment serves in `translator` mode SHALL be neither checked nor charged (bar a
@@ -172,16 +192,31 @@ alone still refuses it `429` when the initiator's day, week or month cost limit 
 - **THEN** Core forwards the request to the translator rather than answering `429`, and answers the translator's
   call back to `POST /openai/deployments/m/chat/completions` `429`
 
+#### Scenario: Translator plugin's call charged once
+- **WHEN** model `m` serves `anthropicMessages` in `translator` mode through a translator with `out:
+  openaiChatCompletions` and `baseUrl: dial-plugin://p1`, `p1` calls `POST /openai/deployments/m/chat/completions` through
+  its host, the origin of `m` answers `200` with `usage.total_tokens: 15`, and `p1` answers the client's request with
+  that usage
+- **THEN** the `m/tokens` limit record under `Users/u1/` grows by 15, not by 30
+
+#### Scenario: Translator plugin's call refused over the limit
+- **WHEN** user `u1` has used the `m` per-minute token limit of its role and sends `POST /anthropic/v1/messages` for
+  that model
+- **THEN** `p1` receives the request, and its call to `POST /openai/deployments/m/chat/completions` is answered `429`
+
 ### Requirement: Deployment closed to per-request keys
 Core SHALL answer `403` `Deployment <id> is not accessible by <sourceDeployment>` to a deployments-POST,
 `/openai/v1/chat/completions`, `/openai/v1/responses` or `/anthropic/v1/messages` request with a per-request key
 for a deployment whose features resolved for the interface have `accessibleByPerRequestKey: false`. The last
-interceptor's call to the initial deployment and a translator's call back carry such a key, so a deployment with
-interceptors, or a translated interface, is refused there.
+interceptor's call and a translator's call back carry such a key, so they are refused; an alias's target pass is not.
 
 #### Scenario: Application call refused
 - **WHEN** `gpt-4` declares `features.accessibleByPerRequestKey: false` and `app` calls it with its key
 - **THEN** Core answers `403` with body `Deployment gpt-4 is not accessible by app`
+
+#### Scenario: Alias call accepted
+- **WHEN** `gpt-4` declares `features.accessibleByPerRequestKey: false` and a caller calls an alias that targets it
+- **THEN** Core answers `200` with the model's answer
 
 ### Requirement: Consent along the call tree
 For a deployment whose resolved features have `consentRequired: true`, Core SHALL read the consent stored under the
@@ -241,15 +276,21 @@ is never deleted and expires with `deploymentStats.ttlMs`.
 
 ### Requirement: Usage roll-up to the ancestors
 When a pass reports usage, Core SHALL store it as that span's own `tokenUsage` (adding the report's `aggCost` to the
-span's accumulated `aggCost`),
-and for every ancestor span add the report's `aggCost` to the ancestor's `aggCost` and append
-`{model: <reporting deployment>, usage}` to its `usagePerModel`, without merging by name and without adding raw
-token counts to the ancestor.
+span's accumulated `aggCost`), and for every ancestor span add the report's `aggCost` to its `aggCost` and append
+`{model: <reporting deployment>, usage}` to its `usagePerModel`, without merging by name or adding raw token counts
+to the ancestor. A pass re-entered with a router's next candidate (router-deployment) keeps its roll-up; later
+reports credit the new candidate.
 
 #### Scenario: Two reports from the same model
 - **WHEN** `app` calls `gpt-4` twice and each answers `200` with `usage.total_tokens: 10` and cost `0.1`
 - **THEN** `app`'s span has `aggCost` `0.2`, zero own tokens, and two `usagePerModel` entries for `gpt-4` of 10
   tokens each
+
+#### Scenario: Fallback keeps the failed candidate's roll-up
+- **WHEN** router `r1` chooses `app-a` then `app-b`, `app-a` calls `gpt-4`, which reports cost `0.3`, and `app-a`
+  then answers `503`, so the pass is re-entered with `app-b`
+- **THEN** the pass's span still has `aggCost` `0.3` and a `usagePerModel` entry for `gpt-4`, and a model `app-b`
+  calls credits `app-b/aggregated-costs`, not `app-a`'s
 
 ### Requirement: Aggregated cost records
 For every ancestor span with a deployment name that receives a positive `aggCost` increment, Core SHALL add the
@@ -262,9 +303,9 @@ initiator's `costs` record or the ancestor's `<deployment>/costs` record.
 
 ### Requirement: One analytics row per Core pass
 Core SHALL write one analytics row per pass that relays an origin's answer, a `Model` pass whose client disconnected
-during the relay included, with `deployment`, `execution_path` from the key it minted, `parent_deployment` set to
-the nearest preceding `execution_path` entry that is not one of the deployment's interceptors (absent for a root),
-and `trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_id`.
+during the relay included, with `deployment`, `execution_path` from the key it minted, `parent_deployment` the
+nearest preceding `execution_path` entry that is not one of the deployment's interceptors (absent for a root), and
+`trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_id`; a decided request adds a router row.
 
 #### Scenario: Parent deployment of a model called by an app
 - **WHEN** root `app` calls `gpt-4`
@@ -274,6 +315,11 @@ and `trace.trace_id`, `trace.core_span_id` and, for a child, `core_parent_span_i
 #### Scenario: Conversation id carried to the child row
 - **WHEN** the client sent `X-CONVERSATION-ID: c1` to `app` and `app` calls `gpt-4` without that header
 - **THEN** the `gpt-4` row carries conversation id `c1`
+
+#### Scenario: One row for a decided request
+- **WHEN** a user calls router `r1` in decision mode and its decision chooses `gpt-4`, which answers
+- **THEN** one row is written for the pass, `gpt-4` with `execution_path: ["r1", "gpt-4"]` and
+  `parent_deployment: "r1"`, and the router row for `r1` is written beside it
 
 ### Requirement: Passes without an analytics row
 Core SHALL NOT write an analytics row for a pass that forwards to an interceptor, so usage an interceptor's body
@@ -362,3 +408,23 @@ aggregated cost records.
 - **WHEN** the client stops the root request and the model the interceptor called then answers `200` with usage
 - **THEN** the initiator's limits grow by the usage, the model's row is written with `usage_per_model` absent, and
   `deployment_cost_stats_tmp:<traceId>` does not exist
+
+### Requirement: In-process child pass
+Core SHALL check, charge and record a call from an origin plugin as a pass authenticated by the per-request key of
+the plugin's pass: the target's role, consent and per-request-key access checks; its limits against the initiator's
+bucket; a token-stats span under the plugin's span, rolled up as any child's; and a per-request key for the
+target's origin and an analytics row for the target, each kept and written as for any child pass.
+
+#### Scenario: Target limits charged
+- **WHEN** plugin `p1` serving application `app` calls model `m`, and `m` answers `200` with `usage.total_tokens: 15`
+- **THEN** the caller's token usage of `m` grows by `15`, as `GET /v1/deployments/m/limits` reports in
+  `minuteTokenStats.used`
+
+#### Scenario: Usage rolled up to the plugin's pass
+- **WHEN** the same call is not streamed and `p1` relays its answer as the answer of `app`
+- **THEN** the client's answer carries `statistics.usage_per_model` with one entry for `m`
+
+#### Scenario: Child row
+- **WHEN** the call completes
+- **THEN** two analytics rows are written: one for `app`, and one for `m` with `parent_deployment: app`,
+  `execution_path` `["app", "m"]` and the trace id of `app`'s row

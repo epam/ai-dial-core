@@ -59,7 +59,7 @@ class BudgetCounterStoreTest {
                 .setting("maxmemory-policy volatile-lfu")
                 .build();
         redisServer.start();
-        org.redisson.config.Config redisClientConfig = new ConfigSupport().fromJSON("""
+        org.redisson.config.Config redisClientConfig = new ConfigSupport().fromYAML("""
                 {
                   "singleServerConfig": {
                      "address": "redis://localhost:16371"

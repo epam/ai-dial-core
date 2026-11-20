@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.orgunit.OrgUnitList;
 import com.epam.aidial.core.server.data.orgunit.OrgUnitRoleData;
 import com.epam.aidial.core.server.data.orgunit.RoleAssignment;
 import com.epam.aidial.core.server.data.orgunit.Subject;
+import com.epam.aidial.core.server.data.orgunit.UserOrgUnits;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -188,9 +189,9 @@ public class OrgUnitService {
 
     /**
      * Reads the shared space or a unit with the units directly below it, or every unit below when {@code recursive}.
-     * An admin sees every unit; anyone else sees a unit where they hold a role, and the units directly below one where
-     * they hold {@code read} on {@code org-units}, as long as they see every unit above it too. A unit they can't see
-     * answers as one that doesn't exist.
+     * An admin sees every unit; anyone else sees a unit where they hold a role, every unit above one, and the units
+     * directly below one where they hold {@code read} on {@code org-units}, as long as they see every unit above it too.
+     * A unit they can't see answers as one that doesn't exist.
      *
      * @param path {@code public}, then each unit's name
      */
@@ -202,6 +203,31 @@ public class OrgUnitService {
             throw new ResourceNotFoundException("No org unit: " + String.join("/", path));
         }
         return toData(key, list, recursive, visible);
+    }
+
+    /**
+     * The units the tree shows the caller, parents before children; a unit shown only on the way to one below has no
+     * roles. A DIAL admin gets every unit, with every permission; an application gets none.
+     */
+    public List<UserOrgUnits.Unit> unitsOf(ProxyContext context, boolean admin) {
+        if (!admin && !OrgUnitSubjects.isRoleHolder(context)) {
+            return List.of();
+        }
+        OrgUnitList list = getUnitList();
+        CallerUnitRoles caller = loadAllHeldRoles(context, list);
+        OrgUnitRoles roleDefinitions = caller.roleDefinitions();
+        List<UserOrgUnits.Unit> units = new ArrayList<>();
+        for (Map.Entry<String, OrgUnit> entry : list.units().entrySet()) {
+            String key = entry.getKey();
+            if (key.equals(SHARED_SPACE_KEY) || !admin && !caller.sees(key)) {
+                continue;
+            }
+            List<String> knownRoles = caller.rolesAt(key).stream().filter(roleDefinitions::exists).sorted().toList();
+            OrgUnitData.Summary unit = summary(key, entry.getValue());
+            units.add(new UserOrgUnits.Unit(unit.id(), unit.name(), unit.displayName(), unit.path(), unit.folder(), knownRoles,
+                    admin ? OrgUnitRoles.ALL_PERMISSIONS : roleDefinitions.resolvePermissions(knownRoles)));
+        }
+        return units;
     }
 
     /**
@@ -960,11 +986,51 @@ public class OrgUnitService {
      * The units the caller sees through their roles, evaluated once over the list the request reads.
      */
     private Predicate<String> visibleTo(ProxyContext context, OrgUnitList list) {
-        OrgUnitRoles roles = OrgUnitRoles.of(context.getConfig());
-        Map<String, Set<String>> held = new HashMap<>();
-        roleAssignmentsOfAll(list.units()).forEach((key, assignments) -> held.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
-        return key -> list.units().containsKey(key) && OrgUnitGrants.showsUnit(roles,
-                held.getOrDefault(key, Set.of()), held.getOrDefault(parentKey(key), Set.of()));
+        CallerUnitRoles caller = loadAllHeldRoles(context, list);
+        return key -> list.units().containsKey(key) && caller.sees(key);
+    }
+
+    /**
+     * The caller's roles in every unit, read in one batch, as the unit list decides on all units at once; an application
+     * holds none.
+     */
+    private CallerUnitRoles loadAllHeldRoles(ProxyContext context, OrgUnitList list) {
+        OrgUnitRoles roleDefinitions = OrgUnitRoles.of(context.getConfig());
+        Map<String, Set<String>> heldRolesByUnit = loadHeldRolesByUnit(context, list.units());
+        return new CallerUnitRoles(roleDefinitions, key -> heldRolesByUnit.getOrDefault(key, Set.of()),
+                () -> CallerUnitRoles.unitsAboveHeldRoles(roleDefinitions, heldRolesByUnit));
+    }
+
+    /**
+     * The roles the caller reads shared-space content with, each unit's assignments read when a decision first needs
+     * them. Only held roles show units above, so an application's decisions never read every unit's assignments.
+     */
+    CallerUnitRoles callerRoles(ProxyContext context, Map<String, OrgUnit> units) {
+        OrgUnitRoles roleDefinitions = OrgUnitRoles.of(context.getConfig());
+        return new CallerUnitRoles(roleDefinitions,
+                key -> OrgUnitSubjects.rolesToReadWith(context, roleAssignmentsOf(key, units.get(key))),
+                () -> unitsAboveHeldRoles(context, roleDefinitions, units));
+    }
+
+    /**
+     * Read once per request, as each access decision and listing filter builds its own {@link CallerUnitRoles}.
+     */
+    private Set<String> unitsAboveHeldRoles(ProxyContext context, OrgUnitRoles roleDefinitions, Map<String, OrgUnit> units) {
+        if (!OrgUnitSubjects.isRoleHolder(context)) {
+            return Set.of();
+        }
+        Set<String> unitsAbove = context.getUnitsAboveHeldRoles();
+        if (unitsAbove == null) {
+            unitsAbove = CallerUnitRoles.unitsAboveHeldRoles(roleDefinitions, loadHeldRolesByUnit(context, units));
+            context.setUnitsAboveHeldRoles(unitsAbove);
+        }
+        return unitsAbove;
+    }
+
+    private Map<String, Set<String>> loadHeldRolesByUnit(ProxyContext context, Map<String, OrgUnit> units) {
+        Map<String, Set<String>> byUnit = new HashMap<>();
+        roleAssignmentsOfAll(units).forEach((key, assignments) -> byUnit.put(key, OrgUnitSubjects.heldRoles(context, assignments)));
+        return byUnit;
     }
 
     private static OrgUnitData toData(String key, OrgUnitList list, boolean recursive, Predicate<String> visible) {

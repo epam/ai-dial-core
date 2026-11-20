@@ -11,6 +11,10 @@ import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.List;
+
 import static com.epam.aidial.core.server.util.ResourceDescriptorFactory.fromDecoded;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -24,6 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * per-entity skipped regardless of {@code onInvalidEntity} mode (design 02 §4.1).
  */
 public class InvalidEntityApiTest extends ResourceBaseTest {
+
+    // Long enough to pass the envelope length check, but no key decrypts it.
+    private static final String UNDECRYPTABLE_SECRET = Base64.getEncoder()
+            .encodeToString("bad-secret-ciphertext-that-no-key-decrypts-0123456789".getBytes(StandardCharsets.UTF_8));
 
     @Test
     void testValidBlobModelHasValidStatus() {
@@ -158,6 +166,70 @@ public class InvalidEntityApiTest extends ResourceBaseTest {
         assertTrue(store.getInvalidEntities().isEmpty(),
                 () -> "Slash-keyed names must not surface in invalidEntities: "
                         + store.getInvalidEntities());
+    }
+
+    @Test
+    @SneakyThrows
+    void testInvalidToolSetOmitsAuthSettingsSecrets() {
+        putBlob(ResourceTypes.TOOL_SET, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                "bad-secret-toolset", """
+                        {
+                          "endpoint": "http://localhost:9876/mcp",
+                          "transport": "HTTP",
+                          "display_name": "Bad Secret Toolset",
+                          "auth_settings": {
+                            "authentication_type": "OAUTH",
+                            "client_id": "cid",
+                            "client_secret": "%s",
+                            "code_verifier": "%s"
+                          }
+                        }
+                        """.formatted(UNDECRYPTABLE_SECRET, UNDECRYPTABLE_SECRET));
+        reload();
+
+        Response resp = adminGet("/v1/toolsets/platform/bad-secret-toolset");
+        verify(resp, 200);
+        assertEquals("cid", ProxyUtil.MAPPER.readTree(resp.body()).at("/auth_settings/client_id").asText());
+        assertEquals("invalid", ProxyUtil.MAPPER.readTree(resp.body()).get("status").asText());
+        assertSecretsOmitted(resp.body());
+    }
+
+    @Test
+    @SneakyThrows
+    void testInvalidApplicationOmitsExternalServiceSecrets() {
+        putBlob(ResourceTypes.APPLICATION, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
+                "bad-secret-app", """
+                        {
+                          "endpoint": "http://application1/v1/completions",
+                          "display_name": "Bad Secret App",
+                          "external_services": {
+                            "github": {
+                              "display_name": "GitHub",
+                              "auth_settings": {
+                                "authentication_type": "OAUTH",
+                                "client_id": "cid",
+                                "client_secret": "%s",
+                                "code_verifier": "%s"
+                              }
+                            }
+                          }
+                        }
+                        """.formatted(UNDECRYPTABLE_SECRET, UNDECRYPTABLE_SECRET));
+        reload();
+
+        Response resp = adminGet("/v1/applications/platform/bad-secret-app");
+        verify(resp, 200);
+        assertEquals("GitHub", ProxyUtil.MAPPER.readTree(resp.body()).at("/external_services/github/display_name").asText());
+        assertEquals("invalid", ProxyUtil.MAPPER.readTree(resp.body()).get("status").asText());
+        assertSecretsOmitted(resp.body());
+    }
+
+    @SneakyThrows
+    private static void assertSecretsOmitted(String body) {
+        assertFalse(body.contains(UNDECRYPTABLE_SECRET), () -> "stored ciphertext returned: " + body);
+        for (String key : List.of("client_secret", "code_verifier", "client_secret_hint")) {
+            assertFalse(body.contains("\"" + key + "\""), () -> key + " returned: " + body);
+        }
     }
 
     private void reload() {

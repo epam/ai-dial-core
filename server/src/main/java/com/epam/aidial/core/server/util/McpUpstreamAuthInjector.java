@@ -49,7 +49,7 @@ public class McpUpstreamAuthInjector {
             headers.accept(authHeader.getHeaderName(), authHeader.getHeaderValue());
         }
         if (toolSet.isForwardPerRequestKey()) {
-            headers.accept(Proxy.HEADER_API_KEY, assignPerRequestKey(context));
+            headers.accept(Proxy.HEADER_API_KEY, assignPerRequestKeyIfAbsent(context));
         }
     }
 
@@ -61,7 +61,7 @@ public class McpUpstreamAuthInjector {
         headers.accept(HEADER_APPLICATION_ID, app.getName());
         Application.Mcp mcp = app.getMcp();
         if (mcp.isForwardPerRequestKey()) {
-            headers.accept(Proxy.HEADER_API_KEY, assignPerRequestKey(context));
+            headers.accept(Proxy.HEADER_API_KEY, assignPerRequestKeyIfAbsent(context));
         }
         if (mcp.getConfigDelivery() == Application.McpConfigDelivery.HEADER) {
             applicationSchemaService.consumeMetadataProperties(app, (properties, appendHeader) -> {
@@ -73,10 +73,15 @@ public class McpUpstreamAuthInjector {
         }
     }
 
-    private String assignPerRequestKey(ProxyContext context) {
-        ApiKeyData keyData = new ApiKeyData();
-        context.setProxyApiKeyData(keyData);
-        ApiKeyData.initFromContext(keyData, context);
+    /**
+     * Reuses the request's already assigned per-request key (a redirect re-enters here), minting one otherwise.
+     */
+    private String assignPerRequestKeyIfAbsent(ProxyContext context) {
+        ApiKeyData assigned = context.getProxyApiKeyData();
+        if (assigned != null && assigned.getPerRequestKey() != null) {
+            return assigned.getPerRequestKey();
+        }
+        ApiKeyData keyData = ApiKeyData.createProxyApiKeyData(context);
         apiKeyStore.assignPerRequestApiKey(keyData);
         return keyData.getPerRequestKey();
     }

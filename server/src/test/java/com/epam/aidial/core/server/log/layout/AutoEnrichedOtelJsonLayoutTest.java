@@ -26,7 +26,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.KeyValuePair;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -352,6 +354,43 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals("01", jsonNode.get("TraceFlags").asText());
     }
 
+    // alias-in-process-hop design D6: the target pass of an alias call enriches the current span, the alias pass's;
+    // the pass of an origin plugin's call leaves its plugin's span alone
+
+    @Test
+    void aliasTargetPassEnrichesTheCurrentSpan() throws Exception {
+        // built before the stubbing: Mockito refuses a mock stubbed inside another stubbing
+        ProxyContext proxyContext = childPassContext(true);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(currentSpan.isRecording()).thenReturn(true);
+
+        layout.doLayout(createEvent("In the target pass"));
+
+        verify(currentSpan).setAttribute("loggerName", "test.logger");
+    }
+
+    @Test
+    void pluginCallPassLeavesTheCurrentSpanAlone() throws Exception {
+        // built before the stubbing: Mockito refuses a mock stubbed inside another stubbing
+        ProxyContext proxyContext = childPassContext(false);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(currentSpan.isRecording()).thenReturn(true);
+
+        layout.doLayout(createEvent("In the plugin's call"));
+
+        verify(currentSpan, never()).setAttribute("loggerName", "test.logger");
+    }
+
+    private static ProxyContext childPassContext(boolean aliasTarget) {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getResponse()).thenReturn(response);
+        when(proxyContext.isChildPass()).thenReturn(true);
+        when(proxyContext.isAliasTargetPass()).thenReturn(aliasTarget);
+        return proxyContext;
+    }
+
     private static LoggingEvent createEvent(String message) {
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         LoggingEvent event = new LoggingEvent();
@@ -465,6 +504,99 @@ class AutoEnrichedOtelJsonLayoutTest {
             when(proxyContext.getRouteType()).thenReturn(routeType);
         }
         return proxyContext;
+    }
+
+    @Test
+    void shouldWriteKeyValuePairsAsAttributes() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        LoggingEvent event = infoEvent("routed");
+        event.addKeyValuePair(new KeyValuePair("model", "gpt-a"));
+        event.addKeyValuePair(new KeyValuePair("attempt", 2));
+        event.addKeyValuePair(new KeyValuePair("stream", false));
+        event.addKeyValuePair(new KeyValuePair("candidates", List.of("a", "b")));
+        event.addKeyValuePair(new KeyValuePair("tags", null));
+
+        JsonNode line = objectMapper.readTree(layout.doLayout(event));
+        JsonNode attributes = line.get("Attributes");
+
+        assertEquals("routed", line.get("Body").asText());
+        assertEquals("gpt-a", attributes.get("model").textValue());
+        assertEquals(2, attributes.get("attempt").intValue());
+        assertFalse(attributes.get("stream").booleanValue());
+        assertEquals("[\"a\",\"b\"]", attributes.get("candidates").toString());
+        assertTrue(attributes.has("tags") && attributes.get("tags").isNull());
+        List<String> names = new ArrayList<>();
+        attributes.fieldNames().forEachRemaining(names::add);
+        assertEquals(List.of("instant", "loggerName", "threadName", "model", "attempt", "stream", "candidates", "tags"), names,
+                "after Core's own attributes, in the record's order");
+    }
+
+    @Test
+    void shouldKeepCoreNullAttributeOverKeyValuePair() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute(null, null);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        LoggingEvent event = infoEvent("forged");
+        event.addKeyValuePair(new KeyValuePair("user.id", "x"));
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event)).get("Attributes");
+
+        assertTrue(attributes.get("user.id").isNull(), attributes.toString());
+    }
+
+    @Test
+    void shouldKeepCoreAttributeOverKeyValuePair() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        LoggingEvent event = infoEvent("forged");
+        event.addKeyValuePair(new KeyValuePair("loggerName", "x"));
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event)).get("Attributes");
+
+        assertEquals("test.logger", attributes.get("loggerName").asText());
+    }
+
+    @Test
+    void shouldNotCopyKeyValuePairsToSpan() {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        when(currentSpan.isRecording()).thenReturn(true);
+        LoggingEvent event = infoEvent("routed");
+        event.addKeyValuePair(new KeyValuePair("model", "gpt-a"));
+
+        layout.doLayout(event);
+
+        verify(currentSpan).setAttribute("loggerName", "test.logger");
+        verify(currentSpan, never()).setAttribute("model", "gpt-a");
+    }
+
+    @Test
+    void shouldWriteUnknownValueAsText() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        LoggingEvent event = infoEvent("odd value");
+        event.addKeyValuePair(new KeyValuePair("value", new Object() {
+            @Override
+            public String toString() {
+                return "as text";
+            }
+        }));
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event)).get("Attributes");
+
+        assertEquals("as text", attributes.get("value").asText());
+    }
+
+    @Test
+    void shouldWriteListOfUnknownValuesAsTextAndDropPairWithoutKey() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        LoggingEvent event = infoEvent("odd list");
+        // an empty bean, which Jackson cannot write
+        event.addKeyValuePair(new KeyValuePair("items", List.of(new Object())));
+        event.addKeyValuePair(new KeyValuePair(null, "no key"));
+        event.addKeyValuePair(new KeyValuePair("model", "gpt-a"));
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event)).get("Attributes");
+
+        assertNotNull(attributes, "not the fallback line");
+        assertTrue(attributes.get("items").isTextual(), attributes.toString());
+        assertEquals("gpt-a", attributes.get("model").asText());
     }
 
     private static LoggingEvent infoEvent(String message) {

@@ -1,14 +1,17 @@
 package com.epam.aidial.core.server.config;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.config.ToolSet;
@@ -20,8 +23,10 @@ import com.epam.aidial.core.config.policy.PolicyKind;
 import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
+import com.epam.aidial.core.server.alias.StoredAliases;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.budget.EffectiveBudgets;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
@@ -91,6 +96,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     private static final long REBUILD_DEBOUNCE_MS = 500;
     private static final long NO_PENDING_TIMER = -1L;
+    static final String REBUILD_EVENT_URL = "config/rebuild";
     private static final String REASON_PARSE = "parse_error";
     private static final String REASON_VALIDATION = "validation_error";
     public static final String REASON_DECRYPTION = "decryption_error";
@@ -103,14 +109,17 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.APP_TYPE_SCHEMA,
             ResourceTypes.CATALOG_SCHEMA,
             ResourceTypes.INTERCEPTOR,
+            ResourceTypes.ROUTER,
             ResourceTypes.TRANSLATOR,
+            ResourceTypes.PLUGIN,
             ResourceTypes.ROLE,
             ResourceTypes.PROJECT_KEY,
             ResourceTypes.ROUTE,
             ResourceTypes.APPLICATION,
             ResourceTypes.TOOL_SET,
             ResourceTypes.POLICY,
-            ResourceTypes.POLICY_ASSIGNMENT);
+            ResourceTypes.POLICY_ASSIGNMENT,
+            ResourceTypes.ALIAS);
 
     private static final Set<String> MANAGED_URL_SEGMENTS = managedUrlSegments();
 
@@ -156,6 +165,7 @@ public final class MergedConfigStore implements ConfigStore {
     private final String onInvalidEntity;
     private final boolean softValidation;
     private final String thisPodId;
+    private final PluginRegistry pluginRegistry;
 
     private FileConfigStore fileConfigStore;
     private volatile Config config;
@@ -184,7 +194,7 @@ public final class MergedConfigStore implements ConfigStore {
                              ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
                              BackgroundOperationTracer backgroundTracer) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                lockService, onInvalidEntity, false, "", externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
+                lockService, onInvalidEntity, false, "", PluginRegistry.EMPTY, externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
@@ -197,7 +207,7 @@ public final class MergedConfigStore implements ConfigStore {
                              ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
                              BackgroundOperationTracer backgroundTracer) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                lockService, onInvalidEntity, softValidation, "", externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
+                lockService, onInvalidEntity, softValidation, "", PluginRegistry.EMPTY, externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
@@ -207,6 +217,7 @@ public final class MergedConfigStore implements ConfigStore {
                              String onInvalidEntity,
                              boolean softValidation,
                              String thisPodId,
+                             PluginRegistry pluginRegistry,
                              ExternalServiceService externalServiceService,
                              ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
                              BackgroundOperationTracer backgroundTracer) {
@@ -226,6 +237,7 @@ public final class MergedConfigStore implements ConfigStore {
         this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
         this.softValidation = softValidation;
         this.thisPodId = thisPodId == null ? "" : thisPodId;
+        this.pluginRegistry = Objects.requireNonNull(pluginRegistry, "pluginRegistry must not be null");
 
         Gauge.builder("dial_config_skipped_entities", this, MergedConfigStore::countInvalidEntities)
                 .description("Number of entities skipped from in-memory Config (design 02 §4.1)")
@@ -298,6 +310,10 @@ public final class MergedConfigStore implements ConfigStore {
     private void onResourceEvent(ResourceEvent event) {
         String senderPodId = event.getSenderPodId();
         if (senderPodId != null && senderPodId.equals(thisPodId)) {
+            return;
+        }
+        if (REBUILD_EVENT_URL.equals(event.getUrl())) {
+            requestRebuild();
             return;
         }
         if (!isManagedEventUrl(event.getUrl())) {
@@ -494,7 +510,9 @@ public final class MergedConfigStore implements ConfigStore {
         return switch (type) {
             case MODEL -> BLOB_MAPPER.treeToValue(node, Model.class);
             case INTERCEPTOR -> BLOB_MAPPER.treeToValue(node, Interceptor.class);
+            case ROUTER -> BLOB_MAPPER.treeToValue(node, Router.class);
             case TRANSLATOR -> BLOB_MAPPER.treeToValue(node, Translator.class);
+            case PLUGIN -> BLOB_MAPPER.treeToValue(node, Plugin.class);
             case ROLE -> BLOB_MAPPER.treeToValue(node, Role.class);
             case PROJECT_KEY -> BLOB_MAPPER.treeToValue(node, Key.class);
             case ROUTE -> BLOB_MAPPER.treeToValue(node, Route.class);
@@ -527,7 +545,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> resourceAuthSettingsEncryptionService.decrypt(descriptor.getUrl(),
                     new BucketInfo(descriptor.getBucketName(), descriptor.getBucketLocation()),
                     ((ToolSet) entity).getAuthSettings());
-            case POLICY, POLICY_ASSIGNMENT -> { /* carry no secrets */ }
+            case POLICY, POLICY_ASSIGNMENT, PLUGIN -> { /* carry no secrets */ }
             default -> secretFieldProcessor.decryptFields(entity, descriptor);
         }
     }
@@ -602,6 +620,14 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
+     * The plugin providers loaded at start: write controllers check a {@code plugins} entry against them, as the
+     * rebuild does.
+     */
+    public PluginRegistry getPluginRegistry() {
+        return pluginRegistry;
+    }
+
+    /**
      * Non-blocking, 500 ms trailing-edge debounced rebuild trigger. No-op until
      * {@link #init} has completed — pre-init triggers are subsumed by the
      * explicit initial rebuild that {@code init} performs.
@@ -620,6 +646,14 @@ public final class MergedConfigStore implements ConfigStore {
         if (previous != NO_PENDING_TIMER) {
             vertx.cancelTimer(previous);
         }
+    }
+
+    /**
+     * Tells every other pod to rebuild its merged config, for a change that writes many blobs without a per-entity event.
+     * Each pod rebuilds through {@link #requestRebuild()}, so it waits for the bucket locks the caller may still hold.
+     */
+    public void requestRebuildOnAllPods() {
+        resourceService.publishUpdate(REBUILD_EVENT_URL);
     }
 
     private void onRebuildTimerFire(long firingId) {
@@ -658,15 +692,23 @@ public final class MergedConfigStore implements ConfigStore {
     public Config rebuildNow() {
         // Distributed bucket lock: same partial-state hazard as reload/timer — a full blob scan on
         // this pod must not interleave with a peer pod's in-flight multi-blob apply (design 02 §4.4).
-        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, () -> {
-            rebuildLock.lock();
-            try {
-                cancelPendingRebuild();
-                return rebuild();
-            } finally {
-                rebuildLock.unlock();
-            }
-        });
+        return lockService.underBucketLocks(ADMIN_BUCKET_LOCATIONS, this::rebuildNowUnderBucketLocks);
+    }
+
+    /**
+     * The body of {@link #rebuildNow()}, for a caller that already holds {@link #ADMIN_BUCKET_LOCATIONS} (a
+     * system import's replace phase). Calling this without holding them lets the blob scan interleave with a
+     * peer pod's in-flight multi-blob apply (design 02 §4.4); every other caller must go through
+     * {@link #rebuildNow()} instead.
+     */
+    public Config rebuildNowUnderBucketLocks() {
+        rebuildLock.lock();
+        try {
+            cancelPendingRebuild();
+            return rebuild();
+        } finally {
+            rebuildLock.unlock();
+        }
     }
 
     private void cancelPendingRebuild() {
@@ -795,7 +837,9 @@ public final class MergedConfigStore implements ConfigStore {
                     ConfigPostProcessor.validateSingleInterceptor(next, mapKey, onSkip);
                     resurrectInvalidModels(next, nextInvalid);
                 }
+                case ROUTER -> ConfigPostProcessor.validateSingleRouter(next, mapKey, onSkip);
                 case TRANSLATOR -> ConfigPostProcessor.validateSingleTranslator(next, mapKey, onSkip);
+                case PLUGIN -> ConfigPostProcessor.validateSinglePlugin(next, pluginRegistry, mapKey, onSkip);
                 case ROLE -> ConfigPostProcessor.setRoleNameAsMapKey(next.getRoles(), mapKey);
                 case APPLICATION -> ConfigPostProcessor.validateSingleApplication(next, mapKey, onSkip);
                 case TOOL_SET -> ConfigPostProcessor.setNameAsMapKey(next.getToolsets(), mapKey);
@@ -809,6 +853,7 @@ public final class MergedConfigStore implements ConfigStore {
                 // Passing no onSkip makes it throw whatever the mode, so that the caller falls back to a full
                 // rebuild, which sees both records and applies onInvalidEntity.
                 case POLICY_ASSIGNMENT -> ConfigPostProcessor.validateSingleAssignment(next, mapKey, null);
+                case ALIAS -> ConfigPostProcessor.validateSingleAlias(next, mapKey, onSkip);
                 default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
             }
         } catch (RuntimeException error) {
@@ -1024,11 +1069,14 @@ public final class MergedConfigStore implements ConfigStore {
         next.setCatalogSchemas(base.getCatalogSchemas());
         next.setApplications(base.getApplications());
         next.setToolsets(base.getToolsets());
+        next.setRouters(base.getRouters());
+        next.setAliases(base.getAliases());
         next.setRetriableErrorCodes(base.getRetriableErrorCodes());
         next.setGlobalInterceptors(base.getGlobalInterceptors());
         next.setRateLimitSchedule(base.getRateLimitSchedule());
         next.setSpendingLimits(base.getSpendingLimits());
         next.setTranslators(base.getTranslators());
+        next.setPlugins(base.getPlugins());
         next.setPolicies(base.getPolicies());
         next.setPolicyAssignments(base.getPolicyAssignments());
         next.setCostObjectIndex(base.getCostObjectIndex());
@@ -1068,7 +1116,9 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.setModels(new LinkedHashMap<>(config.getModels()));
             case INTERCEPTOR -> config.setInterceptors(new LinkedHashMap<>(config.getInterceptors()));
+            case ROUTER -> config.setRouters(new LinkedHashMap<>(config.getRouters()));
             case TRANSLATOR -> config.setTranslators(new LinkedHashMap<>(config.getTranslators()));
+            case PLUGIN -> config.setPlugins(new LinkedHashMap<>(config.getPlugins()));
             case ROLE -> config.setRoles(new HashMap<>(config.getRoles()));
             case PROJECT_KEY -> config.setKeys(new HashMap<>(config.getKeys()));
             case ROUTE -> config.setRoutes(new LinkedHashMap<>(config.getRoutes()));
@@ -1078,6 +1128,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.setToolsets(new LinkedHashMap<>(config.getToolsets()));
             case POLICY -> config.setPolicies(new HashMap<>(config.getPolicies()));
             case POLICY_ASSIGNMENT -> config.setPolicyAssignments(new HashMap<>(config.getPolicyAssignments()));
+            case ALIAS -> config.setAliases(new LinkedHashMap<>(config.getAliases()));
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -1086,7 +1137,9 @@ public final class MergedConfigStore implements ConfigStore {
         return switch (type) {
             case MODEL -> config.getModels().get(mapKey);
             case INTERCEPTOR -> config.getInterceptors().get(mapKey);
+            case ROUTER -> config.getRouters().get(mapKey);
             case TRANSLATOR -> config.getTranslators().get(mapKey);
+            case PLUGIN -> config.getPlugins().get(mapKey);
             case ROLE -> config.getRoles().get(mapKey);
             case PROJECT_KEY -> config.getKeys().get(mapKey);
             case ROUTE -> config.getRoutes().get(mapKey);
@@ -1096,6 +1149,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().get(mapKey);
             case POLICY -> config.getPolicies().get(mapKey);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().get(mapKey);
+            case ALIAS -> config.getAliases().get(mapKey);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         };
     }
@@ -1104,7 +1158,9 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.getModels().put(mapKey, (Model) entity);
             case INTERCEPTOR -> config.getInterceptors().put(mapKey, (Interceptor) entity);
+            case ROUTER -> config.getRouters().put(mapKey, (Router) entity);
             case TRANSLATOR -> config.getTranslators().put(mapKey, (Translator) entity);
+            case PLUGIN -> config.getPlugins().put(mapKey, (Plugin) entity);
             case ROLE -> config.getRoles().put(mapKey, (Role) entity);
             case PROJECT_KEY -> config.getKeys().put(mapKey, (Key) entity);
             case ROUTE -> config.getRoutes().put(mapKey, (Route) entity);
@@ -1114,6 +1170,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().put(mapKey, (ToolSet) entity);
             case POLICY -> config.getPolicies().put(mapKey, (Policy) entity);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().put(mapKey, (PolicyAssignment) entity);
+            case ALIAS -> config.getAliases().put(mapKey, (Alias) entity);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -1122,7 +1179,9 @@ public final class MergedConfigStore implements ConfigStore {
         switch (type) {
             case MODEL -> config.getModels().remove(mapKey);
             case INTERCEPTOR -> config.getInterceptors().remove(mapKey);
+            case ROUTER -> config.getRouters().remove(mapKey);
             case TRANSLATOR -> config.getTranslators().remove(mapKey);
+            case PLUGIN -> config.getPlugins().remove(mapKey);
             case ROLE -> config.getRoles().remove(mapKey);
             case PROJECT_KEY -> config.getKeys().remove(mapKey);
             case ROUTE -> config.getRoutes().remove(mapKey);
@@ -1132,6 +1191,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().remove(mapKey);
             case POLICY -> config.getPolicies().remove(mapKey);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().remove(mapKey);
+            case ALIAS -> config.getAliases().remove(mapKey);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
     }
@@ -1223,7 +1283,10 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, String> catalogSchemas = new LinkedHashMap<>(base.getCatalogSchemas());
         Map<String, Application> applications = new LinkedHashMap<>(base.getApplications());
         Map<String, ToolSet> toolsets = new LinkedHashMap<>(base.getToolsets());
+        Map<String, Router> routers = new LinkedHashMap<>(base.getRouters());
+        Map<String, Alias> aliases = new LinkedHashMap<>(base.getAliases());
         Map<String, Translator> translators = new LinkedHashMap<>(base.getTranslators());
+        Map<String, Plugin> plugins = new LinkedHashMap<>(base.getPlugins());
         Map<String, Policy> policies = new HashMap<>();
         Map<String, PolicyAssignment> policyAssignments = new HashMap<>();
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
@@ -1238,6 +1301,7 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setModels(models);
         merged.setInterceptors(interceptors);
         merged.setTranslators(translators);
+        merged.setPlugins(plugins);
         merged.setRoles(roles);
         merged.setKeys(keys);
         merged.setRoutes(routes);
@@ -1245,6 +1309,8 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setCatalogSchemas(catalogSchemas);
         merged.setApplications(applications);
         merged.setToolsets(toolsets);
+        merged.setRouters(routers);
+        merged.setAliases(aliases);
         merged.setPolicies(policies);
         merged.setPolicyAssignments(policyAssignments);
 
@@ -1366,6 +1432,7 @@ public final class MergedConfigStore implements ConfigStore {
         // File partition = base file keys (keyed by secret); API partition = PROJECT_KEY blob entries
         // collected above (keyed by canonical id). The merged Config.getKeys() folds both for config
         // consumers, but the ApiKeyStore feed stays explicitly source-classified (FINDING #7).
+        ConfigPostProcessor.processPlugins(merged, pluginRegistry, onSkip);
         ConfigPostProcessor.processSemantic(merged, apiKeyStore, base.getKeys(), apiKeysByCanonicalId, onSkip);
         ConfigPostProcessor.processPolicies(merged, onSkip);
         merged.setCostObjectIndex(CostObjectIndex.build(policies, policyAssignments));
@@ -1580,7 +1647,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     public static boolean isShortNameKeyed(ResourceTypes type) {
         return switch (type) {
-            case MODEL, INTERCEPTOR, TRANSLATOR, ROLE, APPLICATION, TOOL_SET -> true;
+            case MODEL, INTERCEPTOR, ROUTER, TRANSLATOR, PLUGIN, ROLE, APPLICATION, TOOL_SET, ALIAS -> true;
             default -> false;
         };
     }
@@ -1605,9 +1672,21 @@ public final class MergedConfigStore implements ConfigStore {
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
+            case ROUTER -> {
+                Router entity = BLOB_MAPPER.treeToValue(node, Router.class);
+                Object previous = config.getRouters().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
             case TRANSLATOR -> {
                 Translator entity = BLOB_MAPPER.treeToValue(node, Translator.class);
                 Object previous = config.getTranslators().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
+            case PLUGIN -> {
+                Plugin entity = BLOB_MAPPER.treeToValue(node, Plugin.class);
+                Object previous = config.getPlugins().put(mapKey, entity);
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
@@ -1663,6 +1742,19 @@ public final class MergedConfigStore implements ConfigStore {
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
+            case ALIAS -> {
+                Alias dirty = BLOB_MAPPER.treeToValue(node, Alias.class);
+                List<ValidationWarning> warnings = StoredAliases.validateFields(dirty);
+                if (!warnings.isEmpty()) {
+                    throw new InvalidEntityException(ResourceTypes.ALIAS, mapKey, warnings);
+                }
+                // Round-trip through toJson to strip fields the management API would reject (pricing, features, etc.)
+                // so the config alias carries only the fields a stored alias keeps, matching what GET returns.
+                Alias entity = BLOB_MAPPER.treeToValue(StoredAliases.toJson(dirty), Alias.class);
+                Object previous = config.getAliases().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
             default -> {
                 /* GLOBAL_SETTINGS is a singleton — design 02 §4 leaves union-by-key out of scope. */
                 return new BlobPutResult(null, null);
@@ -1686,6 +1778,7 @@ public final class MergedConfigStore implements ConfigStore {
             case MODEL -> restore(config.getModels(), mapKey, (Model) previous);
             case INTERCEPTOR -> restore(config.getInterceptors(), mapKey, (Interceptor) previous);
             case TRANSLATOR -> restore(config.getTranslators(), mapKey, (Translator) previous);
+            case PLUGIN -> restore(config.getPlugins(), mapKey, (Plugin) previous);
             case ROLE -> restore(config.getRoles(), mapKey, (Role) previous);
             case PROJECT_KEY -> restore(config.getKeys(), mapKey, (Key) previous);
             case ROUTE -> restore(config.getRoutes(), mapKey, (Route) previous);
@@ -1693,8 +1786,10 @@ public final class MergedConfigStore implements ConfigStore {
             case CATALOG_SCHEMA -> restore(config.getCatalogSchemas(), mapKey, (String) previous);
             case APPLICATION -> restore(config.getApplications(), mapKey, (Application) previous);
             case TOOL_SET -> restore(config.getToolsets(), mapKey, (ToolSet) previous);
+            case ROUTER -> restore(config.getRouters(), mapKey, (Router) previous);
             case POLICY -> restore(config.getPolicies(), mapKey, (Policy) previous);
             case POLICY_ASSIGNMENT -> restore(config.getPolicyAssignments(), mapKey, (PolicyAssignment) previous);
+            case ALIAS -> restore(config.getAliases(), mapKey, (Alias) previous);
             default -> { /* no-op */ }
         }
     }

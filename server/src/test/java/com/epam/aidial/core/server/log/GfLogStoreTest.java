@@ -4,10 +4,20 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Router;
+import com.epam.aidial.core.config.SpendingLimitMode;
+import com.epam.aidial.core.config.policy.BudgetInstance;
+import com.epam.aidial.core.config.policy.Policy;
+import com.epam.aidial.core.config.policy.PolicyAssignment;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
+import com.epam.aidial.core.server.data.RouterDecision;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
+import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
@@ -893,6 +903,66 @@ public class GfLogStoreTest {
     }
 
     @Test
+    public void testRowOfDecidedRequest() {
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1", "m2"), 12);
+        decision.skip(502, "upstream");
+        AnalyticsLogContext context = row("m2", "{}")
+                .executionPath(List.of("r1", "m2"))
+                .parentDeployment("r1")
+                .decision(decision.toAnalyticsDecision())
+                .build();
+
+        JsonNode log = logOf(context);
+
+        assertEquals("m2", log.get("deployment").asText());
+        assertEquals("r1", log.get("parent_deployment").asText());
+        assertEquals("[\"r1\",\"m2\"]", log.get("execution_path").toString());
+        assertEquals("{\"router\":\"r1\",\"api\":\"openaiChatCompletions\",\"candidates\":[\"m1\",\"m2\"],\"deployment\":\"m2\","
+                + "\"decide_ms\":12,\"attempts\":[{\"deployment\":\"m1\",\"status\":502,\"reason\":\"upstream\"}]}", log.get("decision").toString());
+    }
+
+    @Test
+    public void testBackgroundJobRouterRowCarriesTheDecision() {
+        RouterDecision decision = new RouterDecision(router("r3"), InterfaceType.OPENAI_RESPONSES, List.of("gpt-4"), 7);
+        RouterDecision.Hop hop = new RouterDecision.Hop("routerspan", null, null, List.of("r3"));
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .deploymentName("gpt-4")
+                .parentDeployment("r3")
+                .executionPath(List.of("r3", "gpt-4"))
+                .decision(decision.toAnalyticsDecision())
+                .routerHop(hop)
+                .requestMethod("POST")
+                .requestBody("{}")
+                .build();
+
+        AnalyticsLogContext serving = AnalyticsLogContext.from(record, null, null);
+        JsonNode servingLog = logOf(serving);
+        assertNull(servingLog.get("decision"));
+        assertEquals("routerspan", servingLog.get("trace").get("core_parent_span_id").asText());
+
+        JsonNode log = logOf(AnalyticsLogContext.routerRow(serving, record.decision(), hop, TokenStatsTracker.UsageStats.EMPTY));
+        assertEquals("r3", log.get("deployment").asText());
+        assertNull(log.get("parent_deployment"));
+        assertEquals("[\"r3\"]", log.get("execution_path").toString());
+        assertEquals("routerspan", log.get("trace").get("core_span_id").asText());
+        assertNull(log.get("request").get("body"));
+        assertNull(log.get("token_usage"));
+        assertEquals("{\"router\":\"r3\",\"api\":\"openaiResponses\",\"candidates\":[\"gpt-4\"],\"deployment\":\"gpt-4\","
+                + "\"decide_ms\":7,\"attempts\":[]}", log.get("decision").toString());
+    }
+
+    @Test
+    public void testBackgroundJobRowWithoutDecision() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .deploymentName("m2")
+                .requestMethod("POST")
+                .requestBody("{}")
+                .build();
+
+        assertFalse(logOf(AnalyticsLogContext.from(record, null, null)).has("decision"));
+    }
+
+    @Test
     public void testSessionFromBackgroundJobRecord() {
         BackgroundJobRecord record = BackgroundJobRecord.builder()
                 .sessionId("session-1")
@@ -907,6 +977,101 @@ public class GfLogStoreTest {
         BackgroundJobRecord record = ProxyUtil.convertToObject("{\"requestBody\":\"{}\"}", BackgroundJobRecord.class);
 
         assertNull(record.sessionId());
+    }
+
+    @Test
+    public void testSpendingLimitsAreWrittenRightAfterProject() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getProject()).thenReturn("projA");
+        when(context.getBudgetCheck()).thenReturn(paid("pro\"j\\A\n", "pol\"icy", "pro\"j\\A\n/a1", new PolicyAssignment()));
+
+        JsonNode log = logOf(context);
+
+        JsonNode limits = log.get("spending_limits");
+        assertEquals("shadow", limits.get("mode").asText());
+        assertEquals("pro\"j\\A\n", limits.get("cost_object").asText());
+        assertEquals("paid", limits.get("outcome").asText());
+        assertEquals("pol\"icy", limits.get("policy").asText());
+        assertEquals("pro\"j\\A\n/a1", limits.get("assignment").asText());
+        assertEquals(5, limits.size());
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(fields.indexOf("project") + 1, fields.indexOf("spending_limits"));
+    }
+
+    @Test
+    public void testSpendingLimitsOfSelfApplyingPolicyHaveNoAssignment() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(paid("ORG", "ORG/personal", "ORG/personal", null));
+
+        JsonNode limits = logOf(context).get("spending_limits");
+
+        assertEquals("ORG/personal", limits.get("policy").asText());
+        assertFalse(limits.has("assignment"));
+    }
+
+    @Test
+    public void testSpendingLimitsWithoutPayer() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(new BudgetCheck(SpendingLimitMode.ENFORCE, "ORG", BudgetCheck.Outcome.NO_BUDGET, null));
+
+        JsonNode limits = logOf(context).get("spending_limits");
+
+        assertEquals("{\"mode\":\"enforce\",\"cost_object\":\"ORG\",\"outcome\":\"no_budget\"}", limits.toString());
+    }
+
+    @Test
+    public void testSpendingLimitsOffHaveTheModeOnly() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(BudgetCheck.OFF);
+
+        assertEquals("{\"mode\":\"off\"}", logOf(context).get("spending_limits").toString());
+    }
+
+    @Test
+    public void testSpendingLimitsWithoutOutcomeWhenTheCounterWasNotRead() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(new BudgetCheck(SpendingLimitMode.SHADOW, "projA", null, null));
+
+        assertEquals("{\"mode\":\"shadow\",\"cost_object\":\"projA\"}", logOf(context).get("spending_limits").toString());
+    }
+
+    @Test
+    public void testSpendingLimitsAreOmittedWithoutCheck() {
+        assertFalse(logOf(mock(AnalyticsLogContext.class)).has("spending_limits"));
+    }
+
+    @Test
+    public void testRouterRowHasNoSpendingLimits() {
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 3);
+        RouterDecision.Hop hop = new RouterDecision.Hop("routerspan", null, null, List.of("r1"));
+        AnalyticsLogContext serving = row("m1", "{}")
+                .budgetCheck(paid("projA", "projA-a1", "projA/a1", new PolicyAssignment()))
+                .build();
+        assertTrue(logOf(serving).has("spending_limits"));
+
+        AnalyticsLogContext router = AnalyticsLogContext.routerRow(serving, decision.toAnalyticsDecision(), hop, TokenStatsTracker.UsageStats.EMPTY);
+
+        assertNull(router.getBudgetCheck());
+        assertFalse(logOf(router).has("spending_limits"));
+    }
+
+    @Test
+    public void testBackgroundJobRowHasNoSpendingLimits() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .deploymentName("gpt-4")
+                .requestBody("{}")
+                .build();
+
+        AnalyticsLogContext context = AnalyticsLogContext.from(record, null, null);
+
+        assertNull(context.getBudgetCheck());
+        assertFalse(logOf(context).has("spending_limits"));
+    }
+
+    private static BudgetCheck paid(String costObject, String policyPath, String id, PolicyAssignment assignment) {
+        BudgetPayer payer = new BudgetPayer(costObject, new BudgetInstance(id, policyPath, new Policy(), assignment, List.of()), "user");
+        return new BudgetCheck(SpendingLimitMode.SHADOW, costObject, BudgetCheck.Outcome.PAID, payer);
     }
 
     @SneakyThrows
@@ -1053,5 +1218,11 @@ public class GfLogStoreTest {
         String json = "{" + member.substring(1) + "}";
         JsonNode root = ProxyUtil.MAPPER.readTree(json);
         return root.elements().next();
+    }
+
+    private static Router router(String name) {
+        Router router = new Router();
+        router.setName(name);
+        return router;
     }
 }

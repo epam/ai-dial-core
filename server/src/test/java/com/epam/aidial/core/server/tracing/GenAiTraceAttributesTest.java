@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -13,7 +14,6 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.api.trace.Span;
 import io.vertx.core.MultiMap;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -35,6 +35,7 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class GenAiTraceAttributesTest {
@@ -386,7 +387,7 @@ class GenAiTraceAttributesTest {
     @Test
     void setResponseAttributesReportsTheClientStatusNotTheUpstreamOne() {
         ProxyContext context = context(proxy(enabledSettings()));
-        HttpClientResponse proxyResponse = mock(HttpClientResponse.class);
+        ProxyResponse proxyResponse = mock(ProxyResponse.class);
         when(proxyResponse.statusCode()).thenReturn(200);
         context.setProxyResponse(proxyResponse);
         // DIAL rewrote the status after a 200 upstream
@@ -504,6 +505,53 @@ class GenAiTraceAttributesTest {
             verify(span).setAttribute(longKey("gen_ai.usage.reasoning.output_tokens"), 4L);
             verify(span).setAttribute(longKey("dial.usage.total_tokens"), 30L);
         }
+    }
+
+    // alias-in-process-hop design D6: the target pass of an alias call writes on the current span, the alias pass's,
+    // and the pass of an origin plugin's call does not write on its plugin's span
+
+    @Test
+    void aliasTargetPassWritesOnTheCurrentSpan() {
+        ProxyContext context = childContext(true);
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            GenAiTraceAttributes.setUsageAttributes(context, usage());
+
+            verify(span).setAttribute(longKey("gen_ai.usage.input_tokens"), 1L);
+        }
+    }
+
+    @Test
+    void pluginCallPassWritesNoSpanAttribute() {
+        ProxyContext context = childContext(false);
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            GenAiTraceAttributes.setUsageAttributes(context, usage());
+
+            verifyNoInteractions(span);
+            assertEquals(1L, context.getTracingAttributes().get("gen_ai.usage.input_tokens"));
+        }
+    }
+
+    private static ProxyContext childContext(boolean aliasTarget) {
+        ProxyContext context = context(proxy(enabledSettings()));
+        context.setCallTree(ProxyUtil.MAPPER.createObjectNode());
+        context.setAliasTargetPass(aliasTarget);
+        return context;
+    }
+
+    private static TokenUsage usage() {
+        TokenUsage usage = new TokenUsage();
+        usage.setPromptTokens(1);
+        usage.setCompletionTokens(2);
+        usage.setTotalTokens(3);
+        return usage;
     }
 
     @Test

@@ -32,8 +32,8 @@ from the classpath.
 ### Requirement: Canonical-shaped file keys rejected
 Core SHALL fail the file load when a key under `models`, `interceptors`, `roles`, `keys` or `routes` has the shape
 `<that type>/<bucket>/<name>`, with a message naming the key and "canonical-ID shape". Any other file key containing
-`/` under `models`, `applications`, `interceptors`, `translators`, `roles`, `routes` or `toolsets` SHALL be dropped
-with a warning and not recorded as an invalid entity.
+`/` under `models`, `applications`, `interceptors`, `translators`, `plugins`, `roles`, `routes` or `toolsets` SHALL
+be dropped with a warning and not recorded as an invalid entity.
 
 #### Scenario: Canonical-shaped model key
 - **WHEN** a config file declares `models: {"models/platform/gpt": {...}}`
@@ -43,6 +43,11 @@ with a warning and not recorded as an invalid entity.
 - **WHEN** a config file declares models `bad/model` and `valid-model`
 - **THEN** the merged config contains `valid-model`, not `bad/model`, and `GET /v1/admin/health/config` lists no
   skipped entity for it
+
+#### Scenario: Slash-keyed plugin dropped
+- **WHEN** a config file declares plugins `bad/plugin` and `valid-plugin`, both of a loaded type
+- **THEN** `GET /v1/admin/config/file/plugins` lists `valid-plugin` and not `bad/plugin`, and
+  `GET /v1/admin/health/config` lists no skipped entity for it
 
 ### Requirement: Periodic reload keeps the last good config
 Core SHALL re-read the config files every `config.reload` ms (default `60000`) and then rebuild the merged config
@@ -79,19 +84,28 @@ SHALL answer `500` and keep the previous config.
 
 ### Requirement: Merged sources
 Core SHALL serve the union of the file config and the blobs of the `platform` bucket for `models`, `interceptors`,
-`translators`, `roles`, `keys`, `routes`, `schemas`, `catalog_schemas`, `applications`, `toolsets`, `policies`
-and `policy_assignments`, plus the `settings/platform/global` overlay. `public`-bucket applications and toolsets
-SHALL NOT enter the merged config.
+`translators`, `routers`, `plugins`, `roles`, `keys`, `routes`, `schemas`, `catalog_schemas`, `applications`,
+`toolsets`, `policies` and `policy_assignments`, plus the `settings/platform/global` overlay. `public`-bucket
+applications and toolsets SHALL NOT enter the merged config.
 
 #### Scenario: Blob model is a deployment
 - **WHEN** an admin sends `PUT /v1/models/platform/m1` with `{"type":"chat","endpoint":"http://host/chat"}`
 - **THEN** `m1` resolves as a deployment for the next request, next to the file-defined models
 
+#### Scenario: Blob plugin next to the file plugins
+- **WHEN** the file declares plugin `file-plugin` and an admin sends `PUT /v1/plugins/platform/p1` with a valid
+  declaration, then `POST /v1/ops/config/reload`
+- **THEN** the reload answers `200` with a `plugins` object holding both `file-plugin` and `p1`
+
+#### Scenario: Blob router survives a reload
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-blob` with a valid router and then `POST /v1/ops/config/reload`
+- **THEN** `r-blob` still resolves as a deployment, and `GET /v1/routers/platform/r-blob` answers `200`
+
 ### Requirement: Blob wins on a name clash
 A blob entity SHALL replace, as a whole, the file entity of the same type with the same short name (models,
-interceptors, translators, roles, applications, toolsets) or, for schemas, the same `$id`; no field of the file entity
-SHALL survive. Requests and references resolve those types by that name, so the rebuild puts the blob entity at the
-file entity's map key and replaces it there.
+interceptors, translators, routers, plugins, roles, applications, toolsets) or, for schemas, the same `$id`; no field
+of the file entity SHALL survive. Requests and references resolve those types by that name, so the rebuild puts the
+blob entity at the file entity's map key and replaces it there.
 
 #### Scenario: Blob model shadows the file model
 - **WHEN** the file defines model `test-model-v1` and a blob `models/platform/test-model-v1` declares
@@ -102,6 +116,18 @@ file entity's map key and replaces it there.
 #### Scenario: Blob schema shadows the file schema by $id
 - **WHEN** a blob `schemas/platform/blob-schema-1` declares the `$id` of a file-defined application type schema
 - **THEN** the merged schema for that `$id` is the blob's, and no key `schemas/platform/blob-schema-1` exists
+
+#### Scenario: Blob plugin shadows the file plugin
+- **WHEN** the file declares plugin `file-plugin` with `settings.greeting: "hi"` and a blob
+  `plugins/platform/file-plugin` declares `settings.greeting: "hello"`, and the config reloads
+- **THEN** `POST /v1/ops/config/reload` answers a `plugins.file-plugin` whose `settings.greeting` is `hello`, once
+
+#### Scenario: Blob router shadows the file router
+- **WHEN** the file defines router `r1` with `userRoles: ["analysts"]` and an admin writes
+  `routers/platform/r1` with `userRoles: ["default"]`, `baseUrl` and `interfaces.openaiChatCompletions: {}` only,
+  and the config reloads
+- **THEN** `GET /v1/routers` lists `r1` once for a caller with role `default` and not for one with role `analysts`
+  only
 
 ### Requirement: Keys and routes never shadowed
 Keys and routes are not resolved by name (a key by its secret `key` value, a route by its `paths`), so a file entry of
@@ -162,6 +188,13 @@ the previous config; under `skip` it SHALL drop that entity alone and record it.
 - **WHEN** the blob `models/platform/broken-blob-model` holds `{ this is not json ` and the config reloads with
   `config.onInvalidEntity` unset
 - **THEN** the reload answers `200`, the other entities load, and the broken model is recorded as invalid
+
+#### Scenario: Invalid router recorded under skip
+- **WHEN** the blob `routers/platform/r-bad` declares `interceptors: ["i1"]` (written to storage directly, not
+  through the Configuration API) and the config reloads with `config.onInvalidEntity: skip`
+- **THEN** the other entities load, `r-bad` is not a deployment, `GET /v1/admin/health/config` lists
+  `routers/platform/r-bad` among the skipped entities, and `GET /v1/routers/platform/r-bad` answers `200` with
+  `status: "invalid"`
 
 ### Requirement: Dangling interceptor reference
 A model interceptor that does not resolve (a dangling reference) SHALL be checked on every write, and on a rebuild
@@ -307,12 +340,29 @@ entity type, and a `PUT` or `DELETE` SHALL answer `400` when `name` is empty, en
 
 ### Requirement: Omitted secret preserved
 On a `PUT` that replaces an existing model, key or route, a secret field that is absent or `null` in the body SHALL
-keep the stored value; any string SHALL be taken as the new secret.
+keep the stored value; any string SHALL be taken as the new secret. When a secret that would be kept cannot be
+decrypted, Core SHALL answer `400` naming the field and the upstream, and write nothing.
 
 #### Scenario: Key update without the secret
 - **WHEN** key `test-key-preserve` holds secret `secret-preserve` and an admin sends `PUT` with
   `{"project": "projB", "roles": ["admin"]}`
 - **THEN** Core answers `200` and `Api-key: secret-preserve` still authenticates
+
+#### Scenario: Model update that would keep an unreadable key
+- **WHEN** a model with two upstreams is stored and the `key` of `upstreams[0]` cannot be decrypted, and an admin sends
+  `PUT` with a changed `display_name` and no `key` on either upstream
+- **THEN** Core answers `400` with a message naming `upstreams[0].key`, the model's ETag is unchanged, and `GET` on the
+  model still returns the old `display_name`
+
+#### Scenario: New key replaces an unreadable one
+- **WHEN** the same model is sent with a `key` on `upstreams[0]` and none on `upstreams[1]`, whose stored key can be
+  decrypted
+- **THEN** Core answers `200`, and both upstreams authenticate with their keys: the new one and the stored one
+
+#### Scenario: Key update that would keep an unreadable secret
+- **WHEN** the secret of key `test-key-unreadable` cannot be decrypted and an admin sends `PUT` without `key`
+- **THEN** Core answers `400` naming `key`, and a `PUT` with a new `key` then answers `200` and `Api-key: <new>`
+  authenticates
 
 ### Requirement: Key secrets
 A key `PUT` SHALL answer `400` when the merged `key` is blank, `project` is blank or no `role`/`roles` is set, and
@@ -329,12 +379,20 @@ deleted secret before answering `204`.
 - **THEN** `Api-key: secret-rotate-old` gets `401` and `Api-key: secret-rotate-new` gets `200`
 
 ### Requirement: Deployment id uniqueness on write
-A `PUT` of a model, interceptor, application or toolset SHALL answer `409`
+A `PUT` of a model, interceptor, router, application or toolset SHALL answer `409`
 `Deployment ID '<name>' is already used by a different entity` when a deployment of another of those types already
 has that name in the merged config.
 
 #### Scenario: Model name taken by an application
 - **WHEN** the merged config has application `x` and an admin sends `PUT /v1/models/platform/x`
+- **THEN** Core answers `409` and writes nothing
+
+#### Scenario: Router name taken by a model
+- **WHEN** the merged config has model `gpt-4` and an admin sends `PUT /v1/routers/platform/gpt-4`
+- **THEN** Core answers `409` and writes nothing
+
+#### Scenario: Model name taken by a router
+- **WHEN** the merged config has router `r1` and an admin sends `PUT /v1/models/platform/r1`
 - **THEN** Core answers `409` and writes nothing
 
 ### Requirement: Schema id on write
@@ -349,8 +407,9 @@ changes the `$id` of an existing blob or uses a `$id` another schema of that typ
 ### Requirement: Write rejected with 422
 A config `PUT` SHALL answer `422` `{"validationWarnings": [{"field": ..., "message": ...}]}` and write nothing when a
 model breaks a rebuild invariant (pricing, interfaces, translator refs, catalog properties) or, unless soft mode is
-on, references an interceptor absent from the merged config; and when a translator or an `overridePaths` entry is
-invalid, whatever the mode.
+on, references an interceptor absent from the merged config; when a router breaks a write rule of router-deployment;
+when a translator or an `overridePaths` entry is invalid, whatever the mode; and when a plugin declaration fails as
+plugin-registry defines.
 
 #### Scenario: Unknown interceptor
 - **WHEN** an admin sends `PUT /v1/models/platform/cr-unknown` with `interceptors: ["unknown-interceptor"]` and no
@@ -362,6 +421,28 @@ invalid, whatever the mode.
 - **WHEN** the model references two missing interceptors
 - **THEN** the warnings are `interceptors[0]` and `interceptors[1]`
 
+#### Scenario: Plugin with rejected settings
+- **WHEN** an admin sends `PUT /v1/plugins/platform/p1` with settings its loaded provider rejects
+- **THEN** Core answers `422` with a warning whose `field` starts with `settings`, and `GET` on the plugin answers
+  `404`
+
+#### Scenario: Router with interceptors rejected on write
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-bad` with `{"baseUrl": "http://localhost:4848", "interfaces":
+  {"openaiChatCompletions": {}}, "interceptors": ["i1"]}`
+- **THEN** Core answers `422` with one warning on `interceptors` whose message contains `A router declares no
+  interceptors`, and `GET /v1/routers/platform/r-bad` answers `404`
+
+#### Scenario: Router with a translator mismatch rejected on write
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-bad` with `{"baseUrl": "http://localhost:4848", "interfaces":
+  {"openaiChatCompletions": {}, "anthropicMessages": {"translator": {"out": "openaiChatCompletions", "baseUrl":
+  "http://t"}}}}`
+- **THEN** Core answers `422` with a body containing `requires mode 'translator'`
+
+#### Scenario: Typed router properties rejected on write
+- **WHEN** an admin sends a typed router whose `applicationProperties` break its schema while
+  `config.write.softValidation` is `true`
+- **THEN** Core answers `422` and writes nothing
+
 ### Requirement: Soft validation
 With `config.write.softValidation: true` (default `false`), a model write whose only failure is a dangling reference
 SHALL be written and answer `200`; whether the model is then a deployment follows Dangling interceptor reference.
@@ -371,6 +452,41 @@ Rebuild invariants SHALL still answer `422`.
 - **WHEN** soft mode is on and a model declares `interfaces: {"openaiChatCompletions": {}}` with no `base_url`
 - **THEN** Core answers `422` with a body containing `interfaces.openaiChatCompletions` and `declares no base_url`,
   and nothing is written
+
+### Requirement: Route upstream key on write
+A route upstream whose `authType` is not `API_KEY` SHALL have a `key`. A route `PUT`, and a `Route` entry of
+`/v1/admin/validate` or `/v1/admin/apply`, that breaks this SHALL be refused and write nothing. A `PUT` that replaces a
+stored route and omits the key keeps the stored one (see Omitted secret preserved) and passes, unless the stored key
+cannot be decrypted, which answers `400`.
+
+#### Scenario: Bearer route without a key
+- **WHEN** an admin sends `PUT /v1/routes/platform/bearer-nokey` with `If-None-Match: *` and
+  `upstreams: [{"endpoint": "http://localhost:7001", "authType": "BEARER"}]`
+- **THEN** Core answers `422` with one warning, `field: "upstreams[0].authType"`, whose `message` contains
+  `requires a key`, and `GET` on the route answers `404`; the same `PUT` with a `key` added then answers `200`
+
+#### Scenario: Custom header route without a key
+- **WHEN** the upstream declares `authType: {"type": "CUSTOM_HEADER", "headerName": "X-Api-Token"}` and no `key`
+- **THEN** Core answers `422` with the same warning field
+
+#### Scenario: Update without the key
+- **WHEN** a route with a `BEARER` upstream and a `key` is stored and an admin sends a `PUT` for it that omits the `key`
+- **THEN** Core answers `200` and `GET` on the route answers `200`
+
+#### Scenario: Update without the key when the stored key is unreadable
+- **WHEN** the stored `key` of that route cannot be decrypted and an admin sends a `PUT` for it that omits the `key`
+- **THEN** Core answers `400` naming `upstreams[0].key` and the stored route is unchanged
+
+#### Scenario: Validate
+- **WHEN** an admin validates a `Route` with a `BEARER` upstream and no `key`, with `"precheck": false`
+- **THEN** Core answers `200` with `valid: 0`, `failed: 1`, that result `FAILED` with an `error` containing
+  `requires a key`, and the route is not written
+
+#### Scenario: Apply
+- **WHEN** an admin applies with `"precheck": false` a valid `Interceptor` and a `Route` with a `BEARER` upstream and
+  no `key`
+- **THEN** Core answers `200` with `applied: 1`, `failed: 1`, the route result `FAILED`, the interceptor answers `200`
+  on `GET` and the route answers `404`
 
 ### Requirement: POST and DELETE on entity URLs
 `POST` on a config entity URL SHALL, once the caller is authorized, answer `405` with body `Not implemented` and
@@ -459,11 +575,17 @@ stored values on update and drop them on create.
 ### Requirement: External services on write
 A Resource-API application `PUT` that omits `external_services` SHALL keep the stored services. When the body has the
 field, and on every config-API `PUT` and admin apply, the map SHALL be the desired state: services it drops SHALL be
-removed with their application-level credentials.
+removed with their application-level credentials. A service that omits `client_secret` while its stored secret cannot
+be decrypted SHALL be refused with `400` naming it.
 
 #### Scenario: Partial update keeps services
 - **WHEN** an application has `external_services.myapi` and its owner `PUT`s a body without `external_services`
 - **THEN** `myapi` is still present afterwards
+
+#### Scenario: Application write that would keep an unreadable service secret
+- **WHEN** the stored `client_secret` of `external_services.myapi` cannot be decrypted and its owner `PUT`s the
+  application with `myapi` and no `client_secret`
+- **THEN** Core answers `400` with a message naming `myapi`, and the stored application is unchanged
 
 ### Requirement: Manifest batch request
 `POST /v1/admin/validate` and `POST /v1/admin/apply` SHALL take `{"precheck": <bool, default true>, "manifests":
@@ -481,23 +603,44 @@ string`) or kind `Bundle` SHALL answer `400`; a non-admin `403`. An unknown kind
 
 ### Requirement: Manifest names
 A manifest `name` SHALL be `<segment>/<bucket>/<name>` with segment `settings`, `schemas`, `catalog_schemas`,
-`interceptors`, `translators`, `roles`, `keys`, `routes`, `models`, `toolsets`, `applications`, `policies` or
-`policy_assignments` matching `kind`; bucket `platform`, or `public` for `Application` and `ToolSet`; one segment
-matching the entity-name pattern (policies may add one folder). `Settings` SHALL be `settings/platform/global`.
+`plugins`, `interceptors`, `translators`, `routers`, `roles`, `keys`, `routes`, `models`, `toolsets`, `applications`,
+`policies` or `policy_assignments` matching `kind`; bucket `platform`, or `public` for `Application` and `ToolSet`;
+one segment matching the entity-name pattern (policies may add one folder). `Settings` SHALL be
+`settings/platform/global`.
 
 #### Scenario: Wrong bucket
 - **WHEN** a manifest has `kind: "Model"` and `name: "models/public/m"`
 - **THEN** that entry fails with `'name' bucket segment must be 'platform', got 'public'`
 
+#### Scenario: Plugin manifest
+- **WHEN** a manifest has `kind: "Plugin"` and `name: "plugins/platform/p1"` with a valid `spec`
+- **THEN** that entry is accepted
+
+#### Scenario: Router manifest in the public bucket
+- **WHEN** a manifest has `kind: "Router"` and `name: "routers/public/r"`
+- **THEN** that entry fails with `'name' bucket segment must be 'platform', got 'public'`
+
 ### Requirement: Batch dependency order
-Core SHALL process a batch in kind order `Settings`, `Schema`/`CatalogSchema`, `Translator`, `Interceptor`, `Role`,
-`Key`, `Route`, `Model`, `ToolSet`, `Application`, `Policy`, `PolicyAssignment` (input order within a kind), report
-results in that order, and resolve each entry's references against the merged config plus the batch's earlier
-accepted entries.
+Core SHALL process a batch in kind order `Settings`, `Schema`/`CatalogSchema`, `Plugin`, `Translator`,
+`Interceptor`, `Router`, `Role`, `Key`, `Route`, `Model`, `ToolSet`, `Application`, `Policy`, `PolicyAssignment`
+(input order within a kind), report results in that order, and resolve each entry's references against the merged
+config plus the batch's earlier accepted entries.
 
 #### Scenario: Model before its interceptor in the input
 - **WHEN** a batch lists a `Model` referencing interceptor `i1` before the `Interceptor` `interceptors/platform/i1`
 - **THEN** both entries are accepted
+
+#### Scenario: Plugin reported before the translator
+- **WHEN** a batch lists a `Translator` before a `Plugin`
+- **THEN** the results list the `Plugin` entry first
+
+#### Scenario: Router applied with its in-batch translator
+- **WHEN** an admin applies, in this input order, a `Model`, then a `Router` `routers/platform/r-batch` with
+  `{"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {"mode":
+  "translator", "translator": "t-batch"}}}`, then the `Translator` `translators/platform/t-batch` converting
+  `anthropicMessages` to `openaiChatCompletions`
+- **THEN** Core answers `200` with all `APPLIED`, results ordered translator, router, model, and
+  `GET /v1/routers/platform/r-batch` answers `200`
 
 ### Requirement: Validate endpoint
 `/v1/admin/validate` SHALL write nothing and answer `{"valid": <n>, "failed": <n>, "results": [{"entityId", "status",
@@ -512,6 +655,16 @@ accepted entries.
 #### Scenario: Dangling reference without precheck
 - **WHEN** the same body carries `"precheck": false`
 - **THEN** Core answers `200` with `valid: 0`, `failed: 1`, status `FAILED`, and the model is not written
+
+#### Scenario: Router manifest with a legacy endpoint fails
+- **WHEN** an admin validates one `Router` manifest `routers/platform/r-bad` whose spec has `endpoint:
+  http://router/chat` and `interfaces.openaiChatCompletions: {}`
+- **THEN** that result is `FAILED` with an error containing `A router declares interfaces, not endpoint`, and
+  `POST /v1/admin/apply` with the same body and `"precheck": false` answers the same result and writes nothing
+
+#### Scenario: Model manifest named after a file router fails
+- **WHEN** an admin validates one `Model` manifest `models/platform/r1` while the file defines router `r1`
+- **THEN** that result is `FAILED` with error `Deployment ID 'r1' is already used by a different entity`
 
 ### Requirement: Apply with precheck
 `/v1/admin/apply` with `precheck` true SHALL validate the whole batch first; on any failure it SHALL write nothing and
@@ -556,9 +709,9 @@ and `Allow: GET` before any authorization check; `HEAD` and `PATCH` fall through
 
 ### Requirement: File migration
 `POST /v1/admin/config/file/migrate` with `{"types": [...] | ["all"] (default all), "dryRun": <bool, default false>}`
-SHALL copy each file entity of those types missing from the `platform` bucket into a blob through the apply path,
-answering `200` `{"results": [{"kind", "resourceUrl", "key", "status", "reason"}]}`. An unsupported type SHALL answer
-`400`; a non-admin `403`. The file is not changed.
+SHALL copy each file entity of those types (`routers` included) missing from the `platform` bucket into a blob
+through the apply path, answering `200` `{"results": [{"kind", "resourceUrl", "key", "status", "reason"}]}`. An
+unsupported type SHALL answer `400`; a non-admin `403`. The file is not changed.
 
 #### Scenario: Models migrated, then skipped
 - **WHEN** an admin sends `{"types": ["models"]}` twice
@@ -568,6 +721,11 @@ answering `200` `{"results": [{"kind", "resourceUrl", "key", "status", "reason"}
 #### Scenario: Unsupported type
 - **WHEN** an admin sends `{"types": ["not-a-real-type"]}`
 - **THEN** Core answers `400`
+
+#### Scenario: File router migrated
+- **WHEN** the file defines router `r1` and an admin sends `{"types": ["routers"]}`
+- **THEN** the answer has `resourceUrl: "routers/platform/r1"`, `kind: "Router"`, `status: "migrated"`, and
+  `GET /v1/routers/platform/r1` answers `200`
 
 ### Requirement: Migration dry run
 With `dryRun: true` the migration SHALL write nothing and report `would_migrate`, `would_skip` or `would_fail`
@@ -604,3 +762,124 @@ or another blob's name. Core SHALL NOT rename a schema to avoid a collision.
 #### Scenario: Unusable schema name
 - **WHEN** the file schema's `$id` ends in `bad~schema~name`
 - **THEN** the result is `failed` with the `$id` as `key` and no `resourceUrl`
+
+### Requirement: Router managed in place
+A router written or deleted through the Configuration API SHALL be visible on return as a deployment: after a
+`PUT` the router answers requests and is listed by `GET /v1/routers` for a caller its `userRoles` allow; after a
+`DELETE` it answers `404` on both.
+
+#### Scenario: Blob router serves at once
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-blob` with `{"baseUrl": "http://localhost:4848",
+  "userRoles": ["analysts"], "interfaces": {"openaiChatCompletions": {}}}` and Core answers `200`
+- **THEN** `GET /v1/routers` by a caller with role `analysts` lists `r-blob`, and
+  `POST /openai/deployments/r-blob/chat/completions` by that caller is forwarded to the router
+
+#### Scenario: Deleted router gone at once
+- **WHEN** an admin sends `DELETE /v1/routers/platform/r-blob` and Core answers `204`
+- **THEN** `GET /v1/routers/r-blob` answers `404`
+
+#### Scenario: Rejected write leaves nothing behind
+- **WHEN** an admin's `PUT /v1/routers/platform/r-bad` is answered `422` and the admin retries a valid body with
+  `If-None-Match: *`
+- **THEN** Core answers `200`
+
+### Requirement: Invalid entity read omits auth-settings secrets
+A per-entity GET of a recorded invalid toolset or application SHALL NOT return `client_secret`, `code_verifier` or
+`client_secret_hint` from the toolset's `auth_settings` or from the `auth_settings` of each of the application's
+`external_services`, and SHALL NOT add a `client_secret_hint` of its own, because the stored value may not decrypt.
+This comes on top of the fields "Invalid entity on read" already omits.
+
+#### Scenario: Toolset secret that does not decrypt
+- **WHEN** the blob `toolsets/platform/bad-secret-toolset` holds `auth_settings` with `authentication_type: OAUTH`,
+  `client_id`, and a `client_secret` and `code_verifier` that the running key cannot decrypt, the config reloads, and
+  an admin sends `GET /v1/toolsets/platform/bad-secret-toolset`
+- **THEN** Core answers `200` with `status: "invalid"`, `auth_settings.client_id` still present, and no
+  `client_secret`, `code_verifier` or `client_secret_hint`; the body contains neither stored ciphertext
+
+#### Scenario: Application external service secret that does not decrypt
+- **WHEN** the blob `applications/platform/bad-secret-app` holds `external_services.github.auth_settings` with a
+  `client_secret` that the running key cannot decrypt, the config reloads, and an admin sends
+  `GET /v1/applications/platform/bad-secret-app`
+- **THEN** Core answers `200` with `status: "invalid"`, `external_services.github.display_name` still present, and no
+  `client_secret`, `code_verifier` or `client_secret_hint` under `external_services.github.auth_settings`; the body
+  does not contain the stored ciphertext
+
+### Requirement: Policy display name
+Core SHALL accept an optional string `displayName` on a policy in per-policy PUT and admin manifests. Policy reads SHALL retain a supplied string. Omission or null SHALL leave the policy unnamed;
+an empty or whitespace-only string SHALL remain valid. The name SHALL NOT change the policy path or its grants.
+
+#### Scenario: Policy name survives a write and reload
+- **WHEN** an admin PUTs a valid policy with `displayName: "Engineering Pro"` and reloads the configuration
+- **THEN** GET of the same policy returns that display name and the original policy id
+
+#### Scenario: Policy name applied in a manifest
+- **WHEN** an admin validates and applies a valid Policy manifest with `displayName: "Engineering Pro"`
+- **THEN** validation and apply succeed and GET of the policy returns that display name
+
+#### Scenario: Unnamed policies remain valid
+- **WHEN** an admin writes a valid policy with the name absent, null, empty or whitespace-only
+- **THEN** the write succeeds and the policy keeps the same id and grants
+
+### Requirement: External service write with an unreadable secret
+An external-service write SHALL succeed when the stored `client_secret` cannot be decrypted and the body supplies a new
+`client_secret`; a service also succeeds when it changes `authentication_type` or, in an application `PUT`, is
+dropped. An omitted `client_secret` SHALL answer `400` naming the service. A write to one service SHALL NOT
+read or change another service's stored secret.
+
+#### Scenario: New secret replaces an unreadable one
+- **WHEN** the stored `client_secret` of service `myapi` cannot be decrypted and its owner sends the service `PUT` with a
+  new `client_secret`
+- **THEN** Core answers `200` and a `GET` of the service now carries a `client_secret_hint`, which it did not before
+
+#### Scenario: Omitted secret
+- **WHEN** the same service is sent without `client_secret`
+- **THEN** Core answers `400` with a message naming `myapi` and the stored service is unchanged
+
+#### Scenario: Another service of the application is written
+- **WHEN** an application has services `bad`, whose secret cannot be decrypted, and `good`, and the owner sends the
+  service `PUT` for `good` with a new `client_secret`
+- **THEN** Core answers `200`, `good` carries a `client_secret_hint` of the new secret, and `bad` is stored as it was
+
+#### Scenario: Application write drops the unreadable service
+- **WHEN** the application `PUT` carries `external_services` without `bad`
+- **THEN** Core answers `200` and `bad` is gone
+
+#### Scenario: User-authored service
+- **WHEN** the stored secret of a user-authored service cannot be decrypted and its owner sends the `PUT` without
+  `client_secret`, and then with a new one
+- **THEN** Core answers `400`, and then `200`
+
+### Requirement: Toolset write with an unreadable secret
+A toolset `PUT` (Resource API, config API or admin apply) SHALL succeed when the stored `client_secret` cannot be
+decrypted and the body supplies `client_secret`, and SHALL then issue a new PKCE code challenge and verifier. A body
+without it, where the write would keep the stored one, SHALL answer `400` naming the toolset.
+
+#### Scenario: New secret replaces an unreadable one
+- **WHEN** the stored `client_secret` and `code_verifier` of an OAuth toolset cannot be decrypted and its owner sends
+  `PUT` with a new `client_secret`
+- **THEN** Core answers `200`, a `GET` carries a `client_secret_hint`, and a later sign-in completes its token
+  exchange with a `code_verifier` that matches the `code_challenge` of its authorization request
+
+#### Scenario: Omitted secret
+- **WHEN** the same toolset is sent without `client_secret`
+- **THEN** Core answers `400` with a message that names the toolset and asks for a new `client_secret`, and the
+  toolset's ETag is unchanged
+
+#### Scenario: Authentication type changes
+- **WHEN** the body changes `authentication_type` from `OAUTH` to `API_KEY` and supplies the API key
+- **THEN** Core answers `200`
+
+#### Scenario: Admin apply
+- **WHEN** `/v1/admin/apply` carries a toolset manifest without `client_secret` for a stored toolset whose secret
+  cannot be decrypted
+- **THEN** that entry is `FAILED` with the same message and the toolset is not written
+
+### Requirement: Toolset repair with an unreadable secret
+Toolset repair SHALL succeed for an eligible toolset, one that is OAuth and dynamically registered, whose stored
+`client_secret` or `code_verifier` cannot be decrypted. It SHALL replace both with the new registration's values.
+
+#### Scenario: Repair after the key is lost
+- **WHEN** the stored `client_secret` and `code_verifier` of a dynamically registered toolset cannot be decrypted and
+  its owner calls `/v1/ops/toolset/<bucket>/<path>/repair`
+- **THEN** Core answers `200`, the toolset carries the new `client_id`, a `GET` carries a `client_secret_hint`, and its
+  credentials are cleared as on any repair
