@@ -26,6 +26,10 @@ there. Any other value, the field on another authentication type, or the field o
 - **WHEN** an `API_KEY` external service, or a toolset, carries `discovery_url`
 - **THEN** Core answers `400`
 
+#### Scenario: Blank discovery URL on a toolset
+- **WHEN** a toolset write carries `discovery_url: ""`
+- **THEN** Core treats it as absent and stores no `discovery_url`
+
 ### Requirement: Dynamic client registration
 When a write creates an OAUTH external service, or changes one to OAUTH, with a `discovery_url` and neither `client_id`
 nor `client_secret`, Core SHALL register a client before storing it, on every external-service write path (the
@@ -173,10 +177,19 @@ change of `authentication_type` SHALL keep none of the stored OAuth fields.
 - **WHEN** an OAUTH service is updated to `API_KEY`
 - **THEN** no stored OAuth field is carried over
 
+### Requirement: Registered client keeps its discovery URL
+An update of a dynamically registered external service that sends a different non-blank `discovery_url` SHALL be
+rejected with `400` and nothing changed: the client belongs to the authorization server it was discovered from.
+
+#### Scenario: Discovery URL change on a registered client
+- **WHEN** the `PUT` of a dynamically registered service carries a different `discovery_url`
+- **THEN** Core answers `400` and the stored service is unchanged; resending the stored URL, or a blank one, is accepted
+
 ### Requirement: Config-file external services stay static
 An external service declared in a config file SHALL be loaded only with a complete static client, as today; Core
-SHALL NOT discover or register a client for it. One without a client SHALL be dropped from the loaded application
-with an error log, the application itself still loading.
+SHALL NOT discover or register a client for it. One without a client, or with a `discovery_url` that is not an
+absolute `http` or `https` URL, SHALL be dropped from the loaded application with an error log, the application itself
+still loading.
 
 #### Scenario: Config-file service without a client
 - **WHEN** a config file declares `external_services.crm` with `authentication_type: OAUTH`, a `discovery_url` and no

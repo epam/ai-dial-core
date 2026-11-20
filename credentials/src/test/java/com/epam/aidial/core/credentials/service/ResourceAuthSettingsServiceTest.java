@@ -623,6 +623,17 @@ class ResourceAuthSettingsServiceTest {
     }
 
     @Test
+    void testProcessResourceAuthSettings_ToolSetWithBlankDiscoveryUrl_TreatedAsAbsent() {
+        ToolSet toolSet = createOauthToolSet("clientId", "clientSecret");
+        toolSet.getAuthSettings().setDiscoveryUrl(" ");
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(toolSet, createOauthToolSet("clientId", "clientSecret"), false);
+
+        Assertions.assertNull(toolSet.getAuthSettings().getDiscoveryUrl());
+    }
+
+    @Test
     void testProcessResourceAuthSettings_StaticClientWithoutEndpoint_NoRegistrationNoPkce() {
         ResourceAuthSettings settings = createOauthToolSet("clientId", "clientSecret").getAuthSettings();
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);

@@ -282,6 +282,28 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void testDiscoveryUrlChangeOnRegisteredClientRejected() throws Exception {
+        try (Provider provider = Provider.confidential()) {
+            String appUrl = createPlainDynamicApp("user", "dcr-change-discovery");
+            assertEquals(200, putService(appUrl, "crm", dynamicBody()).status());
+            JsonNode created = getService(appUrl, "crm");
+
+            ObjectNode moved = resendable(created);
+            ((ObjectNode) moved.get("auth_settings")).put("discovery_url", "http://localhost:9876/other");
+            Response update = putService(appUrl, "crm", moved.toString());
+            assertEquals(400, update.status(), update::body);
+            assertEquals(created, getService(appUrl, "crm"));
+
+            ObjectNode cleared = resendable(created);
+            ((ObjectNode) cleared.get("auth_settings")).put("discovery_url", "");
+            assertEquals(200, putService(appUrl, "crm", cleared.toString()).status());
+            assertNull(getService(appUrl, "crm").get("auth_settings").get("discovery_url"));
+            assertEquals(1, provider.count("POST /register"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void testRoundTripKeepsRegistrationAndOauthFields() throws Exception {
         try (Provider provider = Provider.confidential("client_secret_post")) {
             String appUrl = createPlainDynamicApp("user", "dcr-round-trip");
@@ -559,7 +581,7 @@ public class ExternalServiceDcrApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void testConfigFileServiceWithoutClientDropped() throws Exception {
+    void testConfigFileServiceWithoutClientOrWithBadDiscoveryUrlDropped() throws Exception {
         try (Provider provider = Provider.confidential()) {
             Response list = send(HttpMethod.GET, "/v1/applications/config-dcr-app/external-services", null, "", "authorization", "admin");
             assertEquals(200, list.status(), list::body);

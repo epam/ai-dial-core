@@ -58,10 +58,11 @@ public class ResourceAuthSettingsService {
             throw new IllegalArgumentException("ResourceAuthSettings is not defined for Resource: " + updatedResource.getName());
         }
 
-        // A toolset discovers from its own endpoint, which is also where its traffic goes.
-        if (resourceAuthSettings.getDiscoveryUrl() != null) {
+        // A toolset discovers from its own endpoint, which is also where its traffic goes; blank counts as absent.
+        if (StringUtils.isNotBlank(resourceAuthSettings.getDiscoveryUrl())) {
             throw new IllegalArgumentException("discovery_url is not supported for Resource: " + updatedResource.getName());
         }
+        resourceAuthSettings.setDiscoveryUrl(null);
 
         if (updatedResource.isForwardPerRequestKey() && resourceAuthSettings.getAuthenticationType() == AuthenticationType.API_KEY) {
             throw new IllegalArgumentException("Forward per request API key can't be along with authentication type %s"

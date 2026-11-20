@@ -37,6 +37,7 @@ import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.alias.AliasTargets;
 import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.ExternalServiceValidation;
 import com.epam.aidial.core.server.service.OrgUnitRoles;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.PathTemplateUtil;
@@ -1007,6 +1008,7 @@ public final class ConfigPostProcessor {
                 continue;
             }
             try {
+                ExternalServiceValidation.validate(serviceId, service);
                 // The PKCE verifier is state Core generated on write, not input, and the validators forbid it.
                 validator.validate(authSettings.toBuilder().codeVerifier(null).build(), ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES);
             } catch (RuntimeException e) {

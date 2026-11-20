@@ -294,6 +294,14 @@ public class ExternalServiceService {
         if (!oauthUpdate && StringUtils.isBlank(settings.getDiscoveryUrl())) {
             settings.setDiscoveryUrl(null);
         }
+        // A registered client belongs to the server it was discovered from: under a new URL, sign-in would still go
+        // to the old one.
+        if (oauthUpdate && Boolean.TRUE.equals(existingSettings.getDynamicallyRegistered())
+                && StringUtils.isNotBlank(settings.getDiscoveryUrl())
+                && !StringUtils.trim(settings.getDiscoveryUrl()).equals(StringUtils.trim(existingSettings.getDiscoveryUrl()))) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, ("External service '%s': discovery_url can't be changed for a client Core "
+                    + "registered; delete and re-create the service").formatted(serviceId));
+        }
         try {
             resourceAuthSettingsService.processResourceAuthSettings(resourceId, StringUtils.trimToNull(settings.getDiscoveryUrl()),
                     settings, existingSettings, existingSecretUnreadable, RegistrationPolicy.EXTERNAL_SERVICE);

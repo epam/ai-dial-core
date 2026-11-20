@@ -11,6 +11,18 @@
             "discovery_url": "http://localhost:9876/api"
           }
         },
+        "bad-discovery": {
+          "display_name": "Static client with a malformed discovery_url",
+          "auth_settings": {
+            "authentication_type": "OAUTH",
+            "client_id": "static-id-1",
+            "client_secret": "static-value-1",
+            "redirect_uri": "http://localhost:3000/auth/signin",
+            "authorization_endpoint": "http://localhost:9876/authorize",
+            "token_endpoint": "http://localhost:9876/token",
+            "discovery_url": "ftp://localhost/metadata"
+          }
+        },
         "billing-api": {
           "display_name": "Billing API",
           "auth_settings": {

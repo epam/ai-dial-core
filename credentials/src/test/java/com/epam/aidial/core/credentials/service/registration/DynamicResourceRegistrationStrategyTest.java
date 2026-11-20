@@ -13,6 +13,7 @@ import org.apache.hc.core5.http.ContentType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -186,6 +187,18 @@ class DynamicResourceRegistrationStrategyTest {
         verifyNoInteractions(protectedResourceMetadataService, authorizationServerMetadataService, resourceAuthorizationClient);
     }
 
+    @Test
+    void testRegister_toolsetPolicy_blankRedirectUriNotRegistered() {
+        resourceRegistrationStrategy = new DynamicResourceRegistrationStrategy(authorizationServerMetadataService,
+                resourceAuthorizationClient, protectedResourceMetadataService, List.of("https://chat/callback"), RegistrationPolicy.TOOLSET);
+
+        runRegistration("client_secret_basic", null, "");
+
+        ArgumentCaptor<ClientRegistrationRequest> request = ArgumentCaptor.forClass(ClientRegistrationRequest.class);
+        verify(resourceAuthorizationClient).executePost(anyString(), request.capture(), anyString(), eq(ClientRegistrationResponse.class));
+        assertEquals(List.of("https://chat/callback"), request.getValue().getRedirectUris());
+    }
+
     private DynamicResourceRegistrationStrategy externalServiceStrategy(List<String> allowedRedirectUris) {
         return new DynamicResourceRegistrationStrategy(authorizationServerMetadataService, resourceAuthorizationClient,
                 protectedResourceMetadataService, allowedRedirectUris, RegistrationPolicy.EXTERNAL_SERVICE);
@@ -196,9 +209,12 @@ class DynamicResourceRegistrationStrategyTest {
     }
 
     private ClientRegistration runRegistration(String responseMethod, String publishedResource) {
+        return runRegistration(responseMethod, publishedResource, "https://redirect.uri");
+    }
+
+    private ClientRegistration runRegistration(String responseMethod, String publishedResource, String resourceRedirectUri) {
         String resourceId = "testResource";
         String resourceEndpoint = "https://test.endpoint.com";
-        String resourceRedirectUri = "https://redirect.uri";
 
         ResourceAuthSettings resourceAuthSettings = mock(ResourceAuthSettings.class);
         when(resourceAuthSettings.getRedirectUri()).thenReturn(resourceRedirectUri);
