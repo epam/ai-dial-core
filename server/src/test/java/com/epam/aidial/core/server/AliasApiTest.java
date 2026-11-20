@@ -389,6 +389,12 @@ class AliasApiTest extends ResourceBaseTest {
         assertTrue(deployments.body().contains("\"mcp-tools\""), deployments.body());
         assertTrue(deployments.body().contains("\"assistant\""), deployments.body());
 
+        Response selected = send(HttpMethod.GET, "/v1/deployments", "fields=display_name", "", "api-key", "default-key");
+        assertEquals(200, selected.status(), selected.body());
+        assertTrue(selected.body().contains("\"mcp-tools\""), selected.body());
+        assertTrue(selected.body().contains("\"assistant\""), selected.body());
+        assertFalse(selected.body().contains("\"features\""), selected.body());
+
         Response info = send(HttpMethod.GET, "/v1/deployments/mcp-tools", null, "", "api-key", "default-key");
         assertEquals(200, info.status(), info.body());
         assertEquals("toolset", new JsonObject(info.body()).getString("object"));

@@ -104,6 +104,8 @@ They have their own listing too:
 An [alias](aliases.md) of type `router` (`presentAs: router`, or over a router without `presentAs`) is listed with the routers, here and in
 `/v1/deployments` and `/v1/deployment-names`, under its own name.
 
+`GET /v1/deployments` takes an optional `fields` parameter that cuts each entry, of any kind, down to the named members plus `id` and `object`, for example `fields=display_name,interfaces`. Parentheses select inside a member (`features(rate,tokenize)`), and `*` stands for every member at its level (`interface_configs(*(features))`). Names are the names of the response: snake_case at the top level, and inside a nested object the names that object has. Unknown names are ignored, and an object left with none of the named members is `{}`. A selection that is malformed, longer than 1024 bytes or nested deeper than 5 levels answers `400`. A request that already sends an unrelated `fields` parameter to this endpoint is now read as a selection and gets filtered entries or a `400`.
+
 Routers do not appear in the model listings: `GET /openai/models`, `/openai/deployments`, `/openai/applications` and `/anthropic/v1/models`. To list a router under a model name, point an [alias](aliases.md) with `presentAs: model` to it.
 
 An entry carries `id`, `object: "router"`, `display_name`, `display_version`, `icon_url`, `description`, `intro`, `reference`, `features`, `defaults`, `description_keywords`, `interfaces` (`chat` and `embedding` as above, then the declared interface types), `created_at` and `updated_at`. It never carries the router's url or its `editorUrl`.
