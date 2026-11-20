@@ -132,7 +132,7 @@ class DtoSchemaGeneratorTest {
     }
 
     @Test
-    void pricingRatesAreAFlatStringOrAPricingRateTree() {
+    void pricingRatesAreFlatStringOrPricingRateTree() {
         for (Class<?> type : List.of(Pricing.class, PricingData.class)) {
             DtoSchemaGenerator generator = new DtoSchemaGenerator();
             generator.processType(type);
@@ -158,7 +158,7 @@ class DtoSchemaGeneratorTest {
     }
 
     @Test
-    void regexPatternIsAStringNotAnObject() {
+    void regexPatternIsStringNotObject() {
         DtoSchemaGenerator generator = new DtoSchemaGenerator();
         generator.processType(Route.class);
 
