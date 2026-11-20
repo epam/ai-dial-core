@@ -927,16 +927,16 @@ public class ComplexResourceService {
      * conveys the kind. The aggregate etag is not included: it lives inside the marker and is available
      * via a whole-resource GET.
      */
-    private static ResourceItemMetadata nodeMetadata(ResourceDescriptor node, NodeType nodeType, ResourceItemMetadata marker,
-            @Nullable FolderResourceMarker itemMarker) {
-        Map<String, Object> attributes = itemMarker == null ? null : itemMarker.getMetadata();
+    private static ResourceItemMetadata nodeMetadata(ResourceDescriptor node, NodeType nodeType, ResourceItemMetadata itemMetadata,
+            @Nullable FolderResourceMarker marker) {
+        Map<String, Object> attributes = marker == null ? null : marker.getMetadata();
         ResourceItemMetadata metadata = attributes == null
                 ? new ResourceItemMetadata(node)
                 : new ComplexResourceItemMetadata(node).setAttributes(attributes);
         metadata.setNodeType(nodeType);
-        metadata.setCreatedAt(itemMarker == null ? marker.getCreatedAt() : ObjectUtils.firstNonNull(itemMarker.getCreatedAt(), marker.getCreatedAt()));
-        metadata.setUpdatedAt(itemMarker == null ? marker.getUpdatedAt() : ObjectUtils.firstNonNull(itemMarker.getUpdatedAt(), marker.getUpdatedAt()));
-        metadata.setAuthor(marker.getAuthor());
+        metadata.setCreatedAt(marker == null ? itemMetadata.getCreatedAt() : ObjectUtils.firstNonNull(marker.getCreatedAt(), itemMetadata.getCreatedAt()));
+        metadata.setUpdatedAt(marker == null ? itemMetadata.getUpdatedAt() : ObjectUtils.firstNonNull(marker.getUpdatedAt(), itemMetadata.getUpdatedAt()));
+        metadata.setAuthor(itemMetadata.getAuthor());
         return metadata;
     }
 
