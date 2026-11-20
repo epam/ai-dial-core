@@ -84,13 +84,13 @@
   registers (D8); per id keep the provider, directory, version, description, targets and schema (D7); an empty or
   null target set stops the start; add `list()` ordered by id. Verify with `PluginRegistryTest`.
 - [ ] 3.4 The listing: a record for the item in `server/.../data/` (nulls left out, targets in lower case in the
-  enum's order), `AdminPluginsController` (GET, `isAdmin` or `403`, `x-preview`, OpenAPI annotations as
-  `AdminHealthConfigController`), `RouteTemplate.ADMIN_PLUGINS` and its `ControllerSelector` route (D9). Verify with
+  enum's order), `AdminPluginProvidersController` (GET, `isAdmin` or `403`, `x-preview`, OpenAPI annotations as
+  `AdminHealthConfigController`), `RouteTemplate.ADMIN_PLUGIN_PROVIDERS` and its `ControllerSelector` route (D9). Verify with
   the `ConfigPluginApiTest` listing tests from 3.1.
 - [ ] 3.5 Plugin targets are a hint: verify that the `EmbeddedOriginApiTest` case from 3.1 passes without any change
   to the deployment checks.
 - [ ] 3.6 `docs/dynamic-settings/plugins.md`: description, targets (a hint, all by default), the jar's
-  `Implementation-Version`, and the `GET /v1/admin/plugins` answer with an example. Run `./gradlew replaceSpec` and
+  `Implementation-Version`, and the `GET /v1/admin/plugin-providers` answer with an example. Run `./gradlew replaceSpec` and
   check that `docs/open_api_core.yaml` has the new operation and the plugin schema with `pluginId` and no `type`.
 - [ ] 3.7 Run `./gradlew checkstyleMain checkstyleTest` and `:server:test --tests` for `PluginRegistryTest`,
   `ConfigPluginApiTest` and `EmbeddedOriginApiTest`. Verify that every command exits 0.

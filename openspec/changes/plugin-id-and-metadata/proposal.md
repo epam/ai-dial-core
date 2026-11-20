@@ -20,8 +20,9 @@ can be renamed now with a deprecated alias instead of a breaking cycle later.
 - A provider may declare a description and its targets, the places a plugin url may name its entries: `model`,
   `application`, `router`, `translator`, all four by default. Targets are a hint for the admin console: Core does
   not check a plugin url against them.
-- `GET /v1/admin/plugins` (admin role, `x-preview`) lists the providers loaded at start: `id`, `targets`, and when
-  known `directory`, `version` (the jar's `Implementation-Version`), `description` and `settingsSchema`.
+- `GET /v1/admin/plugin-providers` (admin role, `x-preview`) lists the providers loaded at start: `id`, `targets`,
+  and when known `directory`, `version` (the jar's `Implementation-Version`), `description` and `settingsSchema`. The
+  path says "providers" so that it is not taken for the API of the `plugins` entries.
 - In `aidial-core-plugin-api`, `PluginProvider` gets `id()`, `description()`, `settingsSchema()` and `targets()` as
   default methods, and a `PluginTarget` enum; `type()` stays as a deprecated method that `id()` falls back to, so a
   jar built against today's API loads unchanged. `validate()` gets a default that accepts everything.

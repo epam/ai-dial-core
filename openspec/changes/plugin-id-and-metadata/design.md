@@ -96,11 +96,14 @@ manifest. The version of the jar that registers a provider is the version of wha
 come from another jar or from Core's classpath (the test jars carry only the registration), and the package
 version is unset unless the jar's manifest declares it for that package.
 
-### D9. The listing is `GET /v1/admin/plugins`, for the admin role
+### D9. The listing is `GET /v1/admin/plugin-providers`, for the admin role
 
-Like `/v1/admin/health/config`: one route, `isAdmin` or `403`, `x-preview`. Items are ordered by `id`; empty fields
-are left out. A provider on Core's classpath has no `directory` and no `version`.
+Like `/v1/admin/health/config`: one route, `isAdmin` or `403`, `x-preview`, operation id `listPluginProviders`.
+Items are ordered by `id`; empty fields are left out. A provider on Core's classpath has no `directory` and no
+`version`. The path says "providers", the word of the API and this spec, so it cannot be read as the entries' API.
 
+**Rejected: `/v1/admin/plugins`** - reads as the API of the `plugins` entries, which live at `/v1/plugins/{bucket}/...`
+and `/v1/admin/config/file/plugins`.
 **Rejected: a path under `/v1/plugins/`** - that prefix is followed by a bucket for the entries.
 **Rejected: a field of `/v1/admin/health/config`** - that answer is about the config, and this list does not change
 with it.
@@ -117,7 +120,7 @@ with it.
 | Settings check | the provider's `validate()` | the schema, then `validate()` | Settings checked against the provider's schema |
 | Start | - | fails on an invalid schema or empty targets | Plugin metadata errors stop the start |
 | Load error messages | "type" | "id" | Plugin load errors stop the start |
-| Listing | none | `GET /v1/admin/plugins` | Loaded plugins listing |
+| Listing | none | `GET /v1/admin/plugin-providers` | Plugin providers listing |
 
 ## Effect per request
 
@@ -164,10 +167,10 @@ config writes and rebuilds; the listing is an admin request that reads data kept
 - `server/src/main/java/com/epam/aidial/core/server/plugin/PluginManager.java:create` (looks up `getPluginId()`).
 - `server/src/main/java/com/epam/aidial/core/server/controller/ConfigResourceController.java:checkPlugin` (unchanged
   call, for reference).
-- New `server/src/main/java/com/epam/aidial/core/server/controller/AdminPluginsController.java`, modelled on
+- New `server/src/main/java/com/epam/aidial/core/server/controller/AdminPluginProvidersController.java`, modelled on
   `AdminHealthConfigController.java:handle`; its answer item a record in `server/src/main/java/com/epam/aidial/core/server/data/`,
   as `HealthResponse.java`.
-- `server/src/main/java/com/epam/aidial/core/server/data/RouteTemplate.java`: `ADMIN_PLUGINS` beside `CONFIG_HEALTH`;
+- `server/src/main/java/com/epam/aidial/core/server/data/RouteTemplate.java`: `ADMIN_PLUGIN_PROVIDERS` beside `CONFIG_HEALTH`;
   `server/src/main/java/com/epam/aidial/core/server/controller/ControllerSelector.java` (static initializer, beside
   the `CONFIG_HEALTH` route), with `AdminRoleAuthorizationService` for `isAdmin`.
 - `server/src/main/java/com/epam/aidial/core/server/config/MergedConfigStore.java:getPluginRegistry`.

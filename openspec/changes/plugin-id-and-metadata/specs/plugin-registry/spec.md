@@ -334,35 +334,35 @@ a router or a translator naming an entry SHALL be accepted and served whatever t
   "dial-plugin://p1", "interfaces": {"openaiChatCompletions": {}}}`
 - **THEN** Core answers `200`, and the `test-origin` plugin answers a chat completion for `m`
 
-### Requirement: Loaded plugins listing
-Core SHALL answer `GET /v1/admin/plugins` from a caller with the admin role with a JSON array of the providers
-loaded at start, ordered by `id`. Each item SHALL have `id` and `targets`, and, when the provider has them,
+### Requirement: Plugin providers listing
+Core SHALL answer `GET /v1/admin/plugin-providers` from a caller with the admin role with a JSON array of the
+providers loaded at start, ordered by `id`. Each item SHALL have `id` and `targets`, and, when the provider has them,
 `directory` (its plugin directory `<group>/<plugin>`), `version` (its jar manifest's `Implementation-Version`),
 `description` and `settingsSchema`. Any other caller SHALL get `403`.
 
 #### Scenario: Plugin with its metadata
 - **WHEN** `<plugins.dir>/custom/echo/` holds a jar whose manifest has `Implementation-Version: 1.2.0` and whose
   provider declares id `jar-echo`, the description `Echoes the greeting`, the targets `model` and `application`, and
-  a settings schema, and an admin sends `GET /v1/admin/plugins`
+  a settings schema, and an admin sends `GET /v1/admin/plugin-providers`
 - **THEN** the answer has the item `{"id": "jar-echo", "directory": "custom/echo", "version": "1.2.0",
   "description": "Echoes the greeting", "targets": ["model", "application"], "settingsSchema": <that schema>}`
 
 #### Scenario: Provider without metadata
 - **WHEN** a provider on Core's classpath declares only its id `test-echo`, and an admin sends
-  `GET /v1/admin/plugins`
+  `GET /v1/admin/plugin-providers`
 - **THEN** the answer has the item `{"id": "test-echo", "targets": ["model", "application", "router",
   "translator"]}`
 
 #### Scenario: Excluded plugin directory not listed
 - **WHEN** `<plugins.dir>/custom/echo/` provides id `jar-echo`, `plugins.exclude` is `["custom/echo"]`, and an admin
-  sends `GET /v1/admin/plugins`
+  sends `GET /v1/admin/plugin-providers`
 - **THEN** no item has `id: "jar-echo"`
 
 #### Scenario: Listed whatever the config holds
-- **WHEN** no `plugins` entry names `jar-echo`, and an admin sends `GET /v1/admin/plugins`, then writes
+- **WHEN** no `plugins` entry names `jar-echo`, and an admin sends `GET /v1/admin/plugin-providers`, then writes
   `plugins/platform/p1` with `pluginId: jar-echo`, then deletes it, sending the same `GET` after each step
 - **THEN** each answer is the same and has the item of `jar-echo`
 
 #### Scenario: Not an admin
-- **WHEN** a caller without the admin role sends `GET /v1/admin/plugins`
+- **WHEN** a caller without the admin role sends `GET /v1/admin/plugin-providers`
 - **THEN** Core answers `403`
