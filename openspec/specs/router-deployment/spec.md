@@ -70,9 +70,10 @@ pass-through, and override path validation; the rejection message names the rout
 
 ### Requirement: Router listing
 `GET /v1/routers` SHALL answer `200` with `{"data": [...]}` holding one entry per router whose `userRoles` admit the
-caller, and `GET /v1/routers/{id}` SHALL answer `200` with that entry, `404` for an unknown name and `403` for a
-router the caller's roles do not admit. An entry carries `id`, `object: "router"`, `display_name`,
-`display_version`, `icon_url`, `description`, `features`, `defaults`, `description_keywords` and no url.
+caller and one per alias of type `router` the caller may use, and `GET /v1/routers/{id}` SHALL answer `200` with that
+entry, `404` for an unknown name and `403` for a router the caller's roles do not admit. An entry carries `id`,
+`object: "router"`, `display_name`, `display_version`, `icon_url`, `description`, `features`, `defaults`,
+`description_keywords` and no url.
 
 #### Scenario: Listing filtered by role
 - **WHEN** the config declares `routers.r1` with `userRoles: ["analysts"]` and `routers.r2` without `userRoles`, and a
@@ -83,6 +84,17 @@ router the caller's roles do not admit. An entry carries `id`, `object: "router"
 #### Scenario: Single router by role
 - **WHEN** the same caller sends `GET /v1/routers/r1`, then `GET /v1/routers/r2`, then `GET /v1/routers/missing`
 - **THEN** Core answers `403`, then `200` with `id: r2`, then `404`
+
+#### Scenario: Alias of type router listed
+- **WHEN** the alias `tier` without `presentAs` targets `routers/r1` and has `userRoles: ["analysts"]`, and a caller
+  with `analysts` sends `GET /v1/routers`, then `GET /v1/routers/tier`
+- **THEN** the list holds an entry with `id: "tier"` and `object: "router"`, and the second answer is `200` with
+  `id: "tier"`; a caller without `analysts` gets `403` from `GET /v1/routers/tier` and no `tier` entry in the list
+
+#### Scenario: Only config aliases of type router
+- **WHEN** a caller sends `GET /v1/routers/aliases%2Fpublic%2Fx`, where `aliases/public/x` is a stored alias, and
+  `GET /v1/routers/tier` while the router `tier` targets is missing
+- **THEN** both answers are `404`
 
 ### Requirement: Routers absent from other listings
 A router SHALL NOT appear in `GET /openai/models`, `GET /openai/deployments`, `GET /openai/applications` or
@@ -672,6 +684,30 @@ a buffered legacy completion and a buffered answer relayed through interceptors 
 - **WHEN** a client calls `gpt-4` directly and it answers with `"model": "gpt-4-real"`
 - **THEN** the client receives `"model": "gpt-4-real"`
 
+### Requirement: Alias name in the answer
+When the router was called through an alias, Core SHALL put the alias's name where "Router name in the answer" puts
+the router's, a stored response read back included.
+
+#### Scenario: Answer through an alias names the alias
+- **WHEN** the alias `strong` targets `routers/r1`, a client sends a chat completion to `strong`, `r1` answers
+  `{"candidates": ["gpt-4"]}` and `gpt-4` answers, buffered or streamed, with `"model": "gpt-4-real"`
+- **THEN** the client receives `"model": "strong"` in the answer or in every chunk
+
+#### Scenario: Answer through an alias called by an application names the alias
+- **WHEN** the application `app` calls the alias `strong`, which targets `routers/r1`, with its per-request key, and
+  `gpt-4` answers with `"model": "gpt-4-real"`
+- **THEN** `app` receives `"model": "strong"`
+
+#### Scenario: Stored Responses answer through an alias read back names the alias
+- **WHEN** a client creates a response through `strong` with `"store": true`, `gpt-4` answers with
+  `"model": "gpt-4-real"`, and the client then sends `GET /openai/v1/responses/{id}`
+- **THEN** the answer to the `GET` has `"model": "strong"`
+
+#### Scenario: Messages answer through an alias names the alias
+- **WHEN** a client streams `POST /anthropic/v1/messages` with `"model": "strong"`, and `claude`'s `message_start`
+  event carries `"message": {"model": "claude-real"}`
+- **THEN** the client's `message_start` event carries `"message": {"model": "strong"}`
+
 ### Requirement: Decision router settings
 Core SHALL read a router's optional `decision` object with `body` (default `false`), `timeoutMs` (default 5000, must be
 positive) and `maxDecisions` (see Decision limit), and SHALL reject it on a router not in decision mode (`decision
@@ -799,10 +835,11 @@ request carries no key, so calls made while answering it SHALL be answered `401`
 - **THEN** Core answers that call `401`
 
 ### Requirement: Decide request of an in-process call
-When the request a decision router decides is an origin plugin's in-process call, which carries a body tree and no
-bytes, Core SHALL serialize that tree once, before the first candidate, and SHALL use the serialization wherever the
-decision uses the client's bytes: as the body of every decide request when `decision.body` is `true`, the re-decide
-included, and as the request each fallback candidate is served from.
+When the request a decision router decides is served in process with a body tree and no bytes, as an origin
+plugin's call or as the target pass of an alias call (deployment-aliases), Core SHALL serialize that tree once,
+before the first candidate, and SHALL use the serialization wherever the decision uses the client's bytes: as the
+body of every decide request when `decision.body` is `true`, the re-decide included, and as the request each fallback
+candidate is served from.
 
 #### Scenario: Plugin calls a decision router that wants the body
 - **WHEN** application `app` is served by plugin `p2`, a client sends a chat completion to `app` with
@@ -824,3 +861,40 @@ included, and as the request each fallback candidate is served from.
 #### Scenario: In-process call on deployments-POST
 - **WHEN** `p2` calls `/openai/deployments/r2/chat/completions`
 - **THEN** `m1` serves the call with the `messages` `p2` passed
+
+#### Scenario: Alias over a decision router that wants the body
+- **WHEN** an alias with `presentAs: model` targets `r2`, a decision router over HTTP with `decision: {"body": true}`
+  answering `{"candidates": ["m1"]}`, and a caller sends a chat completion to the alias
+- **THEN** the router's decide request body carries the caller's `messages`, and `m1` serves the call
+
+### Requirement: Router editor URL
+A router SHALL accept `editorUrl`, a string with the URL of its admin UI, under the names an application accepts
+(`editorUrl`, `editor_url`), SHALL store it as `editorUrl`, SHALL leave it out of the stored JSON when unset, and
+SHALL return it from `GET /v1/routers/platform/{name}` and `GET /v1/admin/config/file/routers/{name}`. No entry of
+`GET /v1/routers`, `GET /v1/routers/{id}` or the generic deployment listings SHALL carry it.
+
+#### Scenario: Blob router editor URL read back
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-ui` with `{"baseUrl": "http://router", "editorUrl":
+  "https://router-ui.example", "interfaces": {"openaiChatCompletions": {}}}`
+- **THEN** Core answers `200`, and `GET /v1/routers/platform/r-ui` answers `200` with
+  `editorUrl: "https://router-ui.example"`
+
+#### Scenario: Snake-case name accepted
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-ui` with `editor_url: "https://router-ui.example"`, `baseUrl`
+  and `interfaces.openaiChatCompletions: {}`
+- **THEN** Core answers `200`, and the stored blob has `editorUrl: "https://router-ui.example"` and no `editor_url`
+  key
+
+#### Scenario: Router without an editor URL stored without the key
+- **WHEN** an admin sends `PUT /v1/routers/platform/r-plain` with `baseUrl` and `interfaces.openaiChatCompletions: {}`
+- **THEN** the stored blob has no `editorUrl` key
+
+#### Scenario: File router editor URL read back
+- **WHEN** the config file declares `routers.r2` with `editorUrl: "https://router-ui.example"` and an admin sends
+  `GET /v1/admin/config/file/routers/r2`
+- **THEN** the config loads and the answer has `editorUrl: "https://router-ui.example"`
+
+#### Scenario: Editor URL not listed
+- **WHEN** the config declares `routers.r2` with `editorUrl` and a caller the router admits sends `GET /v1/routers`,
+  `GET /v1/routers/r2`, `GET /v1/deployments` and `GET /v1/deployments/r2`
+- **THEN** each answer is `200` and its `r2` entry has neither an `editor_url` nor an `editorUrl` field

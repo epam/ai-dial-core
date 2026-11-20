@@ -142,6 +142,11 @@ public final class ConfigPostProcessor {
         processRouters(config, deploymentIds, onSkip);
         processAliases(config, deploymentIds, onSkip);
         OrgUnitRoles.validate(config.getOrgUnitRoles());
+        List<String> beyondAdmin = OrgUnitRoles.of(config).beyondAdmin();
+        if (!beyondAdmin.isEmpty()) {
+            log.warn("Org unit roles {} grant more than the admin role, so unit admins get 403 giving or removing them;"
+                    + " add those grants to admin to let them", beyondAdmin);
+        }
 
         if (apiKeyStore != null) {
             apiKeyStore.addProjectKeys(fileKeysBySecret, apiKeysByCanonicalId);

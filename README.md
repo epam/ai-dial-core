@@ -30,7 +30,7 @@
 
 > [!NOTE]
 > HTTP Proxy provides unified API to different chat completion and embedding models and applications.
-> Written in Java 21 and built on top of [Eclipse Vert.x](https://vertx.io/).
+> Written in Java 25 and built on top of [Eclipse Vert.x](https://vertx.io/).
 
 ![ai-dial-core](./dial-core.png)
 
@@ -86,7 +86,7 @@ repositories {
 > 
 > See more details [here](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) to generate personal access token in GitHub.
 
-Build the project with Gradle and Java 21:
+Build the project with Gradle and Java 25:
 
 ```
 ./gradlew build
@@ -137,7 +137,9 @@ Priority order:
 |------------------------------------------|:------------------:|:--------:|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | config.files                             | aidial.config.json |    No    | List of paths to dynamic settings. Refer to [example](sample/aidial.config.json) of the file with [dynamic settings](#dynamic-settings).                                                                                                                                                                        |
 | config.reload                            |       60000        |    No    | Config reload interval in milliseconds.                                                                                                                                                                                                                                                                         |
-| plugins.dir                              |      plugins       |    No    | Preview. Directory Core loads plugin jars from at start, relative to the working directory. A missing directory loads none. Refer to [Plugins](/docs/dynamic-settings/plugins.md).                                                                                                                              |
+| plugins.dir                              |      plugins       |    No    | Preview. Directory Core loads plugin code from at start, relative to the working directory: each plugin in a plugin directory `<group>/<plugin>` of its own, with its own class loader. A jar directly in this directory or in a group directory stops the start. A missing directory loads none. Refer to [Plugins](/docs/dynamic-settings/plugins.md#plugin-code). |
+| plugins.include                          |       ["*"]        |    No    | Preview. Patterns of the plugin directories Core loads: `*` or `<group>/<plugin>`, where either part may be `*`. A JSON array or one comma-separated string. Env: `aidial.plugins.include`. Refer to [Plugins](/docs/dynamic-settings/plugins.md#including-and-excluding-plugins). |
+| plugins.exclude                          |         []         |    No    | Preview. Patterns of the plugin directories Core does not load or open, even when `plugins.include` names them; same form as `plugins.include`. Env: `aidial.plugins.exclude`, e.g. `builtin/echo,custom/old`. Refer to [Plugins](/docs/dynamic-settings/plugins.md#including-and-excluding-plugins). |
 | vertx.*                                  |         -          |    No    | Vertx settings. Refer to [vertx.io](https://vertx.io/docs/apidocs/io/vertx/core/VertxOptions.html) to learn more.                                                                                                                                                                                               |
 | server.*                                 |         -          |    No    | Vertx HTTP server settings for incoming requests. Refer to [HTTP server options](https://vertx.io/docs/apidocs/io/vertx/core/http/HttpServerOptions.html) to learn more.                                                                                                                                        |
 | server.instances                         |         1          |    No    | Number of HTTP servers Core starts on `server.port`. Vert.x hands each new client connection to the next one, so connections spread over that many event loops; the event-loop count (`vertx.eventLoopPoolSize`) is the useful maximum. A value above 1 lets a pod serve more requests per second; where analytics rows carry request and response bodies (API keys without `secured`), the analytics writer can then fall behind and fill the heap, so set `analytics.maxPendingBodyHeapPercent` there, or keep 1. With a value above 1, `server.port` must not be 0 (use a fixed port, or -1 for one shared random port). Env: `aidial.server.instances`. |
@@ -334,7 +336,7 @@ through the interceptor chain.
 
 | Setting                    | Default                               | Required | Description                                                                                                  |
 |-----------------------------|:-------------------------------------:|:--------:|--------------------------------------------------------------------------------------------------------------|
-| backgroundJob.localBaseUrl | http://localhost:{actual server port} |    No    | Base URL that background job polling and [alias](/docs/dynamic-settings/aliases.md) calls use to reach this Core instance's own HTTP endpoint. |
+| backgroundJob.localBaseUrl | http://localhost:{actual server port} |    No    | Base URL that background job polling and the [alias](/docs/dynamic-settings/aliases.md) requests not served in process (MCP, feature endpoints, Messages `count_tokens`, background Responses, stored-response operations) use to reach this Core instance's own HTTP endpoint. |
 | backgroundJob.pollTimeoutMs | 300000                               |    No    | Timeout in milliseconds of a single polling request. A request exceeding it fails and counts as a poll failure. |
 | backgroundJob.pollGiveUpStatusCodes | [401, 403, 404]               |    No    | HTTP status codes of a polling response that make the job give up immediately instead of retrying.         |
 | backgroundJob.jobTtlMs     | 86400000                              |    No    | Lifetime in milliseconds of a background job and its per-request API key. The scheduler's next scan expires a job older than this. |

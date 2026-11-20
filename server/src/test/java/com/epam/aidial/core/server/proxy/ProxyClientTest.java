@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -61,6 +62,17 @@ class ProxyClientTest {
     @Test
     void testRouterEntryDoesNotCheckTheDeployment() throws Exception {
         await(client.embeddedForRouter(context, HttpMethod.POST, "dial-plugin://p1/decide", "p1", new ApiKeyData(), null));
+    }
+
+    @Test
+    void testAliasTargetDoesNotCheckTheDeployment() throws Exception {
+        // no platform check, unlike a plugin entry: here a user's custom application, and a stored alias's pass is no
+        // platform application either
+        ProxyRequest request = await(client.aliasTarget(context, HttpMethod.POST, "http://localhost:8080",
+                "http://localhost:8080/openai/deployments/m1/chat/completions"));
+
+        assertEquals("http://localhost:8080/openai/deployments/m1/chat/completions", request.absoluteUri());
+        assertEquals("http://localhost:8080", request.remoteAddress());
     }
 
     private static <T> T await(Future<T> future) throws Exception {

@@ -82,6 +82,7 @@
       "displayName": "Assistant",
       "description": "General-purpose assistant.",
       "userRoles": ["default-user", "limited-user"],
+      "defaultHeaders": {"X-Team": "a"},
       "target": {"path": "models/gpt-4-internal"}
     },
     "closed-alias": {

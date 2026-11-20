@@ -11,6 +11,12 @@
       "baseUrl": "http://localhost:4848",
       "mode": "decision",
       "interfaces": {"openaiChatCompletions": {}, "openaiResponses": {}}
+    },
+    "r-tier": {
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "userRoles": [],
+      "interfaces": {"openaiChatCompletions": {}}
     }
   },
   "models": {
@@ -24,6 +30,11 @@
     "alias-gpt": {
       "presentAs": "model",
       "target": {"path": "models/gpt-4"}
+    },
+    "strong": {
+      "presentAs": "model",
+      "userRoles": ["default"],
+      "target": {"path": "routers/r-tier"}
     }
   },
   "keys": {

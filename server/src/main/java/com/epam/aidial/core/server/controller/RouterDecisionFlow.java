@@ -1,9 +1,11 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasTargets;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.function.CollectRequestAttachmentsFn;
@@ -13,6 +15,7 @@ import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.RouterDecisionClient;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -98,8 +101,8 @@ public class RouterDecisionFlow {
     }
 
     /**
-     * An origin plugin's in-process call on an API that names the deployment in the body: a pass with a tree and no
-     * bytes of its own.
+     * An in-process call (an origin plugin's, or an alias pass's to its target) on an API that names the deployment in
+     * the body: a pass with a tree and no bytes of its own.
      */
     private boolean inProcessCall(@Nullable ObjectNode tree) {
         return tree != null && context.isChildPass();
@@ -178,6 +181,7 @@ public class RouterDecisionFlow {
                     decision.setFirstDecideKey(prepared.key());
                     decision.setReenter(reenter);
                     decision.setHop(routerHop(router));
+                    decision.setAnswerName(aliasCalled(router));
                     // Core's own headers (CORS, trace ids), restored when a candidate's half-copied answer is dropped
                     decision.setResponseHeaders(MultiMap.caseInsensitiveMultiMap().addAll(context.getResponse().headers()));
                     context.setDecision(decision);
@@ -198,7 +202,28 @@ public class RouterDecisionFlow {
     }
 
     /**
-     * One decide request with its own key, invalidated when the call ends; a router named as a candidate fails it.
+     * The alias the client called when this pass is its target pass, lent the router by it: the last name of the
+     * incoming path that is not an interceptor in front of the router, the alias pass's own. Null otherwise.
+     */
+    @Nullable
+    private String aliasCalled(Router router) {
+        ApiKeyData key = context.getApiKeyData();
+        List<String> path = key.getExecutionPath();
+        if (!DeploymentService.isLent(context, router) || path == null) {
+            return null;
+        }
+        List<String> interceptors = key.getInterceptors() == null ? List.of() : key.getInterceptors();
+        for (String name : path.reversed()) {
+            if (!interceptors.contains(name)) {
+                return name;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * One decide request with its own key, invalidated when the call ends; a router, or an alias over one, named as a
+     * candidate fails it.
      */
     private Future<List<String>> askRouter(Router router, InterfaceType type, @Nullable Buffer bytes, @Nullable ObjectNode tree,
                                            ApiKeyData key, List<RouterDecision.Attempt> attempts) {
@@ -207,7 +232,9 @@ public class RouterDecisionFlow {
                         .onFailure(error -> log.error("error occurred on invalidating the decide request key", error)))
                 .map(candidates -> {
                     for (String candidate : candidates) {
-                        if (context.getConfig().getRouters().containsKey(candidate)) {
+                        Alias alias = context.getConfig().getAliases().get(candidate);
+                        if (context.getConfig().getRouters().containsKey(candidate)
+                                || alias != null && AliasTargets.isRouterPath(alias.getTarget().getPath())) {
                             throw new HttpException(HttpStatus.BAD_GATEWAY, "A router cannot be a routing candidate: " + candidate);
                         }
                     }
@@ -313,9 +340,9 @@ public class RouterDecisionFlow {
             return error;
         }
         if (!context.getResponse().closed()) {
-            // the next candidate starts from the client's bytes, as after a failed call: for an in-process call, the
-            // serialization, not the call's tree the refused candidate may have changed
-            context.setRequestBody(context.getOriginalRequestBody());
+            // as after a failed call; for an in-process call, the serialization, not the call's tree the refused
+            // candidate may have changed. Its budget check is not the next candidate's, which may be no model at all
+            resetCandidateOutcome();
             if (decision.hasNext()) {
                 log.warn("Candidate {} of router {} skipped: {}", decision.current(), decision.getRouterName(), error.getMessage());
                 decision.skip(status, reason);
@@ -378,9 +405,7 @@ public class RouterDecisionFlow {
         context.setUpstreamBodyReceived(false);
         context.setSpanUsageStats(null);
         // the failed answer's usage, which a stream can carry before it breaks, is not the next candidate's
-        context.setTokenUsage(null);
-        context.setUsagePerModel(null);
-        context.setRequestBody(context.getOriginalRequestBody());
+        resetCandidateOutcome();
         if (next) {
             decision.skip(status, reason, received);
             decision.getReenter().run();
@@ -389,6 +414,18 @@ public class RouterDecisionFlow {
             redecide(answerOriginal);
         }
         return true;
+    }
+
+    /**
+     * Drops what the current candidate left for its row and its charge, its usage and its budget check, and starts
+     * the next candidate from the client's bytes. Every path that moves on to another candidate calls it, so none
+     * keeps the previous candidate's payer.
+     */
+    private void resetCandidateOutcome() {
+        context.setTokenUsage(null);
+        context.setUsagePerModel(null);
+        context.setBudgetCheck(null);
+        context.setRequestBody(context.getOriginalRequestBody());
     }
 
     /**

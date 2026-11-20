@@ -16,6 +16,7 @@ public enum CachePolicy {
     CACHE_PRIORITY("cache-priority");
 
     private final String val;
+
     CachePolicy(String val) {
         this.val = val;
     }

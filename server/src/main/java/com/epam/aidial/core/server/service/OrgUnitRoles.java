@@ -23,8 +23,8 @@ import javax.annotation.Nullable;
  * {@code editor} and {@code viewer}, as overridden or extended by the dynamic config's
  * {@code orgUnitRoles}. A role grants only in the unit it is assigned at; a resource belongs to the nearest unit above
  * it, so child units are not covered. {@code read} on {@code org-units} shows the unit and the names of its child units,
- * never their content. A role anywhere also shows a person the units above it by name, each with only the child unit on
- * the way down.
+ * never their content; no built-in role holds it, so only a config role shows child units. A role anywhere also shows its
+ * holder the units above it by name, each with only the child unit on the way down.
  */
 public final class OrgUnitRoles {
 
@@ -180,8 +180,19 @@ public final class OrgUnitRoles {
     }
 
     /**
-     * The actions on every content namespace and the extra ones, then {@code read} on {@code org-units}: whoever holds a
-     * built-in role at a unit sees its child units.
+     * The roles that {@code admin} can't give or remove, as they grant something it doesn't, in name order; none when
+     * {@code admin} doesn't manage role assignments at all.
+     */
+    public List<String> beyondAdmin() {
+        if (!allows(List.of(ADMIN), WRITE, ROLE_ASSIGNMENTS)) {
+            return List.of();
+        }
+        return roles.keySet().stream().filter(name -> !covers(List.of(ADMIN), name)).sorted().toList();
+    }
+
+    /**
+     * The actions on every content namespace and the extra ones; no {@code org-units}, so a built-in role doesn't show
+     * the units below.
      */
     private static List<OrgUnitPermission> permissions(List<String> actions, List<String> extraNamespaces) {
         List<OrgUnitPermission> permissions = new ArrayList<>();
@@ -191,7 +202,6 @@ public final class OrgUnitRoles {
         for (String namespace : extraNamespaces) {
             permissions.add(new OrgUnitPermission(actions, namespace + ANY_BELOW));
         }
-        permissions.add(new OrgUnitPermission(List.of(READ), ORG_UNITS + ANY_BELOW));
         return List.copyOf(permissions);
     }
 

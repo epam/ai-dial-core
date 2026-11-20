@@ -247,6 +247,8 @@ public class DeploymentController {
         }
         if (types.contains(ROUTER_TYPE)) {
             addAccessibleNames(names, config.getRouters().values(), ROUTER_TYPE);
+            // only config aliases have the type router
+            addNames(names, deploymentService.listAliasNames(context, AliasPresentation.ROUTER, List::of), ROUTER_TYPE);
         }
         return names;
     }
@@ -487,6 +489,12 @@ public class DeploymentController {
         for (Router router : context.getConfig().getRouters().values()) {
             if (router.hasAccess(context.getUserRoles()) && match(filters, router)) {
                 deployments.add(RouterData.toData(router));
+            }
+        }
+        // only config aliases have the type router, and their router target is read from the config: no storage read
+        for (Deployment view : deploymentService.listAliasViews(context, AliasPresentation.ROUTER, List::of)) {
+            if (match(filters, (Router) view)) {
+                deployments.add(RouterData.toData((Router) view));
             }
         }
         return Future.succeededFuture(deployments);

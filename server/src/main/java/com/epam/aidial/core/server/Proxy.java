@@ -331,6 +331,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     /**
      * The method authorizes HTTP request by user access token or (and) API key.
+     *
      * <p>
      * There are four possible use cases:
      *     <ol>
@@ -494,7 +495,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     /**
      * Serves an authenticated pass: the controller of the request's method and path handles it. A child pass of an
-     * origin plugin's in-process call starts here too.
+     * origin plugin's in-process call, or the in-process target pass of an alias call, starts here too.
      */
     @SneakyThrows
     public Future<?> dispatch(ProxyContext context) {

@@ -157,7 +157,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.List;
@@ -312,7 +311,7 @@ public class AiDial {
                     resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor, resourceAuthSettingsService);
 
             // Before the config stores: they validate every plugins entry against the provider of its type
-            PluginRegistry pluginRegistry = PluginRegistry.load(Path.of(settings("plugins").getString("dir", "plugins")));
+            PluginRegistry pluginRegistry = PluginRegistry.load(settings("plugins"));
             String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
                     .getBoolean("softValidation", false);

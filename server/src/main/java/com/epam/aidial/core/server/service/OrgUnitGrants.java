@@ -15,10 +15,10 @@ import java.util.Set;
 /**
  * What the caller's roles at a unit give on the shared-space content that unit owns: {@code read} on a type's
  * namespace reads it, {@code write} changes, creates and deletes it, and {@code read} on {@code org-units} lists the
- * unit's folder with only its child units in it. A person also lists the folder of each unit above one where they hold a
+ * unit's folder with only its child units in it. A caller also lists the folder of each unit above one where they hold a
  * role, with only the child units on the way there. A resource belongs to the nearest unit above it, so a child unit's
  * content needs roles at the child unit. Inside a unit roles are all there is: the read rules decide only what lies
- * under no unit. Callers other than a person read through their roles and get nothing else.
+ * under no unit. An application reads through its user's roles and gets nothing else.
  */
 @RequiredArgsConstructor
 public class OrgUnitGrants {
@@ -59,7 +59,7 @@ public class OrgUnitGrants {
 
         Map<String, OrgUnit> units = orgUnits.getUnitList().units();
         CallerUnitRoles caller = orgUnits.callerRoles(context, units);
-        boolean readOnly = !OrgUnitSubjects.isPerson(context);
+        boolean readOnly = !OrgUnitSubjects.isRoleHolder(context);
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : candidates) {
             String key = OrgUnitService.ownerOf(units, resource);

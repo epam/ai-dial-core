@@ -13,6 +13,7 @@
     },
     "r2": {
       "baseUrl": "http://localhost:4848",
+      "editorUrl": "https://router-ui.example",
       "features": {"rateEndpoint": "http://localhost:4848/rate"},
       "interfaces": {
         "openaiChatCompletions": {},

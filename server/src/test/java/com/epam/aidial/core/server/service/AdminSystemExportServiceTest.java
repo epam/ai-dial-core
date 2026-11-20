@@ -654,7 +654,7 @@ class AdminSystemExportServiceTest {
         zip.discard();
         zip.discard();
 
-        assertThrows(NullPointerException.class, () -> zip.write(new byte[1024]), "the deflater must be ended");
+        assertThrows(IllegalStateException.class, () -> zip.write(new byte[1024]), "the deflater must be ended");
         assertEquals(-1, indexOf(out.toByteArray(), new byte[] {'P', 'K', 5, 6}), "end of central directory must not be written");
     }
 

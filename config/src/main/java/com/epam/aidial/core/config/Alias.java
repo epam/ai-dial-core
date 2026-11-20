@@ -42,6 +42,7 @@ public class Alias extends Deployment {
             case "models" -> AliasPresentation.MODEL;
             case "applications" -> AliasPresentation.APPLICATION;
             case "toolsets" -> AliasPresentation.TOOLSET;
+            case "routers" -> AliasPresentation.ROUTER;
             default -> null;
         };
     }

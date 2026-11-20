@@ -86,7 +86,7 @@ const fixed = await agent(
 "small" (check each yourself first; reject one with a reason if it does not hold). Do not implement findings of size
 "change": they become proposals later. For "small" code fixes add or adjust the JUnit / Vert.x test that covers them. Add
 to openspec/audits/<date>.md the deferred tasks the docs auditor collected (change, task, one line each). Do not commit
-and do not run git commands that change the working tree. Then run, with JAVA_HOME a JDK 21, ./gradlew checkstyleMain
+and do not run git commands that change the working tree. Then run, with JAVA_HOME a JDK 25, ./gradlew checkstyleMain
 checkstyleTest and the test classes you touched with --tests, and ${OPENSPEC} validate --specs --strict, and fix what
 fails.
 Findings: ${JSON.stringify(swept)}`,
@@ -107,7 +107,7 @@ Findings: ${JSON.stringify(swept)}`,
 phase('Verify')
 const verified = await agent(
   `Verify the working tree of the repository at your current working directory. Do not edit tracked files. Run, from the
-repository root in Git Bash with JAVA_HOME a JDK 21:
+repository root in Git Bash with JAVA_HOME a JDK 25:
 1. ./gradlew checkstyleMain checkstyleTest; ${OPENSPEC} validate --all --strict
 2. ./gradlew :server:test --tests "<every test class the archived changes added or touched, from their review.md files>"
    (not the full suite: it runs in CI). Report each class and its result.

@@ -143,8 +143,7 @@ public class MessagesController extends MessagesBaseController {
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 503)
-                    }
-            )
+                    })
     })
     @Override
     public Future<?> handle() {
@@ -223,7 +222,7 @@ public class MessagesController extends MessagesBaseController {
     private Future<Void> handleNonStreamingResponse(ProxyResponse proxyResponse, Buffer upstreamBody) {
         // the one buffered answer Core does not otherwise re-serialize: a decided request pays a parse for the router name
         Buffer body = context.getDecision() != null && proxyResponse.statusCode() == 200
-                ? RouterModelFn.rewrite(upstreamBody, context.getDecision().getRouterName()) : upstreamBody;
+                ? RouterModelFn.rewrite(upstreamBody, context.getDecision().getAnswerName()) : upstreamBody;
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();

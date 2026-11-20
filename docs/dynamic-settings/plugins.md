@@ -78,7 +78,7 @@ In process the host serves the create operations listed below. A plugin calls an
 * **What a call reaches.** A `POST` to a create operation: a deployments action (`/openai/deployments/<name>/chat/completions`, `completions` or `embeddings`), `/openai/v1/chat/completions`, `/openai/v1/responses` (or `/openai/responses`) or `/anthropic/v1/messages`; the last four name the deployment in the body's `model`. Any other path, and a Responses call with `"background": true`, is refused: the call fails, and the plugin decides what to answer.
 * **What the plugin passes.** The body as a parsed JSON object, which DIAL Core takes: the target's processing changes it in place, so a plugin that calls twice with one body passes a copy. The headers are copied. DIAL Core drops the ones it sets for an origin itself (`X-UPSTREAM-ENDPOINT`, `X-UPSTREAM-KEY`, `X-UPSTREAM-EXTRA-DATA`, `X-DIAL-CACHE-BREAKPOINT-PATH`, `X-DIAL-CACHE-EXTRA-METADATA`, `X-DIAL-OVERRIDE-NAME`, `X-DIAL-DEPLOYMENT-ID`, `X-DIAL-APPLICATION-ID`, `X-DIAL-APPLICATION-PROPERTIES` and `X-DIAL-DEPLOYMENT-FEATURES`), so a plugin may pass its own request's headers on.
 * **What the plugin gets back.** The answer as a plugin's own answer looks: the status and headers, then the body as it arrives. Any status is an answer: an unknown deployment gives `404`, one the caller may not use `403`, a limit reached `429`.
-* **How the call is checked, charged and logged.** As a request the plugin's deployment sends DIAL Core with its per-request key: the target's role, consent and access checks, its limits against the caller's, a token-stats span under the plugin's request, a per-request key for the target's origin, and an analytics row with `parent_deployment` the plugin's deployment. The row has no `request.body`, `response.body` or `assembled_response`, whatever the key: the plugin's own row logs the bodies once. A plugin that changes the body before the call sends the target a body no row carries.
+* **How the call is checked, charged and logged.** As a request the plugin's deployment sends DIAL Core with its per-request key: the target's role, consent and access checks, its limits against the caller's, a token-stats span under the plugin's request, a per-request key for the target's origin, and an analytics row with `parent_deployment` the plugin's deployment. The row carries its bodies as a row of a request over HTTP does, so a plugin's call logs them twice: in the plugin's row and in the target's row, which holds the body the plugin passed.
 * **When a call ends.** When DIAL Core cancels the plugin's answer (the client went away, or a retry moved past it), or the plugin cancels the call's answer, the target's request stops as one whose client went away does: a model target still reads its origin to the end and charges it. When the plugin's request ends, or a router in decision mode falls back from the plugin's deployment to another candidate, DIAL Core cancels the answers of its calls that are still open, and answers a later call `401` `Unknown api key`.
 
 A plugin that calls its own deployment calls itself again and again. DIAL Core stops such a chain at 32 deployments: the call past that gets the answer `400` `Call depth limit reached: 32`.
@@ -102,13 +102,74 @@ A [router in decision mode](routers.md#decision-mode) may name a plugin by a plu
 
 ### The forward sample
 
-The module `plugin-samples` holds an origin plugin of type `forward`, with the settings `{"deployment": "<name>"}`. It sends each request on to that deployment through a call, and answers with the call's answer: a deployments action goes to the same action of that deployment, the other interfaces keep their path with `model` set to it. It forwards the create operations only: a Responses item operation or a Messages `count_tokens` request fails, as a call reaches nothing else. It is a worked example of a call and the vehicle for measuring one. The default Docker image does not carry it; build an image with `--build-arg SAMPLE_PLUGINS=true` to put its jar in `/app/plugins`.
+The module `plugin-samples` holds an origin plugin of type `forward`, with the settings `{"deployment": "<name>"}`. It sends each request on to that deployment through a call, and answers with the call's answer: a deployments action goes to the same action of that deployment, the other interfaces keep their path with `model` set to it. It forwards the create operations only: a Responses item operation or a Messages `count_tokens` request fails, as a call reaches nothing else. It is a worked example of a call and the vehicle for measuring one. The default Docker image does not carry it; build an image with `--build-arg SAMPLE_PLUGINS=true` to put its jar in the plugin directory `samples/forward`, that is `/app/plugins/samples/forward`.
 
 ## Plugin code
 
-DIAL Core loads plugin code once, at start, from the jars in the directory named by the static setting `plugins.dir` (default `plugins`, relative to the working directory; `/app/plugins` in the Docker image). A missing directory loads nothing. A jar registers its code in `META-INF/services/com.epam.aidial.core.plugin.PluginProvider`, and compiles against the `aidial-core-plugin-api` module of DIAL Core (`com.epam.aidial:aidial-core-plugin-api`). The module is not published to a Maven repository yet: build its jar from a DIAL Core checkout with `./gradlew :aidial-core-plugin-api:jar`.
+DIAL Core loads plugin code once, at start, from its own classpath and from the plugin directories under the directory named by the static setting `plugins.dir` (default `plugins`, relative to the working directory; `/app/plugins` in the Docker image). A missing directory loads nothing. A jar registers its code in `META-INF/services/com.epam.aidial.core.plugin.PluginProvider`, and compiles against the `aidial-core-plugin-api` module of DIAL Core (`com.epam.aidial:aidial-core-plugin-api`). See [Building a plugin](#building-a-plugin).
 
-DIAL Core does not start when a jar in the directory cannot be opened, when its plugin code cannot be created, when two jars register the same plugin class (an old jar left beside its new version), or when two plugin classes declare the same type. New plugin code needs a restart of DIAL Core; the `plugins` entries and their settings reload with the rest of the config.
+### Layout
+
+Each plugin has a directory of its own, two levels below `plugins.dir`: `<plugins.dir>/<group>/<plugin>/`, which holds the plugin's jars, its libraries included. `<group>/<plugin>` is the plugin directory's id, which the logs and the settings below use.
+
+```
+/app/plugins/
+├── builtin/           plugins the DIAL Core image carries
+│   └── echo/
+│       └── echo-1.0.jar
+└── custom/            plugins an environment mounts
+    └── translator/
+        ├── translator-2.3.jar
+        └── some-library.jar
+```
+
+DIAL Core treats every group alike. By convention the DIAL Core image fills `builtin`, and an environment mounts its own plugins under `custom`, one mount per plugin (for example `/app/plugins/custom/translator`, one Kubernetes volume each). A volume mounted over a whole group hides what the image put there, so mount into `custom`, never over `builtin` or over `plugins.dir`. An empty group is fine. Directories whose name starts with a dot, and `lost+found`, which a formatted volume carries, are ignored at both levels.
+
+Each plugin directory gets its own class loader. A plugin sees its own jars and DIAL Core's classes, not the jars of another plugin, so two plugins may bundle different versions of one library. DIAL Core's classes win: when a plugin bundles a library DIAL Core carries (the plugin API, Vert.x, Jackson and the rest of DIAL Core's classpath), the plugin gets DIAL Core's copy. Do not bundle those.
+
+DIAL Core does not start when:
+
+* a jar lies directly in `plugins.dir` or directly in a group directory (the flat layout of earlier versions; the message names the jar);
+* a jar of a loaded plugin directory cannot be opened, or its plugin code cannot be created;
+* two jars of one plugin directory register the same plugin class (an old jar left beside its new version);
+* a loaded plugin directory registers no plugin code (often a volume mounted one level off);
+* two plugin classes declare the same type, in one plugin directory or in two.
+
+At start DIAL Core logs each plugin directory, `Loaded plugin directory custom/translator: types [...]` or `Excluded plugin directory builtin/echo`. New plugin code needs a restart of DIAL Core; the `plugins` entries and their settings reload with the rest of the config.
+
+Moving from an earlier version: move each plugin's jars into `<plugins.dir>/<group>/<plugin>/` in the rollout that brings this version. The earlier version reads only the flat directory, so a rollback takes the old layout back with it.
+
+### Including and excluding plugins
+
+The static settings `plugins.include` (default `["*"]`) and `plugins.exclude` (default `[]`) pick the plugin directories DIAL Core loads: one is loaded when its id matches a pattern of `include` and no pattern of `exclude`. A pattern is `*` or `<group>/<plugin>`, where either part may be `*`: `builtin/*` names a group, `*/echo` a plugin in any group. Any other pattern stops the start, and so does an empty `include`; to load no plugin directory, set `exclude` to `*`. A pattern that matches no directory is fine, so one setting can serve environments with different mounts.
+
+Each setting is a JSON array or one string of comma-separated patterns, the form an environment variable takes:
+
+```
+aidial.plugins.exclude=builtin/echo,custom/old
+```
+
+DIAL Core does not open a plugin directory it does not load, so excluding a broken plugin gets DIAL Core started while the plugin is fixed. To replace a built-in plugin with another build of it, mount the build under `custom` and exclude the built-in one, for example `aidial.plugins.exclude=builtin/echo` with the new build in `custom/echo`; loading both stops the start, as both declare the same type.
+
+### Building a plugin
+
+The plugin API is published to the GitHub Packages Maven registry of this repository as `com.epam.aidial:aidial-core-plugin-api`:
+
+```groovy
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/epam/ai-dial-core")
+        credentials {
+            username = System.getenv("GPR_USERNAME")
+            password = System.getenv("GPR_PASSWORD") // a token with the read:packages scope
+        }
+    }
+}
+
+dependencies {
+    compileOnly("com.epam.aidial:aidial-core-plugin-api:<DIAL Core version>")
+}
+```
 
 ## Configuration API
 
