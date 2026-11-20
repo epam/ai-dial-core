@@ -142,32 +142,26 @@ public class ResourceService implements AutoCloseable {
     // waits a random 0 to 2^n - 1 ms, at most 63 ms, so the pods that collided spread out
     private static final int MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS = 32;
     private static final int MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT = 6;
-    // the compare-and-set that made the record's last write; a resent command finds its own token there
-    private static final String COMPUTE_TOKEN_ATTRIBUTE = "compute_token";
     // in a fixed order, for HMGET
     private static final List<String> REDIS_FIELD_LIST = List.copyOf(REDIS_FIELDS);
     // ARGV: the field names. Run as a write, so it reads the master: a replica can lag behind the last compare-and-set
     private static final String READ_FIELDS_SCRIPT = "return redis.call('hmget', KEYS[1], unpack(ARGV))";
     // ARGV[1]: the etag the value was read with ('' for none); ARGV[2]: 'true' if the value came from blob storage, so
-    // the record is created when Redis has none; ARGV[3]: a token unique to this attempt; ARGV[4..]: field, value pairs.
-    // Redisson resends a command after a response timeout: a resend that finds its token reports the write it made.
-    // If a writer on another pod wrote the record in between, the resend sees a conflict and fn runs again on a value
-    // that already holds this update, so the update counts twice: a counter can run high, never low
+    // the record is created when Redis has none; ARGV[3..]: field, value pairs.
+    // Redisson resends a command after a response timeout. A resend of a write that was applied sees a conflict, and
+    // fn runs again on a value that already holds the update, so it counts twice: a counter can run high, never low
     private static final String COMPARE_AND_SET_SCRIPT = """
-            if redis.call('hget', KEYS[1], '%1$s') == ARGV[3] then
-              return 1
-            end
             if redis.call('exists', KEYS[1]) == 0 then
               if ARGV[2] ~= 'true' then
                 return 0
               end
-            elseif (redis.call('hget', KEYS[1], '%2$s') or '') ~= ARGV[1] then
+            elseif (redis.call('hget', KEYS[1], '%s') or '') ~= ARGV[1] then
               return 0
             end
-            redis.call('hset', KEYS[1], '%1$s', ARGV[3], unpack(ARGV, 4))
+            redis.call('hset', KEYS[1], unpack(ARGV, 3))
             redis.call('persist', KEYS[1])
             return 1
-            """.formatted(COMPUTE_TOKEN_ATTRIBUTE, ETAG_ATTRIBUTE);
+            """.formatted(ETAG_ATTRIBUTE);
     // ARGV[1]: expiration in milliseconds; ARGV[2..]: field, value pairs
     private static final String PUT_IF_ABSENT_SCRIPT = """
             if redis.call('exists', KEYS[1]) == 1 then
@@ -682,19 +676,17 @@ public class ResourceService implements AutoCloseable {
             boolean cacheHit = true;
 
             if (result == null) {
-                // rate-limit counters are written without the lock (computeResourceWithoutLock); a counter read that
-                // skips it takes the pod-local one, so concurrent misses of one counter on a pod load the blob once
-                boolean counter = descriptor.getType() == ResourceTypes.LIMIT;
-                try (var ignore = lock ? lockService.lock(redisKey) : counter ? lockService.lockLocally(redisKey) : null) {
+                try (var ignore = lock ? lockService.lock(redisKey) : null) {
                     result = redisGet(redisKey, true);
 
                     if (result == null) {
                         cacheHit = false;
                         String blobKey = blobKey(descriptor);
                         result = blobGet(blobKey, true);
-                        if (counter) {
-                            // a counter write since the miss is newer than the blob, so the blob copy must not replace
-                            // it; returning the blob copy is fine, a counter read may be a few updates behind
+                        if (descriptor.getType() == ResourceTypes.LIMIT) {
+                            // rate-limit counters are written without the lock (computeResourceWithoutLock), so a write
+                            // since the miss is newer than the blob and the blob copy must not replace it; returning
+                            // the blob copy is fine, a counter read may be a few updates behind
                             putIfAbsent(redisKey, result);
                         } else {
                             redisPut(redisKey, result);
@@ -1064,8 +1056,7 @@ public class ResourceService implements AutoCloseable {
             byte[] expectedEtag = fromBlob
                     ? RedisUtil.stringToRedis(Objects.requireNonNullElse(current.etag, ""))
                     : fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
-            String token = Long.toHexString(ThreadLocalRandom.current().nextLong());
-            if (compareAndSet(redisKey, expectedEtag, fromBlob, token, next)) {
+            if (compareAndSet(redisKey, expectedEtag, fromBlob, next)) {
                 boolean created = !current.exists();
                 return () -> {
                     // after the write, so a sync that dropped the entry meanwhile cannot leave the write unqueued, and
@@ -1104,15 +1095,11 @@ public class ResourceService implements AutoCloseable {
 
     /**
      * @param createIfAbsent the value came from blob storage: the record is created if Redis still has none
-     * @param token unique to this attempt, so a resend of an applied write reports success instead of a conflict,
-     *              unless another pod wrote the record in between (see the comment on the script)
      */
-    @VisibleForTesting
-    boolean compareAndSet(String redisKey, byte[] expectedEtag, boolean createIfAbsent, String token, Result result) {
+    private boolean compareAndSet(String redisKey, byte[] expectedEtag, boolean createIfAbsent, Result result) {
         List<Object> args = new ArrayList<>();
         args.add(expectedEtag);
         args.add(RedisUtil.booleanToRedis(createIfAbsent));
-        args.add(RedisUtil.stringToRedis(token));
         addFieldArgs(args, result);
         return evalBoolean(COMPARE_AND_SET_SCRIPT, redisKey, args);
     }
