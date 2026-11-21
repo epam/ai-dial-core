@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
@@ -19,11 +20,14 @@ import javax.annotation.Nullable;
 abstract class JsonBodyRequest implements RequestObject {
     private static final String MODEL_NODE = "model";
 
+    @JsonIgnore
     private final ObjectNode tree;
     // null once the tree holds a change the received bytes lack
     @Nullable
+    @JsonIgnore
     private ReceivedBody received;
     @Nullable
+    @JsonIgnore
     private String modelOverride;
 
     protected JsonBodyRequest(ReceivedBody body) {
@@ -40,6 +44,11 @@ abstract class JsonBodyRequest implements RequestObject {
 
     protected void treeChanged() {
         received = null;
+    }
+
+    @Override
+    public ObjectNode getTree() {
+        return tree;
     }
 
     @Override

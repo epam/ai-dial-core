@@ -1,21 +1,41 @@
 package com.epam.aidial.core.server.log;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Router;
+import com.epam.aidial.core.config.SpendingLimitMode;
+import com.epam.aidial.core.config.policy.BudgetInstance;
+import com.epam.aidial.core.config.policy.Policy;
+import com.epam.aidial.core.config.policy.PolicyAssignment;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
+import com.epam.aidial.core.server.data.RouterDecision;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
+import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.deltix.gflog.api.LogEntry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyChar;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -31,6 +52,22 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class GfLogStoreTest {
+
+    private static final String PENDING_BODY_BYTES = "dial_analytics_log_pending_body_bytes";
+    private static final String BODIES_SKIPPED = "dial_analytics_log_bodies_skipped_total";
+    private static final long HEAP_BYTES = 10_000;
+
+    private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
+
+    @BeforeEach
+    public void addMeterRegistry() {
+        Metrics.addRegistry(meters);
+    }
+
+    @AfterEach
+    public void removeMeterRegistry() {
+        Metrics.removeRegistry(meters);
+    }
 
     @Test
     public void testGetParentDeployment_NoInterceptors() {
@@ -550,6 +587,500 @@ public class GfLogStoreTest {
         assertEquals(1234L, duration.asLong());
     }
 
+    @SneakyThrows
+    @Test
+    public void testAssembledResponseIsOmittedWithoutAssembly() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer("{\"id\":\"chatcmpl-1\"}"));
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+
+        JsonNode log = ProxyUtil.MAPPER.readTree(buffer.toString());
+        assertFalse(log.has("assembled_response"));
+        assertEquals("{\"id\":\"chatcmpl-1\"}", log.get("response").get("body").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testAssembledResponseIsWrittenForAssembledStream() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getResponseBody()).thenReturn(Buffer.buffer("data: {\"id\":\"chatcmpl-1\"}\n\ndata: [DONE]\n\n"));
+        when(context.getAssembledStreamingResponse()).thenReturn("{\"id\":\"chatcmpl-1\"}");
+
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+
+        JsonNode log = ProxyUtil.MAPPER.readTree(buffer.toString());
+        assertEquals("{\"id\":\"chatcmpl-1\"}", log.get("assembled_response").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteIsWrittenFlatBetweenExecutionPathAndDuration() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getExecutionPath()).thenReturn(List.of("route"));
+        when(context.getRouteName()).thenReturn("vector-store");
+        when(context.getRouteType()).thenReturn("global");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("vector-store", log.get("route_name").asText());
+        assertEquals("global", log.get("route_type").asText());
+        assertFalse(log.has("route"));
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(List.of("execution_path", "route_name", "route_type", "operation_duration_ms"),
+                fields.subList(fields.indexOf("execution_path"), fields.indexOf("operation_duration_ms") + 1));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testApplicationRouteWritesNameAndTypeNextToTheDeployment() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getDeploymentName()).thenReturn("applications/public/dial_scheduler__1.0.0");
+        when(context.getRouteName()).thenReturn("index-search");
+        when(context.getRouteType()).thenReturn("application");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("index-search", log.get("route_name").asText());
+        assertEquals("application", log.get("route_type").asText());
+        assertEquals("applications/public/dial_scheduler__1.0.0", log.get("deployment").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteIsOmittedWhenNoRouteIsSelected() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getDeploymentName()).thenReturn("model");
+
+        JsonNode log = logOf(context);
+
+        assertFalse(log.has("route_name"));
+        assertFalse(log.has("route_type"));
+        assertEquals("model", log.get("deployment").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteTypeIsOmittedWhenItIsNull() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRouteName()).thenReturn("vector-store");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("vector-store", log.get("route_name").asText());
+        assertFalse(log.has("route_type"));
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteNameIsOmittedWhenItIsNull() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRouteType()).thenReturn("global");
+
+        JsonNode log = logOf(context);
+
+        assertFalse(log.has("route_name"));
+        assertEquals("global", log.get("route_type").asText());
+    }
+
+    @SneakyThrows
+    @Test
+    public void testRouteNamesAreEscaped() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getRouteName()).thenReturn("na\"me\\\n");
+        when(context.getRouteType()).thenReturn("global");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("na\"me\\\n", log.get("route_name").asText());
+    }
+
+    @Test
+    public void testSessionIsWrittenRightAfterChat() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getConversationId()).thenReturn("conversation-1");
+        when(context.getSessionId()).thenReturn("se\"ss\\ion\n");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("conversation-1", log.get("chat").get("id").asText());
+        assertEquals("se\"ss\\ion\n", log.get("session").get("id").asText());
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(fields.indexOf("chat") + 1, fields.indexOf("session"));
+    }
+
+    @Test
+    public void testSessionIsOmittedWithoutSessionId() {
+        JsonNode log = logOf(mock(AnalyticsLogContext.class));
+
+        assertFalse(log.has("session"));
+    }
+
+    @Test
+    public void testSessionIsWrittenForSecuredApiKey() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.isSecuredApiKey()).thenReturn(true);
+        when(context.getSessionId()).thenReturn("session-1");
+
+        JsonNode log = logOf(context);
+
+        assertEquals("session-1", log.get("session").get("id").asText());
+        assertFalse(log.get("request").has("body"));
+    }
+
+    @Test
+    public void testBodiesWrittenForKeyNotSecured() {
+        JsonNode log = logOf(row("model", "{\"q\":1}")
+                .responseBody(Buffer.buffer("{\"a\":2}"))
+                .assembledStreamingResponse("{\"assembled\":3}")
+                .build());
+
+        assertEquals("{\"q\":1}", log.get("request").get("body").asText());
+        assertEquals("{\"a\":2}", log.get("response").get("body").asText());
+        assertEquals("{\"assembled\":3}", log.get("assembled_response").asText());
+    }
+
+    @Test
+    public void testSecuredKeyRowHasNoBodies() {
+        JsonNode log = logOf(row("model", "{\"q\":1}")
+                .responseBody(Buffer.buffer("{\"a\":2}"))
+                .assembledStreamingResponse("{\"assembled\":3}")
+                .securedApiKey(true)
+                .build());
+
+        assertFalse(log.get("request").has("body"));
+        assertFalse(log.get("response").has("body"));
+        assertFalse(log.has("assembled_response"));
+        assertEquals("model", log.get("deployment").asText());
+        assertEquals("200", log.get("response").get("status").asText());
+    }
+
+    @Test
+    public void testRowsWithoutBodiesWhileWriterBehind() {
+        GfLogStore store = store(percentOfHeap(10));
+        AnalyticsLogContext a = row("a", "x".repeat(2000)).build();
+        AnalyticsLogContext b = row("b", "y".repeat(2000))
+                .responseBody(Buffer.buffer("{}"))
+                .assembledStreamingResponse("{}")
+                .build();
+        AnalyticsLogContext c = row("c", "z".repeat(10))
+                .responseBody(Buffer.buffer("{\"a\":1}"))
+                .assembledStreamingResponse("{}")
+                .build();
+
+        // nothing waiting: the row keeps its body although it is over the limit
+        assertSame(a, store.admit(a));
+        assertEquals("x".repeat(2000), logOf(a).get("request").get("body").asText());
+        assertEquals(2000, pendingBodyBytes());
+
+        // the bodies waiting reach the limit: every other field is still written
+        AnalyticsLogContext queuedB = store.admit(b);
+        JsonNode log = logOf(queuedB);
+        assertFalse(log.get("request").has("body"));
+        assertFalse(log.get("response").has("body"));
+        assertFalse(log.has("assembled_response"));
+        assertEquals("b", log.get("deployment").asText());
+        assertEquals(7, log.get("token_usage").get("total_tokens").asLong());
+        assertEquals("trace-b", log.get("trace").get("trace_id").asText());
+        assertEquals("200", log.get("response").get("status").asText());
+        assertEquals(1, bodiesSkipped());
+        assertEquals(2000, pendingBodyBytes());
+
+        // a row with no bodies has the same fields, but lost nothing, so it is not counted
+        JsonNode empty = logOf(store.admit(row("e", "").build()));
+        assertFalse(empty.get("request").has("body"));
+        assertEquals(1, bodiesSkipped());
+
+        // the writer caught up
+        store.release(a);
+        store.release(queuedB);
+        assertEquals(0, pendingBodyBytes());
+        assertSame(c, store.admit(c));
+        assertEquals("z".repeat(10), logOf(c).get("request").get("body").asText());
+        // the request, response and assembled bodies all count
+        assertEquals(10 + 7 + 2, pendingBodyBytes());
+        assertEquals(1, bodiesSkipped());
+    }
+
+    @Test
+    public void testOneWarningWhileWriterHoversAtLimit() {
+        GfLogStore store = store(percentOfHeap(10));
+        AnalyticsLogContext a = row("a", "x".repeat(700)).build();
+        AnalyticsLogContext b = row("b", "x".repeat(700)).build();
+        AnalyticsLogContext d = row("d", "x".repeat(700)).build();
+        Logger logger = (Logger) LoggerFactory.getLogger(GfLogStore.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        Level previous = logger.getLevel();
+        logger.setLevel(Level.INFO);
+        try {
+            store.admit(a);
+            store.admit(b);
+            // 1,400 bytes wait, over the limit of 1,000
+            store.admit(row("c", "x").build());
+            // the writer wrote A: 700 bytes wait, under the limit but over half of it
+            store.release(a);
+            assertSame(d, store.admit(d));
+            assertNull(store.admit(row("e", "x").build()).getRequestBody());
+            // the writer wrote the rest
+            store.release(b);
+            store.release(d);
+            store.admit(row("f", "x").build());
+
+            assertEquals(2, bodiesSkipped());
+            assertEquals(List.of(Level.WARN, Level.INFO), appender.list.stream().map(ILoggingEvent::getLevel).toList(), appender.list::toString);
+        } finally {
+            logger.setLevel(previous);
+            logger.detachAppender(appender);
+        }
+    }
+
+    @Test
+    public void testLimitFollowsTheHeap() {
+        long largerHeap = 4 * HEAP_BYTES;
+        AnalyticsLogContext a = row("a", "x".repeat(2000)).build();
+        AnalyticsLogContext b = row("b", "y".repeat(2000)).build();
+
+        // 10 percent of the larger heap is 4,000 bytes, and 2,000 are waiting
+        GfLogStore store = store(percentOfHeap(10), largerHeap);
+        store.admit(a);
+        assertSame(b, store.admit(b));
+        assertEquals(0, bodiesSkipped());
+
+        // 2.5 percent of the larger heap is 1,000 bytes
+        store = store(percentOfHeap(2.5), largerHeap);
+        store.admit(a);
+        assertNull(store.admit(b).getRequestBody());
+        assertEquals(1, bodiesSkipped());
+    }
+
+    @Test
+    public void testRowsKeepBodiesWithoutLimit() {
+        // no setting reads as -1; 0 means no limit as well
+        for (AnalyticsSettings settings : List.of(AnalyticsSettings.from(new JsonObject()), percentOfHeap(0))) {
+            GfLogStore store = store(settings);
+            AnalyticsLogContext a = row("a", "x".repeat(2000)).build();
+            AnalyticsLogContext b = row("b", "y".repeat(2000)).build();
+
+            assertSame(a, store.admit(a));
+            assertSame(b, store.admit(b));
+
+            assertEquals("y".repeat(2000), logOf(b).get("request").get("body").asText());
+            assertEquals(4000, pendingBodyBytes());
+            assertEquals(0, bodiesSkipped());
+        }
+    }
+
+    @Test
+    public void testSecuredRowQueuedWithoutBodies() {
+        GfLogStore store = store(AnalyticsSettings.from(new JsonObject()));
+        AnalyticsLogContext secured = row("a", "x".repeat(2000))
+                .responseBody(Buffer.buffer("{}"))
+                .assembledStreamingResponse("{}")
+                .securedApiKey(true)
+                .build();
+
+        AnalyticsLogContext queued = store.admit(secured);
+
+        assertNull(queued.getRequestBody());
+        assertNull(queued.getResponseBody());
+        assertNull(queued.getAssembledStreamingResponse());
+        assertEquals("a", logOf(queued).get("deployment").asText());
+        assertEquals(0, pendingBodyBytes());
+        assertEquals(0, bodiesSkipped());
+
+        // with the writer behind, a secured row is not counted as skipped
+        store = store(percentOfHeap(10));
+        store.admit(row("b", "y".repeat(2000)).build());
+        assertNull(store.admit(secured).getRequestBody());
+        assertEquals(2000, pendingBodyBytes());
+        assertEquals(0, bodiesSkipped());
+    }
+
+    @Test
+    public void testRowOfDecidedRequest() {
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1", "m2"), 12);
+        decision.skip(502, "upstream");
+        AnalyticsLogContext context = row("m2", "{}")
+                .executionPath(List.of("r1", "m2"))
+                .parentDeployment("r1")
+                .decision(decision.toAnalyticsDecision())
+                .build();
+
+        JsonNode log = logOf(context);
+
+        assertEquals("m2", log.get("deployment").asText());
+        assertEquals("r1", log.get("parent_deployment").asText());
+        assertEquals("[\"r1\",\"m2\"]", log.get("execution_path").toString());
+        assertEquals("{\"router\":\"r1\",\"api\":\"openaiChatCompletions\",\"candidates\":[\"m1\",\"m2\"],\"deployment\":\"m2\","
+                + "\"decide_ms\":12,\"attempts\":[{\"deployment\":\"m1\",\"status\":502,\"reason\":\"upstream\"}]}", log.get("decision").toString());
+    }
+
+    @Test
+    public void testBackgroundJobRouterRowCarriesTheDecision() {
+        RouterDecision decision = new RouterDecision(router("r3"), InterfaceType.OPENAI_RESPONSES, List.of("gpt-4"), 7);
+        RouterDecision.Hop hop = new RouterDecision.Hop("routerspan", null, null, List.of("r3"));
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .deploymentName("gpt-4")
+                .parentDeployment("r3")
+                .executionPath(List.of("r3", "gpt-4"))
+                .decision(decision.toAnalyticsDecision())
+                .routerHop(hop)
+                .requestMethod("POST")
+                .requestBody("{}")
+                .build();
+
+        AnalyticsLogContext serving = AnalyticsLogContext.from(record, null, null);
+        JsonNode servingLog = logOf(serving);
+        assertNull(servingLog.get("decision"));
+        assertEquals("routerspan", servingLog.get("trace").get("core_parent_span_id").asText());
+
+        JsonNode log = logOf(AnalyticsLogContext.routerRow(serving, record.decision(), hop, TokenStatsTracker.UsageStats.EMPTY));
+        assertEquals("r3", log.get("deployment").asText());
+        assertNull(log.get("parent_deployment"));
+        assertEquals("[\"r3\"]", log.get("execution_path").toString());
+        assertEquals("routerspan", log.get("trace").get("core_span_id").asText());
+        assertNull(log.get("request").get("body"));
+        assertNull(log.get("token_usage"));
+        assertEquals("{\"router\":\"r3\",\"api\":\"openaiResponses\",\"candidates\":[\"gpt-4\"],\"deployment\":\"gpt-4\","
+                + "\"decide_ms\":7,\"attempts\":[]}", log.get("decision").toString());
+    }
+
+    @Test
+    public void testBackgroundJobRowWithoutDecision() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .deploymentName("m2")
+                .requestMethod("POST")
+                .requestBody("{}")
+                .build();
+
+        assertFalse(logOf(AnalyticsLogContext.from(record, null, null)).has("decision"));
+    }
+
+    @Test
+    public void testSessionFromBackgroundJobRecord() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .sessionId("session-1")
+                .requestBody("{}")
+                .build();
+
+        assertEquals("session-1", AnalyticsLogContext.from(record, null, null).getSessionId());
+    }
+
+    @Test
+    public void testBackgroundJobRecordStoredWithoutSessionLoadsWithNoSession() {
+        BackgroundJobRecord record = ProxyUtil.convertToObject("{\"requestBody\":\"{}\"}", BackgroundJobRecord.class);
+
+        assertNull(record.sessionId());
+    }
+
+    @Test
+    public void testSpendingLimitsAreWrittenRightAfterProject() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getProject()).thenReturn("projA");
+        when(context.getBudgetCheck()).thenReturn(paid("pro\"j\\A\n", "pol\"icy", "pro\"j\\A\n/a1", new PolicyAssignment()));
+
+        JsonNode log = logOf(context);
+
+        JsonNode limits = log.get("spending_limits");
+        assertEquals("shadow", limits.get("mode").asText());
+        assertEquals("pro\"j\\A\n", limits.get("cost_object").asText());
+        assertEquals("paid", limits.get("outcome").asText());
+        assertEquals("pol\"icy", limits.get("policy").asText());
+        assertEquals("pro\"j\\A\n/a1", limits.get("assignment").asText());
+        assertEquals(5, limits.size());
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(fields.indexOf("project") + 1, fields.indexOf("spending_limits"));
+    }
+
+    @Test
+    public void testSpendingLimitsOfSelfApplyingPolicyHaveNoAssignment() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(paid("ORG", "ORG/personal", "ORG/personal", null));
+
+        JsonNode limits = logOf(context).get("spending_limits");
+
+        assertEquals("ORG/personal", limits.get("policy").asText());
+        assertFalse(limits.has("assignment"));
+    }
+
+    @Test
+    public void testSpendingLimitsWithoutPayer() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(new BudgetCheck(SpendingLimitMode.ENFORCE, "ORG", BudgetCheck.Outcome.NO_BUDGET, null));
+
+        JsonNode limits = logOf(context).get("spending_limits");
+
+        assertEquals("{\"mode\":\"enforce\",\"cost_object\":\"ORG\",\"outcome\":\"no_budget\"}", limits.toString());
+    }
+
+    @Test
+    public void testSpendingLimitsOffHaveTheModeOnly() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(BudgetCheck.OFF);
+
+        assertEquals("{\"mode\":\"off\"}", logOf(context).get("spending_limits").toString());
+    }
+
+    @Test
+    public void testSpendingLimitsWithoutOutcomeWhenTheCounterWasNotRead() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(new BudgetCheck(SpendingLimitMode.SHADOW, "projA", null, null));
+
+        assertEquals("{\"mode\":\"shadow\",\"cost_object\":\"projA\"}", logOf(context).get("spending_limits").toString());
+    }
+
+    @Test
+    public void testSpendingLimitsAreOmittedWithoutCheck() {
+        assertFalse(logOf(mock(AnalyticsLogContext.class)).has("spending_limits"));
+    }
+
+    @Test
+    public void testRouterRowHasNoSpendingLimits() {
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 3);
+        RouterDecision.Hop hop = new RouterDecision.Hop("routerspan", null, null, List.of("r1"));
+        AnalyticsLogContext serving = row("m1", "{}")
+                .budgetCheck(paid("projA", "projA-a1", "projA/a1", new PolicyAssignment()))
+                .build();
+        assertTrue(logOf(serving).has("spending_limits"));
+
+        AnalyticsLogContext router = AnalyticsLogContext.routerRow(serving, decision.toAnalyticsDecision(), hop, TokenStatsTracker.UsageStats.EMPTY);
+
+        assertNull(router.getBudgetCheck());
+        assertFalse(logOf(router).has("spending_limits"));
+    }
+
+    @Test
+    public void testBackgroundJobRowHasNoSpendingLimits() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .deploymentName("gpt-4")
+                .requestBody("{}")
+                .build();
+
+        AnalyticsLogContext context = AnalyticsLogContext.from(record, null, null);
+
+        assertNull(context.getBudgetCheck());
+        assertFalse(logOf(context).has("spending_limits"));
+    }
+
+    private static BudgetCheck paid(String costObject, String policyPath, String id, PolicyAssignment assignment) {
+        BudgetPayer payer = new BudgetPayer(costObject, new BudgetInstance(id, policyPath, new Policy(), assignment, List.of()), "user");
+        return new BudgetCheck(SpendingLimitMode.SHADOW, costObject, BudgetCheck.Outcome.PAID, payer);
+    }
+
+    @SneakyThrows
+    private static JsonNode logOf(AnalyticsLogContext context) {
+        StringBuilder buffer = new StringBuilder();
+        new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
+        return ProxyUtil.MAPPER.readTree(buffer.toString());
+    }
+
     @Test
     public void testOperationDurationFromBackgroundJobRecord() {
         BackgroundJobRecord record = BackgroundJobRecord.builder()
@@ -584,6 +1115,42 @@ public class GfLogStoreTest {
         new GfLogStore(settings(false)).append(context, capturingEntry(buffer));
 
         return ProxyUtil.MAPPER.readTree(buffer.toString()).get("token_usage").toString();
+    }
+
+    private static AnalyticsLogContext.AnalyticsLogContextBuilder row(String deployment, String requestBody) {
+        TokenUsage tokenUsage = new TokenUsage();
+        tokenUsage.setTotalTokens(7);
+        return AnalyticsLogContext.builder()
+                .deploymentName(deployment)
+                .traceId("trace-" + deployment)
+                .tokenUsage(tokenUsage)
+                .requestBody(Buffer.buffer(requestBody))
+                .responseStatusCode(200);
+    }
+
+    private static AnalyticsSettings percentOfHeap(double maxPendingBodyHeapPercent) {
+        return AnalyticsSettings.from(new JsonObject().put("maxPendingBodyHeapPercent", maxPendingBodyHeapPercent));
+    }
+
+    /**
+     * On a heap of {@value #HEAP_BYTES} bytes, so that 10 percent is a limit of 1,000 bytes.
+     */
+    private static GfLogStore store(AnalyticsSettings settings) {
+        return store(settings, HEAP_BYTES);
+    }
+
+    private static GfLogStore store(AnalyticsSettings settings, long maxHeapBytes) {
+        // the global registry keeps the first gauge registered under a name, which stays bound to an earlier store
+        Metrics.globalRegistry.find(PENDING_BODY_BYTES).meters().forEach(Metrics.globalRegistry::remove);
+        return new GfLogStore(settings, maxHeapBytes);
+    }
+
+    private long pendingBodyBytes() {
+        return (long) meters.get(PENDING_BODY_BYTES).gauge().value();
+    }
+
+    private long bodiesSkipped() {
+        return (long) meters.get(BODIES_SKIPPED).counter().count();
     }
 
     private static AnalyticsLogContext mockHeaders(Map<String, List<String>> headers) {
@@ -651,5 +1218,11 @@ public class GfLogStoreTest {
         String json = "{" + member.substring(1) + "}";
         JsonNode root = ProxyUtil.MAPPER.readTree(json);
         return root.elements().next();
+    }
+
+    private static Router router(String name) {
+        Router router = new Router();
+        router.setName(name);
+        return router;
     }
 }

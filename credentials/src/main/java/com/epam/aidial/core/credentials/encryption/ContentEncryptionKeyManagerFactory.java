@@ -19,11 +19,12 @@ public class ContentEncryptionKeyManagerFactory {
         ContentEncryptionKeyManager baseManager =
                 new ContentEncryptionKeyManagerImpl(resourceService, contentEncryptionKeyGenerator, keyManagementService);
 
-        return addCacheIfEnabled(baseManager, cacheSettings);
+        return addCacheIfEnabled(baseManager, resourceService, cacheSettings);
     }
 
     private ContentEncryptionKeyManager addCacheIfEnabled(
             ContentEncryptionKeyManager contentEncryptionKeyManager,
+            ResourceService resourceService,
             CacheSettings cacheSettings) {
 
         if (cacheSettings == null) {
@@ -32,7 +33,7 @@ public class ContentEncryptionKeyManagerFactory {
         if (cacheSettings.isEnabled()) {
             long maxSize = cacheSettings.getMaxSize();
             long expiration = cacheSettings.getExpiration();
-            return new CachedContentEncryptionKeyManager(contentEncryptionKeyManager, maxSize, expiration);
+            return new CachedContentEncryptionKeyManager(contentEncryptionKeyManager, resourceService, maxSize, expiration);
         } else {
             return contentEncryptionKeyManager;
         }

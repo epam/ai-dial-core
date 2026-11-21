@@ -7,16 +7,16 @@ import com.epam.aidial.core.server.function.AutoShareDeploymentFn;
 import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.CollectResponseChatCompletionAttachmentsFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
-import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpServerRequest;
 
 import java.io.IOException;
@@ -39,13 +39,13 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
     }
 
     @Override
-    protected void enrichProxyRequestHeaders(HttpClientRequest proxyRequest) {
-        ProxyUtil.setOverrideNameHeader(proxyRequest, context.getDeployment());
+    protected void enrichProxyRequestHeaders(ProxyRequest proxyRequest) {
+        ProxyUtil.setOverrideNameHeader(proxyRequest.headers(), context.getDeployment());
     }
 
     @Override
     protected RequestObject parseRequest(Buffer body) throws IOException {
-        return new ChatCompletionRequest(ReceivedBody.parse(body));
+        return new ChatCompletionRequest(parseBody(body));
     }
 
     @Override
@@ -68,6 +68,7 @@ public class ChatCompletionInterceptorController extends BaseInterceptorControll
 
     @Override
     protected BufferingReadStream.BaseEventListener createListener(Proxy proxy, ProxyContext context) {
-        return new BaseChatCompletionController.ChatCompletionSseListener(List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context)));
+        return new BaseChatCompletionController.ChatCompletionSseListener(
+                RouterModelFn.withRouterModel(proxy, context, List.of(new CollectResponseChatCompletionAttachmentsFn(proxy, context))));
     }
 }

@@ -46,6 +46,14 @@ class EndpointMetadataTest {
             new RouteExclusion("PUT", Pattern.compile(".*/metadata/\\(applications\\|toolsets\\)/.*")),
             new RouteExclusion("DELETE", Pattern.compile(".*/metadata/\\(applications\\|toolsets\\)/.*")),
 
+            // ALIAS_RESOURCE route: POST returns 405 Method Not Allowed (not a real endpoint)
+            new RouteExclusion("POST", Pattern.compile(".*/\\(aliases\\)/.*")),
+
+            // ALIAS_RESOURCE_METADATA route: POST/PUT/DELETE are bulk operations (not CRUD)
+            new RouteExclusion("POST", Pattern.compile(".*/metadata/\\(aliases\\)/.*")),
+            new RouteExclusion("PUT", Pattern.compile(".*/metadata/\\(aliases\\)/.*")),
+            new RouteExclusion("DELETE", Pattern.compile(".*/metadata/\\(aliases\\)/.*")),
+
             // FILE_CONFIG route: POST/PUT/DELETE are admin bulk operations
             new RouteExclusion("POST", Pattern.compile(".*/admin/config/file/.*")),
             new RouteExclusion("PUT", Pattern.compile(".*/admin/config/file/.*")),
@@ -199,7 +207,7 @@ class EndpointMetadataTest {
             return false;
         }
         String path = endpoint.path();
-        if (Proxy.HEALTH_CHECK_PATH.equals(path) || Proxy.VERSION_PATH.equals(path)) {
+        if (Proxy.HEALTH_CHECK_PATH.equals(path) || Proxy.VERSION_PATH.equals(path) || Proxy.OPENAPI_PATH.equals(path)) {
             return true;
         }
         String samplePath = RouteExtractor.toSamplePath(path);

@@ -33,6 +33,7 @@ public class ChatCompletionApiTest extends ResourceBaseTest {
             assertTrue(response.body().contains("\"content\":\"hi\""));
             // nothing changed the body, so the upstream gets the received bytes
             assertEquals(body, upstreamBody.get());
+            assertEquals(1, awaitAnalyticsRows(1).size());
         }
     }
 

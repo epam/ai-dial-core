@@ -33,6 +33,28 @@ public class ResourceAuthSettingsEncryptionService {
         processFields(resourceId, bucketInfo, resourceAuthSettings, false);
     }
 
+    /**
+     * As {@link #decrypt}, but a stored {@code clientSecret} that cannot be decrypted is not an error: it is dropped
+     * and {@code false} is returned. A code verifier is encrypted under the secret's key and AAD, so it is dropped
+     * with it. A verifier stored without a {@code clientSecret} is not checked: it is read with a plaintext fallback
+     * and never fails.
+     *
+     * @return {@code true} when everything decrypted, {@code false} when the secrets were dropped
+     */
+    public boolean tryDecryptOrDropSecrets(String resourceId,
+                                           BucketInfo bucketInfo,
+                                           ResourceAuthSettings resourceAuthSettings) {
+        try {
+            decrypt(resourceId, bucketInfo, resourceAuthSettings);
+            return true;
+        } catch (EncryptionException e) {
+            log.warn("Can't decrypt auth settings of {}, treating the stored secrets as lost: {}", resourceId, e.getMessage());
+            resourceAuthSettings.setClientSecret(null);
+            resourceAuthSettings.setCodeVerifier(null);
+            return false;
+        }
+    }
+
     private void processFields(String resourceId,
                                BucketInfo bucketInfo,
                                ResourceAuthSettings settings,

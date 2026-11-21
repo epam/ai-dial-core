@@ -5,12 +5,18 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.LoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxy;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.RouteType;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -20,12 +26,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.KeyValuePair;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -42,6 +52,7 @@ class AutoEnrichedOtelJsonLayoutTest {
     private MockedStatic<Vertx> vertxMock;
     private MockedStatic<ContextManager> contextManagerMock;
     private MockedStatic<Span> spanMock;
+    private MockedStatic<BackgroundOperationTracer> backgroundTracerMock;
     private Span currentSpan;
 
     @BeforeEach
@@ -57,10 +68,14 @@ class AutoEnrichedOtelJsonLayoutTest {
         // Mock ContextManager
         contextManagerMock = mockStatic(ContextManager.class);
         
+        backgroundTracerMock = mockStatic(BackgroundOperationTracer.class);
+        backgroundTracerMock.when(BackgroundOperationTracer::resolveBackgroundTrace).thenReturn(Optional.empty());
+
         // Mock Span
         spanMock = mockStatic(Span.class);
         currentSpan = mock(Span.class);
         when(currentSpan.isRecording()).thenReturn(false);
+        when(currentSpan.getSpanContext()).thenReturn(SpanContext.getInvalid());
         spanMock.when(Span::current).thenReturn(currentSpan);
     }
     
@@ -75,6 +90,9 @@ class AutoEnrichedOtelJsonLayoutTest {
         }
         if (spanMock != null) {
             spanMock.close();
+        }
+        if (backgroundTracerMock != null) {
+            backgroundTracerMock.close();
         }
     }
 
@@ -290,6 +308,101 @@ class AutoEnrichedOtelJsonLayoutTest {
     }
 
     @Test
+    void shouldIncludeTraceContextOfBackgroundRun_WhenNoProxyContext() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        backgroundTracerMock.when(BackgroundOperationTracer::resolveBackgroundTrace).thenReturn(Optional.of(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "8a46c76f1554b00a", TraceFlags.getDefault(), TraceState.getDefault())));
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("Background run")));
+
+        assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
+        assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
+        assertEquals("00", jsonNode.get("TraceFlags").asText());
+    }
+
+    @Test
+    void shouldNotUseCurrentSpan_WhenNoProxyContextAndNoBackgroundRun() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        // the span of some request: only a background run's trace may fill the identifiers
+        when(currentSpan.getSpanContext()).thenReturn(SpanContext.create(
+                "22510e56eb9b21f6b03dbc038cd8fb71", "8a46c76f1554b00a", TraceFlags.getSampled(), TraceState.getDefault()));
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("Outside of any request")));
+
+        assertEquals("", jsonNode.get("TraceId").asText());
+        assertEquals("", jsonNode.get("SpanId").asText());
+        assertEquals("", jsonNode.get("TraceFlags").asText());
+    }
+
+    @Test
+    void shouldPreferProxyContextOverBackgroundRun() throws Exception {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getTraceId()).thenReturn("22510e56eb9b21f6b03dbc038cd8fb71");
+        when(proxyContext.getSpanId()).thenReturn("8a46c76f1554b00a");
+        when(proxyContext.getTraceFlags()).thenReturn("01");
+        when(proxyContext.getResponse()).thenReturn(response);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        backgroundTracerMock.when(BackgroundOperationTracer::resolveBackgroundTrace).thenReturn(Optional.of(SpanContext.create(
+                "ffffffffffffffffffffffffffffffff", "ffffffffffffffff", TraceFlags.getDefault(), TraceState.getDefault())));
+
+        JsonNode jsonNode = objectMapper.readTree(layout.doLayout(createEvent("With both")));
+
+        assertEquals("22510e56eb9b21f6b03dbc038cd8fb71", jsonNode.get("TraceId").asText());
+        assertEquals("8a46c76f1554b00a", jsonNode.get("SpanId").asText());
+        assertEquals("01", jsonNode.get("TraceFlags").asText());
+    }
+
+    // alias-in-process-hop design D6: the target pass of an alias call enriches the current span, the alias pass's;
+    // the pass of an origin plugin's call leaves its plugin's span alone
+
+    @Test
+    void aliasTargetPassEnrichesTheCurrentSpan() throws Exception {
+        // built before the stubbing: Mockito refuses a mock stubbed inside another stubbing
+        ProxyContext proxyContext = childPassContext(true);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(currentSpan.isRecording()).thenReturn(true);
+
+        layout.doLayout(createEvent("In the target pass"));
+
+        verify(currentSpan).setAttribute("loggerName", "test.logger");
+    }
+
+    @Test
+    void pluginCallPassLeavesTheCurrentSpanAlone() throws Exception {
+        // built before the stubbing: Mockito refuses a mock stubbed inside another stubbing
+        ProxyContext proxyContext = childPassContext(false);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(currentSpan.isRecording()).thenReturn(true);
+
+        layout.doLayout(createEvent("In the plugin's call"));
+
+        verify(currentSpan, never()).setAttribute("loggerName", "test.logger");
+    }
+
+    private static ProxyContext childPassContext(boolean aliasTarget) {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getResponse()).thenReturn(response);
+        when(proxyContext.isChildPass()).thenReturn(true);
+        when(proxyContext.isAliasTargetPass()).thenReturn(aliasTarget);
+        return proxyContext;
+    }
+
+    private static LoggingEvent createEvent(String message) {
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName(context.getLogger("test.logger").getName());
+        event.setLevel(Level.WARN);
+        event.setMessage(message);
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext(context);
+        return event;
+    }
+
+    @Test
     void shouldIncludeTracingAttributesAndKeepSpanSettersTyped() throws Exception {
         ProxyContext proxyContext = mock(ProxyContext.class);
         HttpServerResponse response = mock(HttpServerResponse.class);
@@ -319,6 +432,182 @@ class AutoEnrichedOtelJsonLayoutTest {
         assertEquals(10, attributes.get("gen_ai.usage.input_tokens").asInt());
         assertEquals("base64", attributes.get("gen_ai.request.encoding_formats").get(0).asText());
         verify(currentSpan, never()).setAttribute("gen_ai.usage.input_tokens", "10");
+    }
+
+    @Test
+    void shouldIncludeGlobalRouteInLogLine() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute("vector-store", RouteType.GLOBAL);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("Global route"))).get("Attributes");
+
+        assertEquals("vector-store", attributes.get("dial.route.name").asText());
+        assertEquals("global", attributes.get("dial.route.type").asText());
+    }
+
+    @Test
+    void shouldIncludeApplicationRouteInLogLine() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute("index-search", RouteType.APPLICATION);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("Application route"))).get("Attributes");
+
+        assertEquals("index-search", attributes.get("dial.route.name").asText());
+        assertEquals("application", attributes.get("dial.route.type").asText());
+    }
+
+    @Test
+    void shouldIncludeRouteOnTheSpan() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute("vector-store", RouteType.GLOBAL);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        when(currentSpan.isRecording()).thenReturn(true);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("Route and span"))).get("Attributes");
+
+        assertEquals("vector-store", attributes.get("dial.route.name").asText());
+        verify(currentSpan).setAttribute("dial.route.name", "vector-store");
+        verify(currentSpan).setAttribute("dial.route.type", "global");
+        verify(currentSpan).setAttribute("loggerName", "test.logger");
+    }
+
+    @Test
+    void shouldOmitRouteWithoutRoute() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute(null, null);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("No route"))).get("Attributes");
+
+        assertFalse(attributes.has("dial.route.name"));
+        assertFalse(attributes.has("dial.route.type"));
+    }
+
+    @Test
+    void shouldOmitRouteOutsideRequest() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(infoEvent("No request"))).get("Attributes");
+
+        assertFalse(attributes.has("dial.route.name"));
+        assertFalse(attributes.has("dial.route.type"));
+    }
+
+    private static ProxyContext proxyContextOnRoute(String routeName, RouteType routeType) {
+        ProxyContext proxyContext = mock(ProxyContext.class);
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.ended()).thenReturn(false);
+        when(proxyContext.getResponse()).thenReturn(response);
+        when(proxyContext.getTracingAttributes()).thenReturn(new LinkedHashMap<>());
+        if (routeName != null) {
+            Route route = new Route();
+            route.setName(routeName);
+            when(proxyContext.getRoute()).thenReturn(route);
+            when(proxyContext.getRouteType()).thenReturn(routeType);
+        }
+        return proxyContext;
+    }
+
+    @Test
+    void shouldWriteKeyValuePairsAsAttributes() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        LoggingEvent event = infoEvent("routed");
+        event.addKeyValuePair(new KeyValuePair("model", "gpt-a"));
+        event.addKeyValuePair(new KeyValuePair("attempt", 2));
+        event.addKeyValuePair(new KeyValuePair("stream", false));
+        event.addKeyValuePair(new KeyValuePair("candidates", List.of("a", "b")));
+        event.addKeyValuePair(new KeyValuePair("tags", null));
+
+        JsonNode line = objectMapper.readTree(layout.doLayout(event));
+        JsonNode attributes = line.get("Attributes");
+
+        assertEquals("routed", line.get("Body").asText());
+        assertEquals("gpt-a", attributes.get("model").textValue());
+        assertEquals(2, attributes.get("attempt").intValue());
+        assertFalse(attributes.get("stream").booleanValue());
+        assertEquals("[\"a\",\"b\"]", attributes.get("candidates").toString());
+        assertTrue(attributes.has("tags") && attributes.get("tags").isNull());
+        List<String> names = new ArrayList<>();
+        attributes.fieldNames().forEachRemaining(names::add);
+        assertEquals(List.of("instant", "loggerName", "threadName", "model", "attempt", "stream", "candidates", "tags"), names,
+                "after Core's own attributes, in the record's order");
+    }
+
+    @Test
+    void shouldKeepCoreNullAttributeOverKeyValuePair() throws Exception {
+        ProxyContext proxyContext = proxyContextOnRoute(null, null);
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(proxyContext);
+        LoggingEvent event = infoEvent("forged");
+        event.addKeyValuePair(new KeyValuePair("user.id", "x"));
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event)).get("Attributes");
+
+        assertTrue(attributes.get("user.id").isNull(), attributes.toString());
+    }
+
+    @Test
+    void shouldKeepCoreAttributeOverKeyValuePair() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        LoggingEvent event = infoEvent("forged");
+        event.addKeyValuePair(new KeyValuePair("loggerName", "x"));
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event)).get("Attributes");
+
+        assertEquals("test.logger", attributes.get("loggerName").asText());
+    }
+
+    @Test
+    void shouldNotCopyKeyValuePairsToSpan() {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        when(currentSpan.isRecording()).thenReturn(true);
+        LoggingEvent event = infoEvent("routed");
+        event.addKeyValuePair(new KeyValuePair("model", "gpt-a"));
+
+        layout.doLayout(event);
+
+        verify(currentSpan).setAttribute("loggerName", "test.logger");
+        verify(currentSpan, never()).setAttribute("model", "gpt-a");
+    }
+
+    @Test
+    void shouldWriteUnknownValueAsText() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        LoggingEvent event = infoEvent("odd value");
+        event.addKeyValuePair(new KeyValuePair("value", new Object() {
+            @Override
+            public String toString() {
+                return "as text";
+            }
+        }));
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event)).get("Attributes");
+
+        assertEquals("as text", attributes.get("value").asText());
+    }
+
+    @Test
+    void shouldWriteListOfUnknownValuesAsTextAndDropPairWithoutKey() throws Exception {
+        contextManagerMock.when(ContextManager::getProxyContext).thenReturn(null);
+        LoggingEvent event = infoEvent("odd list");
+        // an empty bean, which Jackson cannot write
+        event.addKeyValuePair(new KeyValuePair("items", List.of(new Object())));
+        event.addKeyValuePair(new KeyValuePair(null, "no key"));
+        event.addKeyValuePair(new KeyValuePair("model", "gpt-a"));
+
+        JsonNode attributes = objectMapper.readTree(layout.doLayout(event)).get("Attributes");
+
+        assertNotNull(attributes, "not the fallback line");
+        assertTrue(attributes.get("items").isTextual(), attributes.toString());
+        assertEquals("gpt-a", attributes.get("model").asText());
+    }
+
+    private static LoggingEvent infoEvent(String message) {
+        LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+        LoggingEvent event = new LoggingEvent();
+        event.setLoggerName("test.logger");
+        event.setLevel(Level.INFO);
+        event.setMessage(message);
+        event.setTimeStamp(System.currentTimeMillis());
+        event.setLoggerContext(context);
+        return event;
     }
 
     @Test

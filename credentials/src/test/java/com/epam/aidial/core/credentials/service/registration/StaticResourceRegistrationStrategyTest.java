@@ -12,11 +12,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.net.ConnectException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -69,8 +71,101 @@ class StaticResourceRegistrationStrategyTest {
         assertEquals(tokenEndpoint, result.getTokenEndpoint());
         assertEquals(codeChallengeMethod, result.getCodeChallengeMethod());
         assertEquals(scopesSupported, result.getScopesSupported());
+        assertNull(result.getResource());
+        // Looked up only for the resource indicator; nothing published means none, never the endpoint.
+        verify(protectedResourceMetadataService).getProtectedResourceMetadata(resourceId, resourceEndpoint);
+        verifyNoInteractions(authorizationServerMetadataService);
+    }
+
+    @Test
+    void testRegister_explicitResource_usedWithoutLookup() {
+        ResourceAuthSettings resourceAuthSettings = completeStaticSettings()
+                .resource("https://api.example.com")
+                .build();
+
+        ClientRegistration result = resourceRegistrationStrategy.register(
+                "staticResource", "https://test.endpoint.com", resourceAuthSettings);
+
+        assertEquals("https://api.example.com", result.getResource());
         verifyNoInteractions(protectedResourceMetadataService);
         verifyNoInteractions(authorizationServerMetadataService);
+    }
+
+    @Test
+    void testRegister_completeSettings_resourceFromPublishedMetadata() {
+        AuthorizationServerProtectedResourceMetadata protectedResourceMetadata = new AuthorizationServerProtectedResourceMetadata();
+        protectedResourceMetadata.setResource("https://test.endpoint.com/mcp");
+        when(protectedResourceMetadataService.getProtectedResourceMetadata("staticResource", "https://test.endpoint.com"))
+                .thenReturn(protectedResourceMetadata);
+
+        ClientRegistration result = resourceRegistrationStrategy.register(
+                "staticResource", "https://test.endpoint.com", completeStaticSettings().build());
+
+        assertEquals("https://test.endpoint.com/mcp", result.getResource());
+        assertEquals("https://static.auth.endpoint", result.getAuthorizationEndpoint());
+        verifyNoInteractions(authorizationServerMetadataService);
+    }
+
+    @Test
+    void testRegister_completeSettings_failedLookupDoesNotFailRegistration() {
+        when(protectedResourceMetadataService.getProtectedResourceMetadata("staticResource", "https://test.endpoint.com"))
+                .thenThrow(new IllegalArgumentException("Protected resource metadata is not the same as Resource endpoint"));
+
+        ClientRegistration result = resourceRegistrationStrategy.register(
+                "staticResource", "https://test.endpoint.com", completeStaticSettings().build());
+
+        assertNull(result.getResource());
+        assertEquals("staticClientId", result.getClientId());
+    }
+
+    @Test
+    void testRegister_completeSettings_unreachableEndpointDoesNotFailRegistration() {
+        doAnswer(invocation -> {
+            throw new ConnectException("Cannot connect to https://test.endpoint.com");
+        }).when(protectedResourceMetadataService).getProtectedResourceMetadata("staticResource", "https://test.endpoint.com");
+
+        ClientRegistration result = resourceRegistrationStrategy.register(
+                "staticResource", "https://test.endpoint.com", completeStaticSettings().build());
+
+        assertNull(result.getResource());
+        assertEquals("staticClientId", result.getClientId());
+    }
+
+    @Test
+    void testRegister_discovery_explicitResourceWinsOverPublished() {
+        AuthorizationServerProtectedResourceMetadata protectedResourceMetadata = new AuthorizationServerProtectedResourceMetadata();
+        protectedResourceMetadata.setResource("https://test.endpoint.com/mcp");
+        when(protectedResourceMetadataService.getProtectedResourceMetadata("staticResource", "https://test.endpoint.com"))
+                .thenReturn(protectedResourceMetadata);
+        AuthorizationServerMetadata authorizationServerMetadata = mock(AuthorizationServerMetadata.class);
+        when(authorizationServerMetadata.getAuthorizationEndpoint()).thenReturn("https://discovered.auth.endpoint");
+        when(authorizationServerMetadata.getTokenEndpoint()).thenReturn("https://discovered.token.endpoint");
+        when(authorizationServerMetadataService.getAuthorizationServerMetadata(
+                "staticResource", "https://test.endpoint.com", protectedResourceMetadata, false))
+                .thenReturn(authorizationServerMetadata);
+
+        ResourceAuthSettings explicit = ResourceAuthSettings.builder()
+                .clientId("staticClientId")
+                .clientSecret("staticClientSecret")
+                .resource("https://api.example.com")
+                .build();
+        ResourceAuthSettings published = explicit.toBuilder().resource(null).build();
+
+        assertEquals("https://api.example.com", resourceRegistrationStrategy.register(
+                "staticResource", "https://test.endpoint.com", explicit).getResource());
+        assertEquals("https://test.endpoint.com/mcp", resourceRegistrationStrategy.register(
+                "staticResource", "https://test.endpoint.com", published).getResource());
+    }
+
+    private static ResourceAuthSettings.ResourceAuthSettingsBuilder completeStaticSettings() {
+        return ResourceAuthSettings.builder()
+                .clientId("staticClientId")
+                .clientSecret("staticClientSecret")
+                .redirectUri("https://static.redirect.uri")
+                .authorizationEndpoint("https://static.auth.endpoint")
+                .tokenEndpoint("https://static.token.endpoint")
+                .codeChallengeMethod("S256")
+                .scopesSupported(List.of("scope1"));
     }
 
     @Test

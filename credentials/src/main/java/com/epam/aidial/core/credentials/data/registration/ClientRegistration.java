@@ -14,6 +14,7 @@ public class ClientRegistration {
     private String clientSecret;
     private String authorizationEndpoint;
     private String tokenEndpoint;
+    private String resource;
     private String redirectUri;
     private String codeChallengeMethod;
     private List<String> scopesSupported;

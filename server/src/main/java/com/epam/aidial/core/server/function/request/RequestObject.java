@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
 
 import java.util.List;
@@ -92,6 +93,11 @@ public interface RequestObject {
      * @throws JsonProcessingException if the request cannot be serialized
      */
     Buffer serialize() throws JsonProcessingException;
+
+    /**
+     * The request's JSON tree, which the enhancement chain changes in place.
+     */
+    ObjectNode getTree();
 
     /**
      * Indicates whether the response should be stored server-side.

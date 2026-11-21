@@ -1,11 +1,13 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.CredentialsLevel;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.config.SecuredResource;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignInRequest;
 import com.epam.aidial.core.credentials.data.credentials.ResourceSignOutRequest;
@@ -16,6 +18,7 @@ import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasService;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -81,6 +84,10 @@ public class ResourceCredentialsController {
                     String resourceId = resourceSignInRequest.getUrl();
                     return taskExecutor.submit(() -> {
                         Deployment deployment = deploymentService.findDeployment(context, resourceId);
+                        if (deployment instanceof Alias alias) {
+                            signInThroughAlias(alias, resourceSignInRequest);
+                            return true;
+                        }
                         if (deployment instanceof SecuredResource securedResource) {
                             String encodedResourceUrl = UrlUtil.encodePath(resourceId);
                             ResourceAuthSettings resourceAuthSettings = securedResource.getAuthSettings();
@@ -130,6 +137,9 @@ public class ResourceCredentialsController {
                     ValidationUtil.validate(resourceSignOutRequest);
 
                     Deployment deployment = deploymentService.findDeployment(context, resourceId);
+                    if (deployment instanceof Alias alias) {
+                        return signOutThroughAlias(alias, resourceSignOutRequest);
+                    }
                     if (!(deployment instanceof SecuredResource securedResource)) {
                         throw new ResourceNotFoundException("Resource is not found: " + encodedResourceId);
                     }
@@ -148,6 +158,43 @@ public class ResourceCredentialsController {
                         respondError("Can't signOut from Resource", error));
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * Signs the caller in to the toolset a toolset alias points to. The alias decides who may (its {@code userRoles},
+     * or the target's), so a caller who reaches the toolset only through the alias can sign in to it; the credentials
+     * are stored under the target, where the target pass of an alias call looks them up.
+     */
+    private void signInThroughAlias(Alias alias, ResourceSignInRequest request) {
+        AliasService.SecuredTarget target = deploymentService.getAliasService().toSecuredTarget(context, alias);
+        ToolSet toolSet = target.toolSet();
+        ResourceAuthSettings resourceAuthSettings = toolSet.getAuthSettings();
+        validateAuthType(resourceAuthSettings == null ? null : resourceAuthSettings.getAuthenticationType(), request.getAuthenticationType());
+        verifyAliasCredentialsLevel(request.getCredentialsLevel());
+        if (target.resource()) {
+            decryptAuthSettings(UrlUtil.encodePath(target.id()), resourceAuthSettings);
+        }
+        request.setUrl(target.id());
+        securedResourceService.signIn(context, toolSet, request);
+    }
+
+    /**
+     * Signs the caller out of the toolset a toolset alias points to, see {@link #signInThroughAlias}.
+     */
+    private boolean signOutThroughAlias(Alias alias, ResourceSignOutRequest request) {
+        AliasService.SecuredTarget target = deploymentService.getAliasService().toSecuredTarget(context, alias);
+        ResourceAuthSettings resourceAuthSettings = target.toolSet().getAuthSettings();
+        validateAuthType(resourceAuthSettings == null ? null : resourceAuthSettings.getAuthenticationType(), request.getAuthenticationType());
+        verifyAliasCredentialsLevel(request.getCredentialsLevel());
+        request.setUrl(target.id());
+        return securedResourceService.signOut(context, target.toolSet(), request);
+    }
+
+    // organization-level credentials of a target are the admin's to set, as for the target itself
+    private void verifyAliasCredentialsLevel(CredentialsLevel credentialsLevel) {
+        if (credentialsLevel.equals(CredentialsLevel.GLOBAL) && !accessService.hasAdminAccess(context)) {
+            throw new PermissionDeniedException("No read and write access to Resource");
+        }
     }
 
     private void verifyAccess(SecuredResource securedResource,

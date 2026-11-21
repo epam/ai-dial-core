@@ -1,5 +1,9 @@
 package com.epam.aidial.core.server.upstream;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
@@ -18,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -133,10 +138,48 @@ public class UpstreamRouteProviderTest {
         CachedUpstreamEntry entry = new CachedUpstreamEntry("test", null, "prefix", null);
         when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
 
-        UpstreamRoute route1 = provider.get(model, cacheBreakpointContext);
-        Upstream result = route1.next();
+        List<ILoggingEvent> warnings = captureWarnings(() -> assertEquals(upstream1, provider.get(model, cacheBreakpointContext).next()));
 
-        assertEquals(upstream1, result);
+        assertEquals(1, warnings.size(), warnings::toString);
+    }
+
+    @Test
+    public void testGet_IdOnlyPinOfRemovedUpstreamWarns() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setId("up-1");
+        upstream1.setEndpoint("upstream1");
+        model.setUpstreams(List.of(upstream1));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        // the usual pin of an upstream configured through interfaces: an id and no endpoint
+        CachedUpstreamEntry entry = new CachedUpstreamEntry(null, "gone", "prefix", null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        List<ILoggingEvent> warnings = captureWarnings(() -> assertEquals(upstream1, provider.get(model, cacheBreakpointContext).next()));
+
+        assertEquals(1, warnings.size(), warnings::toString);
+    }
+
+    @Test
+    public void testGet_PinMissLogsNoWarning() {
+        Model model = new Model();
+        model.setName("model");
+        Upstream upstream1 = new Upstream();
+        upstream1.setEndpoint("upstream1");
+        model.setUpstreams(List.of(upstream1));
+
+        UpstreamRouteProvider provider = new UpstreamRouteProvider(vertx, taskExecutor, () -> generator, upstreamCacheService);
+        CacheBreakpointContext cacheBreakpointContext = new CacheBreakpointContext(List.of(), Map.of(), CachePolicy.AVAILABILITY_PRIORITY);
+        // what getCacheEntry returns when no candidate prefix has a pin
+        CachedUpstreamEntry entry = new CachedUpstreamEntry(null, null, "prefix", null);
+        when(upstreamCacheService.getCacheEntry(eq(cacheBreakpointContext), eq(model))).thenReturn(entry);
+
+        List<ILoggingEvent> warnings = captureWarnings(() -> assertEquals(upstream1, provider.get(model, cacheBreakpointContext).next()));
+
+        assertTrue(warnings.isEmpty(), warnings::toString);
     }
 
     @Test
@@ -235,5 +278,21 @@ public class UpstreamRouteProviderTest {
         Upstream result = route.next();
 
         assertEquals(upstream2, result);
+    }
+
+    private static List<ILoggingEvent> captureWarnings(Runnable action) {
+        Logger logger = (Logger) LoggerFactory.getLogger(UpstreamRouteProvider.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        Level previous = logger.getLevel();
+        logger.setLevel(Level.WARN);
+        try {
+            action.run();
+            return List.copyOf(appender.list);
+        } finally {
+            logger.setLevel(previous);
+            logger.detachAppender(appender);
+        }
     }
 }

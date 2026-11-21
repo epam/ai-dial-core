@@ -199,6 +199,83 @@ class MessagesApiRequestTest {
         assertEquals("prefix.body.messages[0].content[0]", keys.get(0).path());
     }
 
+    @Test
+    void testBuildCacheKeys_stringContentMatchesTextBlock() throws JsonProcessingException {
+        String stringContent = """
+                {
+                    "messages": [
+                        {"role": "user", "content": "Hello"},
+                        {"role": "assistant", "content": [{"type": "text", "text": "Hi there"}]}
+                    ]
+                }
+                """;
+        String blockContent = """
+                {
+                    "messages": [
+                        {"role": "user", "content": [{"type": "text", "text": "Hello", "cache_control": {"type": "ephemeral"}}]},
+                        {"role": "assistant", "content": [{"type": "text", "text": "Hi there"}]}
+                    ]
+                }
+                """;
+
+        List<CacheKey> stringKeys = request(stringContent).buildCacheKeys(NODE_ORDER);
+        List<CacheKey> blockKeys = request(blockContent).buildCacheKeys(NODE_ORDER);
+
+        assertEquals(List.of("prefix.body.messages[0].content[0]", "prefix.body.messages[1].content[0]"),
+                stringKeys.stream().map(CacheKey::path).toList());
+        assertEquals(blockKeys.get(0).hash(), stringKeys.get(0).hash());
+        assertEquals(blockKeys.get(1).hash(), stringKeys.get(1).hash());
+    }
+
+    @Test
+    void testBuildCacheKeys_stringSystemMatchesTextBlock() throws JsonProcessingException {
+        String stringSystem = """
+                {
+                    "system": "Be brief",
+                    "messages": [
+                        {"role": "user", "content": [{"type": "text", "text": "Hello"}]}
+                    ]
+                }
+                """;
+        String blockSystem = """
+                {
+                    "system": [{"type": "text", "text": "Be brief"}],
+                    "messages": [
+                        {"role": "user", "content": [{"type": "text", "text": "Hello"}]}
+                    ]
+                }
+                """;
+
+        List<CacheKey> stringKeys = request(stringSystem).buildCacheKeys(NODE_ORDER);
+        List<CacheKey> blockKeys = request(blockSystem).buildCacheKeys(NODE_ORDER);
+
+        assertEquals(List.of("prefix.body.system[0]", "prefix.body.messages[0].content[0]"),
+                stringKeys.stream().map(CacheKey::path).toList());
+        assertEquals(blockKeys.get(0).hash(), stringKeys.get(0).hash());
+        assertEquals(blockKeys.get(1).hash(), stringKeys.get(1).hash());
+    }
+
+    @Test
+    void testBuildCacheKeys_textBlockWithExtraFieldDiffersFromString() throws JsonProcessingException {
+        String stringContent = """
+                {
+                    "messages": [
+                        {"role": "user", "content": "Hello"}
+                    ]
+                }
+                """;
+        String blockWithCitations = """
+                {
+                    "messages": [
+                        {"role": "user", "content": [{"type": "text", "text": "Hello", "citations": []}]}
+                    ]
+                }
+                """;
+
+        assertNotEquals(request(blockWithCitations).buildCacheKeys(NODE_ORDER).get(0).hash(),
+                request(stringContent).buildCacheKeys(NODE_ORDER).get(0).hash());
+    }
+
     private static String lastHash(List<CacheKey> keys) {
         return keys.get(keys.size() - 1).hash();
     }

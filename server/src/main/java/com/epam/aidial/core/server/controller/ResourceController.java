@@ -26,6 +26,7 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.ExternalServicesWriteMode;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ApplicationTypeSchemaProcessingException;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -657,21 +658,31 @@ public class ResourceController extends AccessControlBaseController {
         });
     }
 
+    /**
+     * Only DIAL admins set interceptors, and only ones the config defines. A write through a unit role skips this: it
+     * keeps the stored interceptors, which may include one the config has dropped since.
+     */
+    private void validateInterceptors(Application application) {
+        List<String> interceptors = ApplicationService.interceptorsOf(application);
+        if (interceptors.isEmpty()) {
+            return;
+        }
+        if (!accessService.hasAdminAccess(context)) {
+            throw new HttpException(FORBIDDEN, ApplicationService.ONLY_ADMINS_SET_INTERCEPTORS);
+        }
+        Config config = context.getConfig();
+        for (String interceptor : interceptors) {
+            if (!config.getInterceptors().containsKey(interceptor)) {
+                throw new HttpException(BAD_REQUEST, "Unknown interceptor: " + interceptor);
+            }
+        }
+    }
+
     private void validateCustomApplication(Application application) {
         try {
+            ResourceDependencyValidator.validateShape(application);
             checkCreateCodeApp(application);
             validateSchemaBasedApplication(application);
-            if (!application.getInterceptors().isEmpty()) {
-                if (!accessService.hasAdminAccess(context)) {
-                    throw new HttpException(FORBIDDEN, "Only admins are allowed to set interceptors");
-                }
-                Config config = context.getConfig();
-                for (String interceptor : application.getInterceptors()) {
-                    if (!config.getInterceptors().containsKey(interceptor)) {
-                        throw new HttpException(BAD_REQUEST, "Unknown interceptor: " + interceptor);
-                    }
-                }
-            }
             for (String dependency : application.getDependencies()) {
                 try {
                     deploymentService.findDeployment(context, dependency);
@@ -700,7 +711,7 @@ public class ResourceController extends AccessControlBaseController {
         applicationSchemaService.getSchema(application.getApplicationTypeSchemaId(), true);
         if (application.getApplicationProperties() != null) {
             List<ResourceDescriptor> files = applicationSchemaService.getFiles(application);
-            files.stream().filter(resource -> !(accessService.hasReadAccess(resource, context)))
+            files.stream().filter(resource -> !accessService.hasReadAccessToContentOf(resource, context))
                     .findAny().ifPresent(file -> {
                         throw new HttpException(FORBIDDEN, "No read access to file: " + file.getUrl());
                     });
@@ -766,12 +777,20 @@ public class ResourceController extends AccessControlBaseController {
                         ProxyUtil.hasTopLevelField(bodyJson, "external_services", "externalServices")
                                 ? ExternalServicesWriteMode.OVERRIDE
                                 : ExternalServicesWriteMode.PRESERVE_IF_OMITTED;
+                boolean dependenciesSubmitted = ProxyUtil.hasTopLevelField(bodyJson, "resource_dependencies", "resourceDependencies");
                 AdminManagedFieldsWriteMode adminManagedFieldsWriteMode =
                         AdminManagedFieldsWriteMode.of(adminPublicWrite, bodyJson);
                 return taskExecutor.submit(() -> {
                     validateCustomApplication(application);
+                    if (isUnitRoleWrite(descriptor, adminPublicWrite)) {
+                        // the service lets the write keep the stored interceptors, checked under the lock
+                        return applicationService.putApplicationByUnitRole(descriptor, etag, author, application,
+                                externalServicesWriteMode, dependenciesSubmitted).getKey();
+                    }
+                    validateInterceptors(application);
+                    boolean userAuthored = !accessService.hasExplicitAdminAccess(context);
                     return applicationService.putApplication(descriptor, etag, author, application, adminPublicWrite,
-                            adminManagedFieldsWriteMode, externalServicesWriteMode).getKey();
+                            adminManagedFieldsWriteMode, externalServicesWriteMode, userAuthored, dependenciesSubmitted).getKey();
                 });
             });
         } else if (descriptor.getType() == ResourceTypes.TOOL_SET) {
@@ -781,7 +800,9 @@ public class ResourceController extends AccessControlBaseController {
                 if (toolSet == null) {
                     throw new HttpException(BAD_REQUEST, "ToolSet can't be empty");
                 }
-                return taskExecutor.submit(() -> toolSetService.putToolSet(descriptor, etag, author, toolSet, adminPublicWrite).getKey());
+                return taskExecutor.submit(() -> isUnitRoleWrite(descriptor, adminPublicWrite)
+                        ? toolSetService.putToolSetByUnitRole(descriptor, etag, author, toolSet).getKey()
+                        : toolSetService.putToolSet(descriptor, etag, author, toolSet, adminPublicWrite).getKey());
             });
         } else {
             responseFuture = requestFuture.compose(pair -> {
@@ -798,6 +819,14 @@ public class ResourceController extends AccessControlBaseController {
                 .onFailure(error -> handleError(descriptor, error));
 
         return Future.succeededFuture();
+    }
+
+    /**
+     * Whether only roles in an org unit allow this shared-space write.
+     */
+    private boolean isUnitRoleWrite(ResourceDescriptor descriptor, boolean adminPublicWrite) {
+        return descriptor.isPublic() && !adminPublicWrite && proxy.getOrgUnitService().isEnabled()
+                && !accessService.hasWriteAccessBesidesUnitRoles(descriptor, context);
     }
 
     private Future<?> deleteResource(ResourceDescriptor descriptor) {
