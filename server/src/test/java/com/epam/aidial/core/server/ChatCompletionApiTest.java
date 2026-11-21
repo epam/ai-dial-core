@@ -37,6 +37,27 @@ public class ChatCompletionApiTest extends ResourceBaseTest {
         }
     }
 
+    // deployment-origin "Body sent to the origin": an origin could read the other value of a repeated key, so Core
+    // sends the tree it read rather than the client's bytes
+    @Test
+    public void testChatCompletions_RepeatedKeySerialized() {
+        String answer = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"gpt-35-turbo\","
+                + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+        String body = "{\"model\": \"gpt-3-turbo\", \"temperature\": 1, \"temperature\": 2, \"messages\": [{\"role\": \"user\", \"content\": \"hi\"}]}";
+        AtomicReference<String> upstreamBody = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/chat/completions", request -> {
+                upstreamBody.set(request.getBody().readUtf8());
+                return TestWebServer.createResponse(200, answer, "Content-Type", "application/json");
+            });
+
+            Response response = send(HttpMethod.POST, "/openai/v1/chat/completions", null, body, "content-type", "application/json");
+
+            verify(response, 200);
+            assertEquals("{\"model\":\"gpt-3-turbo\",\"temperature\":2,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}", upstreamBody.get());
+        }
+    }
+
     @Test
     public void testChatCompletions_MissingModel_BadRequest() {
         Response response = send(HttpMethod.POST, "/openai/v1/chat/completions", null,

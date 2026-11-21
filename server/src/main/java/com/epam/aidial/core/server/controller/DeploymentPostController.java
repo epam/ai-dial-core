@@ -337,7 +337,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
             ReceivedBody received = ProxyUtil.parseRequestBody(context, requestBody);
             RequestObject request = new ChatCompletionRequest(received);
             GenAiTraceAttributes.setRequestAttributes(context, requestedInterface(), received.tree());
-            processChatCompletionsRequestBody(request, false);
+            processChatCompletionsRequestBody(request);
         } catch (Throwable e) {
             if (e instanceof HttpException httpException) {
                 respond(httpException.getStatus(), httpException.getMessage());

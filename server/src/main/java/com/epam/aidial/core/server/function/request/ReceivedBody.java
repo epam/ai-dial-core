@@ -19,9 +19,11 @@ import java.nio.charset.StandardCharsets;
 import javax.annotation.Nullable;
 
 /**
- * A JSON object body as received from the client: the parsed tree and, when the upstream reads exactly what the tree
- * holds, the bytes it was parsed from, so they can be forwarded without serializing the tree. It is built only by
- * {@link #parse} and {@link #of}, which keep the bytes and the model range consistent with the tree.
+ * A JSON object body: the parsed tree and, while the tree holds nothing the received bytes lack but a new top-level
+ * {@code model} string, those bytes, so that the body goes on as the client's bytes with the model spliced in instead
+ * of the tree serialized. Immutable; built only by {@link #parse} and {@link #of}, which keep the bytes and the model
+ * range consistent with the tree. The tree itself is mutable and shared: whoever changes it other than through
+ * {@link #withModel} goes on with {@link #withoutBytes}.
  */
 public final class ReceivedBody {
 
@@ -30,22 +32,29 @@ public final class ReceivedBody {
     private static final ObjectReader STRICT_READER = ProxyUtil.MAPPER.reader().with(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY);
 
     private final ObjectNode tree;
-    // null when the bytes must not be forwarded as they are
+    // null when the tree is serialized: it was not parsed from bytes the upstream reads as Core does, or changed since
     @Nullable
     private final Buffer bytes;
     // the top-level model string in bytes, quotes included; -1 when there is none
     private final int modelStart;
     private final int modelEnd;
+    // spliced over the model string of bytes; null leaves the bytes as received
+    @Nullable
+    private final String model;
 
-    private ReceivedBody(ObjectNode tree, @Nullable Buffer bytes, int modelStart, int modelEnd) {
+    private ReceivedBody(ObjectNode tree, @Nullable Buffer bytes, int modelStart, int modelEnd, @Nullable String model) {
         this.tree = tree;
         this.bytes = bytes;
         this.modelStart = modelStart;
         this.modelEnd = modelEnd;
+        this.model = model;
     }
 
+    /**
+     * A body that is its tree serialized: the tree was not parsed from bytes the upstream may read as they are.
+     */
     public static ReceivedBody of(ObjectNode tree) {
-        return new ReceivedBody(tree, null, -1, -1);
+        return new ReceivedBody(tree, null, -1, -1, null);
     }
 
     /**
@@ -59,7 +68,7 @@ public final class ReceivedBody {
         try {
             return parseStrict(body);
         } catch (MismatchedInputException e) {
-            // a repeated key below the top level
+            // a repeated key below the top level: the only failure the lenient parse below gets past
             return of(ProxyUtil.parseObject(body));
         }
     }
@@ -93,7 +102,7 @@ public final class ReceivedBody {
         boolean forwardable = !repeatedKey && rootStart >= 0 && isWhitespace(body, 0, rootStart) && isWhitespace(body, rootEnd, body.length())
                 // the parser decodes some invalid UTF-8 leniently (e.g. an overlong or surrogate sequence), which the upstream may decode otherwise
                 && ByteBufUtil.isText(body.getByteBuf(), StandardCharsets.UTF_8);
-        return forwardable ? new ReceivedBody(tree, body, modelStart, modelEnd) : of(tree);
+        return forwardable ? new ReceivedBody(tree, body, modelStart, modelEnd, null) : of(tree);
     }
 
     private static boolean isWhitespace(Buffer body, long from, long to) {
@@ -106,23 +115,42 @@ public final class ReceivedBody {
         return true;
     }
 
+    /**
+     * The tree; changed only as the class comment says.
+     */
     public ObjectNode tree() {
         return tree;
     }
 
-    @Nullable
-    Buffer bytes() {
-        return bytes;
-    }
-
-    boolean hasModel() {
-        return modelStart >= 0;
+    /**
+     * Whether {@link #serialize} gives the received bytes, the model replaced or not, rather than the tree serialized.
+     */
+    boolean hasBytes() {
+        return bytes != null;
     }
 
     /**
-     * The received bytes with the model string replaced by {@code model}, if given.
+     * This body once the caller set the tree's {@code model} to {@code model}: the bytes with their model string
+     * replaced, or the tree serialized when the bytes have no top-level model string.
      */
-    Buffer withModel(@Nullable String model) throws JsonProcessingException {
+    ReceivedBody withModel(String model) {
+        return bytes != null && modelStart >= 0 ? new ReceivedBody(tree, bytes, modelStart, modelEnd, model) : withoutBytes();
+    }
+
+    /**
+     * This body once the caller changed the tree in a way the bytes lack: the tree serialized.
+     */
+    ReceivedBody withoutBytes() {
+        return bytes == null ? this : of(tree);
+    }
+
+    /**
+     * The body to send: the received bytes themselves, the received bytes with the model replaced, or the tree serialized.
+     */
+    Buffer serialize() throws JsonProcessingException {
+        if (bytes == null) {
+            return Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+        }
         if (model == null) {
             return bytes;
         }
@@ -131,5 +159,11 @@ public final class ReceivedBody {
                 .appendBuffer(bytes, 0, modelStart)
                 .appendBytes(value)
                 .appendBuffer(bytes, modelEnd, bytes.length() - modelEnd);
+    }
+
+    @Override
+    public String toString() {
+        // never the bytes or the tree: they hold the prompt
+        return "ReceivedBody[bytes=" + (bytes == null ? "none" : bytes.length()) + "]";
     }
 }

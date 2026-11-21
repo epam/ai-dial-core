@@ -118,8 +118,8 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                         return handleInterceptor(0);
                     }
                     return decisions.decideIfRouter(InterfaceType.OPENAI_CHAT_COMPLETIONS, Future.succeededFuture(context.getOriginalRequestBody()),
-                                    request.getTree(), this::reenterWithCandidate)
-                            .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName, false));
+                                    request.getBody().tree(), this::reenterWithCandidate)
+                            .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));
     }
@@ -137,7 +137,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                         decisions.handOffToInterceptors(request, candidate);
                         return handleInterceptor(0);
                     }
-                    return proceedToDeployment(request, candidate, true);
+                    return proceedToDeployment(request, candidate);
                 })
                 .otherwise(error -> handleRequestError(candidate, error));
     }
@@ -147,7 +147,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
         serveCandidate(parseBody(context.getOriginalRequestBody()));
     }
 
-    private Future<Void> proceedToDeployment(ChatCompletionRequest request, String deploymentName, boolean modelChanged) {
+    private Future<Void> proceedToDeployment(ChatCompletionRequest request, String deploymentName) {
         return verifyLimit()
                 .compose(ignore -> {
                     if (context.getDecision() != null) {
@@ -155,7 +155,7 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                     }
                     return proxy.getTokenStatsTracker().startSpan(context);
                 })
-                .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request, modelChanged)))
+                .compose(ignored -> proxy.getTaskExecutor().submit(() -> handleRequestBody(request)))
                 .otherwise(error -> handleRequestError(deploymentName, error));
     }
 
@@ -199,12 +199,12 @@ public class ChatCompletionsController extends BaseChatCompletionController {
                 });
     }
 
-    private Void handleRequestBody(ChatCompletionRequest request, boolean modelChanged) {
+    private Void handleRequestBody(ChatCompletionRequest request) {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
 
-        processChatCompletionsRequestBody(request, modelChanged);
+        processChatCompletionsRequestBody(request);
         return null;
     }
 

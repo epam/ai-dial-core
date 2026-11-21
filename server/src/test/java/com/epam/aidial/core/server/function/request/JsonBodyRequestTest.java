@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
@@ -13,8 +12,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -107,7 +104,7 @@ class JsonBodyRequestTest {
         RequestObject request = new ChatCompletionRequest(ReceivedBody.parse(body));
 
         assertEquals("m", ProxyUtil.MAPPER.readTree(request.serialize().getBytes()).get("model").asText());
-        assertNull(ReceivedBody.parse(body).bytes());
+        assertFalse(ReceivedBody.parse(body).hasBytes());
     }
 
     @Test
@@ -115,8 +112,8 @@ class JsonBodyRequestTest {
         // an overlong '/' far into the body, after a multi-byte text
         String prefix = "{\"model\": \"m\", \"text\": \"" + "Привет 😀 ".repeat(1000);
 
-        assertNotNull(ReceivedBody.parse(Buffer.buffer(prefix + "\"}")).bytes());
-        assertNull(ReceivedBody.parse(Buffer.buffer(prefix).appendBytes(new byte[] {(byte) 0xC0, (byte) 0xAF}).appendString("\"}")).bytes());
+        assertTrue(ReceivedBody.parse(Buffer.buffer(prefix + "\"}")).hasBytes());
+        assertFalse(ReceivedBody.parse(Buffer.buffer(prefix).appendBytes(new byte[] {(byte) 0xC0, (byte) 0xAF}).appendString("\"}")).hasBytes());
     }
 
     @Test
@@ -208,6 +205,32 @@ class JsonBodyRequestTest {
         assertTrue(request.clearInterceptorSettings());
 
         assertEquals("{\"model\":\"m\",\"custom_fields\":{\"configuration\":{}}}", serialize(request));
+    }
+
+    @Test
+    void testGetBody_handsTheBytesAndTheModelOnToTheNextPass() throws IOException {
+        String body = "{\"model\": \"alias\", \"max_tokens\": 16}";
+        RequestObject aliasPass = new MessagesApiRequest(ReceivedBody.parse(Buffer.buffer(body)));
+        aliasPass.setModel("router");
+
+        RequestObject routerPass = new MessagesApiRequest(aliasPass.getBody());
+        assertEquals("router", routerPass.getModel());
+        assertEquals("{\"model\": \"router\", \"max_tokens\": 16}", serialize(routerPass));
+        routerPass.setModel("model");
+
+        RequestObject modelPass = new MessagesApiRequest(routerPass.getBody());
+        assertEquals("{\"model\": \"model\", \"max_tokens\": 16}", serialize(modelPass));
+    }
+
+    @Test
+    void testGetBody_handsOnChangesAsTheTreeSerialized() throws IOException {
+        RequestObject aliasPass = parse("{\"model\": \"alias\", \"custom_fields\": {\"interceptor_configuration\": {}}}");
+        aliasPass.setModel("target");
+        assertTrue(aliasPass.clearInterceptorSettings());
+
+        RequestObject targetPass = new ChatCompletionRequest(aliasPass.getBody());
+
+        assertEquals("{\"model\":\"target\"}", serialize(targetPass));
     }
 
     @Test

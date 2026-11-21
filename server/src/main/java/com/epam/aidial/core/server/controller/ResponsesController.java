@@ -217,7 +217,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                         return handleInterceptor(0);
                     }
                     return decisions.decideIfRouter(InterfaceType.OPENAI_RESPONSES, Future.succeededFuture(context.getOriginalRequestBody()),
-                                    request.getTree(), this::reenterWithCandidate)
+                                    request.getBody().tree(), this::reenterWithCandidate)
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));
@@ -366,7 +366,7 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setStreamingRequest(request.isStreaming());
         context.setStoreResponse(request.isStore());
-        boolean bodyChanged = ProxyUtil.processChain(request, enhancementFunctions);
+        ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
         if (request.isBackground()) {
             Duration jobTtl = Duration.ofMillis(proxy.getBackgroundJobService().getJobTtlMs());
@@ -375,7 +375,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
         }
 
-        setProcessedRequestBody(request, bodyChanged, InterfaceType.OPENAI_RESPONSES);
+        setProcessedRequestBody(request, InterfaceType.OPENAI_RESPONSES);
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);
