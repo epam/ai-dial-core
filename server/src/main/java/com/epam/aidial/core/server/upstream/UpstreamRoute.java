@@ -168,7 +168,11 @@ public class UpstreamRoute {
             return;
         }
         cacheBreakpointPath = breakpointPath;
-        String hash = upstreamCacheContext == null ? null : upstreamCacheContext.getPrefixToHash().get(breakpointPath);
+        if (upstreamCacheContext == null) {
+            // no key was built for this pass (no cache features, or a hop served by a translator): nothing to match
+            return;
+        }
+        String hash = upstreamCacheContext.getPrefixToHash().get(breakpointPath);
         if (hash == null) {
             if (model.getType() == ModelType.CHAT) {
                 log.warn("prefix is not found: {}", breakpointPath);
