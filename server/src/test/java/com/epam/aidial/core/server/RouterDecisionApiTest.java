@@ -20,6 +20,8 @@ import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
 import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.redisson.api.RedissonClient;
 
 import java.io.IOException;
@@ -1046,6 +1048,40 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         }
         single(request -> request.getPath().equals("/openai/deployments/m1/chat/completions"));
         single(request -> request.getPath().equals("/openai/deployments/m2/chat/completions"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void failingPluginServedAliasCandidateSkippedThroughTierAlias() {
+        // as the tier chain: tier alias, router, alias per candidate, a model served by an origin plugin
+        verdict.set("{\"candidates\": [\"alias-pm1\", \"alias-pm2\"]}");
+        try (TestWebServer server = server()) {
+            verify(send(HttpMethod.POST, "/anthropic/v1/messages", null,
+                    "{\"model\":\"strong\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                    "content-type", "application/json", "X-Test-Status-For-Endpoint", "http://cloud-1=503"), 200);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"m2", "alias-m2"})
+    @DialConfigLocation(CONFIG)
+    void failingAliasCandidateSkippedThroughTierAlias(String next) {
+        // the router pass is an in-process call without bytes of its own: the next candidate starts from a copy of the
+        // call's body, the client's bytes included
+        verdict.set("{\"candidates\": [\"alias-m1\", \"" + next + "\"]}");
+        String body = "{\"model\" : \"strong\", \"max_tokens\": 16, \"messages\": [{\"role\": \"user\", \"content\": \"hi\"}]}";
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if ("m1".equals(request.getHeader(DEPLOYMENT_ID))) {
+                return TestWebServer.createResponse(503, "{\"error\":{\"message\":\"busy\"}}", "content-type", "application/json");
+            }
+            return answer(request);
+        })) {
+            verify(send(HttpMethod.POST, "/anthropic/v1/messages", null, body, "content-type", "application/json"), 200);
+        }
+        single(request -> "m1".equals(request.getHeader(DEPLOYMENT_ID)));
+        assertEquals(body.replace("\"strong\"", "\"m2\""),
+                single(request -> "m2".equals(request.getHeader(DEPLOYMENT_ID))).getBody().readUtf8());
     }
 
     @Test

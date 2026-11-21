@@ -123,6 +123,14 @@ public final class ReceivedBody {
     }
 
     /**
+     * A copy for a router's fallback candidate to start from: the same bytes and model, the tree's objects and arrays
+     * copied, so the candidate's changes leave this body as it is.
+     */
+    public ReceivedBody copy() {
+        return new ReceivedBody(tree.deepCopy(), bytes, modelStart, modelEnd, model);
+    }
+
+    /**
      * Whether {@link #serialize} gives the received bytes, the model replaced or not, rather than the tree serialized.
      */
     boolean hasBytes() {

@@ -112,25 +112,27 @@ public class RouterDecisionFlow {
      * What the first decide request carries, made off the event loop before any candidate changes the client's tree.
      * An in-process call has no bytes of its own. When the router gets the body, its tree is serialized once and stands
      * in for the client's bytes from here on: the decide body, and the bytes every fallback candidate is served from.
-     * Otherwise only a copy of the tree is kept, for a fallback candidate to start from: the serialization of a large
-     * body would be read only after a candidate failed.
+     * Otherwise only a copy of the call's body is kept, for a fallback candidate to start from: the serialization of a
+     * large body would be read only after a candidate failed, and the copy keeps the client's bytes the call carries.
      */
     @SneakyThrows
     private Prepared prepare(Router router, InterfaceType type, @Nullable Buffer read, @Nullable ObjectNode tree) {
         boolean withBody = RouterDecisionClient.withBody(router);
         Buffer bytes = read;
-        ObjectNode clientTree = null;
+        ReceivedBody clientBody = null;
         if (inProcessCall(tree) && (bytes == null || bytes.length() == 0)) {
             if (withBody) {
                 bytes = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
                 context.setOriginalRequestBody(bytes);
             } else {
-                // values are immutable and shared: only the objects and arrays a candidate's chain may change are copied
-                clientTree = tree.deepCopy();
+                // the call's body is the tree's while the tree is the same object; values are immutable and shared, so
+                // only the objects and arrays a candidate's chain may change are copied
+                ReceivedBody call = context.getCallBody();
+                clientBody = call != null && call.tree() == tree ? call.copy() : ReceivedBody.of(tree.deepCopy());
             }
         }
         if (!withBody) {
-            return new Prepared(null, null, mintDecideKey(router, type, null), clientTree);
+            return new Prepared(null, null, mintDecideKey(router, type, null), clientBody);
         }
         // the caller's tree is still the client's here; deployments-POST has none yet and parses the bytes once
         ObjectNode parsed = tree != null ? tree : parse(bytes);
@@ -143,9 +145,9 @@ public class RouterDecisionFlow {
 
     /**
      * A decide request's body, the plugin's own copy of the parsed body when the router is embedded, its key, and the
-     * client's tree a fallback candidate starts from when the pass has no bytes for that.
+     * client's body a fallback candidate starts from when the pass has no bytes of its own for that.
      */
-    private record Prepared(@Nullable Buffer body, @Nullable ObjectNode tree, ApiKeyData key, @Nullable ObjectNode clientTree) {
+    private record Prepared(@Nullable Buffer body, @Nullable ObjectNode tree, ApiKeyData key, @Nullable ReceivedBody clientBody) {
     }
 
     private static ObjectNode parse(Buffer bytes) {
@@ -189,7 +191,7 @@ public class RouterDecisionFlow {
                 .map(candidates -> {
                     RouterDecision decision = new RouterDecision(router, type, candidates, System.currentTimeMillis() - start);
                     decision.setFirstDecideKey(prepared.key());
-                    decision.setClientTree(prepared.clientTree());
+                    decision.setClientBody(prepared.clientBody());
                     decision.setReenter(reenter);
                     decision.setHop(routerHop(router));
                     decision.setAnswerName(aliasCalled(router));
@@ -438,13 +440,13 @@ public class RouterDecisionFlow {
         context.setTokenUsage(null);
         context.setUsagePerModel(null);
         context.setBudgetCheck(null);
-        ObjectNode clientTree = context.getDecision().getClientTree();
-        if (clientTree == null) {
+        ReceivedBody clientBody = context.getDecision().getClientBody();
+        if (clientBody == null) {
             context.setRequestBody(context.getOriginalRequestBody());
         } else {
-            // with no body set, the next candidate's parse takes the call tree instead of parsing bytes
+            // with no body set, the next candidate's parse takes the call body instead of parsing bytes
             context.setRequestBody(null);
-            context.setCallBody(ReceivedBody.of(clientTree.deepCopy()));
+            context.setCallBody(clientBody.copy());
         }
     }
 

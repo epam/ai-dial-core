@@ -2,10 +2,10 @@ package com.epam.aidial.core.server.data;
 
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Router;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
 import lombok.Getter;
 import lombok.Setter;
@@ -66,11 +66,12 @@ public class RouterDecision {
     @Setter
     private Runnable reenter;
     /**
-     * The client's tree as it was before the first candidate, when the router was reached by an in-process call that
-     * has no bytes to fall back to: each candidate that replaces a failed one starts from a copy of it. Null otherwise.
+     * The client's body as it was before the first candidate, the bytes the call carries included, when the router was
+     * reached by an in-process call that has no bytes of its own to fall back to: each candidate that replaces a failed
+     * one starts from a copy of it. Null otherwise.
      */
     @Setter
-    private ObjectNode clientTree;
+    private ReceivedBody clientBody;
     // where the router row sits in the call tree, fixed when the router answered
     @Setter
     private Hop hop;
