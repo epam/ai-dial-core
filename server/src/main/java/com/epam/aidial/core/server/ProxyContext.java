@@ -152,13 +152,10 @@ public class ProxyContext {
     // the org units above those where the caller holds a role, read at most once per request
     private Set<String> unitsAboveHeldRoles;
 
-    // the caller's per request key as the Redis master holds it, read at most once per request
+    // the caller's per request key as the Redis master holds it, read at most once per request; null until then
     @Getter(AccessLevel.NONE)
     @Setter(AccessLevel.NONE)
-    private ApiKeyData masterApiKeyData;
-    @Getter(AccessLevel.NONE)
-    @Setter(AccessLevel.NONE)
-    private boolean masterApiKeyDataRead;
+    private volatile Optional<ApiKeyData> masterApiKeyData;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -374,15 +371,25 @@ public class ProxyContext {
      * </p>
      */
     public ApiKeyData masterApiKeyData() {
-        if (!masterApiKeyDataRead && apiKeyData.getPerRequestKey() != null) {
-            masterApiKeyData = proxy.getApiKeyStore().getPerRequestKeyDataOnMaster(apiKeyData.getPerRequestKey());
-            masterApiKeyDataRead = true;
+        if (apiKeyData.getPerRequestKey() == null) {
+            return null;
         }
-        return masterApiKeyData;
+        Optional<ApiKeyData> data = masterApiKeyData;
+        if (data == null) {
+            data = Optional.ofNullable(proxy.getApiKeyStore().getPerRequestKeyDataOnMaster(apiKeyData.getPerRequestKey()));
+            masterApiKeyData = data;
+        }
+        return data.orElse(null);
     }
 
+    /**
+     * Returns a context of the same request with other key data. It answers access checks from that data alone and
+     * never reads the key on the Redis master: the data is not the copy the request was authenticated with.
+     */
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
-        return new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+        ProxyContext copy = new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+        copy.masterApiKeyData = Optional.empty();
+        return copy;
     }
 
     public boolean isOriginalRequest() {

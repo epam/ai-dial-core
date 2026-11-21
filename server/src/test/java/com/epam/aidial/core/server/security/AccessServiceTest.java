@@ -36,6 +36,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -1003,7 +1005,32 @@ public class AccessServiceTest {
         assertFalse(accessService.hasWriteAccess(granted, context));
         assertTrue(accessService.hasReadAccess(attached, context));
         assertFalse(accessService.hasReadAccess(other, context));
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(granted, context, ResourceAccessType.READ));
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(attached), context).get(attached));
         // the initiator's reach never counts the calling key's grants, the master's copy included
         assertTrue(accessService.lookupInitiatorPermissions(Set.of(granted), context).get(granted).isEmpty());
+    }
+
+    @Test
+    public void testLookupPermissions_StaysOffMasterWhenTheNeededAccessIsGranted() {
+        ResourceDescriptor attached = new ResourceDescriptor(ResourceTypes.FILE, "attached.json", List.of(), "bucket", "Users/other-user/", false);
+        ResourceDescriptor granted = new ResourceDescriptor(ResourceTypes.FILE, "granted.json", List.of(), "bucket", "Users/other-user/", false);
+        chainedHop();
+        context.getApiKeyData().getAttachedFiles().put(attached.getUrl(), new AutoSharedData(ResourceAccessType.READ_ONLY));
+        context.getApiKeyData().getPerRequestSharedResources().put(granted.getUrl(),
+                new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE))));
+        AccessService accessService = accessService(mock(ApplicationSchemaService.class));
+
+        // read only is short of all the permissions the lookups ask the rules for, but it is what the caller needs
+        assertTrue(accessService.hasReadAccess(attached, context));
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(attached, context, ResourceAccessType.READ));
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(attached), context).get(attached));
+        // the grant gives more than the read the caller asks for
+        assertTrue(accessService.hasReadAccess(granted, context));
+        verify(context, never()).masterApiKeyData();
+
+        // the needed access is missing
+        assertFalse(accessService.hasWriteAccess(attached, context));
+        verify(context).masterApiKeyData();
     }
 }

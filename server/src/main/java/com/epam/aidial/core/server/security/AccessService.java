@@ -137,7 +137,7 @@ public class AccessService {
      */
     public boolean hasReadAccessBesidesUnitRoles(ResourceDescriptor resource, ProxyContext context) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = lookupPermissions(Set.of(resource), context,
-                Set.of(ResourceAccessType.READ), permissionRulesBesidesUnitRoles);
+                Set.of(ResourceAccessType.READ), permissionRulesBesidesUnitRoles, Set.of(ResourceAccessType.READ));
         return permissions.get(resource).contains(ResourceAccessType.READ);
     }
 
@@ -198,7 +198,7 @@ public class AccessService {
      */
     public boolean hasWriteAccessBesidesUnitRoles(ResourceDescriptor resource, ProxyContext context) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = lookupPermissions(Set.of(resource), context,
-                Set.of(ResourceAccessType.WRITE), permissionRulesBesidesUnitRoles);
+                Set.of(ResourceAccessType.WRITE), permissionRulesBesidesUnitRoles, Set.of(ResourceAccessType.WRITE));
         return permissions.get(resource).contains(ResourceAccessType.WRITE);
     }
 
@@ -251,16 +251,28 @@ public class AccessService {
      */
     public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        return lookupPermissions(resources, context, ResourceAccessType.ALL);
+        return lookupPermissions(resources, context, ResourceAccessType.ALL, permissionRules, Set.of());
+    }
+
+    /**
+     * All permissions on the resource, for a caller that refuses the request without {@code needed}.
+     */
+    public Set<ResourceAccessType> lookupPermissions(ResourceDescriptor resource, ProxyContext context, ResourceAccessType needed) {
+        return lookupPermissions(Set.of(resource), context, ResourceAccessType.ALL, permissionRules, Set.of(needed)).get(resource);
     }
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context, Set<ResourceAccessType> toLookup) {
-        return lookupPermissions(resources, context, toLookup, permissionRules);
+        return lookupPermissions(resources, context, toLookup, permissionRules, toLookup);
     }
 
+    /**
+     * @param needed what the caller refuses the request without; empty when it only reports the permissions. A resource
+     *               left with none of the permissions, or without a needed one, is looked up once more in the master's
+     *               copy of the caller's per request key.
+     */
     private Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(Set<ResourceDescriptor> resources,
-            ProxyContext context, Set<ResourceAccessType> toLookup, List<PermissionRule> rules) {
+            ProxyContext context, Set<ResourceAccessType> toLookup, List<PermissionRule> rules, Set<ResourceAccessType> needed) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         Set<ResourceDescriptor> remainingResources = new HashSet<>(resources);
         for (PermissionRule permissionRule : rules) {
@@ -280,8 +292,16 @@ public class AccessService {
                 break;
             }
         }
-        if (!remainingResources.isEmpty() && rules != initiatorPermissionRules) {
-            getKeyAccessOnMaster(remainingResources, context).forEach((resource, permissions) -> result.merge(resource, permissions, Sets::union));
+        if (rules != initiatorPermissionRules) {
+            Set<ResourceDescriptor> refused = resources.stream()
+                    .filter(resource -> {
+                        Set<ResourceAccessType> permissions = result.getOrDefault(resource, Set.of());
+                        return permissions.isEmpty() || !permissions.containsAll(needed);
+                    })
+                    .collect(Collectors.toSet());
+            if (!refused.isEmpty()) {
+                getKeyAccessOnMaster(refused, context).forEach((resource, permissions) -> result.merge(resource, permissions, Sets::union));
+            }
         }
         for (ResourceDescriptor resource : resources) {
             result.computeIfAbsent(resource, r -> Set.of());
@@ -314,7 +334,7 @@ public class AccessService {
     public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupInitiatorPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
-                lookupPermissions(resources, context, ResourceAccessType.ALL, initiatorPermissionRules);
+                lookupPermissions(resources, context, ResourceAccessType.ALL, initiatorPermissionRules, Set.of());
         permissions.replaceAll((resource, access) -> spansUnreadableUnit(resource, context) ? Set.of() : access);
         return permissions;
     }

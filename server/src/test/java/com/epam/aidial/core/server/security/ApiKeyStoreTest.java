@@ -472,6 +472,7 @@ public class ApiKeyStoreTest {
         store.assignPerRequestApiKey(data);
 
         ApiKeyData stored = store.getApiKeyData(data.getPerRequestKey(), null).result();
+        assertNull(stored.getCallerKey(), "the caller's key must not be stored");
         assertEquals(Map.of("files/bucket/granted.txt", read, "files/bucket/both.txt", new PerRequestSharedData(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE))),
                 stored.getPerRequestSharedResources());
     }
