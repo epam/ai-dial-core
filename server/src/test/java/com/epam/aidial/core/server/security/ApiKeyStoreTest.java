@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -448,6 +449,31 @@ public class ApiKeyStoreTest {
         ApiKeyData data = ProxyUtil.convertToObject(json, ApiKeyData.class);
         data.getAttachedFiles().put(path, new AutoSharedData(ResourceAccessType.READ_ONLY));
         return ProxyUtil.convertToString(data);
+    }
+
+    @Test
+    public void testAssignApiKeyAddsCallerPermissionsFromMaster() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        PerRequestSharedData read = new PerRequestSharedData(Set.of(ResourceAccessType.READ));
+        PerRequestSharedData write = new PerRequestSharedData(Set.of(ResourceAccessType.WRITE));
+        ApiKeyData caller = new ApiKeyData();
+        caller.getPerRequestReceivers().put("app", Map.of("files/bucket/granted.txt", read, "files/bucket/both.txt", read));
+        caller.getPerRequestReceivers().put("another-app", Map.of("files/bucket/another.txt", read));
+        store.assignPerRequestApiKey(caller);
+        // built from a copy of the caller's key that had no grant for the receiver yet
+        ApiKeyData data = new ApiKeyData();
+        data.setCallerKey(caller.getPerRequestKey());
+        data.setCallerReceivers(List.of("app"));
+        data.getPerRequestSharedResources().put("files/bucket/both.txt", write);
+
+        store.assignPerRequestApiKey(data);
+
+        ApiKeyData stored = store.getApiKeyData(data.getPerRequestKey(), null).result();
+        assertEquals(Map.of("files/bucket/granted.txt", read, "files/bucket/both.txt", new PerRequestSharedData(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE))),
+                stored.getPerRequestSharedResources());
     }
 
     /**

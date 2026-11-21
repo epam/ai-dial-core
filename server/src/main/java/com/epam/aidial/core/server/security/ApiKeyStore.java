@@ -91,6 +91,12 @@ public class ApiKeyStore {
 
     public void assignPerRequestApiKey(ApiKeyData data, Duration customTtl) {
         blockingCallTracer.trace("auth.api_key.assign", () -> {
+            if (data.getCallerKey() != null) {
+                ApiKeyData caller = readDataOnMaster(data.getCallerKey());
+                if (caller != null) {
+                    data.addCallerPermissions(caller.getPerRequestReceivers());
+                }
+            }
             String perRequestKey = generateKey();
             data.setPerRequestKey(perRequestKey);
             String json = ProxyUtil.convertToString(data);
@@ -151,6 +157,22 @@ public class ApiKeyStore {
             }
             return Future.succeededFuture(result);
         });
+    }
+
+    /**
+     * Returns the data of a per request key as the Redis master holds it, or null if the key is not there. A replica,
+     * which {@link #getApiKeyData} reads first, may be behind a grant or an attachment added a moment ago.
+     *
+     * <p>
+     *     Note. The method is blocking and shouldn't be run in the event loop thread.
+     * </p>
+     */
+    public ApiKeyData getPerRequestKeyDataOnMaster(String perRequestKey) {
+        return blockingCallTracer.trace("auth.api_key.lookup_master", () -> readDataOnMaster(perRequestKey));
+    }
+
+    private ApiKeyData readDataOnMaster(String perRequestKey) {
+        return ProxyUtil.convertToObject(readOnMaster(toRedisKey(perRequestKey)), ApiKeyData.class);
     }
 
     /**

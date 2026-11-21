@@ -66,8 +66,8 @@ public class AccessService {
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
             this::getGlobalReaderAccess,
-            AccessService::getAutoSharedAccess,
-            AccessService::getPerRequestPermissions,
+            (resources, context) -> getAutoSharedAccess(resources, context.getApiKeyData()),
+            (resources, context) -> getPerRequestPermissions(resources, context.getApiKeyData()),
             AccessService::getAppResourceAccess,
             this::getReviewAccess,
             this::getPublicAccess,
@@ -181,11 +181,12 @@ public class AccessService {
         }
 
         Set<ResourceDescriptor> resources = Set.of(folder);
-        if (readable(getAutoSharedAccess(resources, context), folder) || readable(getPerRequestPermissions(resources, context), folder)) {
+        if (readable(getKeyAccess(resources, context.getApiKeyData()), folder)) {
             return true;
         }
         boolean folderReadable = orgUnitGrants.outsideUnits(resources).isEmpty() || !getPublicAccess(resources, context).isEmpty();
-        return folderReadable && orgUnitGrants.readsEveryUnitUnder(context, folder);
+        return folderReadable && orgUnitGrants.readsEveryUnitUnder(context, folder)
+                || readable(getKeyAccessOnMaster(resources, context), folder);
     }
 
     private static boolean readable(Map<ResourceDescriptor, Set<ResourceAccessType>> access, ResourceDescriptor resource) {
@@ -279,10 +280,29 @@ public class AccessService {
                 break;
             }
         }
+        if (!remainingResources.isEmpty() && rules != initiatorPermissionRules) {
+            getKeyAccessOnMaster(remainingResources, context).forEach((resource, permissions) -> result.merge(resource, permissions, Sets::union));
+        }
         for (ResourceDescriptor resource : resources) {
             result.computeIfAbsent(resource, r -> Set.of());
         }
 
+        return result;
+    }
+
+    /**
+     * What the caller's per request key grants as the Redis master holds it. The request is authenticated with a copy of
+     * the key that may come from a replica, which may be behind a grant or an attachment added a moment ago, so what the
+     * rules did not grant is looked up in the master's copy before it is refused.
+     */
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> getKeyAccessOnMaster(Set<ResourceDescriptor> resources, ProxyContext context) {
+        ApiKeyData apiKeyData = context.masterApiKeyData();
+        return apiKeyData == null ? Map.of() : getKeyAccess(resources, apiKeyData);
+    }
+
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> getKeyAccess(Set<ResourceDescriptor> resources, ApiKeyData apiKeyData) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>(getAutoSharedAccess(resources, apiKeyData));
+        getPerRequestPermissions(resources, apiKeyData).forEach((resource, permissions) -> result.merge(resource, permissions, Sets::union));
         return result;
     }
 
@@ -351,8 +371,7 @@ public class AccessService {
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getAutoSharedAccess(
-            Set<ResourceDescriptor> resources, ProxyContext context) {
-        ApiKeyData apiKeyData = context.getApiKeyData();
+            Set<ResourceDescriptor> resources, ApiKeyData apiKeyData) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
             String resourceUrl = resource.getUrl();
@@ -396,8 +415,8 @@ public class AccessService {
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getPerRequestPermissions(Set<ResourceDescriptor> resources,
-                                                                                             ProxyContext context) {
-        Map<String, PerRequestSharedData> perRequestSharedResources = context.getApiKeyData().getPerRequestSharedResources();
+                                                                                             ApiKeyData apiKeyData) {
+        Map<String, PerRequestSharedData> perRequestSharedResources = apiKeyData.getPerRequestSharedResources();
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
             Set<ResourceAccessType> permissions = findPermissions(perRequestSharedResources, resource.getUrl());

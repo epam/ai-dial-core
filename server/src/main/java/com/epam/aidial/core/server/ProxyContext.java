@@ -33,6 +33,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.ServerWebSocket;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
@@ -150,6 +151,14 @@ public class ProxyContext {
 
     // the org units above those where the caller holds a role, read at most once per request
     private Set<String> unitsAboveHeldRoles;
+
+    // the caller's per request key as the Redis master holds it, read at most once per request
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private ApiKeyData masterApiKeyData;
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private boolean masterApiKeyDataRead;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -354,6 +363,22 @@ public class ProxyContext {
     @Nullable
     public BudgetPayer getBudgetPayer() {
         return budgetCheck == null ? null : budgetCheck.payer();
+    }
+
+    /**
+     * Returns the data of the caller's per request key as the Redis master holds it, or null if the caller has another
+     * kind of key or the key is gone. The request is authenticated with a copy that may come from a replica.
+     *
+     * <p>
+     *     Note. The method is blocking and shouldn't be run in the event loop thread.
+     * </p>
+     */
+    public ApiKeyData masterApiKeyData() {
+        if (!masterApiKeyDataRead && apiKeyData.getPerRequestKey() != null) {
+            masterApiKeyData = proxy.getApiKeyStore().getPerRequestKeyDataOnMaster(apiKeyData.getPerRequestKey());
+            masterApiKeyDataRead = true;
+        }
+        return masterApiKeyData;
     }
 
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {

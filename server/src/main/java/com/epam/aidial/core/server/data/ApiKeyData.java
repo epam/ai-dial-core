@@ -12,11 +12,17 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.vertx.core.MultiMap;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * The container keeps data associated with API key.
@@ -78,6 +84,15 @@ public class ApiKeyData {
     // Map of resources are shared by per request API key.
     // A key is a resource ID and value - per request shared data
     private Map<String, PerRequestSharedData> perRequestSharedResources = new HashMap<>();
+    // the per request key this one was built from and the receivers whose permissions were copied from it, for the key
+    // store to copy them once more from the Redis master (see addCallerPermissions); never stored
+    @JsonIgnore
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
+    private String callerKey;
+    @JsonIgnore
+    @EqualsAndHashCode.Exclude
+    private List<String> callerReceivers = List.of();
 
     public ApiKeyData() {
     }
@@ -145,6 +160,11 @@ public class ApiKeyData {
             if (context.getInitialDeployment() != null) {
                 sharePerRequestPermissions(proxyApiKeyData, receivers, context.getInitialDeployment());
             }
+            List<String> callerReceivers = Stream.of(receiver, context.getInitialDeployment()).filter(Objects::nonNull).toList();
+            if (!callerReceivers.isEmpty()) {
+                proxyApiKeyData.setCallerKey(apiKeyData.getPerRequestKey());
+                proxyApiKeyData.setCallerReceivers(callerReceivers);
+            }
         }
         proxyApiKeyData.setExecutionPath(currentPath);
         proxyApiKeyData.setSpanId(context.getSpanId());
@@ -167,6 +187,24 @@ public class ApiKeyData {
         Map<String, PerRequestSharedData> resources = receivers.get(receiver);
         if (resources != null) {
             proxyApiKeyData.getPerRequestSharedResources().putAll(resources);
+        }
+    }
+
+    /**
+     * Adds the permissions that the caller's key holds for this key's receivers and this key does not have yet.
+     * {@link #initFromContext} copies them from the caller's key as the request was authenticated with it, which may
+     * be a copy from a Redis replica that is behind a grant made a moment ago.
+     *
+     * @param receivers the receivers of the caller's key as the Redis master holds them.
+     */
+    public void addCallerPermissions(Map<String, Map<String, PerRequestSharedData>> receivers) {
+        for (String receiver : callerReceivers) {
+            receivers.getOrDefault(receiver, Map.of()).forEach((url, granted) ->
+                    perRequestSharedResources.merge(url, granted, (existing, added) -> {
+                        Set<ResourceAccessType> union = new HashSet<>(existing.permissions());
+                        union.addAll(added.permissions());
+                        return new PerRequestSharedData(union);
+                    }));
         }
     }
 
