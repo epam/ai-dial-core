@@ -394,6 +394,8 @@ public class ApiKeyStoreTest {
         ApiKeyStore laggingStore = new ApiKeyStore(taskExecutor, laggingRedis, null, new JsonObject(), BlockingCallTracer.NOOP);
 
         assertTrue(laggingStore.getApiKeyData("unknown-key", null).failed());
+        // the length of a generated key, with a symbol the generator never uses
+        assertTrue(laggingStore.getApiKeyData("a".repeat(31) + "+", null).failed());
         verify(laggingRedis, never()).getScript(StringCodec.INSTANCE);
     }
 

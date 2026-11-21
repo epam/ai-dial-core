@@ -32,7 +32,7 @@ public class ApiKeyGenerator {
     /**
      * Tells whether the key has the shape {@link #generateKey()} produces. A key of another origin may have it too.
      */
-    public static boolean isGeneratedKey(String key) {
+    static boolean isGeneratedKey(String key) {
         return key.length() == KEY_LENGTH && key.chars().allMatch(symbol -> DICT.indexOf(symbol) >= 0);
     }
 }

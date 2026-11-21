@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -24,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 public class ProxyContextTest {
 
@@ -155,6 +159,38 @@ public class ProxyContextTest {
         assertEquals("m", ProxyUtil.parseRequestBody(context, body).path("model").asText());
         assertSame(body, context.getRequestBody());
         assertFalse(context.isChildPass());
+    }
+
+    @Test
+    public void testMasterApiKeyDataIsReadOncePerRequest() {
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        Proxy proxy = mock(Proxy.class);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        ApiKeyData onMaster = new ApiKeyData();
+        when(apiKeyStore.getPerRequestKeyDataOnMaster("per-request-key")).thenReturn(onMaster);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(new Key());
+        apiKeyData.setPerRequestKey("per-request-key");
+        ProxyContext context = new ProxyContext(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null, "trace-id", "span-id", "01");
+
+        assertSame(onMaster, context.masterApiKeyData());
+        assertSame(onMaster, context.masterApiKeyData());
+        // a context with other key data answers from that data alone
+        assertNull(context.copyWith(apiKeyData).masterApiKeyData());
+
+        verify(apiKeyStore).getPerRequestKeyDataOnMaster("per-request-key");
+    }
+
+    @Test
+    public void testMasterApiKeyDataIsNotReadForAnotherKindOfKey() {
+        Proxy proxy = mock(Proxy.class);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(new Key());
+        ProxyContext context = new ProxyContext(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null, "trace-id", "span-id", "01");
+
+        assertNull(context.masterApiKeyData());
+
+        verifyNoInteractions(proxy);
     }
 
     private static ProxyContext context(ExtractedClaims claims) {
