@@ -90,7 +90,7 @@ public class MessagesController extends MessagesBaseController {
     @Override
     protected MessagesApiRequest parseBody(Buffer body) {
         MessagesApiRequest request = super.parseBody(body);
-        GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, request.getTree());
+        GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, request.getBody().tree());
         return request;
     }
 

@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.function.CollectRequestAttachmentsFn;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
@@ -320,7 +321,7 @@ public class RouterDecisionFlow {
         RouterDecision decision = context.getDecision();
         decision.setResolving(false);
         decision.close();
-        context.setRequestBody(Buffer.buffer(request.serialize()));
+        context.setRequestBody(request.serialize());
         context.setInitialDeployment(candidate);
     }
 
@@ -443,7 +444,7 @@ public class RouterDecisionFlow {
         } else {
             // with no body set, the next candidate's parse takes the call tree instead of parsing bytes
             context.setRequestBody(null);
-            context.setCallTree(clientTree.deepCopy());
+            context.setCallBody(ReceivedBody.of(clientTree.deepCopy()));
         }
     }
 

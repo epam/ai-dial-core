@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -122,37 +123,37 @@ public class ProxyContextTest {
     }
 
     @Test
-    public void testCallTreeUntilTheBodyIsSet() {
+    public void testCallBodyUntilTheBodyIsSet() {
         ProxyContext context = context(null);
-        assertNull(context.getCallTree());
+        assertNull(context.getCallBody());
 
-        ObjectNode tree = ProxyUtil.MAPPER.createObjectNode().put("model", "m");
-        context.setCallTree(tree);
-        assertSame(tree, context.getCallTree());
+        ReceivedBody call = ReceivedBody.of(ProxyUtil.MAPPER.createObjectNode().put("model", "m"));
+        context.setCallBody(call);
+        assertSame(call, context.getCallBody());
         assertTrue(context.isChildPass());
 
         context.setRequestBody(Buffer.buffer("{}"));
-        assertNull(context.getCallTree());
+        assertNull(context.getCallBody());
         assertTrue(context.isChildPass());
     }
 
     @Test
-    public void testParseRequestBodyTakesTheCallTree() throws Exception {
+    public void testParseRequestBodyTakesTheCallBody() throws Exception {
         ProxyContext context = context(null);
-        ObjectNode tree = ProxyUtil.MAPPER.createObjectNode().put("model", "m");
-        context.setCallTree(tree);
+        ReceivedBody call = ReceivedBody.of(ProxyUtil.MAPPER.createObjectNode().put("model", "m"));
+        context.setCallBody(call);
 
-        assertSame(tree, ProxyUtil.parseRequestBody(context, Buffer.buffer()));
+        assertSame(call, ProxyUtil.parseRequestBody(context, Buffer.buffer()));
         assertNull(context.getRequestBody());
         assertTrue(context.getRequestBodyTimestamp() > 0);
     }
 
     @Test
-    public void testParseRequestBodyParsesWithoutCallTree() throws Exception {
+    public void testParseRequestBodyParsesWithoutCallBody() throws Exception {
         ProxyContext context = context(null);
         Buffer body = Buffer.buffer("{\"model\":\"m\"}");
 
-        assertEquals("m", ProxyUtil.parseRequestBody(context, body).path("model").asText());
+        assertEquals("m", ProxyUtil.parseRequestBody(context, body).tree().path("model").asText());
         assertSame(body, context.getRequestBody());
         assertFalse(context.isChildPass());
     }
