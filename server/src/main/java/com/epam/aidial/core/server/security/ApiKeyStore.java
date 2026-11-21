@@ -111,10 +111,8 @@ public class ApiKeyStore {
         RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
         // lock free
         while (true) {
-            String oldJson = bucket.get();
-            if (oldJson == null) {
-                oldJson = readOnMaster(redisKey);
-            }
+            // the write below compares with the master, so a copy from a replica that is behind must not be used
+            String oldJson = readOnMaster(redisKey);
             if (oldJson == null) {
                 throw new IllegalArgumentException("Per request key is not found: " + key);
             }

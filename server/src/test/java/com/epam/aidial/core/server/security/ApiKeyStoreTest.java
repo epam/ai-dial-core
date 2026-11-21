@@ -17,6 +17,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -24,6 +25,7 @@ import org.redisson.Redisson;
 import org.redisson.api.RBucket;
 import org.redisson.api.RKeys;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
@@ -32,6 +34,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -44,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -407,6 +411,43 @@ public class ApiKeyStoreTest {
         assertEquals(apiKeyData, ProxyUtil.convertToObject(seen.getValue(), ApiKeyData.class));
         assertThrows(IllegalArgumentException.class,
                 () -> laggingStore.updatePerRequestApiKey(ApiKeyGenerator.generateKey(), json -> json));
+    }
+
+    @Test
+    @Timeout(30)
+    public void testUpdateApiKeyReadsMasterWhenReplicaIsBehind() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        ApiKeyData apiKeyData = new ApiKeyData();
+        store.assignPerRequestApiKey(apiKeyData);
+        String key = apiKeyData.getPerRequestKey();
+        MutableObject<String> issued = new MutableObject<>();
+        store.updatePerRequestApiKey(key, json -> {
+            issued.setValue(json);
+            return attachFile(json, "a/first.txt");
+        });
+        // plain reads return the copy from before the first update; everything else goes to the real Redis
+        RedissonClient behindRedis = mock(RedissonClient.class);
+        when(behindRedis.getBucket(any(), any())).thenAnswer(invocation -> {
+            RBucket<String> real = redissonClient.getBucket(invocation.getArgument(0), (Codec) invocation.getArgument(1));
+            RBucket<String> bucket = mock(RBucket.class, delegatesTo(real));
+            lenient().doReturn(issued.getValue()).when(bucket).get();
+            return bucket;
+        });
+        when(behindRedis.getScript(StringCodec.INSTANCE)).thenReturn(redissonClient.getScript(StringCodec.INSTANCE));
+        ApiKeyStore behindStore = new ApiKeyStore(taskExecutor, behindRedis, null, new JsonObject(), BlockingCallTracer.NOOP);
+
+        behindStore.updatePerRequestApiKey(key, json -> attachFile(json, "a/second.txt"));
+
+        assertEquals(Set.of("a/first.txt", "a/second.txt"), store.getApiKeyData(key, null).result().getAttachedFiles().keySet());
+    }
+
+    private static String attachFile(String json, String path) {
+        ApiKeyData data = ProxyUtil.convertToObject(json, ApiKeyData.class);
+        data.getAttachedFiles().put(path, new AutoSharedData(ResourceAccessType.READ_ONLY));
+        return ProxyUtil.convertToString(data);
     }
 
     /**
