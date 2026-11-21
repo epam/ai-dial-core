@@ -8,6 +8,7 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
@@ -366,6 +367,65 @@ public class ResourceServiceTest {
         Mockito.when(spy.meta(blobKey)).thenReturn(spiedMeta);
         Mockito.when(spy.load(blobKey)).thenReturn(spiedBlob);
         return spy;
+    }
+
+    /**
+     * The compute reads a blob-only resource, which caches it as synced with a TTL; the put that follows reuses
+     * that metadata and must clear the TTL in the same batch as the write.
+     */
+    @Test
+    public void testComputeResourceReusesMetadataAndClearsTtl() {
+        ResourceDescriptor descriptor = resource("computed");
+        storage.store(descriptor.getAbsoluteFilePath(), "application/json", null,
+                Map.of("author", "user", ResourceService.CREATED_AT_ATTRIBUTE, "1000"), "old".getBytes());
+
+        ResourceService spied = Mockito.spy(service);
+        ResourceItemMetadata metadata = spied.computeResource(descriptor, EtagHeader.ANY, "other", old -> old + "-new");
+
+        Mockito.verify(spied, Mockito.never()).getResourceMetadata(descriptor);
+        assertEquals(1000L, metadata.getCreatedAt());
+        assertEquals("user", metadata.getAuthor());
+        assertEquals("old-new", service.getResource(descriptor));
+        assertEquals(-1, client.getMap(RedisUtil.redisKey(descriptor, null)).remainTimeToLive());
+    }
+
+    @Test
+    public void testComputeResourceDeletesWithoutRereadingMetadata() {
+        ResourceDescriptor descriptor = resource("computed-delete");
+        service.putResource(descriptor, "old", EtagHeader.ANY);
+
+        ResourceService spied = Mockito.spy(service);
+        assertNotNull(spied.computeResource(descriptor, old -> null));
+
+        Mockito.verify(spied, Mockito.never()).getResourceMetadata(descriptor);
+        assertNull(service.getResource(descriptor));
+        assertFalse(storage.exists(descriptor.getAbsoluteFilePath()));
+    }
+
+    /**
+     * A synced hash (cache fill, delete) must get the cache TTL, or it stays in Redis forever.
+     */
+    @Test
+    public void testSyncedWritesSetTtl() {
+        ResourceDescriptor descriptor = resource("synced-ttl");
+        storage.store(descriptor.getAbsoluteFilePath(), "application/json", null, Map.of(), "v1".getBytes());
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+
+        assertEquals("v1", service.getResource(descriptor)); // cache fill
+        long ttl = client.getMap(redisKey).remainTimeToLive();
+        assertTrue(ttl > 0 && ttl <= settings.getCacheExpiration(), "cache fill TTL: " + ttl);
+
+        assertTrue(service.deleteResource(descriptor, EtagHeader.ANY)); // redisSync
+        ttl = client.getMap(redisKey).remainTimeToLive();
+        assertTrue(ttl > 0 && ttl <= settings.getCacheExpiration(), "delete TTL: " + ttl);
+    }
+
+    @Test
+    public void testComputeResourceRejectsFolder() {
+        ResourceDescriptor folder = new ResourceDescriptor(ResourceTypes.CONVERSATION, null, List.of(), "bucket", "bucket/", true);
+        assertThrows(IllegalArgumentException.class, () -> service.computeResource(folder, EtagHeader.ANY, null, old -> {
+            throw new AssertionError("fn must not run for a folder");
+        }));
     }
 
     private static ResourceDescriptor fileResource(String name) {
