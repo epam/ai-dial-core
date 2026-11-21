@@ -54,7 +54,8 @@ Per request through a decision router reached in process, without `decision.body
 | Per fallback candidate | 1 parse of the serialization | 1 copy of the tree's objects and arrays |
 
 Measured today: 6.8 ms of Core CPU per tier request in `RouterDecisionFlow.prepare` (JFR, 2,000 users, 650 KB average
-body). After: measured by the same load against the same entry point (tasks.md 1.5).
+body). After, by the same load against the same entry point (tasks.md 1.5): 7.79 → 0.12 ms on the same nodes; the
+copy is too cheap to show in the samples.
 
 ## Risks / Trade-offs
 

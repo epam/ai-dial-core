@@ -13,5 +13,8 @@
   the call tree, so the re-entry's parse takes it.
 - [x] 1.4 `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests "*.RouterDecisionApiTest"
   --tests "*.EmbeddedDecisionApiTest" --tests "*.AliasInProcessApiTest" --tests "*.RouterDecisionTest"`.
-- [ ] 1.5 Measure Core CPU per request through a tier alias against the same load before the change (deferred: needs
-  the perf environment).
+- [x] 1.5 Measure Core CPU per request through a tier alias against the same load before the change. Measured
+  2026-11-21: 2,000 users, Anthropic Messages with a 650 KB mean body, tier alias → decision router → alias →
+  plugin-served model, `development` and an image with this change and three other perf changes on the same two nodes.
+  `RouterDecisionFlow.prepare` 7.79 → 0.12 ms of Core CPU per user request (JFR); the copy does not show in the
+  samples. Core CPU per user request for the whole image 67.0 → 50.7 ms.
