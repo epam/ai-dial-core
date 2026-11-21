@@ -1083,6 +1083,29 @@ class RouterDecisionApiTest extends ResourceBaseTest {
                 .map(request -> request.getHeader(DEPLOYMENT_ID)).toList());
     }
 
+    // router-deployment "Decide request of an in-process call", scenario "Fallback inside an alias call"
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void fallbackThroughAnAliasStartsFromTheClientsBody() {
+        verdict.set("{\"candidates\": [\"m-defaults\", \"m2\"]}");
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if ("m-defaults".equals(request.getHeader(DEPLOYMENT_ID))) {
+                return TestWebServer.createResponse(503, "{\"error\":{\"message\":\"busy\"}}", "content-type", "application/json");
+            }
+            return answer(request);
+        })) {
+            verify(sendMessages("strong"), 200);
+        }
+        // the first candidate's chain added its default to the tree; the next candidate starts from the client's body
+        RecordedRequest failed = single(request -> "m-defaults".equals(request.getHeader(DEPLOYMENT_ID)));
+        assertTrue(new JsonObject(failed.getBody().readUtf8()).containsKey("temperature"));
+        JsonObject served = new JsonObject(single(request -> "m2".equals(request.getHeader(DEPLOYMENT_ID))).getBody().readUtf8());
+        assertEquals("m2", served.getString("model"));
+        assertFalse(served.containsKey("temperature"));
+    }
+
     @Test
     @DialConfigLocation(CONFIG)
     void everyCandidateForbidden() {
