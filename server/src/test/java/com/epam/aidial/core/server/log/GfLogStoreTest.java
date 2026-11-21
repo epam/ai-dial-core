@@ -35,9 +35,12 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -56,6 +59,7 @@ public class GfLogStoreTest {
     private static final String PENDING_BODY_BYTES = "dial_analytics_log_pending_body_bytes";
     private static final String BODIES_SKIPPED = "dial_analytics_log_bodies_skipped_total";
     private static final long HEAP_BYTES = 10_000;
+    private static final int MAX_BODY_BYTES = 4 * 1024 * 1024;
 
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
 
@@ -147,7 +151,7 @@ public class GfLogStoreTest {
         for (int i = 0; i < 128; i++) {
             body.append((char) i);
         }
-        body.append("é → 😀 \\/\"}");
+        body.append("é → 😀 \\/ \uD83D \uDE00\"}"); // lone surrogates reach the body as '?', as an assembled response's do
         assertAppendBodyMatchesAppend(body.toString());
     }
 
@@ -162,42 +166,94 @@ public class GfLogStoreTest {
         // a lead byte without its continuation, followed by bytes that need escaping, and a cut-off emoji at the end
         byte[] body = {'a', (byte) 0xC3, '"', (byte) 0xF0, (byte) 0x9F, '\\', (byte) 0xE2, '\n', (byte) 0xF0, (byte) 0x9F, (byte) 0x98};
         assertAppendBodyMatchesAppend(Buffer.buffer(body));
+        // an overlong '/', an encoded surrogate, a lone continuation, a byte UTF-8 never uses and a cut-off € before a '/'
+        byte[] invalid = {(byte) 0xC0, (byte) 0xAF, (byte) 0xED, (byte) 0xA0, (byte) 0x80, (byte) 0x80, (byte) 0xFF, (byte) 0xE2, (byte) 0x82, '/'};
+        assertAppendBodyMatchesAppend(Buffer.buffer(invalid));
+    }
+
+    @Test
+    public void testAppendBodyEscapesRandomBodiesLikeAppend() {
+        // random bytes are mostly malformed UTF-8 around control chars, quotes and backslashes; random code points add valid
+        // two-, three- and four-byte sequences and lone surrogates. One store, so each body reuses the buffer of the last
+        Random random = new Random(2108);
+        int[] codePointBounds = {0x80, 0x800, 0x10000, Character.MAX_CODE_POINT + 1};
+        GfLogStore store = new GfLogStore(settings(false));
+        for (int n = 0; n < 1_000; n++) {
+            byte[] bytes = new byte[random.nextInt(300)];
+            random.nextBytes(bytes);
+            Buffer body = Buffer.buffer(bytes);
+            assertEquals(escapeByChars(body), appendBody(store, body), () -> "bytes " + Arrays.toString(bytes));
+
+            int length = random.nextInt(100);
+            StringBuilder text = new StringBuilder();
+            while (text.length() < length) {
+                text.appendCodePoint(random.nextInt(codePointBounds[random.nextInt(codePointBounds.length)]));
+            }
+            Buffer textBody = Buffer.buffer(text.toString());
+            assertEquals(escapeByChars(textBody), appendBody(store, textBody), () -> "text " + text.codePoints().boxed().toList());
+        }
+    }
+
+    @Test
+    public void testAppendBodyCutsLikeAppend() {
+        // the cut falls inside the two bytes of 'é', or right after a byte that needs escaping
+        assertTrue(assertAppendBodyMatchesAppend("\"" + "a".repeat(MAX_BODY_BYTES - 2) + "é\"").endsWith("a�>>"));
+        assertTrue(assertAppendBodyMatchesAppend("a".repeat(MAX_BODY_BYTES - 1) + "\n\"").endsWith("a\\n>>"));
     }
 
     @Test
     public void testAppendBodyTruncatesEscapeHeavyBody() {
         // the escaped body outgrows what the buffer may keep, so the second call starts from a fresh buffer
-        int limit = 4 * 1024 * 1024;
-        String expected = "\\\"".repeat(limit) + ">>";
+        String expected = "\\\"".repeat(MAX_BODY_BYTES) + ">>";
         GfLogStore store = new GfLogStore(settings(false));
-        Buffer body = Buffer.buffer("\"".repeat(limit + 1));
+        Buffer body = Buffer.buffer("\"".repeat(MAX_BODY_BYTES + 1));
         for (int i = 0; i < 2; i++) {
-            StringBuilder actual = new StringBuilder();
-            store.appendBody(capturingEntry(actual), body);
-            assertEquals(expected, actual.toString());
+            assertEquals(expected, appendBody(store, body));
             assertEquals(0, store.escapedBody.length);
         }
     }
 
-    private static void assertAppendBodyMatchesAppend(String body) {
-        assertAppendBodyMatchesAppend(Buffer.buffer(body));
+    private static String assertAppendBodyMatchesAppend(String body) {
+        return assertAppendBodyMatchesAppend(Buffer.buffer(body));
     }
 
-    private static void assertAppendBodyMatchesAppend(Buffer body) {
-        StringBuilder expected = new StringBuilder();
-        GfLogStore.append(capturingEntry(expected), body.toString(), true);
+    /**
+     * @return the escaped body
+     */
+    private static String assertAppendBodyMatchesAppend(Buffer body) {
+        String expected = escapeByChars(body);
 
-        StringBuilder actual = new StringBuilder();
         GfLogStore store = new GfLogStore(settings(false));
-        store.appendBody(capturingEntry(actual), body);
-        assertEquals(expected.toString(), actual.toString());
+        String actual = appendBody(store, body);
+        assertEquals(expected, actual);
         byte[] kept = store.escapedBody;
 
-        StringBuilder again = new StringBuilder();
-        store.appendBody(capturingEntry(again), body);
-        assertEquals(expected.toString(), again.toString());
+        assertEquals(expected, appendBody(store, body));
         assertSame(kept, store.escapedBody);
-        assertDoesNotThrow(() -> ProxyUtil.MAPPER.readValue("\"" + actual + "\"", String.class));
+        String unmarked = actual.endsWith(">>") ? actual.substring(0, actual.length() - 2) : actual;
+        assertDoesNotThrow(() -> ProxyUtil.MAPPER.readValue("\"" + unmarked + "\"", String.class));
+        return actual;
+    }
+
+    private static String appendBody(GfLogStore store, Buffer body) {
+        StringBuilder written = new StringBuilder();
+        store.appendBody(capturingEntry(written), body);
+        return written.toString();
+    }
+
+    /**
+     * The body path before the byte escaping: cut the bytes, decode them, escape char by char, mark the cut.
+     */
+    private static String escapeByChars(Buffer body) {
+        StringBuilder written = new StringBuilder();
+        LogEntry entry = capturingEntry(written);
+        boolean cut = body.length() > MAX_BODY_BYTES;
+        byte[] bytes = (cut ? body.slice(0, MAX_BODY_BYTES) : body).getBytes();
+        GfLogStore.append(entry, new String(bytes, StandardCharsets.UTF_8), true);
+        if (cut) {
+            GfLogStore.append(entry, ">>", false);
+        }
+        return written.toString();
     }
 
     @SneakyThrows
