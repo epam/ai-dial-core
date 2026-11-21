@@ -1,12 +1,19 @@
 package com.epam.aidial.core.server.log;
 
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
+import com.epam.aidial.core.server.data.RouteType;
+import com.epam.aidial.core.server.data.RouterDecision;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.MergeChunks;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -19,6 +26,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +36,7 @@ import javax.annotation.Nullable;
 
 @Slf4j
 @Getter
-@Builder
+@Builder(toBuilder = true)
 public class AnalyticsLogContext {
 
     private final String traceId;
@@ -38,8 +46,11 @@ public class AnalyticsLogContext {
     private final String project;
     private final String userHash;
     private final String conversationId;
+    private final String sessionId;
     private final String jobTitle;
     private final boolean securedApiKey;
+    // what the pre-call budget check found for a JWT caller's model call; null when budgets were not considered
+    private final BudgetCheck budgetCheck;
 
     private final String userId;
     private final List<String> userRoles;
@@ -51,6 +62,8 @@ public class AnalyticsLogContext {
     private final String deploymentName;
     private final String parentDeployment;
     private final List<String> executionPath;
+    // set on the router row of a decided request only
+    private final RouterDecision.AnalyticsDecision decision;
 
     private final String requestProtocol;
     private final String requestMethod;
@@ -60,34 +73,56 @@ public class AnalyticsLogContext {
 
     private final String upstreamEndpoint;
 
+    private final String routeName;
+    private final String routeType;
+
     private final int responseStatusCode;
     private final Buffer responseBody;
     private final String assembledStreamingResponse;
+    // true for a copy made by withoutBodies(); the row is then written like one for a secured key
+    private final boolean bodiesOmitted;
 
     private final TokenUsage tokenUsage;
     private final List<UsagePerModel> usagePerModel;
 
     private final long operationDurationMs;
 
+    /**
+     * A copy that no longer references the body buffers, so they can be collected while the row waits to be written.
+     */
+    AnalyticsLogContext withoutBodies() {
+        return toBuilder().requestBody(null).responseBody(null).assembledStreamingResponse(null).bodiesOmitted(true).build();
+    }
+
+    /**
+     * The row of a pass. An alias pass has no bodies in its row: it relays its target's answer, and the target pass's
+     * row logs them once. Every other pass, one Core serves in process included, logs its bodies.
+     */
     public static AnalyticsLogContext from(ProxyContext context, String assembledStreamingResponse) {
         Buffer responseBody = context.getResponseBody();
-        return AnalyticsLogContext.builder()
+        Route route = context.getRoute();
+        RouteType routeType = context.getRouteType();
+        AnalyticsLogContext row = AnalyticsLogContext.builder()
                 .traceId(context.getTraceId())
                 .spanId(context.getSpanId())
-                .parentSpanId(context.getParentSpanId())
+                // the pass that asked the router is the router row's child
+                .parentSpanId(context.getDecision() != null ? context.getDecision().getHop().spanId() : context.getParentSpanId())
                 .project(context.getProject())
                 .userHash(context.getUserHash())
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
+                .sessionId(GenAiTraceAttributes.resolveConversationId(context))
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
                 .securedApiKey(context.isSecuredApiKey())
+                .budgetCheck(context.getBudgetCheck())
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
                 .userDisplayName(context.getUserDisplayName())
                 .userClaims(context.getUserClaims())
                 .requestHeaders(toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
-                .parentDeployment(getParentDeployment(
-                        context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
+                .parentDeployment(context.getDecision() != null
+                        ? context.getDecision().getRouterName()
+                        : getParentDeployment(context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
                 .executionPath(context.getExecutionPath())
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
                 .requestMethod(context.getRequest().method().name())
@@ -98,6 +133,8 @@ public class AnalyticsLogContext {
                         .map(UpstreamRoute::get)
                         .map(Upstream::getEndpoint)
                         .orElse(null))
+                .routeName(route == null ? null : route.getName())
+                .routeType(routeType == null ? null : routeType.getValue())
                 .responseStatusCode(context.getResponse().getStatusCode())
                 .responseBody(responseBody)
                 .assembledStreamingResponse(assembledStreamingResponse)
@@ -105,16 +142,19 @@ public class AnalyticsLogContext {
                 .usagePerModel(context.getUsagePerModel())
                 .operationDurationMs(context.calculateOperationDurationMs())
                 .build();
+        // an alias relays its target's answer: the target pass's row logs the bodies once
+        return context.getDeployment() instanceof AliasPass ? row.withoutBodies() : row;
     }
 
     public static AnalyticsLogContext from(BackgroundJobRecord record, ResponsesApiClient.TerminalResult result, List<UsagePerModel> usagePerModel) {
         return AnalyticsLogContext.builder()
                 .traceId(record.traceId())
                 .spanId(record.spanId())
-                .parentSpanId(record.parentSpanId())
+                .parentSpanId(record.routerHop() != null ? record.routerHop().spanId() : record.parentSpanId())
                 .project(record.project())
                 .userHash(record.userHash())
                 .conversationId(record.conversationId())
+                .sessionId(record.sessionId())
                 .jobTitle(record.jobTitle())
                 .securedApiKey(record.securedApiKey())
                 .userId(record.userId())
@@ -124,6 +164,7 @@ public class AnalyticsLogContext {
                 .requestHeaders(record.requestHeaders())
                 .deploymentName(record.deploymentName())
                 .parentDeployment(record.parentDeployment())
+                .executionPath(record.executionPath())
                 .requestProtocol(record.requestProtocol())
                 .requestMethod(record.requestMethod())
                 .requestUri(record.requestUri())
@@ -156,6 +197,46 @@ public class AnalyticsLogContext {
             map.put(name, headers.getAll(name));
         }
         return map;
+    }
+
+    /**
+     * The router's row of a decided request, from the row of the pass that asked the router, without its bodies,
+     * upstream and route. Its cost is what that pass's span rolled up: {@code price} the cost of everything below it,
+     * {@code usage_per_model} those calls and the serving deployment's own report, which its span's breakdown leaves
+     * out. Token counts stay zero: the router made no model call.
+     */
+    public static AnalyticsLogContext routerRow(AnalyticsLogContext serving, RouterDecision.AnalyticsDecision decision, RouterDecision.Hop hop,
+                                                TokenStatsTracker.UsageStats stats) {
+        TokenUsage usage = null;
+        List<UsagePerModel> usagePerModel = null;
+        TokenUsage spanUsage = stats.total();
+        if (spanUsage != null) {
+            usage = new TokenUsage();
+            usage.setAggCost(spanUsage.getAggCost());
+            usagePerModel = new ArrayList<>(stats.usagePerModel());
+            if (!spanUsage.isEmpty()) {
+                usagePerModel.add(new UsagePerModel(usagePerModel.size(), decision.deployment(), spanUsage));
+            }
+        }
+        return serving.toBuilder()
+                .spanId(hop.spanId())
+                .parentSpanId(hop.parentSpanId())
+                .deploymentName(decision.router())
+                .parentDeployment(hop.parentDeployment())
+                .executionPath(hop.executionPath())
+                .decision(decision)
+                // the router pays nothing, and its price rolls up the model's, which the model's row names the budget of
+                .budgetCheck(null)
+                .requestBody(null)
+                .responseBody(null)
+                .assembledStreamingResponse(null)
+                .bodiesOmitted(true)
+                .upstreamEndpoint(null)
+                .routeName(null)
+                .routeType(null)
+                .tokenUsage(usage)
+                .usagePerModel(usagePerModel)
+                .build();
     }
 
     public static String getParentDeployment(String sourceDeployment, List<String> interceptors, List<String> executionPath) {

@@ -46,6 +46,7 @@ An object containing parameters for each [application](#applications).
 * `createdAt`: The date of the application creation.
 * `updatedAt`: The date of the last application update. 
 * `dependencies`: A list of dependent deployments (applications, AI models) which the application may use. Refer to [Managing Authorization in Complex Application Ecosystems](https://docs.dialx.ai/tutorials/developers/apps-development/auth-matrix) to learn more about dependencies.
+* `resourceDependencies`: A list of DIAL resources outside the application that it may access on behalf of the calling user, once an administrator approves the list. Refer to [applications.<application_name>.resourceDependencies](#applicationsapplication_nameresourcedependencies).
 * `viewerUrl`: A string with URL of the application's [custom viewer UI](https://github.com/epam/ai-dial-chat/tree/development/docs). A custom UI, if enabled, will override the standard DIAL Chat UI.
 * `editorUrl`: A string with URL of the application's custom builder UI. Application builder allows DIAL Chat end-users to create instances of apps using a [UI wizards](https://docs.dialx.ai/tutorials/user-guide#application-builder).
 * `defaults`: Default parameters are applied if a request doesn't contain them in OpenAI `chat/completions` API call. Used only where the interface entry declares no `defaults` of its own. Refer to [applications.<application_name>.interfaces](#applicationsapplication_nameinterfaces).
@@ -153,11 +154,13 @@ Applications serve the following interface types:
 * `openaiResponses`: the OpenAI Responses API. Peer of `responsesEndpoint`.
 * `anthropicMessages`: the Anthropic Messages API.
 
-`interfaces` is the whitelist of what the application serves: an interface it declares with no base URL — and that no legacy field serves — is answered with `503`.
+`interfaces` is the whitelist of what the application serves: an interface it declares with no base URL or plugin — and that no legacy field serves — is answered with `503`.
 
 Each value is an object with the following fields:
 
 * `base_url`: The root URL that the matching ingress path is appended to. Optional — the application-level `baseUrl` serves an entry that omits it.
+
+A base URL may be a plugin URL, `dial-plugin://<plugin_name>` (preview, may change incompatibly): the interface is then answered by that [plugin](plugins.md) inside DIAL Core, with no HTTP request, and checked and charged exactly as one sent over HTTP. A path may follow the name; DIAL Core keeps it in front of the path it appends. A plugin URL with no name is rejected, and so is one in `endpoint` or `responsesEndpoint`, which no plugin serves. A name with no `plugins` entry yet is accepted; requests for the interface answer `502` until the entry exists. Only applications of the platform config (the config files and the `platform` bucket) can name a plugin: a custom application in any other bucket with a plugin URL in its `baseUrl`, an interface's `base_url` or an inline translator's `baseUrl` is rejected with `422`.
 * `features`: Non-null fields override application-level `features` for this interface only; all other fields inherit, then Core defaults apply. Explicit `false` and empty arrays override inherited values. See [Features per interface](models.md#features-per-interface).
 * `defaultHeaders`: Headers applied to requests for this interface only, laid over the application-level `defaultHeaders`. Refer to [applications.<application_name>.defaultHeaders](#applicationsapplication_namedefaultheaders).
 * `defaults`: Body parameters applied to requests for this interface only. Unlike `defaultHeaders`, the two levels are **not** merged: an entry declaring `defaults` states the whole set and **replaces** the application-level `defaults`, so a key it does not name is not defaulted at all. The application-level `defaults` applies only where the entry declares none. Whatever the source, a default is only a fallback — a parameter the request body already carries is never replaced.
@@ -171,6 +174,11 @@ Each value is an object with the following fields:
         "interfaces": {
             "openaiChatCompletions": { "base_url": "http://localhost:7005" },
             "openaiResponses": { "base_url": "http://localhost:7005" }
+        }
+    },
+    "app-in-core": {
+        "interfaces": {
+            "openaiChatCompletions": { "base_url": "dial-plugin://my-plugin" }
         }
     }
 }
@@ -219,7 +227,7 @@ The following features are supported:
 * `folderAttachmentsSupported`: A boolean parameter that enables/disables attachments of folders (batching multiple files). Default is `false`.
 * `accessibleByPerRequestKey`: A boolean parameter that indicates whether the deployment is accessible using a per-request API key. Default is `true`.
 * `contentPartsSupported`: A boolean parameter that indicates whether the deployment supports requests with content parts or not.Default is `false`.
-* `consentRequired`: A boolean parameter that indicates whether the application requires user consent before use.
+* `consentRequired`: A boolean parameter that indicates whether the application requires user consent before use. An application that declares [`resourceDependencies`](#applicationsapplication_nameresourcedependencies) asks for consent also without it.
 * `supportCommentInRateResponse`: A boolean parameters that indicates whether the application supports the field `comment` in rate response payload.
 * `reasoningEfforts`: A list of supported `effort` values for chat completions requests (e.g., `low`, `medium`, `high`). An empty list means the deployment does not support the `effort` parameter. Default is `[]`.
 
@@ -263,6 +271,47 @@ Supported configuration parameters:
     "allowedTools": ["tool1", "tool2"],
     "configDelivery": "meta",
     "forwardPerRequestKey": true
+}
+```
+
+#### applications.<application_name>.resourceDependencies
+
+A list of DIAL resources outside the application — files, prompts, conversations, skills, projects, other applications and toolsets, or folders of them — that the application may read or write on behalf of the user who calls it. In API requests and responses the field is named `resource_dependencies`.
+
+An entry is a request, not a grant: it gives the application no access of its own. On every call DIAL Core checks each entry against the calling user's own access — their own bucket, resources shared with them, and public resources they can read (read-only; a public folder that spans organization units only when they can read every one of them) — and against an administrator's approval of the list. An entry passes only when the user holds every right it declares; the entries that pass are added to the [per request API key](https://github.com/epam/ai-dial/blob/main/docs/platform/3.core/3.per-request-keys.md) the application receives for that call. An entry the user cannot access, or a list no administrator has approved, adds nothing. When the application calls another application, that application's own `resourceDependencies` are checked for the same user.
+
+An administrator approves the list as a whole through the [Admin Consent API](./admin_consent_api.md). The approval covers each entry's `target.url` and `access`, in order: an added, removed or reordered entry, or changed rights, require a new approval. Users may add or change resource dependencies of an application only when the static setting `applications.allowUserAuthoredDependencies` is enabled; with it disabled, a user's write may leave the list out (the stored list is kept) or send it unchanged, and a copy of an application keeps its list. An administrator approves a user's application when it is published, on the publication's review copy; an unpublished application in a user's bucket cannot be approved, even by an administrator who can read it, so its dependencies never resolve. The setting gates writes only: an application saved earlier keeps resolving while its admin consent stands; withdraw the consent to stop it.
+
+The user consent document of an application that declares resource dependencies (`GET /v1/consent/{id}`) lists its entries in `resources` and is never accepted automatically, also without `features.consentRequired`; a changed list asks the user again. The entries are shown to the user; calls do not check the user consent against them.
+
+Resource dependencies are added on chat completion, completion and embedding calls (`/openai/deployments/<deployment name>/...` and `/openai/v1/chat/completions`), Responses API calls (`/openai/v1/responses`, `/openai/responses`), Anthropic Messages calls (`/anthropic/v1/messages`, including `/anthropic/v1/messages/count_tokens`) and MCP calls (`/v1/deployments/<deployment name>/mcp`, for a JSON request body that is an object); application routes, feature endpoints, `/v1/deployments/<deployment name>/mcp/resources` and toolsets do not receive them, and a `required` entry does not fail them. An MCP application receives them only with `mcp.forwardPerRequestKey` set to `true`; otherwise a `required` entry fails the call.
+
+Each entry is an object with the following fields:
+
+* `kind`: Always `dial.resourceLink`.
+* `link_id`: The entry identifier, unique within the application.
+* `target.url`: The resource or folder: `<type>/{current-user}/<path>` for one in the bucket of whoever calls the application, or `<type>/<bucket>/<path>` for a fixed location. `<type>` is one of `applications`, `conversations`, `files`, `projects`, `prompts`, `skills`, `toolsets`. A URL ending with `/` is a folder and covers everything inside it. A URL with leading or trailing whitespace is rejected.
+* `access`: A non-empty list of `read` and `write`. `write` is not allowed on `applications` and `toolsets`: with it the application could change where the user's applications and toolsets send later calls and stored credentials.
+* `required`: If `true`, a call fails with `403` when the entry cannot be granted. Default is `false`: the call goes on without the entry.
+
+An application may declare up to 100 entries. A list that breaks these rules is rejected with `400` when the application is saved through the API; in a config file, an entry with a wrong `kind`, an empty or invalid `access`, `write` on `applications` or `toolsets`, or an invalid `target.url` is never granted.
+
+**Example**
+
+```json
+"applications": {
+    "app-with-resource-dependencies": {
+        "endpoint": "http://localhost:7001/openai/deployments/app/chat/completions",
+        "resourceDependencies": [
+            {
+                "kind": "dial.resourceLink",
+                "link_id": "lnk_reports",
+                "target": { "url": "files/{current-user}/reports/" },
+                "access": ["read", "write"],
+                "required": true
+            }
+        ]
+    }
 }
 ```
 

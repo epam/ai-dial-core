@@ -13,7 +13,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -217,6 +219,57 @@ class ResourceAuthSettingsEncryptionServiceTest {
 
         assertEquals(Base64.getEncoder().encodeToString(ENCRYPTED_CLIENT_SECRET), settings.getClientSecret());
         assertEquals(Base64.getEncoder().encodeToString(ENCRYPTED_CODE_VERIFIER), settings.getCodeVerifier());
+    }
+
+    @Test
+    void testTryDecryptOrDropSecrets_decryptsReadableSecrets() {
+        BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
+        ResourceAuthSettings settings = new ResourceAuthSettings();
+        settings.setClientSecret(Base64.getEncoder().encodeToString(ENCRYPTED_CLIENT_SECRET));
+
+        when(encryptionService.decrypt(bucketInfo, ENCRYPTED_CLIENT_SECRET, AAD))
+                .thenReturn(CLIENT_SECRET.getBytes(StandardCharsets.UTF_8));
+
+        assertTrue(service.tryDecryptOrDropSecrets(RESOURCE_ID, bucketInfo, settings));
+
+        assertEquals(CLIENT_SECRET, settings.getClientSecret());
+    }
+
+    @Test
+    void testTryDecryptOrDropSecrets_dropsBothSecretsWhenClientSecretCannotBeDecrypted() {
+        BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
+        ResourceAuthSettings settings = new ResourceAuthSettings();
+        settings.setClientSecret(Base64.getEncoder().encodeToString(ENCRYPTED_CLIENT_SECRET));
+        settings.setCodeVerifier(Base64.getEncoder().encodeToString(ENCRYPTED_CODE_VERIFIER));
+
+        when(encryptionService.decrypt(bucketInfo, ENCRYPTED_CLIENT_SECRET, AAD))
+                .thenThrow(new RuntimeException("authentication tag mismatch"));
+
+        assertFalse(service.tryDecryptOrDropSecrets(RESOURCE_ID, bucketInfo, settings));
+
+        assertNull(settings.getClientSecret());
+        assertNull(settings.getCodeVerifier());
+    }
+
+    @Test
+    void testTryDecryptOrDropSecrets_treatsPlaintextClientSecretAsUnreadable() {
+        BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
+        ResourceAuthSettings settings = new ResourceAuthSettings();
+        settings.setClientSecret("not base64 !!");
+
+        assertFalse(service.tryDecryptOrDropSecrets(RESOURCE_ID, bucketInfo, settings));
+
+        assertNull(settings.getClientSecret());
+    }
+
+    @Test
+    void testTryDecryptOrDropSecrets_withoutClientSecretSucceedsWithoutDecrypting() {
+        BucketInfo bucketInfo = new BucketInfo("bucket-name", "bucket-location/");
+        ResourceAuthSettings settings = new ResourceAuthSettings();
+
+        assertTrue(service.tryDecryptOrDropSecrets(RESOURCE_ID, bucketInfo, settings));
+
+        verifyNoInteractions(encryptionService);
     }
 
     @Test

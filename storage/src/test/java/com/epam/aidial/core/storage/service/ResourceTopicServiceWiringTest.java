@@ -68,6 +68,26 @@ class ResourceTopicServiceWiringTest {
     }
 
     @Test
+    void publishUpdateReachesSubscribersWhateverTheResourceType() throws InterruptedException {
+        ResourceDescriptor descriptor = new ResourceDescriptor(
+                ResourceTypes.ENCRYPTION_KEYS, "cek", List.of(), "public", "public/", false);
+
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<ResourceEvent> received = new AtomicReference<>();
+        try (ResourceTopic.Subscription ignored = service.subscribeAllResources(event -> {
+            if (descriptor.getUrl().equals(event.getUrl())) {
+                received.set(event);
+                latch.countDown();
+            }
+        })) {
+            service.publishUpdate(descriptor);
+
+            Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS), "an encryption key is not an event type, but publishUpdate sends it");
+            Assertions.assertEquals(ResourceEvent.Action.UPDATE, received.get().getAction());
+        }
+    }
+
+    @Test
     void serviceTopicIgnoresUnknownFields() throws InterruptedException {
         ResourceTopic topic = service.getTopic();
         Assertions.assertNotNull(topic);

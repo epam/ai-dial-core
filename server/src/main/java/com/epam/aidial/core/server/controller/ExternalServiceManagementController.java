@@ -23,6 +23,7 @@ import com.epam.aidial.core.server.data.ExternalServiceData;
 import com.epam.aidial.core.server.log.ExternalServiceAuditLog;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.AdminConsentService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -62,6 +63,7 @@ public class ExternalServiceManagementController {
     private final ResourceCredentialsService resourceCredentialsService;
     private final ResourceAuthSettingsService resourceAuthSettingsService;
     private final ResourceAuthStatusEnricher statusEnricher;
+    private final AdminConsentService adminConsentService;
 
     public ExternalServiceManagementController(Proxy proxy, ProxyContext context) {
         this.context = context;
@@ -74,6 +76,7 @@ public class ExternalServiceManagementController {
         this.resourceCredentialsService = proxy.getResourceCredentialsService();
         this.resourceAuthSettingsService = proxy.getResourceAuthSettingsService();
         this.statusEnricher = new ResourceAuthStatusEnricher(context, resourceAuthSettingsService);
+        this.adminConsentService = proxy.getAdminConsentService();
     }
 
     @ApiOperation(
@@ -205,9 +208,10 @@ public class ExternalServiceManagementController {
                     ResolvedApp resolved = resolveApp(appId);
                     if (canManageInline(resolved)) {
                         requireDynamic(resolved);
-                        ExternalService stored = externalServiceService.putExternalService(
+                        ExternalServiceService.StoredService stored = externalServiceService.putExternalService(
                                 resolved.descriptor, serviceId, service, resolved.author);
-                        return toDetailData(appId, serviceId, stored, false);
+                        dropApprovalOnNonAdminWrite(resolved, stored.appDeclaresDependencies());
+                        return toDetailData(appId, serviceId, stored.service(), false);
                     }
                     requireUserAuthoringAllowed(resolved);
                     ExternalService stored = userExternalServiceService.put(
@@ -244,7 +248,8 @@ public class ExternalServiceManagementController {
             ResolvedApp resolved = resolveApp(appId);
             if (canManageInline(resolved)) {
                 requireDynamic(resolved);
-                externalServiceService.deleteExternalService(resolved.descriptor, serviceId, resolved.author);
+                boolean declaresDependencies = externalServiceService.deleteExternalService(resolved.descriptor, serviceId, resolved.author);
+                dropApprovalOnNonAdminWrite(resolved, declaresDependencies);
 
                 // Cascade: purge APP-level credentials for the removed scope. USER-level credentials live in
                 // individual user buckets and are not swept (known limitation shared with toolsets).
@@ -291,6 +296,13 @@ public class ExternalServiceManagementController {
             throw new ResourceNotFoundException("Application not found: " + appId);
         }
         return new ResolvedApp(application, descriptor, result.getKey().getAuthor(), false);
+    }
+
+    // As for an application write: a non-admin change to an approved application's services withdraws the approval.
+    private void dropApprovalOnNonAdminWrite(ResolvedApp resolved, boolean declaresDependencies) {
+        if (declaresDependencies && !accessService.hasExplicitAdminAccess(context)) {
+            adminConsentService.deleteAdminConsent(resolved.descriptor);
+        }
     }
 
     private boolean canManageInline(ResolvedApp resolved) {

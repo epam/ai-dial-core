@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.controller.anthropic.AnthropicModelController;
+import com.epam.aidial.core.server.controller.anthropic.AnthropicUsageController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import com.epam.aidial.core.server.controller.route.ApplicationRouteController;
@@ -87,6 +88,15 @@ public class ControllerSelector {
         put(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
         delete(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE, ControllerSelector::configResourceController);
         delete(RouteTemplate.PLATFORM_APP_TOOLSET_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        // Aliases in public storage: admin-only management, also registered before RESOURCE/RESOURCE_METADATA.
+        get(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        get(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        post(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        post(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        put(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        put(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
+        delete(RouteTemplate.ALIAS_RESOURCE, ControllerSelector::configResourceController);
+        delete(RouteTemplate.ALIAS_RESOURCE_METADATA, ControllerSelector::configResourceMetadataController);
 
         // GET routes
         get(RouteTemplate.DEPLOYMENT, (proxy, context, pathMatcher) -> {
@@ -107,6 +117,15 @@ public class ControllerSelector {
             ModelController controller = new ModelController(context);
             return controller::getModels;
         });
+        get(RouteTemplate.ROUTER, (proxy, context, pathMatcher) -> {
+            RouterController controller = new RouterController(context);
+            String routerId = UrlUtil.decodePath(pathMatcher.group(1));
+            return () -> controller.getRouter(routerId);
+        });
+        get(RouteTemplate.ROUTERS, (proxy, context, pathMatcher) -> {
+            RouterController controller = new RouterController(context);
+            return controller::getRouters;
+        });
         get(RouteTemplate.LLM_ANTHROPIC_MODEL, (proxy, context, pathMatcher) -> {
             AnthropicModelController controller = new AnthropicModelController(context);
             String modelId = UrlUtil.decodePath(pathMatcher.group(1));
@@ -115,6 +134,10 @@ public class ControllerSelector {
         get(RouteTemplate.LLM_ANTHROPIC_MODELS, (proxy, context, pathMatcher) -> {
             AnthropicModelController controller = new AnthropicModelController(context);
             return controller::getModels;
+        });
+        get(RouteTemplate.ANTHROPIC_OAUTH_USAGE, (proxy, context, pathMatcher) -> {
+            AnthropicUsageController controller = new AnthropicUsageController(proxy, context);
+            return controller::handle;
         });
         get(RouteTemplate.APPLICATION, (proxy, context, pathMatcher) -> {
             ApplicationController controller = new ApplicationController(context);
@@ -234,6 +257,7 @@ public class ControllerSelector {
             return () -> controller.handle(deploymentId, getter, false);
         });
         get(RouteTemplate.USER_INFO, (proxy, context, pathMatcher) -> new UserInfoController(context));
+        get(RouteTemplate.USER_ROLE_ASSIGNMENTS, (proxy, context, pathMatcher) -> new UserOrgUnitsController(proxy, context));
         get(RouteTemplate.USER_LIMITS, (proxy, context, pathMatcher) -> {
             LimitController controller = new LimitController(proxy, context);
             return controller::getUserLimits;
@@ -253,6 +277,11 @@ public class ControllerSelector {
                 case "signout" -> controller::signOut;
                 default -> null;
             };
+        });
+        get(RouteTemplate.ADMIN_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.getAdminConsentStatus(deploymentId);
         });
         get(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
@@ -411,6 +440,47 @@ public class ControllerSelector {
                 default -> null;
             };
         });
+        get(RouteTemplate.ORG_UNIT_ROLES, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.listRoles(path);
+        });
+        get(RouteTemplate.ORG_UNIT_ROLE_ASSIGNMENTS, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.listRoleAssignments(path);
+        });
+        post(RouteTemplate.ORG_UNIT_ROLE_ASSIGNMENTS, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.addRoleAssignment(path);
+        });
+        delete(RouteTemplate.ORG_UNIT_ROLE_ASSIGNMENT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            String id = pathMatcher.group("id");
+            return () -> controller.removeRoleAssignment(path, id);
+        });
+        get(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.getOrgUnit(path);
+        });
+        post(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.createOrgUnit(path);
+        });
+        patch(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.updateOrgUnit(path);
+        });
+        delete(RouteTemplate.ORG_UNIT, (proxy, context, pathMatcher) -> {
+            OrgUnitController controller = new OrgUnitController(proxy, context);
+            String path = pathMatcher.group("path");
+            return () -> controller.deleteOrgUnit(path);
+        });
         post(RouteTemplate.PUBLICATION_RULES, (proxy, context, pathMatcher) -> {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listRules;
@@ -501,6 +571,8 @@ public class ControllerSelector {
             };
         });
         post(RouteTemplate.CONFIG_VALIDATE, (proxy, context, pathMatcher) -> new AdminValidateController(proxy, context));
+        post(RouteTemplate.ADMIN_SYSTEM_EXPORT, (proxy, context, pathMatcher) -> new AdminSystemExportController(proxy, context));
+        post(RouteTemplate.ADMIN_SYSTEM_IMPORT, (proxy, context, pathMatcher) -> new AdminSystemImportController(proxy, context));
         post(RouteTemplate.CONFIG_APPLY, (proxy, context, pathMatcher) -> {
             AdminApplyController controller = new AdminApplyController(proxy, context);
             return controller::handle;
@@ -515,6 +587,11 @@ public class ControllerSelector {
             return new AdminHealthConfigController(context, authService, mergedConfigStore);
         });
         post(RouteTemplate.CONFIG, (proxy, context, pathMatcher) -> new ConfigController(context));
+        post(RouteTemplate.ADMIN_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.grantAdminConsent(deploymentId);
+        });
         post(RouteTemplate.USER_CONSENT, (proxy, context, pathMatcher) -> {
             String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
             ConsentController controller = new ConsentController(context, proxy);
@@ -546,6 +623,11 @@ public class ControllerSelector {
             };
         });
         // DELETE routes
+        delete(RouteTemplate.ADMIN_CONSENT, (proxy, context, pathMatcher) -> {
+            String deploymentId = UrlUtil.decodePath(pathMatcher.group(1));
+            ConsentController controller = new ConsentController(context, proxy);
+            return () -> controller.withdrawAdminConsent(deploymentId);
+        });
         delete(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             ResourceController controller = new ResourceController(proxy, context, false);
             String path = context.getRequest().path();
@@ -668,6 +750,10 @@ public class ControllerSelector {
         ROUTES.add(new ControllerRoute(HttpMethod.PUT, template.getPattern(), controllerTemplate));
     }
 
+    private static void patch(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
+        ROUTES.add(new ControllerRoute(HttpMethod.PATCH, template.getPattern(), controllerTemplate));
+    }
+
     private static void delete(RouteTemplate template, ControllerRoute.Initializer controllerTemplate) {
         ROUTES.add(new ControllerRoute(HttpMethod.DELETE, template.getPattern(), controllerTemplate));
     }
@@ -682,6 +768,9 @@ public class ControllerSelector {
         // FILES/RESOURCE routes (see ResourceDescriptorFactory.fromAnyUrl) and the {@code path}
         // contract on ResourceDescriptorFactory.fromDecoded ("url decoded relative path").
         String path = UrlUtil.decodePath(pathMatcher.group("path"));
+        if (PolicyController.serves(entityType)) {
+            return new PolicyController(proxy, context, entityType, bucket, path);
+        }
         return new ConfigResourceController(proxy, context, entityType, bucket, path);
     }
 
@@ -722,11 +811,11 @@ public class ControllerSelector {
     // Builds the whole-resource url (still percent-encoded, decoded downstream by fromAnyUrl) for a
     // single-file or metadata route match, so access control is evaluated against the whole resource.
     private static String complexResourceUrl(Matcher matcher) {
-        return "skills/" + matcher.group("bucket") + "/" + matcher.group("path");
+        return matcher.group("group") + "/" + matcher.group("bucket") + "/" + matcher.group("path");
     }
 
     // Builds the grouping-folder url (trailing slash so fromAnyUrl marks it a folder) for folder ops, and
-    // as the metadata route's second access-check candidate: {path} may name either a specific skill (shared
+    // as the metadata route's second access-check candidate: {path} may name either a specific complex resource (shared
     // as the non-folder url from complexResourceUrl) or a grouping folder (shared as this folder url), and
     // the client has no way to know which up front, so both shapes are checked. An empty path addresses the
     // bucket root.
@@ -736,7 +825,7 @@ public class ControllerSelector {
             path = path.substring(0, path.length() - 1);
         }
         String suffix = (path == null || path.isEmpty()) ? "" : path + "/";
-        return "skills/" + matcher.group("bucket") + "/" + suffix;
+        return matcher.group("group") + "/" + matcher.group("bucket") + "/" + suffix;
     }
 
     private record ControllerRoute(HttpMethod method, Pattern pathPattern, Initializer initializer) {

@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.service.resource;
 import com.epam.aidial.core.server.FileUtil;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -164,8 +165,14 @@ class ComplexResourceSweepServiceTest {
         TimerService timerService = Mockito.mock(TimerService.class);
         Mockito.when(timerService.scheduleWithFixedDelay(Mockito.anyLong(), Mockito.anyLong(), Mockito.any()))
                 .thenReturn(() -> { });
+        BackgroundOperationTracer backgroundTracer = Mockito.mock(BackgroundOperationTracer.class);
+        Mockito.lenient().doAnswer(inv -> {
+            Runnable work = inv.getArgument(0);
+            work.run();
+            return null;
+        }).when(backgroundTracer).trace(Mockito.any(Runnable.class));
         return new ComplexResourceSweepService(
-                timerService, blobStorage, redis, lockService, complexResourceService, encryptionService, settings);
+                timerService, blobStorage, redis, lockService, complexResourceService, encryptionService, settings, backgroundTracer);
     }
 
     private ResourceDescriptor skill(String name) {

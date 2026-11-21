@@ -34,6 +34,8 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
     private final boolean filesMode;
     // Optional subfolder inside the version, for files mode.
     private final String subPath;
+    // The folder shape of a children-mode path, which a grouping level's listing is filtered by.
+    private ResourceDescriptor folderShape;
 
     public ComplexResourceMetadataController(Proxy proxy, ProxyContext context, boolean filesMode, String subPath) {
         super(proxy, context, false);
@@ -55,6 +57,34 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
             path = "/v2/metadata/skills/{bucket}/{path}",
             operationId = "listSkillMetadata",
             tags = {"Skills"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "The grouping folder path within the bucket; empty lists the bucket root."),
+                    @ApiParameter(name = "token", in = ParameterIn.QUERY,
+                            description = "Continuation token from a previous page; omit for the first page."),
+                    @ApiParameter(name = "limit", in = ParameterIn.QUERY, schema = Integer.class,
+                            description = "Maximum number of items per page (0-1000, default 100)."),
+                    @ApiParameter(name = "recursive", in = ParameterIn.QUERY, schema = Boolean.class,
+                            description = "If true, lists the whole subtree; otherwise only immediate children.")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "The complex resources and grouping folders at this level",
+                            body = @ApiSchema(oneOf = {ResourceFolderMetadata.class, ComplexResourceItemMetadata.class})),
+                    @ApiResponse(code = 400, description = "Bad request - limit out of range"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "Grouping folder not found"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
+    @ApiOperation(
+            method = "GET",
+            path = "/v2/metadata/projects/{bucket}/{path}",
+            operationId = "listProjectMetadata",
+            tags = {"Projects"},
             parameters = {
                     @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
                     @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
@@ -108,6 +138,36 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
                     @ApiExtension(name = "x-preview", value = "true")
             }
     )
+    @ApiOperation(
+            method = "GET",
+            path = "/v2/metadata/projects/{bucket}/{path}/files/{filePath}",
+            operationId = "listProjectFileMetadata",
+            tags = {"Projects"},
+            parameters = {
+                    @ApiParameter(name = "bucket", in = ParameterIn.PATH, description = "The target bucket.", required = true),
+                    @ApiParameter(name = "path", in = ParameterIn.PATH, required = true,
+                            description = "The resource path within the bucket."),
+                    @ApiParameter(name = "filePath", in = ParameterIn.PATH, required = true,
+                            description = "The relative path of a subfolder inside the resource to scope the listing."),
+                    @ApiParameter(name = "token", in = ParameterIn.QUERY,
+                            description = "Continuation token from a previous page; omit for the first page."),
+                    @ApiParameter(name = "limit", in = ParameterIn.QUERY, schema = Integer.class,
+                            description = "Maximum number of items per page (0-1000, default 100)."),
+                    @ApiParameter(name = "recursive", in = ParameterIn.QUERY, schema = Boolean.class,
+                            description = "If true, lists all files of the current version; otherwise only immediate entries.")
+            },
+            responses = {
+                    @ApiResponse(code = 200, description = "The files of the resource's current version",
+                            body = @ApiSchema(implementation = MetadataBase.class)),
+                    @ApiResponse(code = 400, description = "Bad request - limit out of range"),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 404, description = "Resource not found"),
+                    @ApiResponse(code = 500)
+            },
+            extensions = {
+                    @ApiExtension(name = "x-preview", value = "true")
+            }
+    )
     protected Future<?> handle(ResourceDescriptor resource, boolean hasWriteAccess) {
         String token = context.getRequest().getParam("token");
         int limit = Integer.parseInt(context.getRequest().getParam("limit", "100"));
@@ -123,7 +183,9 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
                     if (result == null) {
                         context.respond(HttpStatus.NOT_FOUND);
                     } else {
-                        proxy.getAccessService().filterForbidden(context, resource, result);
+                        // a path without the trailing slash names a grouping level as an item, which filters nothing
+                        boolean grouping = result instanceof ResourceFolderMetadata && !resource.isFolder() && folderShape != null;
+                        proxy.getAccessService().filterForbidden(context, grouping ? folderShape : resource, result);
                         context.respond(HttpStatus.OK, getContentType(), result);
                     }
                 })
@@ -156,6 +218,7 @@ public class ComplexResourceMetadataController extends AccessControlBaseControll
 
         ResourceDescriptor finalItemResource = itemResource;
         ResourceDescriptor finalFolderResource = folderResource;
+        folderShape = folderResource.isFolder() ? folderResource : null;
         Set<ResourceDescriptor> resourcesToCheck = itemResource.equals(folderResource)
                 ? Set.of(itemResource)
                 : Set.of(itemResource, folderResource);

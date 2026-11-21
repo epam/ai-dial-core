@@ -10,14 +10,27 @@ concurrency:
 
 jobs:
   run_tests:
-    uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@4.12.0
+    uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@5.0.0
     secrets: inherit
     with:
       platforms: "linux/amd64,linux/arm64"
-      java-version: 21
+      java-version: 25
       trivy-severity: "CRITICAL,HIGH,MEDIUM,LOW"
       trivy-severity-for-sarif: "CRITICAL,HIGH,MEDIUM,LOW"
       trivy-limit-severities-for-sarif: false
+
+  validate_openspec:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate OpenSpec specs and changes
+        shell: bash
+        env:
+          OPENSPEC_TELEMETRY: 0
+          OPENSPEC_NO_UPDATE_CHECK: 1
+        run: npx -y @fission-ai/openspec@1.14.3 validate --all --strict --report findings
 
   generate_openai_spec:
     runs-on: ubuntu-24.04
@@ -28,9 +41,9 @@ jobs:
         with:
           lfs: true
           ref: ${{ github.head_ref }}
-      - uses: epam/ai-dial-ci/actions/java_prepare@4.12.0
+      - uses: epam/ai-dial-ci/actions/java_prepare@5.0.0
         with:
-          java-version: 21
+          java-version: 25
           java-distribution: temurin
       - name: Regenerate and lint OpenAPI specification
         shell: bash
