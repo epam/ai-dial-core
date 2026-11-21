@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
@@ -126,15 +127,16 @@ public class ProxyContext {
     // the merged chat completions body, or the terminal Responses frame - whichever surface streamed
     private String assembledStreamingResponse;
     // the body of the in-process call this child pass serves: an origin plugin's call, or an alias pass's to its target
-    private ObjectNode callTree;
+    private ReceivedBody callBody;
     /**
      * Whether this child pass is the target pass of an alias call, served in process under an alias whose span is a
      * server span of the alias chain (not an origin plugin's): it writes its span attributes and log enrichment on the
      * current span, the alias pass's, which an origin plugin's call does not.
      */
     private boolean aliasTargetPass;
-    // the tree the chain serialised into requestBody, kept for the plugin of an embedded interface until it is called
-    private ObjectNode requestTree;
+    // the body the chain made, kept until the in-process origin is called: the plugin of an embedded interface gets its
+    // tree, the target pass of an in-process alias hop all of it
+    private ReceivedBody pluginBody;
     // the hosts of the in-process calls this pass's plugin makes, one per attempt
     private List<VertxHostDelegate> hostDelegates;
     // the router's verdict when a router in decision mode chose the deployment of this pass
@@ -378,11 +380,11 @@ public class ProxyContext {
 
     /**
      * The body of the in-process call this pass serves, while the request's body is not set: the parse sites take it
-     * in place of parsing, and the chain sets the body when it serialises the tree. Null once the body is set, and on
-     * a pass that serves no call.
+     * in place of parsing, and the chain sets the body when it serialises it. Null once the body is set, and on a pass
+     * that serves no call.
      */
-    public ObjectNode getCallTree() {
-        return requestBody == null ? callTree : null;
+    public ReceivedBody getCallBody() {
+        return requestBody == null ? callBody : null;
     }
 
     public void addHostDelegate(VertxHostDelegate hostDelegate) {
@@ -407,7 +409,7 @@ public class ProxyContext {
      * ({@link #isAliasTargetPass}).
      */
     public boolean isChildPass() {
-        return callTree != null;
+        return callBody != null;
     }
 
     /**

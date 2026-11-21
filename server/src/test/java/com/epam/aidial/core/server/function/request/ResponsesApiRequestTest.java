@@ -90,7 +90,7 @@ class ResponsesApiRequestTest {
                 {"model":"test-model","stream":true}""";
         ResponsesApiRequest request = request(expected);
 
-        String actual = new String(request.serialize());
+        String actual = request.serialize().toString();
 
         assertEquals(expected, actual);
     }
@@ -113,7 +113,7 @@ class ResponsesApiRequestTest {
         String expected = """
                 {"field":"kept-value","another-field":"added-value"}""";
 
-        String actual = new String(request.serialize());
+        String actual = request.serialize().toString();
 
         assertEquals(expected, actual);
     }

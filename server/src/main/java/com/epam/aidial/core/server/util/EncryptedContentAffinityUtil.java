@@ -91,9 +91,9 @@ public class EncryptedContentAffinityUtil {
     /**
      * Unwraps every wrapped {@code id}/{@code encrypted_content} field found in {@code input}, mutating it in
      * place back to the provider-native shape, and returns the unique resolved affinities (deduplicated by full
-     * record equality) found across all items.
+     * record equality) of the fields it unwrapped.
      *
-     * @return unique resolved affinities; empty if nothing wrapped was found
+     * @return unique resolved affinities; empty exactly when nothing was unwrapped
      */
     public List<ResolvedAffinity> resolveAndUnwrap(ArrayNode input) {
         LinkedHashSet<ResolvedAffinity> resolved = new LinkedHashSet<>();
@@ -104,6 +104,8 @@ public class EncryptedContentAffinityUtil {
             resolved.add(unwrapId(object));
             resolved.add(unwrapContent(object));
         }
+        // EMPTY stands for a field left as it is
+        resolved.remove(ResolvedAffinity.EMPTY);
         return List.copyOf(resolved);
     }
 

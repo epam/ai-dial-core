@@ -229,7 +229,8 @@ public class ApplyDefaultDeploymentSettingsFnTest {
         stubDeployment(model);
         ObjectNode result = (ObjectNode) ProxyUtil.MAPPER.readTree("{\"temperature\": 0.9}");
 
-        assertTrue(fn.apply(new ChatCompletionRequest(result)));
+        // nothing changed
+        assertFalse(fn.apply(new ChatCompletionRequest(result)));
 
         // an interface default is injected, never imposed, exactly as a deployment-level one is
         assertEquals(0.9, result.get("temperature").asDouble());

@@ -7,7 +7,9 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouteTemplate;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.opentelemetry.sdk.trace.IdGenerator;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -50,6 +52,8 @@ public final class VertxHostDelegate implements HostDelegate {
     private final ApiKeyData callKey;
     // the calls serve the target pass of an alias call, which may write on the alias pass's span
     private final boolean aliasHop;
+    // the alias pass's body, which the call handing on its tree takes whole; null once taken, and for any other host
+    private ReceivedBody aliasBody;
     private final Promise<Void> cancelled;
     /**
      * The answers of the calls whose passes may still write, cancelled when the attempt closes: the pass serving a call
@@ -64,17 +68,18 @@ public final class VertxHostDelegate implements HostDelegate {
      * @param pluginContext the context the plugin was called on
      */
     public VertxHostDelegate(Proxy proxy, ProxyContext parent, ContextInternal pluginContext) {
-        this(proxy, parent, pluginContext, null, false, false);
+        this(proxy, parent, pluginContext, null, false, false, null);
     }
 
     private VertxHostDelegate(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, ApiKeyData callKey, boolean closed,
-                              boolean aliasHop) {
+                              boolean aliasHop, ReceivedBody aliasBody) {
         this.proxy = proxy;
         this.parent = parent;
         this.pluginContext = pluginContext;
         this.callKey = callKey;
         this.closed = closed;
         this.aliasHop = aliasHop;
+        this.aliasBody = aliasBody;
         this.cancelled = pluginContext.promise();
     }
 
@@ -83,15 +88,17 @@ public final class VertxHostDelegate implements HostDelegate {
      * notice carries no key, so with none the host is closed from the start and every call is answered {@code 401}.
      */
     public static VertxHostDelegate forRouter(Proxy proxy, ProxyContext parent, ContextInternal pluginContext, @Nullable ApiKeyData callKey) {
-        return new VertxHostDelegate(proxy, parent, pluginContext, callKey, callKey == null, false);
+        return new VertxHostDelegate(proxy, parent, pluginContext, callKey, callKey == null, false, null);
     }
 
     /**
      * The host that serves the target pass of an alias call in process: {@code parent} is the alias pass. Its child
-     * pass is marked as an alias target pass ({@link ProxyContext#isAliasTargetPass}).
+     * pass is marked as an alias target pass ({@link ProxyContext#isAliasTargetPass}), and takes {@code aliasBody}, the
+     * body the alias pass handed on, when the call carries its tree.
      */
-    public static VertxHostDelegate forAliasHop(Proxy proxy, ProxyContext parent, ContextInternal pluginContext) {
-        return new VertxHostDelegate(proxy, parent, pluginContext, null, false, true);
+    public static VertxHostDelegate forAliasHop(Proxy proxy, ProxyContext parent, ContextInternal pluginContext,
+                                                @Nullable ReceivedBody aliasBody) {
+        return new VertxHostDelegate(proxy, parent, pluginContext, null, false, true, aliasBody);
     }
 
     /**
@@ -149,7 +156,7 @@ public final class VertxHostDelegate implements HostDelegate {
         EmbeddedServerRequest request = new EmbeddedServerRequest(call.uri(), call.headers(), response);
         ProxyContext child = new ProxyContext(proxy, request, key, null, null,
                 IdGenerator.random().generateSpanId(), parent.getTraceFlags());
-        child.setCallTree(call.body());
+        child.setCallBody(callBody(call.body()));
         child.setAliasTargetPass(aliasHop && writesOnAliasSpan(parent));
         responses.add(response);
         response.finished().onSuccess(ignored -> {
@@ -196,6 +203,16 @@ public final class VertxHostDelegate implements HostDelegate {
             responses.forEach(EmbeddedServerResponse::cancel);
             responses.clear();
         });
+    }
+
+    /**
+     * The body of a call's pass: the alias pass's own when the call hands on that very tree, so that the target pass
+     * may send the bytes it holds; any other tree, which a plugin may have changed, is serialized. Taken once.
+     */
+    private ReceivedBody callBody(ObjectNode tree) {
+        ReceivedBody body = aliasBody != null && aliasBody.tree() == tree ? aliasBody : ReceivedBody.of(tree);
+        aliasBody = null;
+        return body;
     }
 
     private static String pathOf(String uri) {

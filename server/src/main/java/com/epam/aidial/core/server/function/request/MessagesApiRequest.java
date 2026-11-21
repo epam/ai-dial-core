@@ -1,19 +1,13 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
-import com.epam.aidial.core.server.util.ChatUtil;
-import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -21,27 +15,16 @@ import java.util.Set;
  * model-name override applied by {@code EnhanceDeploymentRequestFn}.
  */
 @Slf4j
-@RequiredArgsConstructor
-public class MessagesApiRequest implements RequestObject {
+public class MessagesApiRequest extends JsonBodyRequest {
     private static final String CONTENT_NODE = "content";
     private static final String CACHE_CONTROL_NODE = "cache_control";
 
-    @Getter
-    private final ObjectNode tree;
-
-    @Override
-    public String getModel() {
-        return tree.path("model").asText();
+    public MessagesApiRequest(ReceivedBody body) {
+        super(body);
     }
 
-    @Override
-    public void setModel(String model) {
-        tree.put("model", model);
-    }
-
-    @Override
-    public boolean isStreaming() {
-        return tree.path("stream").asBoolean(false);
+    public MessagesApiRequest(ObjectNode tree) {
+        this(ReceivedBody.of(tree));
     }
 
     @Override
@@ -49,11 +32,6 @@ public class MessagesApiRequest implements RequestObject {
         // Pure pass-through: Anthropic bodies carry base64/public content, not DIAL file references,
         // so there is nothing to access-check here.
         return Set.of();
-    }
-
-    @Override
-    public Set<String> collectAppAttachments(List<String> paths) {
-        return ChatUtil.collectAttachments(tree, paths);
     }
 
     @Override
@@ -81,7 +59,7 @@ public class MessagesApiRequest implements RequestObject {
      * one-element array (e.g. {@code system:"x"} -> {@code system[0]}).
      */
     private void appendItemCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
-        List<JsonNode> elements = CacheKeyBuilder.elements(tree.get(node));
+        List<JsonNode> elements = CacheKeyBuilder.elements(tree().get(node));
         for (int index = 0; index < elements.size(); index++) {
             JsonNode element = asBlock(elements.get(index));
             updateExcludingCacheControl(builder, element);
@@ -95,7 +73,7 @@ public class MessagesApiRequest implements RequestObject {
      * every later hash. String content is scalar-normalized to {@code content[0]}.
      */
     private void appendMessageCacheKeys(CacheKeyBuilder builder, List<CacheKey> result) {
-        JsonNode messages = tree.get("messages");
+        JsonNode messages = tree().get("messages");
         if (messages == null || !messages.isArray()) {
             return;
         }
@@ -104,13 +82,12 @@ public class MessagesApiRequest implements RequestObject {
             if (!message.isObject()) {
                 continue;
             }
-            ObjectNode sorted = (ObjectNode) JsonUtil.sort(message);
-            for (Map.Entry<String, JsonNode> entry : sorted.properties()) {
-                if (!entry.getKey().equals(CONTENT_NODE)) {
-                    builder.update(entry.getValue());
+            CacheKeyBuilder.sortedProperties(message).forEach((name, value) -> {
+                if (!name.equals(CONTENT_NODE)) {
+                    builder.update(value);
                 }
-            }
-            List<JsonNode> blocks = CacheKeyBuilder.elements(sorted.get(CONTENT_NODE));
+            });
+            List<JsonNode> blocks = CacheKeyBuilder.elements(message.get(CONTENT_NODE));
             for (int contentIndex = 0; contentIndex < blocks.size(); contentIndex++) {
                 JsonNode block = asBlock(blocks.get(contentIndex));
                 updateExcludingCacheControl(builder, block);
@@ -131,12 +108,11 @@ public class MessagesApiRequest implements RequestObject {
             builder.update(block);
             return;
         }
-        ObjectNode sorted = (ObjectNode) JsonUtil.sort(block);
-        for (Map.Entry<String, JsonNode> entry : sorted.properties()) {
-            if (!entry.getKey().equals(CACHE_CONTROL_NODE)) {
-                builder.update(entry.getValue());
+        CacheKeyBuilder.sortedProperties(block).forEach((name, value) -> {
+            if (!name.equals(CACHE_CONTROL_NODE)) {
+                builder.update(value);
             }
-        }
+        });
     }
 
     /**
@@ -149,20 +125,5 @@ public class MessagesApiRequest implements RequestObject {
 
     private static boolean hasCacheControl(JsonNode block) {
         return block.isObject() && block.has(CACHE_CONTROL_NODE);
-    }
-
-    @Override
-    public void clearInterceptorSettings() {
-        ChatUtil.removeInterceptorConfiguration(tree);
-    }
-
-    @Override
-    public void applyDefaults(Map<String, Object> defaults) {
-        ChatUtil.applyDefaults(tree, defaults);
-    }
-
-    @Override
-    public byte[] serialize() throws JsonProcessingException {
-        return ProxyUtil.MAPPER.writeValueAsBytes(tree);
     }
 }

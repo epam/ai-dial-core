@@ -100,13 +100,13 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
      * Runs the chat-completions enhancement chain over an already-parsed request body, assigns the
      * per-request API key, resolves the upstream route and sends the request. Shared tail of every
      * controller's request-body handling once the deployment is resolved and the body is parsed.
-     * {@code changed} says the caller already changed the parsed request, so the body is serialized even when the chain does not change it.
      */
     @SneakyThrows
-    protected void processChatCompletionsRequestBody(RequestObject request, boolean changed) {
+    protected void processChatCompletionsRequestBody(RequestObject request) {
         Deployment deployment = context.getDeployment();
         context.setStreamingRequest(request.isStreaming());
-        setProcessedRequestBody(request, ProxyUtil.processChain(request, buildEnhancementFunctions()) || changed, requestedInterface());
+        ProxyUtil.processChain(request, buildEnhancementFunctions());
+        setProcessedRequestBody(request, requestedInterface());
         proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
 
         String upstreamId = context.getRequest().headers().get(HEADER_UPSTREAM_ID);
