@@ -105,8 +105,9 @@ type), with that name as `<alias>`:
 
 Core calls the target in a second pass, as an application calls a model. For chat completions, completions,
 embeddings, Responses (`/openai/v1/responses` and `/openai/responses`, not with `background: true`) and Messages, the
-second pass runs in process: no HTTP request reaches Core, and the body goes over already parsed. Everything else an
-alias forwards goes over Core's own HTTP address: MCP, `tokenize`, `truncate_prompt`, `configuration`, `rate`,
+second pass runs in process: no HTTP request reaches Core, and the body goes over already parsed, with the client's
+bytes, so the target's origin receives those bytes with only `model` replaced unless a pass changed more. Everything
+else an alias forwards goes over Core's own HTTP address: MCP, `tokenize`, `truncate_prompt`, `configuration`, `rate`,
 Messages `count_tokens`, background Responses and the operations on a stored response. That address is the static
 setting `backgroundJob.localBaseUrl`, by default `http://localhost:<server port>`; set it when this port is not
 reachable on `localhost`. The second pass:

@@ -16,7 +16,6 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -44,12 +43,12 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     protected abstract RequestObject parseRequest(Buffer body) throws IOException;
 
     /**
-     * The request's body: the tree of an in-process call's pass while it has no body, otherwise {@code body}
+     * The request's body: an in-process call's body while its pass has no body of its own, otherwise {@code body}
      * parsed.
      */
     protected ReceivedBody parseBody(Buffer body) throws IOException {
-        ObjectNode tree = context.getCallTree();
-        return tree == null ? ReceivedBody.parse(body) : ReceivedBody.of(tree);
+        ReceivedBody call = context.getCallBody();
+        return call == null ? ReceivedBody.parse(body) : call;
     }
 
     protected abstract String buildUri(ProxyContext context);
@@ -80,8 +79,8 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 context.getRequest().headers().size());
 
         return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
-            // an in-process call's pass has its tree instead of a body until the chain below serialises it
-            Future<Buffer> body = context.getRequestBody() == null && context.getCallTree() == null
+            // an in-process call's pass has the call's body instead of its own until the chain below serialises it
+            Future<Buffer> body = context.getRequestBody() == null && context.getCallBody() == null
                     ? context.getRequest().body()
                     .onSuccess(context::setRequestBodyWithTimestamp)
                     .onFailure(this::handleRequestBodyError)

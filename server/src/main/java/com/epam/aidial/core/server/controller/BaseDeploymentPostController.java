@@ -140,15 +140,15 @@ public class BaseDeploymentPostController {
      * Sets the request's body once the chain has run: {@code request} serialised, which is the received bytes as they
      * are, or with only the model replaced, unless anything else in the tree changed. Taken from the request on every
      * pass, whatever the chain reported, so that no change can leave the received bytes in place. For an interface
-     * served by a plugin the tree stays on the context too, and its plugin gets it as {@code bodyTree} instead of
-     * parsing the body again. An alias pass whose target pass runs in process keeps the tree and does not serialize
-     * ({@link #isInProcessAliasHop}).
+     * served by a plugin the body stays on the context too, and its plugin gets the tree as {@code bodyTree} instead of
+     * parsing the body again. An alias pass whose target pass runs in process hands its body on whole and does not
+     * serialize ({@link #isInProcessAliasHop}).
      */
     protected void setProcessedRequestBody(RequestObject request, InterfaceType type) throws JsonProcessingException {
         if (isInProcessAliasHop()) {
-            // the target pass takes the tree, and the alias row has no bodies: no one reads serialized bytes. A pass
+            // the target pass takes the body, and the alias row has no bodies: no one reads serialized bytes. A pass
             // with none (itself served in process) gets an empty buffer for the Content-Length the send sets
-            context.setRequestTree(request.getBody().tree());
+            context.setPluginBody(request.getBody());
             if (context.getRequestBody() == null) {
                 context.setRequestBody(Buffer.buffer());
             }
@@ -156,7 +156,7 @@ public class BaseDeploymentPostController {
         }
         context.setRequestBody(request.serialize());
         if (DeploymentEndpointUtil.resolvePlugin(context.getDeployment(), type, context.getConfig().getTranslators()) != null) {
-            context.setRequestTree(request.getBody().tree());
+            context.setPluginBody(request.getBody());
         }
     }
 

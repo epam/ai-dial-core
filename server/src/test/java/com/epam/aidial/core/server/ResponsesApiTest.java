@@ -192,6 +192,24 @@ public class ResponsesApiTest extends ResourceBaseTest {
         }
     }
 
+    // deployment-origin "Body sent to the origin"
+    @Test
+    public void testReceivedBytesForwardedAsTheyAre() throws IOException {
+        AtomicReference<String> forwarded = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
+            server.map(HttpMethod.POST, "/openai/v1/responses", request -> {
+                forwarded.set(request.getBody().readUtf8());
+                return TestWebServer.createResponse(200, "{\"id\":\"resp_1\",\"object\":\"response\",\"output\":[],"
+                        + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}", "Content-Type", "application/json");
+            });
+
+            String requestBody = "{ \"model\" : \"model-iface-only\", \"store\": false,\n \"input\": [{\"role\": \"user\", \"content\": \"Привет\"}] }";
+            assertEquals(200, post(client, requestBody).status());
+
+            assertEquals(requestBody, forwarded.get());
+        }
+    }
+
     @Test
     public void testEncryptedContentAffinityWrapsAndUnwrapsForSingleUpstreamDeployment() throws IOException {
         AtomicReference<String> secondRequestBody = new AtomicReference<>();

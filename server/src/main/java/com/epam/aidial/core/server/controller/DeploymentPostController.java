@@ -285,7 +285,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
                     .compose(body -> body.length() == 0 && context.isChildPass() && context.getDeployment() instanceof Router
                             // an in-process call has a tree and no bytes: its serialization, made before any candidate
                             // changes the tree, stands in for the client's bytes
-                            ? proxy.getTaskExecutor().submit(() -> Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(context.getCallTree())))
+                            ? proxy.getTaskExecutor().submit(() -> Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(context.getCallBody().tree())))
                             : Future.succeededFuture(body))
                     .onSuccess(body -> {
                         if (context.getDecision() != null || context.getDeployment() instanceof Router) {
