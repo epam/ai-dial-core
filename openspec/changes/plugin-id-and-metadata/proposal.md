@@ -10,13 +10,14 @@ can be renamed now with a deprecated alias instead of a breaking cycle later.
 ## What Changes
 
 - A `plugins` entry names its plugin with `pluginId`. `type` is still accepted on input as a deprecated alias (PUT,
-  validate and apply manifests, config files, blobs already stored); a body with both is refused with `400`. Core
-  stores and returns `pluginId` only, so the next write of an entry rewrites its blob with the new name. Warnings
-  name `pluginId` whichever name the body used.
+  validate and apply manifests, config files, blobs already stored); a body with both is refused with `400` when they
+  name different ids. Core stores and returns `pluginId` only, invalid entries included, so the next write of an
+  entry rewrites its blob with the new name. Warnings name `pluginId` whichever name the body used.
 - A provider may declare a settings schema (JSON Schema draft-07, the draft Core uses for application type and
   catalog schemas). Core checks `settings` against it on every write and rebuild before the provider's own check,
   with the same outcomes as a rejection by the provider: the schema is a validation rule, not only a hint. A schema
-  that is not valid draft-07 stops the start.
+  that is not valid draft-07, names another draft or has a `$ref` outside itself stops the start: Core loads no
+  schema from a url.
 - A provider may declare a description and its targets, the places a plugin url may name its entries: `model`,
   `application`, `router`, `translator`, all four by default. Targets are a hint for the admin console: Core does
   not check a plugin url against them.
@@ -55,6 +56,8 @@ None.
 - Plugin jars: `ai-dial-model-provider-plugin` and the `forward` sample keep working and can move to `id()` when
   convenient.
 - Mixed releases: none to protect, since no released Core reads `plugins` entries.
-- Scenarios in `deployment-interfaces-config`, `router-deployment` and `app-to-model-accounting` say an entry is
-  "of type `test-origin`"; that wording stays.
-- Supersedes: plugin-config-entity D2 and D3, for the name `type` only.
+- Renames a Jackson-bound field of `config`, which docs/CODE_STYLE.md forbids; design D2 records why.
+- Scenarios in `deployment-interfaces-config` and `deployment-origin` say an entry is "of type `test-origin`"; that
+  wording stays.
+- Supersedes: plugin-config-entity D2 and D3 for the name `type`; D3 also for `validate()`, which gets a default
+  and runs after the schema check; D5 for the warning field `type` (now `pluginId`) and the check order.
