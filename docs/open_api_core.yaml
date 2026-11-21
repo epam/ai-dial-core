@@ -3463,6 +3463,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/admin/plugin-providers:
+    get:
+      tags:
+      - Admin
+      summary: /v1/admin/plugin-providers
+      operationId: listPluginProviders
+      responses:
+        "200":
+          description: "The plugin providers loaded at start, ordered by id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPluginProviderItem"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/admin/system-export:
     post:
       tags:
@@ -20163,6 +20183,10 @@ components:
       enum:
       - ME
       - OTHERS
+    ListPluginProviderItem:
+      type: array
+      items:
+        $ref: "#/components/schemas/PluginProviderItem"
     ListPublication:
       type: array
       items:
@@ -20703,7 +20727,24 @@ components:
       properties:
         settings:
           $ref: "#/components/schemas/ObjectNode"
-        type:
+        pluginId:
+          type: string
+    PluginProviderItem:
+      type: object
+      properties:
+        description:
+          type: string
+        directory:
+          type: string
+        id:
+          type: string
+        settingsSchema:
+          $ref: "#/components/schemas/ObjectNode"
+        targets:
+          type: array
+          items:
+            type: string
+        version:
           type: string
     Policy:
       type: object

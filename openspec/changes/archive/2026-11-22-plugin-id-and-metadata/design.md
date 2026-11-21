@@ -135,8 +135,8 @@ the enum's order. Core does not compare a plugin url with the targets.
 ### D7. Core reads a provider's metadata once, at start
 
 The registry keeps, per id, the provider, its directory, the jar's version, the description, the targets and the
-schema (the node as declared and the compiled form). It keeps copies (`deepCopy()` of the node, `EnumSet.copyOf` of
-the targets, which refuses a null), so a provider that changes a shared node or set later cannot make the listing
+schema (the node as declared and the compiled form). It keeps copies (`deepCopy()` of the node, an `EnumSet` copy of
+the targets, a null in which stops the start), so a provider that changes a shared node or set later cannot make the listing
 differ from what Core checks with. The listing serves those copies and calls no plugin code.
 
 **Rejected: ask the provider on every listing request** - plugin code on a request path for no gain, and the
@@ -232,6 +232,9 @@ config writes and rebuilds; the listing is an admin request that reads data kept
 - New `server/src/main/java/com/epam/aidial/core/server/controller/AdminPluginProvidersController.java`, modelled on
   `AdminHealthConfigController.java:handle`; its answer item a record in `server/src/main/java/com/epam/aidial/core/server/data/`,
   as `HealthResponse.java`.
+- `openapi-generator/src/main/java/com/epam/aidial/core/openapi/AnnotationEndpointCollector.java`: the new controller in
+  `CONTROLLER_CLASSES`, which the generator checks every route against. `docs/open_api_core.yaml`: the merge keeps a
+  property found only in the committed file, so `type` is removed from the `Plugin` schema by hand once.
 - `server/src/main/java/com/epam/aidial/core/server/data/RouteTemplate.java`: `ADMIN_PLUGIN_PROVIDERS` beside `CONFIG_HEALTH`;
   `server/src/main/java/com/epam/aidial/core/server/controller/ControllerSelector.java` (static initializer, beside
   the `CONFIG_HEALTH` route), with `AdminRoleAuthorizationService` for `isAdmin`.

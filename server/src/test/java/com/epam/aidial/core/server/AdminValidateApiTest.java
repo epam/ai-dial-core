@@ -374,7 +374,7 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                     {
                       "kind": "Plugin",
                       "name": "plugins/platform/validate-plugin",
-                      "spec": {"type": "test-echo", "settings": {"greeting": "hi"}}
+                      "spec": {"pluginId": "test-echo", "settings": {"greeting": "hi"}}
                     }
                   ]
                 }
@@ -395,10 +395,26 @@ public class AdminValidateApiTest extends ResourceBaseTest {
                     {
                       "kind": "Plugin",
                       "name": "plugins/platform/validate-plugin-bad",
-                      "spec": {"type": "test-echo", "settings": {}}
+                      "spec": {"pluginId": "test-echo", "settings": {}}
                     }
                   ]
                 }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode result = ProxyUtil.MAPPER.readTree(response.body()).get("results").get(0);
+        assertEquals("FAILED", result.get("status").asText(), response::body);
+        assertTrue(result.get("error").asText().contains("settings.greeting"), response::body);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateRejectsPluginRejectedBySchema() {
+        String body = """
+                {"manifests": [
+                  {"kind": "Plugin", "name": "plugins/platform/validate-plugin-schema",
+                   "spec": {"pluginId": "test-schema", "settings": {"greeting": 1}}}
+                ]}
                 """;
         Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body, "authorization", "admin");
         verify(response, 422);

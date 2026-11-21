@@ -1,2 +1,3 @@
 com.epam.aidial.core.server.config.TestEchoPluginProvider
 com.epam.aidial.core.server.config.TestOriginPluginProvider
+com.epam.aidial.core.server.config.TestSchemaPluginProvider

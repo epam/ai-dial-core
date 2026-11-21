@@ -1,10 +1,10 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.config.JarEchoPluginProvider;
+import com.epam.aidial.core.server.config.TestSchemaPluginProvider;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
-import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The {@code plugins} config entity over HTTP, with the default strict write and {@code abort} rebuild. The test
- * config declares {@code file-plugin}, {@code valid-plugin} and {@code bad/plugin}, all of type {@code test-echo}
+ * config declares {@code file-plugin}, {@code valid-plugin} and {@code bad/plugin}, all of plugin id {@code test-echo}
  * (on the test classpath, needs a string {@code settings.greeting}); the plugin directory {@code custom/echo} holds a
  * jar registering {@code jar-echo} (accepts any settings). {@link SkipMode} runs the soft write and the {@code skip}
  * rebuild, {@link ExcludedPlugin} a plugin directory {@code plugins.exclude} names.
@@ -49,7 +49,7 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testMinimalDeclaration() {
-        Response put = adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"jar-echo\"}");
+        Response put = adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"jar-echo\"}");
         verify(put, 200);
         assertTrue(put.body().contains("\"name\":\"p1\""), put::body);
         assertNotNull(put.headers().get("etag"));
@@ -57,7 +57,7 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
         Response get = adminGet(this, "/v1/plugins/platform/p1");
         verify(get, 200);
         JsonNode body = ProxyUtil.MAPPER.readTree(get.body());
-        assertEquals("jar-echo", body.get("type").asText());
+        assertEquals("jar-echo", body.get("pluginId").asText());
         assertEquals(ProxyUtil.MAPPER.createObjectNode(), body.get("settings"));
         assertEquals("p1", body.get("name").asText());
         assertEquals("valid", body.get("status").asText());
@@ -71,18 +71,18 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
 
     @Test
     void testUnknownField() {
-        verify(adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"test-echo\", \"kind\": \"origin\"}"), 400);
+        verify(adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"test-echo\", \"kind\": \"origin\"}"), 400);
         verify(adminGet(this, "/v1/plugins/platform/p1"), 404);
     }
 
     @Test
     @SneakyThrows
     void testStrictWrite() {
-        Response put = adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"missing\"}");
+        Response put = adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"missing\"}");
         verify(put, 422);
         JsonNode warnings = ProxyUtil.MAPPER.readTree(put.body()).get("validationWarnings");
         assertEquals(1, warnings.size(), put::body);
-        assertEquals("type", warnings.get(0).get("field").asText());
+        assertEquals("pluginId", warnings.get(0).get("field").asText());
         assertTrue(warnings.get(0).get("message").asText().contains("missing"), put::body);
         verify(adminGet(this, "/v1/plugins/platform/p1"), 404);
     }
@@ -90,7 +90,7 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testRebuildUnderAbortKeepsTheEntity() {
-        putBlob(this, "p1", "{\"type\": \"missing\"}");
+        putBlob(this, "p1", "{\"pluginId\": \"missing\"}");
         reload(this);
 
         JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p1").body());
@@ -105,7 +105,7 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     void testRejectedSettingsOnWrite() {
-        Response put = adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"test-echo\", \"settings\": {}}");
+        Response put = adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"test-echo\", \"settings\": {}}");
         verify(put, 422);
         JsonNode warnings = ProxyUtil.MAPPER.readTree(put.body()).get("validationWarnings");
         assertEquals(1, warnings.size(), put::body);
@@ -124,7 +124,7 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
         JsonNode body = ProxyUtil.MAPPER.readTree(get.body());
         assertEquals("file-plugin", body.get("name").asText());
         assertEquals("valid", body.get("status").asText());
-        assertEquals("test-echo", body.get("type").asText());
+        assertEquals("test-echo", body.get("pluginId").asText());
     }
 
     @Test
@@ -142,7 +142,7 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
 
     @Test
     void testDelete() {
-        verify(adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"jar-echo\"}"), 200);
+        verify(adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"jar-echo\"}"), 200);
 
         verify(send(HttpMethod.DELETE, "/v1/plugins/platform/p1", null, "", "authorization", "admin"), 204);
         verify(adminGet(this, "/v1/plugins/platform/p1"), 404);
@@ -150,8 +150,131 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testPluginMetadata() {
+    void testWrittenWithTheAlias() {
         verify(adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"jar-echo\"}"), 200);
+
+        JsonNode blob = ProxyUtil.MAPPER.readTree(readBlob(this, "p1"));
+        assertEquals("jar-echo", blob.get("pluginId").asText(), blob::toString);
+        assertFalse(blob.has("type"), blob::toString);
+        JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p1").body());
+        assertEquals("jar-echo", body.get("pluginId").asText(), body::toString);
+        assertFalse(body.has("type"), body::toString);
+    }
+
+    @Test
+    void testBothNames() {
+        verify(adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"jar-echo\", \"type\": \"jar-echo\"}"), 400);
+        verify(adminGet(this, "/v1/plugins/platform/p1"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testUnknownIdWrittenWithTheAlias() {
+        Response put = adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"missing\"}");
+        verify(put, 422);
+        JsonNode warnings = ProxyUtil.MAPPER.readTree(put.body()).get("validationWarnings");
+        assertEquals(1, warnings.size(), put::body);
+        assertEquals("pluginId", warnings.get(0).get("field").asText());
+    }
+
+    @Test
+    @SneakyThrows
+    void testStoredBlobWithTheAlias() {
+        putBlob(this, "p1", "{\"type\": \"test-echo\", \"settings\": {\"greeting\": \"hi\"}}");
+        reload(this);
+
+        JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p1").body());
+        assertEquals("test-echo", body.get("pluginId").asText(), body::toString);
+        assertEquals("valid", body.get("status").asText(), body::toString);
+    }
+
+    @Test
+    @SneakyThrows
+    void testFileEntryWithTheAlias() {
+        Response get = adminGet(this, "/v1/admin/config/file/plugins/legacy-plugin");
+        verify(get, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(get.body());
+        assertEquals("test-echo", body.get("pluginId").asText(), get::body);
+        assertEquals("valid", body.get("status").asText(), get::body);
+    }
+
+    @Test
+    @SneakyThrows
+    void testWrongValueTypeRejectedBySchema() {
+        TestSchemaPluginProvider.VALIDATED.clear();
+
+        assertOneSettingsWarning(adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"test-schema\", \"settings\": {\"greeting\": 1}}"),
+                "settings.greeting");
+        verify(adminGet(this, "/v1/plugins/platform/p1"), 404);
+        assertTrue(TestSchemaPluginProvider.VALIDATED.isEmpty(), TestSchemaPluginProvider.VALIDATED::toString);
+    }
+
+    @Test
+    @SneakyThrows
+    void testMissingRequiredPropertyRejectedBySchema() {
+        assertOneSettingsWarning(adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"test-schema\", \"settings\": {}}"),
+                "settings.greeting");
+        verify(adminGet(this, "/v1/plugins/platform/p1"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testPropertyNotAllowedBySchema() {
+        assertOneSettingsWarning(adminPut(this, "/v1/plugins/platform/p1",
+                "{\"pluginId\": \"test-schema\", \"settings\": {\"greeting\": \"hi\", \"greting\": \"hi\"}}"), "settings.greting");
+        verify(adminGet(this, "/v1/plugins/platform/p1"), 404);
+    }
+
+    @Test
+    void testAcceptedBySchema() {
+        TestSchemaPluginProvider.VALIDATED.clear();
+
+        verify(adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"test-schema\", \"settings\": {\"greeting\": \"hi\"}}"), 200);
+
+        assertTrue(TestSchemaPluginProvider.VALIDATED.contains(ProxyUtil.MAPPER.createObjectNode().put("greeting", "hi")),
+                TestSchemaPluginProvider.VALIDATED::toString);
+    }
+
+    @Test
+    @SneakyThrows
+    void testProviderWithItsMetadataListed() {
+        JsonNode item = listedProvider(this, JarEchoPluginProvider.ID);
+
+        assertEquals(ProxyUtil.MAPPER.readTree("""
+                {"id": "jar-echo", "directory": "custom/echo", "version": "1.2.0", "description": "Echoes the greeting",
+                 "targets": ["model", "application"], "settingsSchema": {"type": "object"}}
+                """), item);
+    }
+
+    @Test
+    @SneakyThrows
+    void testProviderWithoutMetadataListed() {
+        JsonNode item = listedProvider(this, "test-echo");
+
+        assertEquals(ProxyUtil.MAPPER.readTree("{\"id\": \"test-echo\", \"targets\": [\"model\", \"application\", \"router\", \"translator\"]}"), item);
+    }
+
+    @Test
+    void testProvidersListedWhateverTheConfigHolds() {
+        String before = listProviders(this).body();
+        assertTrue(before.contains("\"id\":\"jar-echo\""), before);
+
+        verify(adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"jar-echo\"}"), 200);
+        assertEquals(before, listProviders(this).body());
+
+        verify(send(HttpMethod.DELETE, "/v1/plugins/platform/p1", null, "", "authorization", "admin"), 204);
+        assertEquals(before, listProviders(this).body());
+    }
+
+    @Test
+    void testProvidersNotListedForUser() {
+        verify(send(HttpMethod.GET, "/v1/admin/plugin-providers", null, "", "authorization", "user"), 403);
+    }
+
+    @Test
+    @SneakyThrows
+    void testPluginMetadata() {
+        verify(adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"jar-echo\"}"), 200);
 
         Response list = adminGet(this, "/v1/metadata/plugins/platform/");
         verify(list, 200);
@@ -159,7 +282,7 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
     }
 
     /**
-     * The soft write and the {@code skip} rebuild: a dangling type and rejected settings both drop the entity and
+     * The soft write and the {@code skip} rebuild: a dangling plugin id and rejected settings both drop the entity and
      * record it as invalid.
      */
     public static class SkipMode extends ResourceBaseTest {
@@ -175,17 +298,17 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
         @Test
         @SneakyThrows
         void testSoftWriteUnderSkip() {
-            verify(adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"missing\"}"), 200);
+            verify(adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"missing\"}"), 200);
 
             JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p1").body());
             assertEquals("invalid", body.get("status").asText(), body::toString);
-            assertEquals("type", body.get("validationWarnings").get(0).get("field").asText(), body::toString);
+            assertEquals("pluginId", body.get("validationWarnings").get(0).get("field").asText(), body::toString);
         }
 
         @Test
         @SneakyThrows
         void testRebuildUnderSkipDropsTheEntity() {
-            putBlob(this, "p1", "{\"type\": \"missing\"}");
+            putBlob(this, "p1", "{\"pluginId\": \"missing\"}");
             reload(this);
 
             JsonNode health = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/admin/health/config").body());
@@ -193,13 +316,36 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
             assertTrue(skippedIds(health).contains("plugins/platform/p1"), health::toString);
             JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p1").body());
             assertEquals("invalid", body.get("status").asText(), body::toString);
-            assertEquals("type", body.get("validationWarnings").get(0).get("field").asText(), body::toString);
+            assertEquals("pluginId", body.get("validationWarnings").get(0).get("field").asText(), body::toString);
+        }
+
+        @Test
+        @SneakyThrows
+        void testInvalidBlobWithTheAlias() {
+            putBlob(this, "p1", "{\"type\": \"missing\"}");
+            reload(this);
+
+            JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p1").body());
+            assertEquals("missing", body.get("pluginId").asText(), body::toString);
+            assertFalse(body.has("type"), body::toString);
+            assertEquals("invalid", body.get("status").asText(), body::toString);
+        }
+
+        @Test
+        @SneakyThrows
+        void testRejectedBySchemaOnRebuildUnderSkip() {
+            putBlob(this, "p3", "{\"pluginId\": \"test-schema\", \"settings\": {\"greeting\": 1}}");
+            reload(this);
+
+            JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p3").body());
+            assertEquals("invalid", body.get("status").asText(), body::toString);
+            assertEquals("settings.greeting", body.get("validationWarnings").get(0).get("field").asText(), body::toString);
         }
 
         @Test
         @SneakyThrows
         void testRejectedSettingsOnRebuildUnderSkip() {
-            putBlob(this, "p2", "{\"type\": \"test-echo\", \"settings\": {}}");
+            putBlob(this, "p2", "{\"pluginId\": \"test-echo\", \"settings\": {}}");
             reload(this);
 
             JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p2").body());
@@ -226,12 +372,21 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
 
         @Test
         @SneakyThrows
-        void testExcludedPluginTypeIsUnknown() {
-            Response put = adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"jar-echo\"}");
+        void testExcludedPluginDirectoryNotListed() {
+            Response list = listProviders(this);
+            for (JsonNode item : ProxyUtil.MAPPER.readTree(list.body())) {
+                assertFalse(item.get("id").asText().equals("jar-echo"), list::body);
+            }
+        }
+
+        @Test
+        @SneakyThrows
+        void testExcludedPluginIdIsUnknown() {
+            Response put = adminPut(this, "/v1/plugins/platform/p1", "{\"pluginId\": \"jar-echo\"}");
             verify(put, 422);
             JsonNode warnings = ProxyUtil.MAPPER.readTree(put.body()).get("validationWarnings");
             assertEquals(1, warnings.size(), put::body);
-            assertEquals("type", warnings.get(0).get("field").asText());
+            assertEquals("pluginId", warnings.get(0).get("field").asText());
         }
     }
 
@@ -245,6 +400,31 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    private static Response listProviders(ResourceBaseTest test) {
+        Response list = adminGet(test, "/v1/admin/plugin-providers");
+        verify(list, 200);
+        return list;
+    }
+
+    @SneakyThrows
+    private static JsonNode listedProvider(ResourceBaseTest test, String id) {
+        Response list = listProviders(test);
+        for (JsonNode item : ProxyUtil.MAPPER.readTree(list.body())) {
+            if (item.get("id").asText().equals(id)) {
+                return item;
+            }
+        }
+        throw new AssertionError("No provider " + id + " in " + list.body());
+    }
+
+    @SneakyThrows
+    private static void assertOneSettingsWarning(Response put, String field) {
+        verify(put, 422);
+        JsonNode warnings = ProxyUtil.MAPPER.readTree(put.body()).get("validationWarnings");
+        assertEquals(1, warnings.size(), put::body);
+        assertEquals(field, warnings.get(0).get("field").asText(), put::body);
     }
 
     private static List<String> names(JsonNode items) {
@@ -272,9 +452,14 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
     }
 
     private static void putBlob(ResourceBaseTest test, String name, String body) {
-        ResourceService resourceService = test.dial.getProxy().getResourceService();
-        ResourceDescriptor descriptor = fromDecoded(ResourceTypes.PLUGIN, ResourceDescriptor.PLATFORM_BUCKET,
-                ResourceDescriptor.PLATFORM_LOCATION, name);
-        resourceService.putResource(descriptor, body, EtagHeader.ANY, null, false);
+        test.dial.getProxy().getResourceService().putResource(pluginBlob(name), body, EtagHeader.ANY, null, false);
+    }
+
+    private static String readBlob(ResourceBaseTest test, String name) {
+        return test.dial.getProxy().getResourceService().getResource(pluginBlob(name));
+    }
+
+    private static ResourceDescriptor pluginBlob(String name) {
+        return fromDecoded(ResourceTypes.PLUGIN, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, name);
     }
 }

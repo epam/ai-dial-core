@@ -82,6 +82,18 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
         assertEquals("/openai/deployments/app/chat/completions", onlyRequest().uri());
     }
 
+    // test-origin declares only the target router: a model naming its entry is still accepted and served
+    @Test
+    void testPluginUrlOutsideTheDeclaredTargets() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/models/platform/m", """
+                {"type": "chat", "baseUrl": "dial-plugin://p1", "interfaces": {"openaiChatCompletions": {}}}
+                """), 200);
+
+        verify(chat("/openai/deployments/m/chat/completions", CHAT_BODY), 200);
+        assertEquals(1, TestOriginPluginProvider.REQUESTS.size());
+    }
+
     // an alias of a model served by a plugin is listed with the interface and served by the plugin
     @Test
     @SneakyThrows
@@ -751,7 +763,7 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     private static final String STREAM_BODY = "{\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
 
     /**
-     * Plugin {@code p1} of type {@code test-origin}, and application {@code app} served by it on {@code type}.
+     * Plugin {@code p1} of plugin id {@code test-origin}, and application {@code app} served by it on {@code type}.
      */
     private void servedApp(String type) {
         plugin("p1", "{}");
@@ -761,10 +773,10 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
     }
 
     /**
-     * Plugin entry {@code name} of type {@code test-origin} with {@code settings}.
+     * Plugin entry {@code name} of plugin id {@code test-origin} with {@code settings}.
      */
     private void plugin(String name, String settings) {
-        putPlugin(name, "{\"type\": \"" + TestOriginPluginProvider.TYPE + "\", \"settings\": " + settings + "}");
+        putPlugin(name, "{\"pluginId\": \"" + TestOriginPluginProvider.ID + "\", \"settings\": " + settings + "}");
     }
 
     private void putPlugin(String name, String body) {

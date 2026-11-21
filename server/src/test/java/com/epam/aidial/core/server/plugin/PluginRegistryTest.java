@@ -2,10 +2,14 @@ package com.epam.aidial.core.server.plugin;
 
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.config.JarEchoPluginProvider;
+import com.epam.aidial.core.server.config.LegacyTypePluginProvider;
 import com.epam.aidial.core.server.config.TestEchoPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider;
+import com.epam.aidial.core.server.data.PluginProviderItem;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import okhttp3.mockwebserver.MockWebServer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
@@ -41,17 +45,17 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings());
 
-        assertInstanceOf(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.TYPE));
-        assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.TYPE));
+        assertInstanceOf(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.ID));
+        assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.ID));
     }
 
     @Test
     void testMissingDirectoryLoadsOnlyTheClasspathProviders() {
         PluginRegistry registry = PluginRegistry.load(new JsonObject().put("dir", dir.resolve("missing").toString()));
 
-        assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.TYPE));
-        assertInstanceOf(TestOriginPluginProvider.class, registry.get(TestOriginPluginProvider.TYPE));
-        assertNull(registry.get(JarEchoPluginProvider.TYPE));
+        assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.ID));
+        assertInstanceOf(TestOriginPluginProvider.class, registry.get(TestOriginPluginProvider.ID));
+        assertNull(registry.get(JarEchoPluginProvider.ID));
     }
 
     @Test
@@ -136,20 +140,20 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings());
 
-        assertInstanceOf(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.TYPE));
+        assertInstanceOf(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.ID));
     }
 
     @Test
     void testEachPluginDirectoryLoadsItsOwnClasses() throws IOException {
-        writeIsolatedPlugin("custom/a", "type-a");
-        writeIsolatedPlugin("custom/b", "type-b");
+        writeIsolatedPlugin("custom/a", "id-a");
+        writeIsolatedPlugin("custom/b", "id-b");
 
         PluginRegistry registry = PluginRegistry.load(settings());
 
-        // One provider class name and one helper class name in both directories: each provider's type() calls the
+        // One provider class name and one helper class name in both directories: each provider's id() calls the
         // helper of its own directory
-        PluginProvider a = registry.get("type-a");
-        PluginProvider b = registry.get("type-b");
+        PluginProvider a = registry.get("id-a");
+        PluginProvider b = registry.get("id-b");
         assertNotNull(a);
         assertNotNull(b);
         assertEquals(a.getClass().getName(), b.getClass().getName());
@@ -162,7 +166,105 @@ class PluginRegistryTest {
 
         IllegalStateException error = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings()));
 
-        assertTrue(error.getMessage().contains("declares no type"), error.getMessage());
+        assertTrue(error.getMessage().contains("declares no id"), error.getMessage());
+    }
+
+    @Test
+    void testProviderOverridingOnlyTypeLoadsUnderThatId() throws IOException {
+        writeJar("custom/legacy/legacy.jar", LegacyTypePluginProvider.class.getName());
+
+        PluginRegistry registry = PluginRegistry.load(settings());
+
+        assertInstanceOf(LegacyTypePluginProvider.class, registry.get(LegacyTypePluginProvider.ID));
+    }
+
+    @Test
+    void testInvalidSettingsSchemaFailsTheLoad() throws IOException {
+        writeJar("custom/bad/bad.jar", JarEchoPluginProvider.BadSchema.class.getName());
+
+        String message = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings())).getMessage();
+
+        assertTrue(message.contains("'bad'") && message.contains("custom/bad") && message.contains("settings schema"), message);
+    }
+
+    @Test
+    void testSchemaOfAnotherDraftFailsTheLoad() throws IOException {
+        writeJar("custom/bad/bad.jar", JarEchoPluginProvider.OtherDraft.class.getName());
+
+        String message = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings())).getMessage();
+
+        assertTrue(message.contains("'bad'") && message.contains("custom/bad") && message.contains("$schema"), message);
+    }
+
+    @Test
+    void testDraft07NamedByItsHttpsAddressLoads() throws IOException {
+        writeJar("custom/good/good.jar", JarEchoPluginProvider.HttpsDraft.class.getName());
+
+        PluginRegistry registry = PluginRegistry.load(settings());
+
+        assertInstanceOf(JarEchoPluginProvider.HttpsDraft.class, registry.get("good"));
+        assertNotNull(registry.settingsSchema("good"));
+        PluginProviderItem listed = registry.list().stream().filter(item -> item.id().equals("good")).findFirst().orElseThrow();
+        assertEquals(new ObjectMapper().readTree(JarEchoPluginProvider.HttpsDraft.SCHEMA), listed.settingsSchema());
+        assertEquals("custom/good", listed.directory());
+    }
+
+    @Test
+    void testNoTargetsFailsTheLoad() throws IOException {
+        writeJar("custom/bad/bad.jar", JarEchoPluginProvider.NoTargets.class.getName());
+
+        String message = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings())).getMessage();
+
+        assertTrue(message.contains("'bad'") && message.contains("custom/bad") && message.contains("targets"), message);
+    }
+
+    @Test
+    void testListIsOrderedByIdWithTheMetadata() throws IOException {
+        writeJar("custom/echo/echo.jar", JarEchoPluginProvider.class.getName());
+
+        List<PluginProviderItem> listed = PluginRegistry.load(settings()).list();
+
+        List<String> ids = listed.stream().map(PluginProviderItem::id).toList();
+        assertEquals(ids.stream().sorted().toList(), ids);
+        PluginProviderItem echo = listed.stream().filter(item -> item.id().equals(JarEchoPluginProvider.ID)).findFirst().orElseThrow();
+        assertEquals("1.2.0", echo.version());
+        assertEquals(JarEchoPluginProvider.DESCRIPTION, echo.description());
+        PluginProviderItem classpath = listed.stream().filter(item -> item.id().equals(TestEchoPluginProvider.ID)).findFirst().orElseThrow();
+        assertNull(classpath.directory());
+        assertNull(classpath.version());
+    }
+
+    @Test
+    void testRemoteReferenceFailsTheLoadWithNoFetch() throws IOException {
+        try (MockWebServer server = new MockWebServer()) {
+            server.start();
+            JarEchoPluginProvider.RemoteRef.url = server.url("/schema.json").toString();
+            writeJar("custom/bad/bad.jar", JarEchoPluginProvider.RemoteRef.class.getName());
+
+            String message = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings())).getMessage();
+
+            assertTrue(message.contains("'bad'") && message.contains("custom/bad") && message.contains(JarEchoPluginProvider.RemoteRef.url), message);
+            assertEquals(0, server.getRequestCount());
+        }
+    }
+
+    @Test
+    void testRemoteReferenceNoKeywordUsesFailsTheLoad() throws IOException {
+        JarEchoPluginProvider.RemoteRef.url = "http://localhost:1/unused.json";
+        writeJar("custom/bad/bad.jar", JarEchoPluginProvider.UnusedRef.class.getName());
+
+        String message = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings())).getMessage();
+
+        assertTrue(message.contains("'bad'") && message.contains("custom/bad") && message.contains("http://localhost:1/unused.json"), message);
+    }
+
+    @Test
+    void testThrowingMetadataFailsTheLoad() throws IOException {
+        writeJar("custom/bad/bad.jar", JarEchoPluginProvider.ThrowingSchema.class.getName());
+
+        String message = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings())).getMessage();
+
+        assertTrue(message.contains(JarEchoPluginProvider.ThrowingSchema.class.getName()) && message.contains("custom/bad"), message);
     }
 
     @Test
@@ -181,8 +283,8 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings());
 
-        assertInstanceOf(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.TYPE));
-        assertInstanceOf(OtherPluginProvider.class, registry.get(OtherPluginProvider.TYPE));
+        assertInstanceOf(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.ID));
+        assertInstanceOf(OtherPluginProvider.class, registry.get(OtherPluginProvider.ID));
     }
 
     @Test
@@ -193,8 +295,8 @@ class PluginRegistryTest {
         // The string form, as an environment variable gives it
         PluginRegistry registry = PluginRegistry.load(settings().put("exclude", "builtin/*"));
 
-        assertNull(registry.get(JarEchoPluginProvider.TYPE));
-        assertInstanceOf(OtherPluginProvider.class, registry.get(OtherPluginProvider.TYPE));
+        assertNull(registry.get(JarEchoPluginProvider.ID));
+        assertInstanceOf(OtherPluginProvider.class, registry.get(OtherPluginProvider.ID));
     }
 
     @Test
@@ -204,9 +306,9 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings().put("exclude", "builtin/echo, custom/other,"));
 
-        assertNull(registry.get(JarEchoPluginProvider.TYPE));
-        assertNull(registry.get(OtherPluginProvider.TYPE));
-        assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.TYPE));
+        assertNull(registry.get(JarEchoPluginProvider.ID));
+        assertNull(registry.get(OtherPluginProvider.ID));
+        assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.ID));
     }
 
     @Test
@@ -217,8 +319,8 @@ class PluginRegistryTest {
         // Array items are stripped and blank ones dropped, as in the string form
         PluginRegistry registry = PluginRegistry.load(settings().put("include", new JsonArray().add(" custom/* ").add("")));
 
-        assertNull(registry.get(JarEchoPluginProvider.TYPE));
-        assertInstanceOf(OtherPluginProvider.class, registry.get(OtherPluginProvider.TYPE));
+        assertNull(registry.get(JarEchoPluginProvider.ID));
+        assertInstanceOf(OtherPluginProvider.class, registry.get(OtherPluginProvider.ID));
     }
 
     @Test
@@ -237,7 +339,7 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings().put("exclude", new JsonArray().add("builtin/echo")));
 
-        assertSame(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.TYPE).getClass());
+        assertSame(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.ID).getClass());
     }
 
     @Test
@@ -247,7 +349,7 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings().put("exclude", new JsonArray().add("custom/broken")));
 
-        assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.TYPE));
+        assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.ID));
     }
 
     @Test
@@ -280,17 +382,17 @@ class PluginRegistryTest {
     }
 
     /**
-     * Writes {@code <pluginDir>/plugin.jar} with the classes {@code com.example.Shared}, whose {@code type()} answers
+     * Writes {@code <pluginDir>/plugin.jar} with the classes {@code com.example.Shared}, whose {@code id()} answers
      * {@code type}, and {@code com.example.IsolatedProvider}, which declares the type {@code Shared} answers. Neither
      * class is on the test classpath, so the plugin's own class loader defines them.
      */
-    private void writeIsolatedPlugin(String pluginDir, String type) throws IOException {
+    private void writeIsolatedPlugin(String pluginDir, String id) throws IOException {
         Path sources = Files.createTempDirectory("plugin-sources");
         Path shared = Files.writeString(sources.resolve("Shared.java"),
-                "package com.example; public class Shared { public static String type() { return \"%s\"; } }".formatted(type));
+                "package com.example; public class Shared { public static String id() { return \"%s\"; } }".formatted(id));
         Path provider = Files.writeString(sources.resolve("IsolatedProvider.java"),
                 "package com.example; public class IsolatedProvider extends " + JarEchoPluginProvider.class.getName()
-                        + " { @Override public String type() { return Shared.type(); } }");
+                        + " { @Override public String id() { return Shared.id(); } }");
         Path classes = sources.resolve("classes");
         int exitCode = ToolProvider.getSystemJavaCompiler().run(null, null, null,
                 "-d", classes.toString(), "-cp", System.getProperty("java.class.path"), shared.toString(), provider.toString());
@@ -312,15 +414,15 @@ class PluginRegistryTest {
     }
 
     /**
-     * A second jar-registered provider, of type {@code jar-other}.
+     * A second jar-registered provider, of id {@code jar-other}.
      */
     public static class OtherPluginProvider extends JarEchoPluginProvider {
 
-        static final String TYPE = "jar-other";
+        static final String ID = "jar-other";
 
         @Override
-        public String type() {
-            return TYPE;
+        public String id() {
+            return ID;
         }
     }
 }

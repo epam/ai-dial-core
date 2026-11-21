@@ -16,7 +16,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Origin plugins of type {@code forward}: each request goes on to one deployment, in process, through
+ * Origin plugins of id {@code forward}: each request goes on to one deployment, in process, through
  * {@link HostDelegate#call}. Settings: {@code {"deployment": "<name>"}}.
  * <ul>
  *   <li>A deployments-POST action goes to the same action of that deployment.</li>
@@ -28,13 +28,13 @@ import java.util.regex.Pattern;
  */
 public class ForwardOriginPluginProvider implements PluginProvider {
 
-    public static final String TYPE = "forward";
+    public static final String ID = "forward";
 
     private static final Pattern DEPLOYMENT_ACTION = Pattern.compile("^/+openai/deployments/.+?/(completions|chat/completions|embeddings)$");
 
     @Override
-    public String type() {
-        return TYPE;
+    public String id() {
+        return ID;
     }
 
     @Override

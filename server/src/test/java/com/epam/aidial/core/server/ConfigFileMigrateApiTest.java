@@ -88,7 +88,7 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         Response get = send(HttpMethod.GET, "/v1/plugins/platform/file-plugin", null, "", "authorization", "admin");
         verify(get, 200);
         JsonNode plugin = ProxyUtil.MAPPER.readTree(get.body());
-        assertEquals("test-echo", plugin.get("type").asText());
+        assertEquals("test-echo", plugin.get("pluginId").asText());
         assertEquals("hi", plugin.get("settings").get("greeting").asText());
     }
 

@@ -215,7 +215,7 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
     @SneakyThrows
     void testBlobPluginNextToTheFilePlugins() {
         verify(send(HttpMethod.PUT, "/v1/plugins/platform/p1", null,
-                "{\"type\": \"test-echo\", \"settings\": {\"greeting\": \"hello\"}}", "authorization", "admin"), 200);
+                "{\"pluginId\": \"test-echo\", \"settings\": {\"greeting\": \"hello\"}}", "authorization", "admin"), 200);
 
         Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
         assertEquals(200, reload.status());
@@ -229,7 +229,7 @@ public class MergedConfigStoreApiTest extends ResourceBaseTest {
     @SneakyThrows
     void testBlobPluginShadowsTheFilePlugin() {
         putBlob(ResourceTypes.PLUGIN, ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION,
-                "file-plugin", "{\"type\": \"test-echo\", \"settings\": {\"greeting\": \"hello\"}}");
+                "file-plugin", "{\"pluginId\": \"test-echo\", \"settings\": {\"greeting\": \"hello\"}}");
 
         Response reload = operationRequest("/v1/ops/config/reload", null, "Authorization", "admin");
         assertEquals(200, reload.status());

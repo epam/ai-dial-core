@@ -2351,10 +2351,10 @@ public class ConfigResourceController implements Controller {
     }
 
     /**
-     * Check for plugin writes against the provider of the plugin type, the one the rebuild makes
+     * Check for plugin writes against the provider the plugin id names, the one the rebuild makes
      * ({@link ConfigPostProcessor#validatePlugin}). Settings the provider rejects are refused whatever the mode; an
-     * unknown type only in strict mode, the allowance {@link #checkModel} makes for a dangling interceptor, so a
-     * declaration can be written before the jar of its type is rolled out.
+     * unknown id only in strict mode, the allowance {@link #checkModel} makes for a dangling interceptor, so a
+     * declaration can be written before the jar of its provider is rolled out.
      */
     private void checkPlugin(Plugin entity) {
         List<ValidationWarning> warnings = new ArrayList<>();
@@ -2501,6 +2501,11 @@ public class ConfigResourceController implements Controller {
             node.setAll(payload);
         }
         ResourceTypes type = resourceType();
+        if (type == ResourceTypes.PLUGIN && node.has("type") && !node.has("pluginId")) {
+            // The deprecated alias, as Plugin binds it: Core shows pluginId only. A body with both did not bind and is
+            // shown as stored
+            node.set("pluginId", node.remove("type"));
+        }
         if (type == ResourceTypes.TOOL_SET) {
             redactAuthSettingsSecrets(node, false);
         } else if (type == ResourceTypes.APPLICATION) {

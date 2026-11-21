@@ -665,7 +665,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     }
 
     private void plugin(String name, String settings) {
-        verify(adminPut("/v1/plugins/platform/" + name, "{\"type\": \"" + TestOriginPluginProvider.TYPE + "\", \"settings\": " + settings + "}"), 200);
+        verify(adminPut("/v1/plugins/platform/" + name, "{\"pluginId\": \"" + TestOriginPluginProvider.ID + "\", \"settings\": " + settings + "}"), 200);
     }
 
     private static AnalyticsLogContext rowOf(List<AnalyticsLogContext> rows, String deployment) {

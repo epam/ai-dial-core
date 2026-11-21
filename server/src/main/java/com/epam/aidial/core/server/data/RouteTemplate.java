@@ -186,6 +186,11 @@ public enum RouteTemplate {
             "/v1/admin/health/config"
     ),
 
+    ADMIN_PLUGIN_PROVIDERS(
+            "^/v1/admin/plugin-providers$",
+            "/v1/admin/plugin-providers"
+    ),
+
     ADMIN_FILE_CONFIG(
             "^/v1/admin/config/file/(?<type>models|interceptors|translators|routers|plugins|roles|keys|routes|schemas|catalog_schemas|settings"
                     + "|applications|toolsets|aliases)(?:/(?<name>.+))?$",

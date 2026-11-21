@@ -197,6 +197,19 @@ public class FileConfigStoreTest {
         assertTrue(rootMessage(error).contains("duplicate is found x"), rootMessage(error));
     }
 
+    @Test
+    public void testOverlayPluginIdReplacesBaseType(@TempDir Path dir) throws Exception {
+        Path base = Files.writeString(dir.resolve("base.json"),
+                "{\"plugins\": {\"p1\": {\"type\": \"test-echo\", \"settings\": {\"greeting\": \"hi\"}}}}");
+        Path overlay = Files.writeString(dir.resolve("overlay.json"), "{\"plugins\": {\"p1\": {\"pluginId\": \"test-origin\"}}}");
+        JsonObject settings = new JsonObject().put("files", new JsonArray().add(base.toString()).add(overlay.toString())).put("reload", 1000);
+
+        Config config = new FileConfigStore(vertx, settings, apiKeyStore, PluginRegistry.EMPTY, List.of()).get();
+
+        assertEquals("test-origin", config.getPlugins().get("p1").getPluginId());
+        assertEquals("hi", config.getPlugins().get("p1").getSettings().path("greeting").asText());
+    }
+
     private static JsonObject fileSettings(Path file) {
         return new JsonObject().put("files", new JsonArray().add(file.toString())).put("reload", 1000);
     }

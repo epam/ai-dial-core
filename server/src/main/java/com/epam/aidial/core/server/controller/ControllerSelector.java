@@ -206,6 +206,8 @@ public class ControllerSelector {
                     context, authService, (MergedConfigStore) proxy.getConfigStore());
             return controller::handle;
         });
+        get(RouteTemplate.ADMIN_PLUGIN_PROVIDERS, (proxy, context, pathMatcher) -> new AdminPluginProvidersController(
+                context, new AdminRoleAuthorizationService(proxy.getAccessService()), (MergedConfigStore) proxy.getConfigStore()));
         ControllerRoute.Initializer fileConfigInitializer = (proxy, context, pathMatcher) -> {
             ConfigAuthorizationService authService = new AdminRoleAuthorizationService(proxy.getAccessService());
             MergedConfigStore mergedConfigStore = (MergedConfigStore) proxy.getConfigStore();

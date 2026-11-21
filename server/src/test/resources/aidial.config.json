@@ -12,9 +12,10 @@
     }
   },
   "plugins": {
-    "file-plugin": {"type": "test-echo", "settings": {"greeting": "hi"}},
-    "valid-plugin": {"type": "test-echo", "settings": {"greeting": "hi"}},
-    "bad/plugin": {"type": "test-echo", "settings": {"greeting": "hi"}}
+    "file-plugin": {"pluginId": "test-echo", "settings": {"greeting": "hi"}},
+    "valid-plugin": {"pluginId": "test-echo", "settings": {"greeting": "hi"}},
+    "legacy-plugin": {"type": "test-echo", "settings": {"greeting": "hi"}},
+    "bad/plugin": {"pluginId": "test-echo", "settings": {"greeting": "hi"}}
   },
   "routes" : {
     "route-rate" : {

@@ -14,17 +14,17 @@ A map of plugin instances.
 
 ### plugins.<plugin_name>
 
-* `type`: **Required.** The type of the plugin code that serves this instance, as its provider declares it. Which types exist depends on the jars loaded at start (see [Plugin code](#plugin-code)).
+* `pluginId`: **Required.** The id of the plugin code that serves this instance, as its provider declares it. Which ids exist depends on the jars loaded at start (see [Plugin code](#plugin-code)).
 * `settings`: An object with the settings of this instance. Only the plugin code reads it; DIAL Core asks that code to check it. Optional, `{}` when absent.
 
-No other field is accepted.
+No other field is accepted, except `type`, the deprecated name of `pluginId`. DIAL Core still reads `type` everywhere it reads an entry (the Configuration API, `/v1/admin/validate` and `/v1/admin/apply` manifests, the config files and the entries already in the bucket), but it stores and returns `pluginId` only, so an entry in the bucket moves to `pluginId` on its next write. An entry with both names is refused (`400` on a write). DIAL Core reads each config file on its own before it merges the files, so a later file that gives `pluginId` replaces the `type` of an earlier one, whichever plugin it names. Warnings name `pluginId` whichever name the entry used.
 
 **Example**
 
 ```json
 "plugins": {
     "my-plugin": {
-        "type": "example",
+        "pluginId": "example",
         "settings": {
             "greeting": "hello"
         }
@@ -32,16 +32,16 @@ No other field is accepted.
 }
 ```
 
-Here `example` stands for the type of a jar you deploy; DIAL Core ships no plugin code of its own.
+Here `example` stands for the id of a jar you deploy; DIAL Core ships no plugin code of its own.
 
 `settings` hold no secrets: DIAL Core stores them as written, in the config files and in the `platform` bucket, and returns them as written. A plugin that needs credentials gets them from the environment of the DIAL Core pod.
 
 ## How an entry is checked
 
-DIAL Core checks each entry against the plugin code of its `type`, on every write and on every config reload. Two things can be wrong, and they are treated differently:
+DIAL Core checks each entry against the plugin code its `pluginId` names, on every write and on every config reload. Two things can be wrong, and they are treated differently:
 
-* **The settings are rejected by the plugin code.** The entry itself is wrong. Plugin code that fails while checking the settings counts as rejecting them. A write through the Configuration API is refused with `422` and a warning whose `field` is `settings` or `settings.<path>`, whatever the mode; in `/v1/admin/validate` and `/v1/admin/apply` the entry's result is `FAILED` with that warning. On a reload, the default `config.onInvalidEntity: abort` keeps the previous config live; with `skip`, the entry alone is dropped and recorded as invalid, visible in `GET /v1/admin/health/config` and, for an entry in the bucket, in the entry's `GET` (`status: "invalid"`).
-* **No loaded plugin code declares the type.** This is treated like a model that names an interceptor which does not exist. A write is refused with `422` and a warning on `type`, unless `config.write.softValidation` is `true`; in that mode `/v1/admin/apply` reports the entry `APPLIED_INVALID`. On a reload the type is checked only with `config.onInvalidEntity: skip`, where the entry is dropped and recorded as invalid; with the default `abort` the entry stays. This lets you write a declaration before every DIAL Core pod runs the version that carries its jar.
+* **The settings are rejected by the plugin code.** The entry itself is wrong. When the plugin code declares a [settings schema](#settings-schema), DIAL Core checks the settings against it first, and asks the plugin code only when the schema accepts them. Plugin code that fails while checking the settings counts as rejecting them, and so does a schema check that fails. A write through the Configuration API is refused with `422` and a warning whose `field` is `settings` or `settings.<path>`, whatever the mode; in `/v1/admin/validate` and `/v1/admin/apply` the entry's result is `FAILED` with that warning. On a reload, the default `config.onInvalidEntity: abort` keeps the previous config live; with `skip`, the entry alone is dropped and recorded as invalid, visible in `GET /v1/admin/health/config` and, for an entry in the bucket, in the entry's `GET` (`status: "invalid"`).
+* **No loaded plugin code declares the id.** This is treated like a model that names an interceptor which does not exist. A write is refused with `422` and a warning on `pluginId`, unless `config.write.softValidation` is `true`; in that mode `/v1/admin/apply` reports the entry `APPLIED_INVALID`. On a reload the id is checked only with `config.onInvalidEntity: skip`, where the entry is dropped and recorded as invalid; with the default `abort` the entry stays. This lets you write a declaration before every DIAL Core pod runs the version that carries its jar.
 
 ## Origin plugins
 
@@ -102,15 +102,15 @@ A [router in decision mode](routers.md#decision-mode) may name a plugin by a plu
 
 ### The forward sample
 
-The module `plugin-samples` holds an origin plugin of type `forward`, with the settings `{"deployment": "<name>"}`. It sends each request on to that deployment through a call, and answers with the call's answer: a deployments action goes to the same action of that deployment, the other interfaces keep their path with `model` set to it. It forwards the create operations only: a Responses item operation or a Messages `count_tokens` request fails, as a call reaches nothing else. It is a worked example of a call and the vehicle for measuring one. The default Docker image does not carry it; build an image with `--build-arg SAMPLE_PLUGINS=true` to put its jar in the plugin directory `samples/forward`, that is `/app/plugins/samples/forward`.
+The module `plugin-samples` holds an origin plugin of id `forward`, with the settings `{"deployment": "<name>"}`. It sends each request on to that deployment through a call, and answers with the call's answer: a deployments action goes to the same action of that deployment, the other interfaces keep their path with `model` set to it. It forwards the create operations only: a Responses item operation or a Messages `count_tokens` request fails, as a call reaches nothing else. It is a worked example of a call and the vehicle for measuring one. The default Docker image does not carry it; build an image with `--build-arg SAMPLE_PLUGINS=true` to put its jar in the plugin directory `samples/forward`, that is `/app/plugins/samples/forward`.
 
 ## Plugin code
 
-DIAL Core loads plugin code once, at start, from its own classpath and from the plugin directories under the directory named by the static setting `plugins.dir` (default `plugins`, relative to the working directory; `/app/plugins` in the Docker image). A missing directory loads nothing. A jar registers its code in `META-INF/services/com.epam.aidial.core.plugin.PluginProvider`, and compiles against the `aidial-core-plugin-api` module of DIAL Core (`com.epam.aidial:aidial-core-plugin-api`). See [Building a plugin](#building-a-plugin).
+DIAL Core loads plugin code once, at start, from its own classpath and from the plugin directories under the directory named by the static setting `plugins.dir` (default `plugins`, relative to the working directory; `/app/plugins` in the Docker image). A missing directory loads nothing. A jar registers its code, a `PluginProvider` whose `id()` is the id entries name, in `META-INF/services/com.epam.aidial.core.plugin.PluginProvider`, and compiles against the `aidial-core-plugin-api` module of DIAL Core (`com.epam.aidial:aidial-core-plugin-api`). See [Building a plugin](#building-a-plugin).
 
 ### Layout
 
-Each plugin has a directory of its own, two levels below `plugins.dir`: `<plugins.dir>/<group>/<plugin>/`, which holds the plugin's jars, its libraries included. `<group>/<plugin>` is the plugin directory's id, which the logs and the settings below use.
+Each plugin has a directory of its own, two levels below `plugins.dir`: `<plugins.dir>/<group>/<plugin>/`, which holds the plugin's jars, its libraries included. `<group>/<plugin>` is the plugin directory's path, which the logs and the settings below use; it is not the plugin id that entries name.
 
 ```
 /app/plugins/
@@ -133,15 +133,22 @@ DIAL Core does not start when:
 * a jar of a loaded plugin directory cannot be opened, or its plugin code cannot be created;
 * two jars of one plugin directory register the same plugin class (an old jar left beside its new version);
 * a loaded plugin directory registers no plugin code (often a volume mounted one level off);
-* two plugin classes declare the same type, in one plugin directory or in two.
+* two plugin classes declare the same id, in one plugin directory or in two, or one declares no id.
+* a plugin class declares a settings schema DIAL Core refuses (see [Settings schema](#settings-schema)), declares no targets, or fails while DIAL Core reads what it declares; the message names the class and the plugin directory.
 
-At start DIAL Core logs each plugin directory, `Loaded plugin directory custom/translator: types [...]` or `Excluded plugin directory builtin/echo`. New plugin code needs a restart of DIAL Core; the `plugins` entries and their settings reload with the rest of the config.
+At start DIAL Core logs each plugin directory, `Loaded plugin directory custom/translator: ids [...]` or `Excluded plugin directory builtin/echo`. New plugin code needs a restart of DIAL Core; the `plugins` entries and their settings reload with the rest of the config.
 
 Moving from an earlier version: move each plugin's jars into `<plugins.dir>/<group>/<plugin>/` in the rollout that brings this version. The earlier version reads only the flat directory, so a rollback takes the old layout back with it.
 
+### Settings schema
+
+Plugin code may declare a JSON Schema (draft-07) for its settings, the same draft as the schemas of application types and catalog properties. DIAL Core reads it once, at start, and checks the `settings` of every entry against it on every write and reload, before the plugin code's own check, which it skips when the schema rejects the settings. The outcomes are those of settings the plugin code rejects (see [How an entry is checked](#how-an-entry-is-checked)). Each violation is one warning: its `field` is `settings` plus where the violation is, `settings.greeting` or `settings.items[0].name`; a required property that is missing or a property the schema does not allow names that property, while a violation of the whole object, such as `dependencies`, is on the object itself. A schema check that fails, such as a schema that refers to itself without reading the settings, gives one warning on `settings`. The admin console reads the schema from [`GET /v1/admin/plugin-providers`](#plugin-providers).
+
+A settings schema must be self-contained. DIAL Core does not start when one names another draft in `$schema` (it may be absent, or `http://` or `https://json-schema.org/draft-07/schema`, with or without `#`), when a `$ref` anywhere in it points outside the schema, other than to the draft-07 meta-schema, or when the schema is not valid draft-07. DIAL Core loads nothing a schema refers to: put shared definitions under `definitions` and refer to them with `#/definitions/<name>`.
+
 ### Including and excluding plugins
 
-The static settings `plugins.include` (default `["*"]`) and `plugins.exclude` (default `[]`) pick the plugin directories DIAL Core loads: one is loaded when its id matches a pattern of `include` and no pattern of `exclude`. A pattern is `*` or `<group>/<plugin>`, where either part may be `*`: `builtin/*` names a group, `*/echo` a plugin in any group. Any other pattern stops the start, and so does an empty `include`; to load no plugin directory, set `exclude` to `*`. A pattern that matches no directory is fine, so one setting can serve environments with different mounts.
+The static settings `plugins.include` (default `["*"]`) and `plugins.exclude` (default `[]`) pick the plugin directories DIAL Core loads: one is loaded when its path matches a pattern of `include` and no pattern of `exclude`. A pattern is `*` or `<group>/<plugin>`, where either part may be `*`: `builtin/*` names a group, `*/echo` a plugin in any group. Any other pattern stops the start, and so does an empty `include`; to load no plugin directory, set `exclude` to `*`. A pattern that matches no directory is fine, so one setting can serve environments with different mounts.
 
 Each setting is a JSON array or one string of comma-separated patterns, the form an environment variable takes:
 
@@ -149,7 +156,7 @@ Each setting is a JSON array or one string of comma-separated patterns, the form
 aidial.plugins.exclude=builtin/echo,custom/old
 ```
 
-DIAL Core does not open a plugin directory it does not load, so excluding a broken plugin gets DIAL Core started while the plugin is fixed. To replace a built-in plugin with another build of it, mount the build under `custom` and exclude the built-in one, for example `aidial.plugins.exclude=builtin/echo` with the new build in `custom/echo`; loading both stops the start, as both declare the same type.
+DIAL Core does not open a plugin directory it does not load, so excluding a broken plugin gets DIAL Core started while the plugin is fixed. To replace a built-in plugin with another build of it, mount the build under `custom` and exclude the built-in one, for example `aidial.plugins.exclude=builtin/echo` with the new build in `custom/echo`; loading both stops the start, as both declare the same id.
 
 ### Building a plugin
 
@@ -171,6 +178,15 @@ dependencies {
 }
 ```
 
+A provider declares its id by overriding `id()`. A jar built against an earlier version overrides `type()` instead, which is now deprecated: `id()` falls back to it, so such a jar loads unchanged.
+
+A provider may also describe itself, for the admin console. DIAL Core reads all of it once, at start, and lists it at [`GET /v1/admin/plugin-providers`](#plugin-providers):
+
+* `description()`: what the plugin does, in a sentence. None by default.
+* `targets()`: the places a plugin URL may name its entries, from `PluginTarget`: `MODEL`, `APPLICATION`, `ROUTER` and `TRANSLATOR`, all four by default. A hint for the admin console, which offers the plugin's entries there: DIAL Core does not check a plugin URL against it. An empty set stops the start.
+* `settingsSchema()`: the [settings schema](#settings-schema). None by default; `validate()` accepts everything by default, so a plugin whose rules the schema says needs no check of its own.
+* The version is the `Implementation-Version` in the manifest of the jar that registers the provider. Gradle writes it with `jar { manifest { attributes("Implementation-Version": project.version) } }`.
+
 ## Configuration API
 
 Plugins live in the `platform` bucket and need the admin role, like the other config entities:
@@ -180,3 +196,26 @@ Plugins live in the `platform` bucket and need the admin role, like the other co
 * `GET /v1/admin/config/file/plugins[/{name}]` shows the entries of the config files, and `POST /v1/admin/config/file/migrate` with type `plugins` copies them to the bucket.
 
 An entry in the bucket replaces, as a whole, the file entry with the same name.
+
+### Plugin providers
+
+`GET /v1/admin/plugin-providers` (admin role, `x-preview`; `403` for any other caller) lists the plugin code DIAL Core loaded at start, ordered by `id`, whatever the config holds. Each item has the `id` that entries name in `pluginId` and the `targets`, and when the plugin code has them its plugin directory (`directory`), the jar's `version`, a `description` and the `settingsSchema`. Plugin code on DIAL Core's own classpath has no `directory` and no `version`; a plugin directory that `plugins.exclude` names is not listed.
+
+```json
+[
+    {
+        "id": "example",
+        "targets": ["model", "application"],
+        "directory": "custom/example",
+        "version": "1.2.0",
+        "description": "Answers with a greeting",
+        "settingsSchema": {
+            "type": "object",
+            "required": ["greeting"],
+            "properties": {"greeting": {"type": "string"}}
+        }
+    }
+]
+```
+
+The list is of the pod that answered: during a rollout, pods of two versions may answer differently.
