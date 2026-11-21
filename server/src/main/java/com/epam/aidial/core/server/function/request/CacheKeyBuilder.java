@@ -24,9 +24,8 @@ import java.util.TreeMap;
  * providers cache the whole rendered prefix), and {@link #buildKey(String, boolean)} snapshots the
  * digest at that point without terminating it.
  *
- * <p>The digest is SHA-256: the key only has to be stable and collision-resistant for routing, and HotSpot
- * intrinsifies SHA-256 on x86-64 with AVX2 and on aarch64, while SHA-1 needs the SHA extensions and otherwise
- * runs as Java code over every prompt byte.
+ * <p>The digest is MD5, hex-encoded. The key only pins requests that share a prefix to one upstream, so it has to be
+ * stable, not secure: a collision sends a request to another upstream and loses affinity, nothing else.
  */
 public class CacheKeyBuilder {
 
@@ -42,7 +41,9 @@ public class CacheKeyBuilder {
 
     @SneakyThrows
     public CacheKeyBuilder() {
-        this.digest = MessageDigest.getInstance("SHA-256");
+        // not a security boundary: a collision costs affinity only. MD5 because HotSpot intrinsifies it on every x86-64
+        // and aarch64 CPU, while SHA-1 and SHA-256 run far slower over the whole prompt without the CPU SHA extensions
+        this.digest = MessageDigest.getInstance("MD5");
         this.digestStream = new DigestOutputStream(OutputStream.nullOutputStream(), digest);
     }
 

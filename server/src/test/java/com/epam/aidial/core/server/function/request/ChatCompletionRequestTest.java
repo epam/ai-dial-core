@@ -389,12 +389,12 @@ class ChatCompletionRequestTest {
         List<CacheKey> keys = request.buildCacheKeys(List.of("prefix.body.messages"));
 
         assertEquals(List.of("prefix.body.messages[0]", "prefix.body.messages[1]"), keys.stream().map(CacheKey::path).toList());
-        assertEquals(sha256("\"x\""), keys.get(0).hash());
-        assertEquals(sha256("\"x\"\"user\""), keys.get(1).hash());
+        assertEquals(md5("\"x\""), keys.get(0).hash());
+        assertEquals(md5("\"x\"\"user\""), keys.get(1).hash());
     }
 
-    private static String sha256(String text) throws Exception {
-        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
+    private static String md5(String text) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("MD5").digest(text.getBytes(StandardCharsets.UTF_8)));
     }
 
     private static ChatCompletionRequest request(String body) throws JsonProcessingException {
