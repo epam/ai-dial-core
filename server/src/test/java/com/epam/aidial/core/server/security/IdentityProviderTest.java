@@ -38,18 +38,24 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -198,6 +204,43 @@ public class IdentityProviderTest {
             assertNotNull(claims);
             assertEquals(List.of("r1", "r2"), claims.userRoles());
         });
+    }
+
+    @Test
+    public void testUserHashUnderConcurrentValidation() throws Exception {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        List<String> emails = IntStream.range(0, 1000).mapToObj(i -> "user" + i + "@test.com").toList();
+        List<String> tokens = emails.stream()
+                .map(email -> JWT.create().withHeader(Map.of("kid", "kid1")).withClaim("email", email).sign(algorithm))
+                .toList();
+        // caches the key, so each validation below hashes on its own calling thread, as on several event loops
+        identityProvider.extractClaimsFromJwt(JWT.decode(tokens.get(0)));
+
+        ExtractedClaims[] claims = new ExtractedClaims[tokens.size()];
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        try {
+            CompletableFuture.allOf(IntStream.range(0, tokens.size())
+                    .mapToObj(i -> CompletableFuture.runAsync(() -> claims[i] = identityProvider.extractClaimsFromJwt(JWT.decode(tokens.get(i)))
+                            .toCompletionStage().toCompletableFuture().join(), executor))
+                    .toArray(CompletableFuture[]::new)).get(1, TimeUnit.MINUTES);
+        } finally {
+            executor.shutdown();
+        }
+
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        for (int i = 0; i < emails.size(); i++) {
+            String expected = HexFormat.of().formatHex(digest.digest(("salt" + emails.get(i)).getBytes(StandardCharsets.UTF_8)));
+            assertEquals(expected, claims[i].userHash(), emails.get(i));
+        }
     }
 
     @Test
@@ -943,6 +986,37 @@ public class IdentityProviderTest {
     }
 
     @Test
+    public void testExtractClaims_33() throws JwkException {
+        IdentityProvider byDefault = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        settings.put("userEmailPath", "upn");
+        IdentityProvider byUpn = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        settings.put("userEmailPath", "profile.mail");
+        IdentityProvider byNestedPath = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+
+        String token = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("manager"))
+                .withClaim("email", "jane@mail.com")
+                .withClaim("upn", "jane@example.com")
+                .withClaim("profile", Map.of("mail", "jane@profile.com"))
+                .sign(algorithm);
+        String tokenWithoutUpn = JWT.create().withHeader(Map.of("kid", "kid1"))
+                .withClaim("roles", List.of("manager")).withClaim("email", "jane@mail.com").sign(algorithm);
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        assertEquals("jane@mail.com", byDefault.extractClaimsFromJwt(JWT.decode(token)).result().userEmail());
+        assertEquals("jane@example.com", byUpn.extractClaimsFromJwt(JWT.decode(token)).result().userEmail());
+        assertEquals("jane@profile.com", byNestedPath.extractClaimsFromJwt(JWT.decode(token)).result().userEmail());
+        assertNull(byUpn.extractClaimsFromJwt(JWT.decode(tokenWithoutUpn)).result().userEmail());
+    }
+
+    @Test
     public void testExtractClaims_FromUserInfo_01() {
         settings.remove("jwksUrl");
         settings.put("userInfoEndpoint", "http://host/userinfo");
@@ -1001,6 +1075,7 @@ public class IdentityProviderTest {
                 assertNotNull(claims);
                 assertEquals(List.of("role1"), claims.userRoles());
                 assertEquals("sub", claims.userId());
+                assertEquals("email", claims.userEmail());
                 assertNotNull(claims.userHash());
                 logContext.assertMessages("[DEBUG] User login: sub=sub, oid=null, app.roles=[role1]");
             });

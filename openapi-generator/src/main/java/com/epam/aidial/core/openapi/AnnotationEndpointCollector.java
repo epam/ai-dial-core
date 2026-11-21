@@ -6,6 +6,8 @@ import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.server.controller.AdminApplyController;
 import com.epam.aidial.core.server.controller.AdminHealthConfigController;
+import com.epam.aidial.core.server.controller.AdminSystemExportController;
+import com.epam.aidial.core.server.controller.AdminSystemImportController;
 import com.epam.aidial.core.server.controller.AdminValidateController;
 import com.epam.aidial.core.server.controller.ApplicationController;
 import com.epam.aidial.core.server.controller.ApplicationMcpProxyController;
@@ -36,7 +38,9 @@ import com.epam.aidial.core.server.controller.McpResourceController;
 import com.epam.aidial.core.server.controller.ModelController;
 import com.epam.aidial.core.server.controller.NotificationController;
 import com.epam.aidial.core.server.controller.OfflineCredentialsController;
+import com.epam.aidial.core.server.controller.OrgUnitController;
 import com.epam.aidial.core.server.controller.PerRequestPermissionController;
+import com.epam.aidial.core.server.controller.PolicyController;
 import com.epam.aidial.core.server.controller.PublicationController;
 import com.epam.aidial.core.server.controller.RateResponseController;
 import com.epam.aidial.core.server.controller.ResourceController;
@@ -44,6 +48,7 @@ import com.epam.aidial.core.server.controller.ResourceCredentialsController;
 import com.epam.aidial.core.server.controller.ResourceOperationController;
 import com.epam.aidial.core.server.controller.ResponseItemController;
 import com.epam.aidial.core.server.controller.ResponsesController;
+import com.epam.aidial.core.server.controller.RouterController;
 import com.epam.aidial.core.server.controller.ShareController;
 import com.epam.aidial.core.server.controller.ToolSetController;
 import com.epam.aidial.core.server.controller.ToolSetMcpProxyController;
@@ -51,7 +56,9 @@ import com.epam.aidial.core.server.controller.ToolSetRepairController;
 import com.epam.aidial.core.server.controller.ToolSetToolsController;
 import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
+import com.epam.aidial.core.server.controller.UserOrgUnitsController;
 import com.epam.aidial.core.server.controller.anthropic.AnthropicModelController;
+import com.epam.aidial.core.server.controller.anthropic.AnthropicUsageController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesController;
 import com.epam.aidial.core.server.controller.anthropic.MessagesCountTokensController;
 import lombok.extern.slf4j.Slf4j;
@@ -66,9 +73,12 @@ public final class AnnotationEndpointCollector {
 
     private static final List<Class<?>> CONTROLLER_CLASSES = List.of(
             AdminApplyController.class,
+            AdminSystemExportController.class,
+            AdminSystemImportController.class,
             AdminHealthConfigController.class,
             AdminValidateController.class,
             AnthropicModelController.class,
+            AnthropicUsageController.class,
             ApplicationController.class,
             ApplicationMcpProxyController.class,
             McpResourceController.class,
@@ -95,11 +105,13 @@ public final class AnnotationEndpointCollector {
             ComplexResourceMetadataController.class,
             InvitationController.class,
             LimitController.class,
+            PolicyController.class,
             MessagesController.class,
             MessagesCountTokensController.class,
             ModelController.class,
             NotificationController.class,
             OfflineCredentialsController.class,
+            OrgUnitController.class,
             PerRequestPermissionController.class,
             PublicationController.class,
             RateResponseController.class,
@@ -108,13 +120,15 @@ public final class AnnotationEndpointCollector {
             ResourceOperationController.class,
             ResponseItemController.class,
             ResponsesController.class,
+            RouterController.class,
             ShareController.class,
             ToolSetController.class,
             ToolSetMcpProxyController.class,
             ToolSetRepairController.class,
             ToolSetToolsController.class,
             UploadFileController.class,
-            UserInfoController.class
+            UserInfoController.class,
+            UserOrgUnitsController.class
     );
 
     private AnnotationEndpointCollector() {

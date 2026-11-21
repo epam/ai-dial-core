@@ -1,13 +1,16 @@
 package com.epam.aidial.core.server.controller;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
@@ -49,9 +52,9 @@ import java.util.Map;
  *
  * <p>Singleton settings: {@code GET /v1/admin/config/file/settings/global} returns the
  * file-defined (or schema-default) values for {@code globalInterceptors},
- * {@code retriableErrorCodes} and {@code rateLimitSchedule} regardless of whether an API blob
- * exists — this surface is the file/default view; the blob projection lives on
- * {@code /v1/settings/platform/global}.
+ * {@code retriableErrorCodes}, {@code rateLimitSchedule} and {@code spendingLimits} regardless
+ * of whether an API blob exists — this surface is the file/default view; the blob projection
+ * lives on {@code /v1/settings/platform/global}.
  *
  * <p>Read-only by design — {@code aidial.config.json} remains the operator-managed source of
  * truth for file entries. {@code POST}/{@code PUT}/{@code DELETE} are wired through the router
@@ -89,8 +92,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/models/{name}",
@@ -108,8 +110,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/keys",
@@ -126,8 +127,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/keys/{name}",
@@ -145,8 +145,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/applications",
@@ -163,8 +162,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/applications/{name}",
@@ -182,8 +180,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/toolsets",
@@ -200,8 +197,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/toolsets/{name}",
@@ -219,8 +215,42 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/aliases",
+                    operationId = "listFileConfigAliases",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced aliases",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/aliases/{name}",
+                    operationId = "getFileConfigAlias",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Alias name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Alias.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/interceptors",
@@ -237,8 +267,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/interceptors/{name}",
@@ -256,8 +285,42 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/routers",
+                    operationId = "listFileConfigRouters",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced routers",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/routers/{name}",
+                    operationId = "getFileConfigRouter",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Router name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Router.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/translators",
@@ -274,8 +337,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/translators/{name}",
@@ -293,8 +355,42 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/plugins",
+                    operationId = "listFileConfigPlugins",
+                    tags = {"Admin"},
+                    responses = {
+                            @ApiResponse(code = 200, description = "List of file-sourced plugins",
+                                    body = @ApiSchema(implementation = ItemsResponse.class,
+                                            typeArguments = {NamedEntity.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }),
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/admin/config/file/plugins/{name}",
+                    operationId = "getFileConfigPlugin",
+                    tags = {"Admin"},
+                    parameters = {
+                            @ApiParameter(name = "name", in = ParameterIn.PATH, required = true, description = "Plugin name")
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {Plugin.class, EntityMetadata.class})),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/roles",
@@ -311,8 +407,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/roles/{name}",
@@ -330,8 +425,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/routes",
@@ -348,8 +442,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/routes/{name}",
@@ -367,8 +460,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/schemas",
@@ -385,8 +477,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/schemas/{name}",
@@ -404,8 +495,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/catalog_schemas",
@@ -422,8 +512,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/catalog_schemas/{name}",
@@ -441,8 +530,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/settings",
@@ -459,8 +547,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "GET",
                     path = "/v1/admin/config/file/settings/{name}",
@@ -478,8 +565,7 @@ public class FileConfigController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            )
+                    })
     })
     public Future<?> handle() {
         HttpMethod method = context.getRequest().method();
@@ -606,6 +692,7 @@ public class FileConfigController implements Controller {
         body.set("globalInterceptors", ProxyUtil.MAPPER.valueToTree(fileConfig.getGlobalInterceptors()));
         body.set("retriableErrorCodes", ProxyUtil.MAPPER.valueToTree(fileConfig.getRetriableErrorCodes()));
         body.set("rateLimitSchedule", ProxyUtil.MAPPER.valueToTree(fileConfig.getRateLimitSchedule()));
+        body.set("spendingLimits", ProxyUtil.MAPPER.valueToTree(fileConfig.getSpendingLimits()));
         body.put("name", SETTINGS_SINGLETON_NAME);
         body.put("status", "valid");
         context.respond(HttpStatus.OK, body);
@@ -616,7 +703,9 @@ public class FileConfigController implements Controller {
         return switch (resourceType) {
             case MODEL -> config.getModels();
             case INTERCEPTOR -> config.getInterceptors();
+            case ROUTER -> config.getRouters();
             case TRANSLATOR -> config.getTranslators();
+            case PLUGIN -> config.getPlugins();
             case ROLE -> config.getRoles();
             case PROJECT_KEY -> config.getKeys();
             case ROUTE -> config.getRoutes();
@@ -624,6 +713,7 @@ public class FileConfigController implements Controller {
             case CATALOG_SCHEMA -> config.getCatalogSchemas();
             case APPLICATION -> config.getApplications();
             case TOOL_SET -> config.getToolsets();
+            case ALIAS -> config.getAliases();
             // GLOBAL_SETTINGS has no per-entity map — handled by handleSettings before this helper.
             // Other types (FILE, PROMPT, CONVERSATION) are not part of the file-config surface;
             // the route regex restricts {type} to the closed set above.

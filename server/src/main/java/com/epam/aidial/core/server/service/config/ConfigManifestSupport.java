@@ -6,8 +6,10 @@ import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
@@ -19,14 +21,21 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPluginManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRouterManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTypedManifest;
+import com.epam.aidial.core.server.service.policy.PolicyRecordCodec;
+import com.epam.aidial.core.server.service.policy.PolicyService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -56,14 +65,18 @@ public class ConfigManifestSupport {
             Map.entry("Settings", 0),
             Map.entry("Schema", 1),
             Map.entry("CatalogSchema", 1),
-            Map.entry("Translator", 2),
-            Map.entry("Interceptor", 3),
-            Map.entry("Role", 4),
-            Map.entry("Key", 5),
-            Map.entry("Route", 6),
-            Map.entry("Model", 7),
-            Map.entry("ToolSet", 8),
-            Map.entry("Application", 9));
+            Map.entry("Plugin", 2),
+            Map.entry("Translator", 3),
+            Map.entry("Interceptor", 4),
+            Map.entry("Router", 5),
+            Map.entry("Role", 6),
+            Map.entry("Key", 7),
+            Map.entry("Route", 8),
+            Map.entry("Model", 9),
+            Map.entry("ToolSet", 10),
+            Map.entry("Application", 11),
+            Map.entry("Policy", 12),
+            Map.entry("PolicyAssignment", 13));
 
     /**
      * Sorts a manifest list so a kind that other kinds can reference (e.g. {@code Interceptor})
@@ -79,13 +92,17 @@ public class ConfigManifestSupport {
             Map.entry("Schema", "schemas"),
             Map.entry("CatalogSchema", "catalog_schemas"),
             Map.entry("Interceptor", "interceptors"),
+            Map.entry("Router", "routers"),
             Map.entry("Translator", "translators"),
+            Map.entry("Plugin", "plugins"),
             Map.entry("Role", "roles"),
             Map.entry("Key", "keys"),
             Map.entry("Route", "routes"),
             Map.entry("Model", "models"),
             Map.entry("ToolSet", "toolsets"),
-            Map.entry("Application", "applications"));
+            Map.entry("Application", "applications"),
+            Map.entry("Policy", "policies"),
+            Map.entry("PolicyAssignment", "policy_assignments"));
 
     public static Config newScratch(MergedConfigStore mergedConfigStore) {
         Config live = mergedConfigStore.get();
@@ -93,16 +110,23 @@ public class ConfigManifestSupport {
         if (live != null) {
             scratch.setModels(new HashMap<>(live.getModels()));
             scratch.setInterceptors(new HashMap<>(live.getInterceptors()));
+            // a copy: mutateScratch writes into the scratch, never into the live config
+            scratch.setRouters(new HashMap<>(live.getRouters()));
             scratch.setTranslators(new HashMap<>(live.getTranslators()));
+            scratch.setPlugins(new HashMap<>(live.getPlugins()));
             scratch.setApplicationTypeSchemas(new HashMap<>(live.getApplicationTypeSchemas()));
             scratch.setCatalogSchemas(new HashMap<>(live.getCatalogSchemas()));
             scratch.setApplications(new HashMap<>(live.getApplications()));
             scratch.setToolsets(new HashMap<>(live.getToolsets()));
+            // aliases are not written through manifests, but their names are taken: a manifest must not reuse one
+            scratch.setAliases(new HashMap<>(live.getAliases()));
             scratch.setRoles(new HashMap<>(live.getRoles()));
             scratch.setKeys(new HashMap<>(live.getKeys()));
             scratch.getRoutes().putAll(live.getRoutes());
             scratch.setGlobalInterceptors(live.getGlobalInterceptors());
             scratch.setRetriableErrorCodes(live.getRetriableErrorCodes());
+            scratch.setRateLimitSchedule(live.getRateLimitSchedule());
+            scratch.setSpendingLimits(live.getSpendingLimits());
         }
         return scratch;
     }
@@ -114,11 +138,17 @@ public class ConfigManifestSupport {
                 case AdminSettingsManifest settings -> {
                     scratch.setGlobalInterceptors(settings.spec().getGlobalInterceptors());
                     scratch.setRetriableErrorCodes(settings.spec().getRetriableErrorCodes());
+                    scratch.setRateLimitSchedule(settings.spec().getRateLimitSchedule());
+                    scratch.setSpendingLimits(settings.spec().getSpendingLimits());
                 }
                 case AdminInterceptorManifest interceptor ->
                         scratch.getInterceptors().put(parsed.name().name(), interceptor.spec());
+                case AdminRouterManifest router ->
+                        scratch.getRouters().put(parsed.name().name(), router.spec());
                 case AdminTranslatorManifest translator ->
                         scratch.getTranslators().put(parsed.name().name(), translator.spec());
+                case AdminPluginManifest plugin ->
+                        scratch.getPlugins().put(parsed.name().name(), plugin.spec());
                 case AdminRoleManifest role ->
                         scratch.getRoles().put(parsed.name().name(), role.spec());
                 case AdminRouteManifest route ->
@@ -137,6 +167,9 @@ public class ConfigManifestSupport {
                         scratch.getToolsets().put(parsed.name().name(), toolSet.spec());
                     }
                 }
+                // policies and assignments are not part of the scratch config: a batch sees them through PolicyAssignmentPrecheck
+                case AdminPolicyManifest policy -> { }
+                case AdminPolicyAssignmentManifest assignment -> { }
                 case AdminSchemaManifest schema ->
                         putSchema(scratch.getApplicationTypeSchemas(), schema.spec());
                 case AdminCatalogSchemaManifest catalogSchema ->
@@ -162,7 +195,7 @@ public class ConfigManifestSupport {
     /**
      * Shared by {@link ConfigValidationService#validateOnly} (precheck) and the real-apply
      * {@code applyX} methods on {@link ConfigApplyService}: non-null iff {@code parsed}'s short
-     * name is already claimed by a different model/application/interceptor/toolset in
+     * name is already claimed by a different model/application/interceptor/router/toolset in
      * {@code scratch}. See {@link ConfigPostProcessor#isDeploymentIdTakenByAnotherDeploymentType}.
      */
     static String validateDeploymentIdUniqueness(Config scratch, ResourceTypes type, ParsedName parsed) {
@@ -234,8 +267,12 @@ public class ConfigManifestSupport {
             case "CatalogSchema" -> new AdminCatalogSchemaManifest(entry.kind(), entry.name(), entry.spec());
             case "Interceptor" -> new AdminInterceptorManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Interceptor.class));
+            case "Router" -> new AdminRouterManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Router.class));
             case "Translator" -> new AdminTranslatorManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Translator.class));
+            case "Plugin" -> new AdminPluginManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), Plugin.class));
             case "Role" -> new AdminRoleManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Role.class));
             case "Key" -> new AdminKeyManifest(entry.kind(), entry.name(),
@@ -248,6 +285,10 @@ public class ConfigManifestSupport {
                     ConfigEntityCodec.treeToEntity(entry.spec(), ToolSet.class));
             case "Application" -> new AdminApplicationManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Application.class));
+            case "Policy" -> new AdminPolicyManifest(entry.kind(), entry.name(),
+                    PolicyRecordCodec.parsePolicy(entry.spec()));
+            case "PolicyAssignment" -> new AdminPolicyAssignmentManifest(entry.kind(), entry.name(),
+                    PolicyRecordCodec.parseAssignment(entry.spec()));
             default -> throw new IllegalArgumentException("Unknown kind: " + entry.kind());
         };
         return new ParsedManifest(manifest, name);
@@ -288,6 +329,17 @@ public class ConfigManifestSupport {
             throw new IllegalArgumentException("'name' is missing the entity name after the bucket segment");
         }
 
+        ResourceTypes policyType = policyTypeOf(entry.kind());
+        if (policyType != null && ResourceDescriptor.PLATFORM_BUCKET.equals(bucket)) {
+            // one folder level is allowed here, and PolicyService owns the rest of the path rules
+            try {
+                PolicyService.describe(policyType, rest);
+            } catch (HttpException e) {
+                throw new IllegalArgumentException(e.getMessage());
+            }
+            return new ParsedName(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, rest);
+        }
+
         if (ResourceDescriptor.PLATFORM_BUCKET.equals(bucket)) {
             if (rest.contains("/")) {
                 throw new IllegalArgumentException(
@@ -312,6 +364,14 @@ public class ConfigManifestSupport {
         throw new IllegalArgumentException(
                 "'name' bucket segment must be 'platform'" + (allowPublicBucket ? " or 'public'" : "")
                         + ", got '" + bucket + "'");
+    }
+
+    private static ResourceTypes policyTypeOf(String kind) {
+        return switch (kind) {
+            case "Policy" -> ResourceTypes.POLICY;
+            case "PolicyAssignment" -> ResourceTypes.POLICY_ASSIGNMENT;
+            default -> null;
+        };
     }
 
     static String joinWarnings(List<ValidationWarning> warnings) {

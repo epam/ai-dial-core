@@ -64,5 +64,5 @@ public class Upstream {
      * sends it as {@code API-KEY: <key>}; BEARER sends it as {@code Authorization: Bearer <key>}.
      */
     @JsonAlias({"authType", "auth_type"})
-    private UpstreamAuthType authType = UpstreamAuthType.API_KEY;
+    private UpstreamAuthConfig authType = UpstreamAuthConfig.API_KEY;
 }

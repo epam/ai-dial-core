@@ -23,6 +23,10 @@ public class ContentEncryptionKeyService {
         return contentEncryptionKeyManager.getOrCreateKey(cekDescription);
     }
 
+    public void invalidateKey(BucketInfo bucketInfo) {
+        contentEncryptionKeyManager.invalidate(getContentEncryptionKeyDescriptor(bucketInfo));
+    }
+
     /**
      * Creates a ResourceDescriptor for the Content Encryption Key (CEK).
      *

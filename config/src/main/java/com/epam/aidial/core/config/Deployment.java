@@ -3,6 +3,8 @@ package com.epam.aidial.core.config;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -81,6 +83,7 @@ public abstract class Deployment extends RoleBasedEntity {
      */
     @JsonAlias({"defaultHeaders", "default_headers"})
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonSetter(nulls = Nulls.SKIP)
     private Map<String, String> defaultHeaders = Map.of();
     /**
      * List of interceptors to be called for the deployment

@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
 import com.epam.aidial.core.config.Pricing;
 import com.epam.aidial.core.config.PricingRate;
+import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -87,7 +88,7 @@ public class CostRateLimitTest {
         redisServer.start();
 
         ConfigSupport configSupport = new ConfigSupport();
-        org.redisson.config.Config redisClientConfig = configSupport.fromJSON("""
+        org.redisson.config.Config redisClientConfig = configSupport.fromYAML("""
                 {
                   "singleServerConfig": {
                      "address": "redis://localhost:16379"
@@ -172,7 +173,7 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role1", "role2"), "user-hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null));
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null));
         ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData, null, "trace-id", "span-id", "01");
 
         // Set up a model with pricing
@@ -270,7 +271,7 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
         apiKeyData.setExtractedClaims(new ExtractedClaims("sub", List.of("role"), "user-hash",
-                ProxyUtil.MAPPER.createObjectNode(), null, null));
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null));
         ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, apiKeyData, null, "trace-id", "span-id", "01");
 
         // Set up a model with pricing
@@ -376,7 +377,7 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData1 = new ApiKeyData();
         apiKeyData1.setPerRequestKey("per-request-key-1");
         apiKeyData1.setExtractedClaims(new ExtractedClaims("user1", List.of("role"), "user-hash-1",
-                ProxyUtil.MAPPER.createObjectNode(), null, null));
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null));
         ProxyContext proxyContext1 = new ProxyContext(mockProxy(config), request, apiKeyData1, null, "trace-id-1", "span-id-1", "01");
         proxyContext1.setDeployment(model);
 
@@ -384,7 +385,7 @@ public class CostRateLimitTest {
         ApiKeyData apiKeyData2 = new ApiKeyData();
         apiKeyData2.setPerRequestKey("per-request-key-2");
         apiKeyData2.setExtractedClaims(new ExtractedClaims("user2", List.of("role"), "user-hash-2",
-                ProxyUtil.MAPPER.createObjectNode(), null, null));
+                ProxyUtil.MAPPER.createObjectNode(), null, null, null));
         ProxyContext proxyContext2 = new ProxyContext(mockProxy(config), request, apiKeyData2, null, "trace-id-2", "span-id-2", "01");
         proxyContext2.setDeployment(model);
 
@@ -489,5 +490,57 @@ public class CostRateLimitTest {
             assertNotNull(checkLimitFuture2.result());
             assertEquals(HttpStatus.OK, checkLimitFuture2.result().status());
         }
+    }
+
+    private static final long MID_DAY_MILLIS = java.time.Instant.parse("2026-01-14T12:00:00Z").toEpochMilli();
+
+    @Test
+    public void check_minuteOnly_breachIsMinuteCost() {
+        long now = MID_DAY_MILLIS;
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        CostRateLimit rateLimit = new CostRateLimit();
+        rateLimit.add(now, schedule, new BigDecimal("1"));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setMinute(new BigDecimal("1"));
+
+        RateLimitResult result = rateLimit.check(now, schedule, costLimit);
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(LimitBreach.Kind.COST, result.breach().kind());
+        assertEquals(LimitBreach.Window.MINUTE, result.breach().window());
+        assertEquals(-1, result.breach().resetsAtMillis());
+    }
+
+    @Test
+    public void check_dayAndMinute_breachIsDay() {
+        long now = MID_DAY_MILLIS;
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        CostRateLimit rateLimit = new CostRateLimit();
+        rateLimit.add(now, schedule, new BigDecimal("1"));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setMinute(new BigDecimal("1"));
+        costLimit.setDay(new BigDecimal("1"));
+
+        RateLimitResult result = rateLimit.check(now, schedule, costLimit);
+
+        assertEquals(LimitBreach.Window.DAY, result.breach().window());
+        assertEquals(CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.DAY, now, schedule), result.breach().resetsAtMillis());
+        assertEquals(result.replyAfterSeconds(), result.breach().retryAfterSeconds());
+    }
+
+    @Test
+    public void check_dayAndWeek_breachIsWeekWithItsReset() {
+        long now = MID_DAY_MILLIS;
+        RateLimitSchedule schedule = new RateLimitSchedule();
+        CostRateLimit rateLimit = new CostRateLimit();
+        rateLimit.add(now, schedule, new BigDecimal("1"));
+        CostLimit costLimit = new CostLimit();
+        costLimit.setDay(new BigDecimal("1"));
+        costLimit.setWeek(new BigDecimal("1"));
+
+        RateLimitResult result = rateLimit.check(now, schedule, costLimit);
+
+        assertEquals(LimitBreach.Window.WEEK, result.breach().window());
+        assertEquals(CalendarWindowCalculator.nextPeriodStart(CalendarPeriod.WEEK, now, schedule), result.breach().resetsAtMillis());
     }
 }

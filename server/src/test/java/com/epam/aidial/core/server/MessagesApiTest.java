@@ -3,7 +3,9 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.server.data.FeaturesData;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
@@ -11,9 +13,12 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.junit.jupiter.api.Test;
+import org.redisson.api.RKeys;
+import org.redisson.api.RedissonClient;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -137,7 +142,7 @@ public class MessagesApiTest extends ResourceBaseTest {
                     + "\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}";
             Response first = post(client, MESSAGES_PATH, firstTurn, "api-key", "proxyKey1");
             assertEquals(200, first.status());
-            Thread.sleep(1000); // wait for the async Redis update after the first turn
+            awaitPin();
 
             String secondTurn = "{\"model\":\"claude-cache\",\"max_tokens\":100,\"stream\":false,"
                     + "\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"},{\"role\":\"assistant\",\"content\":\"Hi there\"}]}";
@@ -146,6 +151,72 @@ public class MessagesApiTest extends ResourceBaseTest {
 
             assertNotNull(firstUpstreamKey.get());
             assertEquals(firstUpstreamKey.get(), secondUpstreamKey.get());
+        }
+    }
+
+    @Test
+    public void testStringMessagePinnedAfterItsTextBlock() throws IOException, InterruptedException {
+        String firstTurn = "{\"model\":\"claude-cache-tiers\",\"max_tokens\":100,\"stream\":false,\"messages\":["
+                + "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Hello\",\"cache_control\":{\"type\":\"ephemeral\"}}]}]}";
+        String secondTurn = "{\"model\":\"claude-cache-tiers\",\"max_tokens\":100,\"stream\":false,\"messages\":["
+                + "{\"role\":\"user\",\"content\":\"Hello\"},"
+                + "{\"role\":\"assistant\",\"content\":\"Hi there\"},"
+                + "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Next\",\"cache_control\":{\"type\":\"ephemeral\"}}]}]}";
+
+        assertEquals("keyB", sendPinnedThenUnpinned(firstTurn, secondTurn, "prefix.body.messages[0].content[0]"));
+    }
+
+    @Test
+    public void testStringSystemPinnedAfterItsTextBlock() throws IOException, InterruptedException {
+        String firstTurn = "{\"model\":\"claude-cache-tiers\",\"max_tokens\":100,\"stream\":false,"
+                + "\"system\":[{\"type\":\"text\",\"text\":\"Be brief\",\"cache_control\":{\"type\":\"ephemeral\"}}],"
+                + "\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}";
+        String secondTurn = "{\"model\":\"claude-cache-tiers\",\"max_tokens\":100,\"stream\":false,\"system\":\"Be brief\","
+                + "\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"},{\"role\":\"assistant\",\"content\":\"Hello\"},"
+                + "{\"role\":\"user\",\"content\":\"More\"}]}";
+
+        assertEquals("keyB", sendPinnedThenUnpinned(firstTurn, secondTurn, "prefix.body.system[0]"));
+    }
+
+    /**
+     * Sends the first turn forced to {@code up-b} (tier 1), which pins {@code breakpointPath} to it, then the second turn
+     * without {@code X-UPSTREAM-ID}, and returns the {@code X-UPSTREAM-KEY} of the second origin request. Without a pin
+     * the balancer picks {@code up-a} (tier 0, {@code keyA}).
+     */
+    private String sendPinnedThenUnpinned(String firstTurn, String secondTurn, String breakpointPath)
+            throws IOException, InterruptedException {
+        AtomicReference<String> upstreamKey = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                upstreamKey.set(request.getHeader("X-UPSTREAM-KEY"));
+                long expireAt = Instant.now().plusSeconds(600).getEpochSecond();
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE,
+                        "Content-Type", "application/json",
+                        "X-DIAL-CACHE-BREAKPOINT-PATH", breakpointPath,
+                        "X-DIAL-CACHE-EXPIRE-AT", String.valueOf(expireAt));
+            });
+
+            Response first = post(client, MESSAGES_PATH, firstTurn, "api-key", "proxyKey1", "X-UPSTREAM-ID", "up-b");
+            assertEquals(200, first.status());
+            assertEquals("keyB", upstreamKey.get());
+            awaitPin();
+
+            Response second = post(client, MESSAGES_PATH, secondTurn, "api-key", "proxyKey1");
+            assertEquals(200, second.status());
+            return upstreamKey.get();
+        }
+    }
+
+    /** Waits for the pin the first turn writes asynchronously; Redis starts empty for each test, so any pin key is it. */
+    @SneakyThrows
+    private void awaitPin() {
+        Field field = AiDial.class.getDeclaredField("redis");
+        field.setAccessible(true);
+        RKeys keys = ((RedissonClient) field.get(dial)).getKeys();
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (!keys.getKeysByPattern("upstream_cache:*").iterator().hasNext()) {
+            assertTrue(System.currentTimeMillis() < deadline, "no pin written in 10 s");
+            Thread.sleep(20);
         }
     }
 
@@ -202,6 +273,11 @@ public class MessagesApiTest extends ResourceBaseTest {
             Thread.sleep(1000); // wait for core to save usage
             Response second = post(client, MESSAGES_PATH, requestBody("claude-limited", false), "api-key", "proxyKey1");
             assertEquals(429, second.status());
+            // the daily window has the longest wait, so it decides: a calendar window asks the client not to retry
+            assertEquals("false", second.headers().get("x-should-retry"));
+            JsonNode error = ProxyUtil.MAPPER.readTree(second.body()).get("error");
+            assertEquals("rate_limit_error", error.get("type").asText());
+            assertTrue(error.get("message").asText().contains("daily token limit for claude-limited"), second.body());
         }
     }
 

@@ -37,19 +37,20 @@ At runtime, set `AIDIAL_SETTINGS` env var pointing to a JSON settings file (see 
 
 ## Architecture
 
-AI DIAL Core is an **HTTP reverse proxy / API gateway** for LLMs built on **Java 21** + **Eclipse Vert.x** (reactive, non-blocking). It exposes an OpenAI-compatible API and routes requests to backend AI providers (Azure OpenAI, AWS, GCP, etc.).
+AI DIAL Core is an **HTTP reverse proxy / API gateway** for LLMs built on **Java 25** + **Eclipse Vert.x** (reactive, non-blocking). It exposes an OpenAI-compatible API and routes requests to backend AI providers (Azure OpenAI, AWS, GCP, etc.).
 
 ### Gradle Modules
 
-| Module                 | Root Package                                | Responsibility                                                                                                                                                                                              |
-|------------------------|---------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `config`               | `com.epam.aidial.core.config`               | POJOs for the dynamic config (`Config`, `Model`, `Application`, `Key`, `Role`, `Route`, `Interceptor`, `ToolSet`, `Upstream`, `Limit`, …) + JSON validation                                                 |
-| `storage`              | `com.epam.aidial.core.storage`              | Blob storage abstraction via Apache JClouds (S3, GCS, Azure Blob, filesystem), Redis-backed resource service, resource descriptors, locking                                                                 |
-| `credentials`          | `com.epam.aidial.core.credentials`          | OAuth2 token management, AES credential encryption, KMS integration (AWS/Azure/GCP)                                                                                                                         |
-| `server`               | `com.epam.aidial.core.server`               | Entry point (`AiDial.java`), HTTP proxy engine (`Proxy.java`), all controllers, services, security, rate limiting, upstream load balancing, telemetry                                                       |
-| `openapi-annotations`  | `com.epam.aidial.core.openapi.annotations`  | Custom annotations for describing OpenAPI operations, schemas, parameters, responses, headers, extensions, and reusable response profiles.                                                                  |
-| `openapi-generator`    | `com.epam.aidial.core.openapi`              | Generates and validates the OpenAPI 3.0 specification from controller annotations, builds schemas and responses, assembles the specification, and merges it with the manually maintained OpenAPI document.  |
-
+| Module                   | Root Package                               | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config`                 | `com.epam.aidial.core.config`              | POJOs for the dynamic config (`Config`, `Model`, `Application`, `Key`, `Role`, `Route`, `Interceptor`, `ToolSet`, `Upstream`, `Limit`, …) + JSON validation                                                                                                                                                                                                                                                    |
+| `storage`                | `com.epam.aidial.core.storage`             | Blob storage abstraction via Apache JClouds (S3, GCS, Azure Blob, filesystem), Redis-backed resource service, resource descriptors, locking                                                                                                                                                                                                                                                                    |
+| `credentials`            | `com.epam.aidial.core.credentials`         | OAuth2 token management, AES credential encryption, KMS integration (AWS/Azure/GCP)                                                                                                                                                                                                                                                                                                                            |
+| `aidial-core-plugin-api` | `com.epam.aidial.core.plugin`              | The contract a plugin jar compiles against: `PluginProvider` (the code behind a `plugins` config entry's `type`, which creates its plugins) and `Plugin` (answering an interface in place of an HTTP origin, calling other deployments through `HostDelegate`); Jackson and Vert.x types. Published to GitHub Packages by the release workflow as `com.epam.aidial:aidial-core-plugin-api` with Core's version |
+| `plugin-samples`         | `com.epam.aidial.core.plugin.samples`      | Sample plugin jar, not in the default image: the `forward` origin plugin, which sends each request on to one deployment through an in-process call (Docker `--build-arg SAMPLE_PLUGINS=true` puts it in the plugin directory `plugins/samples/forward`)                                                                                                                                                        |
+| `server`                 | `com.epam.aidial.core.server`              | Entry point (`AiDial.java`), HTTP proxy engine (`Proxy.java`), all controllers, services, security, rate limiting, upstream load balancing, telemetry                                                                                                                                                                                                                                                          |
+| `openapi-annotations`    | `com.epam.aidial.core.openapi.annotations` | Custom annotations for describing OpenAPI operations, schemas, parameters, responses, headers, extensions, and reusable response profiles.                                                                                                                                                                                                                                                                     |
+| `openapi-generator`      | `com.epam.aidial.core.openapi`             | Generates and validates the OpenAPI 3.0 specification from controller annotations, builds schemas and responses, assembles the specification, and merges it with the manually maintained OpenAPI document.                                                                                                                                                                                                     |
 
 ### Key Server Sub-packages
 
@@ -68,13 +69,13 @@ AI DIAL Core is an **HTTP reverse proxy / API gateway** for LLMs built on **Java
 Two config files govern the system:
 
 - **Static settings** (`aidial.settings.json`): Vert.x server/client options, blob storage provider, Redis connection, identity providers, encryption keys, metrics endpoints. Not hot-reloaded.
-- **Dynamic config** (`aidial.config.json`): models, applications, API keys, roles, interceptors, routes, toolsets, rate-limit pricing. Hot-reloaded at runtime.
+- **Dynamic config** (`aidial.config.json`): models, applications, routers, API keys, roles, interceptors, routes, toolsets, rate-limit pricing. Hot-reloaded at runtime.
 
 See `sample/` for examples of both files; `server/src/main/resources/aidial.settings.json` contains the built-in defaults.
 
 ### Tech Stack
 
-- **Java 21**, **Gradle 8**, **Lombok** (via `io.freefair.lombok` plugin)
+- **Java 25**, **Gradle 9**, **Lombok** (via `io.freefair.lombok` plugin)
 - **Eclipse Vert.x 4.5** — async HTTP server/client (event-loop model)
 - **Apache JClouds** — multi-cloud blob storage
 - **Redisson** — Redis client (caching, distributed locks)
@@ -89,3 +90,45 @@ See `sample/` for examples of both files; `server/src/main/resources/aidial.sett
 Read [docs/CODE_STYLE.md](docs/CODE_STYLE.md) before writing or changing Java in this repo.
 It covers naming, Vert.x event-loop rules, scope discipline, error handling, completing
 cross-cutting changes, tests, and documentation.
+
+## Process: spec-driven with OpenSpec 1.14.3
+
+`openspec/specs/` is the behaviour reference for the parts of Core it covers; read the relevant capability before
+changing that code. The CLI is not installed globally. Where an OpenSpec skill or doc says `openspec`, run
+`npx -y @fission-ai/openspec@1.14.3`. `openspec/config.yaml` holds the project rules the skills and workflows follow.
+
+**When a change is needed.** A PR needs an OpenSpec change when it changes behaviour at a boundary the specs describe:
+the HTTP API, the request Core sends to an origin, or the records Core writes. A plain PR is enough for a fix that
+restores what the spec already says (add the test), a refactor, a dependency update, CI or tooling, docs, and tests for
+existing behaviour.
+
+**Size.** `openspec/config.yaml` defines a small change, and its artifacts are short. For any other change, open a
+draft PR with `proposal.md` and the spec deltas before applying, so the approach is reviewed before the code exists.
+
+**Review.** A reviewer reads the spec delta, then the code, and the Decisions in `design.md` when it has them.
+`tasks.md` and `review.md` are records and need no review.
+
+1. **Propose**: `openspec/changes/<id>/` with `proposal.md`, spec deltas, `design.md` and `tasks.md`, created by
+   `/opsx:propose` (the `openspec-propose` skill) or the `sdd-propose` workflow. Then
+   `npx -y @fission-ai/openspec@1.14.3 validate <id> --strict`.
+2. **Apply**: implement `tasks.md`, ticking each task: `/opsx:apply`, or the `sdd-apply` workflow (implement, an
+   independent verification, a three-lens review, fix).
+3. **Record and archive**: `review.md` in the change folder, then
+   `npx -y @fission-ai/openspec@1.14.3 archive <id> -y`, which merges the deltas into `openspec/specs`; then
+   `validate --specs --strict`. Then one commit, staging explicit paths.
+
+The workflows in `.claude/workflows/` (`sdd-baseline` for specs of existing behaviour, `sdd-propose`, `sdd-apply`, and
+`sdd-audit` after a series of changes) run this with subagents.
+
+## Checks (Git Bash, from the repo root)
+
+Use a JDK 25 as `JAVA_HOME`: the toolchain targets Java 25, and Gradle runs on the same JDK.
+
+```bash
+export JAVA_HOME="<path to a JDK 25>"
+./gradlew checkstyleMain checkstyleTest
+./gradlew :server:test --tests "com.epam.aidial.core.server.SomeApiTest"     # the classes the change touches
+npx -y @fission-ai/openspec@1.14.3 validate --all --strict
+```
+
+Run checkstyle and the targeted test classes locally; the full suite runs in CI after the push.

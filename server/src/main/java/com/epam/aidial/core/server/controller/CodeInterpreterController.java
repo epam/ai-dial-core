@@ -177,8 +177,7 @@ public class CodeInterpreterController {
                             name = "session_id",
                             in = ParameterIn.QUERY,
                             required = true,
-                            description = "Code interpreter session identifier"
-                    )
+                            description = "Code interpreter session identifier")
             },
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = CodeInterpreterFile.class)),

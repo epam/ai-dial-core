@@ -20,11 +20,14 @@ import javax.annotation.Nullable;
  *                         so log entries list claims once, in the order the operator declared them.
  * @param headersBlacklist never null; empty means block nothing.
  * @param headersAllowlist null means the allowlist is disabled, i.e. collect all non-blocked headers.
+ * @param maxPendingBodyHeapPercent the percent of the JVM's maximum heap that the bodies held by rows waiting to be
+ *                         written may fill; once they reach it, new rows are written without bodies. 0 or below
+ *                         means no limit.
  */
 @Slf4j
 public record AnalyticsSettings(boolean collectClaims, boolean collectAllClaims, List<ClaimPath> claimsAllowlist,
                                 boolean collectHeaders, List<Pattern> headersBlacklist,
-                                @Nullable List<Pattern> headersAllowlist) {
+                                @Nullable List<Pattern> headersAllowlist, double maxPendingBodyHeapPercent) {
 
     private static final String ALL_CLAIMS = "*";
 
@@ -58,7 +61,8 @@ public record AnalyticsSettings(boolean collectClaims, boolean collectAllClaims,
                 settings.getBoolean("collectHeaders", false),
                 // default is defined in the bundled aidial.settings.json and always merged in
                 parseHeaderPatterns(settings.getJsonArray("headersBlacklist")),
-                parseHeaderPatterns(settings.getJsonArray("headersAllowlist")));
+                parseHeaderPatterns(settings.getJsonArray("headersAllowlist")),
+                settings.getDouble("maxPendingBodyHeapPercent", -1.0));
     }
 
     private static List<String> parseClaimPaths(JsonArray value) {

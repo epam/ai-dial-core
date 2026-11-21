@@ -32,9 +32,9 @@ final class ResponseSchemaFactory {
         // Paths starting with these patterns are truly external (outside project)
         // Examples: "../external/Schema.yaml", "/absolute/path/Schema.yaml", "http://..."
         return schemaRef.startsWith("../")
-            || schemaRef.startsWith("/")
-            || schemaRef.startsWith("http://")
-            || schemaRef.startsWith("https://");
+                || schemaRef.startsWith("/")
+                || schemaRef.startsWith("http://")
+                || schemaRef.startsWith("https://");
     }
 
     // ========== Helper Methods for ApiSchema ==========
@@ -329,7 +329,7 @@ final class ResponseSchemaFactory {
      */
     public static boolean isMultipartBinaryUpload(ApiSchema schema, String contentType) {
         return MULTIPART_FORM_DATA.equals(contentType)
-            && schema.implementation() == byte[].class;
+                && schema.implementation() == byte[].class;
     }
 
     /**
@@ -409,15 +409,15 @@ final class ResponseSchemaFactory {
 
     static boolean isEmpty(ApiSchema schema) {
         return schema.implementation() == Void.class
-            && schema.schemaRef().isEmpty()
-            && schema.oneOf().length == 0
-            && schema.oneOfSchemaRefs().length == 0
-            && schema.allOf().length == 0
-            && schema.allOfSchemaRefs().length == 0;
+                && schema.schemaRef().isEmpty()
+                && schema.oneOf().length == 0
+                && schema.oneOfSchemaRefs().length == 0
+                && schema.allOf().length == 0
+                && schema.allOfSchemaRefs().length == 0;
     }
 
     private static boolean hasComposition(ApiSchema schema) {
         return schema.oneOf().length > 0 || schema.oneOfSchemaRefs().length > 0
-            || schema.allOf().length > 0 || schema.allOfSchemaRefs().length > 0;
+                || schema.allOf().length > 0 || schema.allOfSchemaRefs().length > 0;
     }
 }
