@@ -1,7 +1,7 @@
 package com.epam.aidial.core.server.function.request;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.buffer.Buffer;
 
 import java.util.List;
 import java.util.Map;
@@ -70,8 +70,10 @@ public interface RequestObject {
 
     /**
      * Clears interceptor-related settings from this request.
+     *
+     * @return whether the request changed
      */
-    void clearInterceptorSettings();
+    boolean clearInterceptorSettings();
 
     /**
      * Applies default body parameters to this request, under every key it does not already carry. Which
@@ -79,21 +81,24 @@ public interface RequestObject {
      * it depends on the interface the request arrived on, not on the shape of the request.
      *
      * @param defaults the default values to apply
+     * @return whether the request changed
      */
-    void applyDefaults(Map<String, Object> defaults);
+    boolean applyDefaults(Map<String, Object> defaults);
 
     /**
-     * Serializes this request to a byte array.
+     * Serializes this request: the received bytes themselves while nothing changed, those bytes with the model value
+     * replaced while nothing else changed, the tree serialized otherwise.
      *
      * @return the serialized request
      * @throws JsonProcessingException if the request cannot be serialized
      */
-    byte[] serialize() throws JsonProcessingException;
+    Buffer serialize() throws JsonProcessingException;
 
     /**
-     * The request's JSON tree, which the enhancement chain changes in place.
+     * The body as it now stands, for reading its tree and for handing it on to a pass Core serves in process. The tree
+     * changes only through the methods of this interface, which keep the body's bytes in step with it.
      */
-    ObjectNode getTree();
+    ReceivedBody getBody();
 
     /**
      * Indicates whether the response should be stored server-side.

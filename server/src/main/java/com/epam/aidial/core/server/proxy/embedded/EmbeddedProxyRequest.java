@@ -6,6 +6,7 @@ import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -124,27 +125,30 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     @Override
     public Future<ProxyResponse> send(Buffer body) {
         if (router != null) {
-            return send(body, router.bodyTree());
+            return send(body, router.bodyTree(), null);
         }
         // taken from the context, so that a later attempt does not get a tree an earlier call has changed
-        ObjectNode tree = proxyContext.getRequestTree();
-        proxyContext.setRequestTree(null);
-        if (tree != null || body.length() == 0) {
-            return send(body, tree);
+        ReceivedBody handed = proxyContext.getPluginBody();
+        proxyContext.setPluginBody(null);
+        if (handed != null || body.length() == 0) {
+            return send(body, handed == null ? null : handed.tree(), handed);
         }
         // a retried attempt: the body is parsed again, off the event loop, and the plugin called back on this context
         return proxyContext.getProxy().getTaskExecutor().submit(() -> parseOrNull(body))
                 .compose(parsed -> reset
                         ? Future.failedFuture(new IllegalStateException("The request was reset before the plugin was called"))
-                        : send(body, parsed));
+                        : send(body, parsed, null));
     }
 
-    private Future<ProxyResponse> send(Buffer body, @Nullable ObjectNode tree) {
+    /**
+     * @param handed the body the pass handed on, which the target pass of an alias hop takes whole
+     */
+    private Future<ProxyResponse> send(Buffer body, @Nullable ObjectNode tree, @Nullable ReceivedBody handed) {
         Promise<ProxyResponse> promise = context.promise();
         if (router != null) {
             host = VertxHostDelegate.forRouter(proxyContext.getProxy(), proxyContext, context, router.callKey());
         } else if (aliasHop) {
-            host = VertxHostDelegate.forAliasHop(proxyContext.getProxy(), proxyContext, context);
+            host = VertxHostDelegate.forAliasHop(proxyContext.getProxy(), proxyContext, context, handed);
         } else {
             host = new VertxHostDelegate(proxyContext.getProxy(), proxyContext, context);
         }
