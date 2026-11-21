@@ -1,15 +1,9 @@
 package com.epam.aidial.core.server.function.request;
 
-import com.epam.aidial.core.server.util.ProxyUtil;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.cfg.JsonNodeFeature;
 import lombok.SneakyThrows;
 
-import java.io.OutputStream;
-import java.security.DigestOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -29,33 +23,65 @@ import java.util.TreeMap;
  */
 public class CacheKeyBuilder {
 
-    // sorts the properties of every object, nested ones included; the UTF-8 generator escapes a surrogate pair
-    // (e.g. an emoji) unless told to combine it into 4 bytes, as String.getBytes does; the stream is reused, so not closed
-    private static final ObjectWriter SORTED_WRITER = ProxyUtil.MAPPER.writer()
-            .with(JsonNodeFeature.WRITE_PROPERTIES_SORTED)
-            .with(JsonWriteFeature.COMBINE_UNICODE_SURROGATES_IN_UTF8)
-            .without(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
+    // the canonical form's tags; with every string's length before it, two different trees never feed the same bytes
+    private static final byte OBJECT_START = '{';
+    private static final byte OBJECT_END = '}';
+    private static final byte ARRAY_START = '[';
+    private static final byte ARRAY_END = ']';
+    private static final byte STRING_TAG = '"';
+    private static final byte SCALAR_TAG = '#';
 
     private final MessageDigest digest;
-    private final OutputStream digestStream;
 
     @SneakyThrows
     public CacheKeyBuilder() {
         // not a security boundary: a collision costs affinity only. MD5 because HotSpot intrinsifies it on every x86-64
         // and aarch64 CPU, while SHA-1 and SHA-256 run far slower over the whole prompt without the CPU SHA extensions
         this.digest = MessageDigest.getInstance("MD5");
-        this.digestStream = new DigestOutputStream(OutputStream.nullOutputStream(), digest);
     }
 
     /**
-     * Canonicalizes (sorts object keys, recursively) and feeds the node into the rolling digest. The node is left
-     * unchanged.
+     * Feeds the node into the rolling digest in a canonical form: object properties sorted by name, nested ones too,
+     * and every string as its UTF-8 bytes after their length. Equal JSON gives equal keys whatever its layout or property
+     * order. The node is left unchanged.
      */
-    @SneakyThrows
     public void update(JsonNode node) {
-        // the same bytes as the sorted node's toString(), written straight into the digest without copying the node;
-        // only a lone surrogate differs: it is escaped, where String.getBytes wrote '?'
-        SORTED_WRITER.writeValue(digestStream, node);
+        // no JSON text: a generator escapes and encodes char by char, slower than the digest itself; getBytes copies an
+        // ASCII string in bulk
+        switch (node.getNodeType()) {
+            case OBJECT -> {
+                digest.update(OBJECT_START);
+                sortedProperties(node).forEach((name, value) -> {
+                    text(name);
+                    update(value);
+                });
+                digest.update(OBJECT_END);
+            }
+            case ARRAY -> {
+                digest.update(ARRAY_START);
+                node.forEach(this::update);
+                digest.update(ARRAY_END);
+            }
+            case STRING -> {
+                digest.update(STRING_TAG);
+                text(node.textValue());
+            }
+            default -> {
+                // a number as parsed (1 and 1.0 differ), a boolean or null
+                digest.update(SCALAR_TAG);
+                text(node.asText());
+            }
+        }
+    }
+
+    private void text(String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        int length = bytes.length;
+        digest.update((byte) (length >>> 24));
+        digest.update((byte) (length >>> 16));
+        digest.update((byte) (length >>> 8));
+        digest.update((byte) length);
+        digest.update(bytes);
     }
 
     /**
@@ -87,7 +113,7 @@ public class CacheKeyBuilder {
 
     /**
      * The object's own properties sorted by name, for a caller that skips some of them. The values are not copied:
-     * {@link #update} sorts their nested properties as it writes them.
+     * {@link #update} sorts their nested properties as it feeds them.
      */
     public static Map<String, JsonNode> sortedProperties(JsonNode object) {
         Map<String, JsonNode> propertiesByName = new TreeMap<>();
