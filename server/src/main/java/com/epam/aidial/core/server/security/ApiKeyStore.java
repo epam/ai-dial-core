@@ -19,10 +19,12 @@ import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
+import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,6 +32,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 import static com.epam.aidial.core.server.security.ApiKeyGenerator.generateKey;
+import static com.epam.aidial.core.server.security.ApiKeyGenerator.isGeneratedKey;
 import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPARATOR;
 
 /**
@@ -110,6 +113,9 @@ public class ApiKeyStore {
         while (true) {
             String oldJson = bucket.get();
             if (oldJson == null) {
+                oldJson = readOnMaster(redisKey);
+            }
+            if (oldJson == null) {
                 throw new IllegalArgumentException("Per request key is not found: " + key);
             }
 
@@ -137,6 +143,9 @@ public class ApiKeyStore {
         return taskExecutor.submit(() -> blockingCallTracer.trace("auth.api_key.lookup", () -> {
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
             String json = bucket.get();
+            if (json == null && isGeneratedKey(key)) {
+                json = readOnMaster(redisKey);
+            }
             return ProxyUtil.convertToObject(json, ApiKeyData.class);
         })).compose(result -> {
             if (result == null) {
@@ -144,6 +153,15 @@ public class ApiKeyStore {
             }
             return Future.succeededFuture(result);
         });
+    }
+
+    /**
+     * Reads the key from the Redis master. {@link RBucket#get()} reads a replica, which may not have a key
+     * issued a moment ago yet.
+     */
+    private String readOnMaster(String redisKey) {
+        return redis.getScript(StringCodec.INSTANCE).eval(RScript.Mode.READ_WRITE,
+                "return redis.call('get', KEYS[1])", RScript.ReturnType.VALUE, List.of(redisKey));
     }
 
     private static Future<ApiKeyData> validateIpAddressRange(ApiKeyData apiKeyData, String clientIpAddress) {

@@ -21,8 +21,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
+import org.redisson.api.RBucket;
 import org.redisson.api.RKeys;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
@@ -40,9 +42,13 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -353,6 +359,64 @@ public class ApiKeyStoreTest {
         assertEquals(apiKeyData, res1.result());
 
         assertTrue(store.getApiKeyData("unknown-key", null).failed());
+    }
+
+    @Test
+    public void testGetApiKeyDataReadsMasterWhenReplicaMisses() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        ApiKeyData apiKeyData = new ApiKeyData();
+        store.assignPerRequestApiKey(apiKeyData);
+        ApiKeyStore laggingStore = new ApiKeyStore(taskExecutor, mockLaggingReplica(), null, new JsonObject(), BlockingCallTracer.NOOP);
+
+        assertEquals(apiKeyData, laggingStore.getApiKeyData(apiKeyData.getPerRequestKey(), null).result());
+
+        Future<ApiKeyData> unknown = laggingStore.getApiKeyData(ApiKeyGenerator.generateKey(), null);
+        assertTrue(unknown.failed());
+        assertEquals(HttpStatus.UNAUTHORIZED, ((HttpException) unknown.cause()).getStatus());
+    }
+
+    @Test
+    public void testGetApiKeyDataSkipsMasterForKeyOfAnotherShape() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        RedissonClient laggingRedis = mock(RedissonClient.class);
+        when(laggingRedis.getBucket(any(), any())).thenReturn(mock(RBucket.class));
+        ApiKeyStore laggingStore = new ApiKeyStore(taskExecutor, laggingRedis, null, new JsonObject(), BlockingCallTracer.NOOP);
+
+        assertTrue(laggingStore.getApiKeyData("unknown-key", null).failed());
+        verify(laggingRedis, never()).getScript(StringCodec.INSTANCE);
+    }
+
+    @Test
+    public void testUpdateApiKeyReadsMasterWhenReplicaMisses() {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        store.assignPerRequestApiKey(apiKeyData);
+        ApiKeyStore laggingStore = new ApiKeyStore(taskExecutor, mockLaggingReplica(), null, new JsonObject(), BlockingCallTracer.NOOP);
+        MutableObject<String> seen = new MutableObject<>();
+
+        laggingStore.updatePerRequestApiKey(apiKeyData.getPerRequestKey(), json -> {
+            seen.setValue(json);
+            return json;
+        });
+
+        assertEquals(apiKeyData, ProxyUtil.convertToObject(seen.getValue(), ApiKeyData.class));
+        assertThrows(IllegalArgumentException.class,
+                () -> laggingStore.updatePerRequestApiKey(ApiKeyGenerator.generateKey(), json -> json));
+    }
+
+    /**
+     * A client whose plain reads find nothing, as a replica behind the master does, and whose scripts run on the real Redis.
+     */
+    private static RedissonClient mockLaggingReplica() {
+        RedissonClient laggingRedis = mock(RedissonClient.class);
+        when(laggingRedis.getBucket(any(), any())).thenReturn(mock(RBucket.class));
+        when(laggingRedis.getScript(StringCodec.INSTANCE)).thenReturn(redissonClient.getScript(StringCodec.INSTANCE));
+        return laggingRedis;
     }
 
     @Test
