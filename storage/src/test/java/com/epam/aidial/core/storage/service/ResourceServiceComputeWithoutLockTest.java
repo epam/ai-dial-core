@@ -337,6 +337,7 @@ class ResourceServiceComputeWithoutLockTest {
         ResourceDescriptor descriptor = limit("requests");
         String redisKey = RedisUtil.redisKey(descriptor, null);
         service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+        queue().add(100, redisKey);
 
         // another pod's sync uploads "1", and a write lands while it does
         BlobStorage uploadingStorage = Mockito.spy(storage);
@@ -354,7 +355,7 @@ class ResourceServiceComputeWithoutLockTest {
 
         assertEquals("1", blobBody(descriptor));
         assertEquals("false", new String(record(redisKey).get("synced"), StandardCharsets.UTF_8));
-        assertTrue(queue().contains(redisKey), "the write that landed during the upload must stay queued");
+        assertTrue(queue().getScore(redisKey) > 100, "the write that landed during the upload must stay queued, with a new deadline");
 
         sync.run();
         assertEquals("2", blobBody(descriptor));
