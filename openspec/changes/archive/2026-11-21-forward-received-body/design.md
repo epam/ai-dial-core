@@ -73,9 +73,9 @@ stand-in bytes as today. An embedded plugin gets `serialize()` as `body` and the
 
 | Per pass | Today | After | How measured |
 |----------|-------|-------|--------------|
-| Body unchanged or only `model` changed | 1 parse, 1 full serialization (always for Messages, Responses and in-process passes) | 1 parse, 1 UTF-8 check, no serialization; 1 copy when `model` is replaced | A/B on the direct path in October: 26% less Core CPU per request |
+| Body unchanged or only `model` changed | 1 parse, 1 full serialization (always for Messages, Responses and in-process passes) | 1 parse, 1 UTF-8 check, no serialization; 1 copy when `model` is replaced | A/B on the direct path, 2026-11-21 (650 KB mean body, plugin-served model, same nodes, JFR): serialization 6.68 → 0.15 ms, parse 2.95 → 3.89 ms per request, net −5.6 of 45.0 ms (−12%). The October "26% less" compared against a slow baseline run |
 | Any other change | 1 parse, 1 serialization | the same, plus the UTF-8 check | - |
-| In-process alias, router and model chain | the last pass serializes the whole body | the last pass replaces `model` in the client's bytes; the router's stand-in serialization stays | not measured (task 5.1) |
+| In-process alias, router and model chain | the last pass serializes the whole body | the last pass replaces `model` in the client's bytes; the router's stand-in serialization stays | task 5.1, 2026-11-21: serialization 7.39 → 0.25 ms, parse 3.36 → 4.32 ms per user request through tier alias → router → alias → model, net −6.2 ms |
 | Redis and blob round trips | - | unchanged | - |
 
 ## Risks / Trade-offs

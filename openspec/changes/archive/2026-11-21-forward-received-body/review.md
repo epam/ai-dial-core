@@ -31,9 +31,13 @@
 
 None.
 
+## Measured
+
+Task 5.1: per user request, serialization 7.39 → 0.25 ms and parse 3.36 → 4.32 ms through the tier chain, 6.68 →
+0.15 ms and 2.95 → 3.89 ms on the model called directly (2,000 users, 650 KB mean body, same nodes, JFR). The strict
+parse costs about 1 ms per request on the event loop.
+
 ## Not done
 
-- Task 5.1: the A/B of Core CPU per request on the in-process alias, router and plugin-served model chain needs the
-  perf environment.
 - The decide body and fallback stand-in of a decision router served in process still serialize the call's tree; that
   is a separate change.

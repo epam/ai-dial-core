@@ -53,5 +53,8 @@
 
 ## 5. Measurement
 
-- [ ] 5.1 Core CPU per request, A/B against `development`, on the in-process alias, router and plugin-served model
-  chain with large bodies (deferred: needs the perf environment).
+- [x] 5.1 Core CPU per request, A/B against `development`, on the in-process alias, router and plugin-served model
+  chain with large bodies. Measured 2026-11-21: 2,000 users, Anthropic Messages with a 650 KB mean body, `development`
+  and an image with this change and three other perf changes on the same two nodes, JFR ms of Core CPU per user
+  request. Tier alias → router → alias → model: serialization 7.39 → 0.25, parse 3.36 → 4.32 (the strict parse),
+  net −6.2 of 67.0 ms. Model called directly: serialization 6.68 → 0.15, parse 2.95 → 3.89, net −5.6 of 45.0 ms.
