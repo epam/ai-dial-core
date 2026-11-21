@@ -10,9 +10,10 @@ can be renamed now with a deprecated alias instead of a breaking cycle later.
 ## What Changes
 
 - A `plugins` entry names its plugin with `pluginId`. `type` is still accepted on input as a deprecated alias (PUT,
-  validate and apply manifests, config files, blobs already stored); a body with both is refused with `400` when they
-  name different ids. Core stores and returns `pluginId` only, invalid entries included, so the next write of an
-  entry rewrites its blob with the new name. Warnings name `pluginId` whichever name the body used.
+  validate and apply manifests, config files, blobs already stored); a body with both is refused with `400`. Each
+  config file is read on its own before the files merge, so an overlay's `pluginId` replaces a base file's `type`.
+  Core stores and returns `pluginId` only, invalid entries included, so the next write of an entry rewrites its blob
+  with the new name. Warnings name `pluginId` whichever name the body used.
 - A provider may declare a settings schema (JSON Schema draft-07, the draft Core uses for application type and
   catalog schemas). Core checks `settings` against it on every write and rebuild before the provider's own check,
   with the same outcomes as a rejection by the provider: the schema is a validation rule, not only a hint. A schema

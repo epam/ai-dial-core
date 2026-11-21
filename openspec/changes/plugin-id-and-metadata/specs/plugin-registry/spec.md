@@ -246,10 +246,10 @@ directory it does not load.
 ## ADDED Requirements
 
 ### Requirement: Deprecated plugin type alias
-Core SHALL accept `type` in place of `pluginId` as a deprecated alias wherever it reads a `plugins` entity: a
-Configuration API write, an admin validate or apply manifest, the config files and a stored blob. A body with both
-SHALL bind only when both name the same id. Core SHALL store and return the entity with `pluginId` only, an entity
-recorded as invalid included, and name `pluginId` in its warnings, whichever name the body used.
+Core SHALL accept `type` as a deprecated alias of `pluginId` wherever it reads a `plugins` entity: API writes, admin
+validate and apply manifests, config files and stored blobs. A body with both SHALL not bind; each config file SHALL
+be read on its own before the files merge, so a later file's `pluginId` replaces an earlier `type`. Core SHALL store
+and return `pluginId` only, for an invalid entity with one of the names too, and name `pluginId` in its warnings.
 
 #### Scenario: Written with the alias
 - **WHEN** an admin sends `PUT /v1/plugins/platform/p1` with `{"type": "jar-echo"}` and a provider of id `jar-echo`
@@ -257,13 +257,9 @@ recorded as invalid included, and name `pluginId` in its warnings, whichever nam
 - **THEN** Core answers `200`, the blob `plugins/platform/p1` holds `pluginId: "jar-echo"` and no `type`, and
   `GET /v1/plugins/platform/p1` answers `pluginId: "jar-echo"` and no `type`
 
-#### Scenario: Both names with different ids
-- **WHEN** an admin sends `PUT /v1/plugins/platform/p1` with `{"pluginId": "jar-echo", "type": "test-echo"}`
-- **THEN** Core answers `400` and writes nothing
-
-#### Scenario: Both names with the same id
+#### Scenario: Both names
 - **WHEN** an admin sends `PUT /v1/plugins/platform/p1` with `{"pluginId": "jar-echo", "type": "jar-echo"}`
-- **THEN** Core answers `200`, and `GET /v1/plugins/platform/p1` answers `pluginId: "jar-echo"` and no `type`
+- **THEN** Core answers `400` and writes nothing
 
 #### Scenario: Unknown id written with the alias
 - **WHEN** no provider of id `missing` is loaded and an admin sends `PUT /v1/plugins/platform/p1` with
@@ -286,14 +282,21 @@ recorded as invalid included, and name `pluginId` in its warnings, whichever nam
 - **THEN** `GET /v1/plugins/platform/p1` answers `pluginId: "missing"`, no `type`, and `status: "invalid"`
 
 #### Scenario: File entry with the alias
-- **WHEN** the config file declares `plugins: {"file-plugin": {"type": "test-echo", "settings": {"greeting": "hi"}}}`
-- **THEN** `GET /v1/admin/config/file/plugins/file-plugin` answers `pluginId: "test-echo"` and `status: "valid"`
+- **WHEN** the config file declares `plugins: {"legacy-plugin": {"type": "test-echo", "settings": {"greeting":
+  "hi"}}}`
+- **THEN** `GET /v1/admin/config/file/plugins/legacy-plugin` answers `pluginId: "test-echo"` and `status: "valid"`
+
+#### Scenario: Overlay changes the plugin
+- **WHEN** a config file declares `plugins.p1` as `{"type": "test-echo", "settings": {"greeting": "hi"}}` and a
+  config file after it in the list declares `plugins.p1` as `{"pluginId": "test-origin"}`
+- **THEN** Core starts, and the file config has `plugins.p1` with `pluginId: "test-origin"`, `settings.greeting:
+  "hi"` and no `type`
 
 ### Requirement: Settings checked against the provider's schema
-When the provider of a declaration declares a settings schema (JSON Schema draft-07), Core SHALL check `settings`
-against it before the provider's own check, and SHALL not call that check when the schema rejects the settings. Each
-violation SHALL be a warning whose field is `settings.<path>`, or `settings` for the whole object, a violation about
-one property (missing, or not allowed) naming that property, with the outcomes of Settings validated by the provider.
+When a provider declares a settings schema (JSON Schema draft-07), Core SHALL check `settings` against it before the
+provider's own check, and SHALL skip that check when the schema rejects them. Each violation SHALL be a warning on
+`settings.<path>`, or on `settings` for the whole object, a missing or not allowed property naming that property; a
+check that fails SHALL be one warning on `settings`. The outcomes are those of Settings validated by the provider.
 
 #### Scenario: Wrong value type
 - **WHEN** the loaded provider `test-schema` declares a schema requiring a string `greeting`, and an admin sends
@@ -315,6 +318,12 @@ one property (missing, or not allowed) naming that property, with the outcomes o
   `{"pluginId": "test-schema", "settings": {"greeting": "hi"}}`
 - **THEN** Core answers `200`, and the provider's own check was called with those settings
 
+#### Scenario: Schema check fails
+- **WHEN** a loaded provider declares the schema `{"allOf": [{"$ref": "#"}]}`, which refers to itself without
+  reading the settings, and an admin writes an entry of it
+- **THEN** Core answers `422` with one warning whose `field` is `settings`, writes nothing, and the provider's own
+  check is not called
+
 #### Scenario: Rejected by the schema in a batch
 - **WHEN** an admin sends `POST /v1/admin/validate` with one `Plugin` manifest `plugins/platform/p1` of plugin id
   `test-schema` whose `spec.settings` is `{"greeting": 1}`
@@ -326,10 +335,10 @@ one property (missing, or not allowed) naming that property, with the outcomes o
 - **THEN** the entity is dropped and recorded as invalid with warning field `settings.greeting`
 
 ### Requirement: Plugin metadata errors stop the start
-Core SHALL fail to start, with a message naming the provider and its plugin directory, when a loaded provider declares
-a settings schema that is not a valid JSON Schema draft-07 document, that names another draft in `$schema`, or that
-refers to a schema outside itself, when it declares an empty list of targets, or when reading its metadata throws.
-Core SHALL load no settings schema, and nothing a schema refers to, from a url.
+Core SHALL fail to start, naming the provider and its plugin directory, when a loaded provider declares a settings
+schema that is not valid JSON Schema draft-07, names another draft in `$schema`, or has a `$ref` anywhere to a schema
+outside itself other than the draft-07 meta-schema; when it declares no targets; or when reading its metadata throws.
+Core SHALL load nothing a settings schema refers to from a url.
 
 #### Scenario: Invalid settings schema
 - **WHEN** `<plugins.dir>/custom/bad/` holds a jar whose provider declares id `bad` and the settings schema
@@ -341,14 +350,24 @@ Core SHALL load no settings schema, and nothing a schema refers to, from a url.
   `{"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}`
 - **THEN** Core does not start, with a message naming `bad`, `custom/bad` and `$schema`
 
+#### Scenario: Draft-07 named by its https address
+- **WHEN** `<plugins.dir>/custom/good/` holds a jar whose provider declares id `good` and the settings schema
+  `{"$schema": "https://json-schema.org/draft-07/schema#", "type": "object"}`
+- **THEN** Core starts, and `GET /v1/admin/plugin-providers` lists `good` with that schema
+
 #### Scenario: Remote reference
 - **WHEN** the provider `bad` declares the settings schema `{"$ref": "<url>"}`, where `<url>` is served by a local
   HTTP server
 - **THEN** Core does not start, with a message naming `bad`, `custom/bad` and `<url>`, and the server receives no
   request
 
+#### Scenario: Remote reference no keyword uses
+- **WHEN** the provider `bad` declares the settings schema `{"type": "object", "definitions": {"x": {"$ref":
+  "<url>"}}}`, where nothing refers to `#/definitions/x`
+- **THEN** Core does not start, with a message naming `bad`, `custom/bad` and `<url>`
+
 #### Scenario: Metadata that throws
-- **WHEN** the provider `bad` throws from `settingsSchema()`
+- **WHEN** reading the settings schema of the provider `bad` throws
 - **THEN** Core does not start, with a message naming the provider class and `custom/bad`
 
 #### Scenario: No targets

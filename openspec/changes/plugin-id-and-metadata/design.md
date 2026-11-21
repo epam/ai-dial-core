@@ -26,24 +26,28 @@ docs, and the listing shows it as `directory`, so the two ids are not confused.
 
 ### D2. `type` is read, never written
 
-The creator takes `pluginId` and `type` as two optional parameters and refuses a body with neither, with a blank
-value, or with both naming different ids, which the write path answers with `400`. Both naming the same id bind:
-`FileConfigStore.loadConfig` merges the config files into one tree before binding, so an overlay that moves an entry
-to `pluginId` over a base file that still says `type` gives both names, and refusing that would stop the whole file
-config. `type` is a creator parameter only, with no field or getter, so Core stores and returns `pluginId` and the
-OpenAPI schema shows only `pluginId` and `settings`.
+The creator takes `pluginId` and `type` as two optional parameters and refuses a body with both, with neither or
+with a blank value, which the write path answers with `400`. `type` is a creator parameter only, with no field or
+getter, so Core stores and returns `pluginId` and the OpenAPI schema shows only `pluginId` and `settings`.
+
+`FileConfigStore.loadConfig` merges the config files into one tree before it binds, so a base file that says `type`
+and an overlay that says `pluginId` would give both names. Each file is therefore read into its own tree first, and
+in that tree's `plugins` entries a `type` with no `pluginId` beside it is renamed to `pluginId`; then the trees
+merge. An overlay's `pluginId` replaces the base file's id as any other field does, whichever name the base used.
 
 An entity recorded as invalid is served from its stored body (`ConfigResourceController.projectInvalidItem`), not
 from a bound object, so for a plugin that projection renames `type` to `pluginId` when the body has `type` only. A
-body with both names that did not bind is shown as stored.
+body with both names, which did not bind, is shown as stored.
 
 docs/CODE_STYLE.md forbids renaming a Jackson-bound field in `config`, because the name is a public key of the config
 files. This change breaks that rule on purpose: no release tag contains `plugins`, and the alias keeps every file and
 blob that says `type` loading.
 
 **Rejected: `@JsonAlias("type")`** - a body with both names binds silently, the last one winning.
-**Rejected: refuse both names whatever their values** - breaks the file overlay above for a rename that changes
-nothing.
+**Rejected: bind both names when they name the same id** - covers an overlay that only renames, not one that changes
+the plugin, and the per-file rename covers both.
+**Rejected: rename in the merged tree** - by then a base `type` and an overlay `pluginId` sit side by side, and which
+one came later is lost.
 **Rejected: return both names until the alias goes** - every blob would carry the duplicate, and a client changing
 the plugin would have to change both.
 
@@ -61,8 +65,16 @@ provider that overrides neither has a null id, which the existing "declares no i
 The schema is the provider's own declaration of its settings, so Core checks it on the same surfaces as `validate()`
 and with the same outcomes. When the schema rejects the settings, `validate()` is not called. Each violation
 becomes a warning: the field is `settings` plus the validator's instance location (`settings.greeting`,
-`settings.items[0].name`), and for a violation the validator reports about one property (`required`,
-`additionalProperties`, `dependencies`) the field names that property. `validate()` gets a
+`settings.items[0].name`). `required` and `additionalProperties` are reported on the object, so for them the field
+is the location plus the property (`settings.a.b`). A `dependencies` violation stays on the object, because the
+validator names the property that is present, not the one that is missing.
+
+The schema check runs in the guarded block that already catches what `validate()` throws (`RuntimeException |
+LinkageError`), with `StackOverflowError` added. A schema that refers to itself without reading input,
+`{"allOf": [{"$ref": "#"}]}`, passes the start (the validator allows ref cycles) and overflows on every check; the
+guard turns that, and any other failure of the check, into one warning on `settings`.
+
+`validate()` gets a
 default that accepts everything, so a plugin whose rules a schema can say needs no validation code.
 
 **Rejected: a hint for the admin console only** - the schema and `validate()` would drift, and the console would
@@ -72,20 +84,26 @@ it throws would hide the schema's precise message.
 
 ### D5. Draft-07 with the validator Core already has, compiled once at start
 
-At load Core checks each declared schema in four steps, and a failure of any stops the start with a message naming
+At load Core checks each declared schema in five steps, and a failure of any stops the start with a message naming
 the id and the plugin directory:
 
-1. `$schema` is absent or the draft-07 IRI (`http://json-schema.org/draft-07/schema`, with or without `#`). Neither
-   the meta-schema nor the V7 factory refuses another draft by itself: the meta-schema only asks for a URI, and the
-   factory compiles a schema by the draft its `$schema` names.
-2. The schema is valid against the draft-07 meta-schema bundled in the `networknt` jar.
-3. The schema compiles with a V7 factory whose schema loaders start with an `AllowSchemaLoader` that allows only
+1. `$schema` is absent or the draft-07 IRI (`http://` or `https://json-schema.org/draft-07/schema`, with or without
+   `#`; the validator maps both forms to its bundled meta-schema). Neither the meta-schema nor the V7 factory refuses
+   another draft by itself: the meta-schema only asks for a URI, and the factory compiles a schema by the draft its
+   `$schema` names.
+2. Every `$ref` anywhere in the node is a place in the document (`#...`) or the draft-07 meta-schema IRI. Loading
+   only follows the refs a validation keyword reaches, so without this walk a remote `$ref` under `definitions` that
+   nothing uses, or under an unknown keyword, would pass and reach the console through the listing. The walk also
+   refuses a `$ref` inside a `const`, `enum` or `default` value, which no settings schema needs.
+3. The schema is valid against the draft-07 meta-schema bundled in the `networknt` jar.
+4. The schema compiles with a V7 factory whose schema loaders start with an `AllowSchemaLoader` that allows only
    `classpath:draft-07/schema`. The factory maps the json-schema.org IRIs to `classpath:` before it asks a loader,
    so the bundled draft-07 meta-schema still loads, and any other `$ref` target (`http`, `https`, `file`, another
    `classpath:` resource, a relative path) throws instead of being loaded.
-4. `initializeValidators()` runs on the compiled schema, so a `$ref` fails here, at start, and never on a check.
+5. `initializeValidators()` runs on the compiled schema, so a reached `$ref` that cannot load fails here, at start.
+   With step 2 this only guards a mistake in the walk; the loader of step 4 keeps a check from loading anything.
 
-Core keeps the compiled schema beside the provider. A check reuses it, and it is thread-safe, so the event-loop
+Core keeps a `deepCopy()` of the declared node and the compiled schema beside the provider. A check reuses it, and it is thread-safe, so the event-loop
 checks stay cheap and never load anything.
 
 Every call into the provider at load (`id()`, `settingsSchema()`, `targets()`, `description()`) runs in one try
@@ -117,7 +135,9 @@ the enum's order. Core does not compare a plugin url with the targets.
 ### D7. Core reads a provider's metadata once, at start
 
 The registry keeps, per id, the provider, its directory, the jar's version, the description, the targets and the
-schema (the node as declared and the compiled form). The listing serves that copy and calls no plugin code.
+schema (the node as declared and the compiled form). It keeps copies (`deepCopy()` of the node, `EnumSet.copyOf` of
+the targets, which refuses a null), so a provider that changes a shared node or set later cannot make the listing
+differ from what Core checks with. The listing serves those copies and calls no plugin code.
 
 **Rejected: ask the provider on every listing request** - plugin code on a request path for no gain, and the
 listed schema could differ from the one Core checks with.
@@ -149,8 +169,10 @@ with it.
 |---|---|---|---|
 | Entry field | `type` | `pluginId`; `type` accepted as an alias | Plugin entity shape; Deprecated plugin type alias |
 | Body with `pluginId` | `400` (unknown field) | accepted | Plugin entity shape |
-| Body with both names | - | `400` when the ids differ, else bound | Deprecated plugin type alias |
-| Stored blob and GET, invalid entities included | `type` | `pluginId` | Deprecated plugin type alias |
+| Body with both names | - | `400` | Deprecated plugin type alias |
+| Config files | merged, then bound | each file's `type` renamed, then merged and bound | Deprecated plugin type alias |
+| Stored blob and GET, invalid entities with one name included | `type` | `pluginId` | Deprecated plugin type alias |
+| Schema check that throws | - | one warning on `settings` | Settings checked against the provider's schema |
 | Warning for an unknown plugin | field `type` | field `pluginId` | Unknown plugin id is a dangling reference |
 | Settings check | the provider's `validate()` | the schema, then `validate()` | Settings checked against the provider's schema |
 | Start | - | fails on an invalid schema, another draft, an outside `$ref`, empty targets or throwing metadata | Plugin metadata errors stop the start |
@@ -199,14 +221,14 @@ config writes and rebuilds; the listing is an admin request that reads data kept
   metadata checks and the schema compile), `listJars` and `PluginJars` (the manifest version per registered class),
   `get`; a new `list` for the listing.
 - `server/src/main/java/com/epam/aidial/core/server/config/ConfigPostProcessor.java:validatePlugin` (the schema check
-  before `validate()`, field `pluginId`), `processPlugins` (javadoc).
+  before `validate()` inside the guarded block, field `pluginId`), `processPlugins` (javadoc).
 - `server/src/main/java/com/epam/aidial/core/server/service/config/ConfigApplyService.java:applyPlugin` (the soft
   failure looks up `getPluginId()`).
 - `server/src/main/java/com/epam/aidial/core/server/plugin/PluginManager.java:create` (looks up `getPluginId()`).
 - `server/src/main/java/com/epam/aidial/core/server/controller/ConfigResourceController.java:checkPlugin` (unchanged
   call, for reference); `projectInvalidItem` (renames `type` to `pluginId` in a plugin payload that has `type` only).
-- `server/src/main/java/com/epam/aidial/core/server/config/FileConfigStore.java:loadConfig` (the tree merge that can
-  give both names; unchanged).
+- `server/src/main/java/com/epam/aidial/core/server/config/FileConfigStore.java:loadConfig` (reads each file into
+  its own tree, renames `type` in its `plugins` entries, then merges); `FileConfigStoreTest.java`.
 - New `server/src/main/java/com/epam/aidial/core/server/controller/AdminPluginProvidersController.java`, modelled on
   `AdminHealthConfigController.java:handle`; its answer item a record in `server/src/main/java/com/epam/aidial/core/server/data/`,
   as `HealthResponse.java`.
