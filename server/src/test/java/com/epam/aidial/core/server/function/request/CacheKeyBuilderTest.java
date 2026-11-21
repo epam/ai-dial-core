@@ -4,52 +4,74 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
 
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class CacheKeyBuilderTest {
 
     @Test
-    void testUpdate_hashesSortedNodeWithoutChangingIt() throws Exception {
+    void testUpdate_ignoresLayoutAndPropertyOrder() throws Exception {
         String json = "{\"z\": [{\"y\": 1, \"b\": \"Привет 😀 \\\"q\\\"\"}, 2.5, null], \"a\": {\"d\": true, \"c\": \"x\"}}";
+        String reordered = "{\"a\":{\"c\":\"x\",\"d\":true},\"z\":[{\"b\":\"Привет 😀 \\\"q\\\"\",\"y\":1},2.5,null]}";
         JsonNode node = ProxyUtil.MAPPER.readTree(json);
-        CacheKeyBuilder builder = new CacheKeyBuilder();
-        builder.update(node);
 
-        // the keys before update streamed the sorted node: they must not change
-        assertEquals(md5("{\"a\":{\"c\":\"x\",\"d\":true},\"z\":[{\"b\":\"Привет 😀 \\\"q\\\"\",\"y\":1},2.5,null]}"),
-                builder.buildKey("p", false).hash());
+        assertEquals(key(reordered), key(node));
         assertEquals(ProxyUtil.MAPPER.readTree(json).toString(), node.toString());
     }
 
     @Test
-    void testUpdate_accumulatesAcrossCalls() throws Exception {
-        CacheKeyBuilder builder = new CacheKeyBuilder();
-        builder.update(ProxyUtil.MAPPER.readTree("{\"b\": 1, \"a\": 2}"));
-        builder.update(ProxyUtil.MAPPER.readTree("\"x\""));
-
-        assertEquals(md5("{\"a\":2,\"b\":1}\"x\""), builder.buildKey("p", false).hash());
+    void testUpdate_tellsStructuresApart() throws Exception {
+        assertNotEquals(key("[\"ab\"]"), key("[\"a\", \"b\"]"));
+        assertNotEquals(key("[[\"a\"], \"b\"]"), key("[[\"a\", \"b\"]]"));
+        assertNotEquals(key("{\"a\": \"b\"}"), key("[\"a\", \"b\"]"));
+        assertNotEquals(key("\"1\""), key("1"));
+        assertNotEquals(key("1"), key("1.0"));
+        assertNotEquals(key("\"true\""), key("true"));
+        assertNotEquals(key("\"null\""), key("null"));
     }
 
     @Test
-    void testUpdate_escapesLoneSurrogate() throws Exception {
-        // String.getBytes wrote '?' for it before, so such a prompt gets a new key once
+    void testUpdate_accumulatesAcrossCalls() throws Exception {
+        JsonNode first = ProxyUtil.MAPPER.readTree("{\"b\": 1, \"a\": 2}");
+        JsonNode second = ProxyUtil.MAPPER.readTree("\"x\"");
         CacheKeyBuilder builder = new CacheKeyBuilder();
-        builder.update(ProxyUtil.MAPPER.getNodeFactory().textNode("a" + (char) 0xD83D + "b"));
+        builder.update(first);
+        String afterFirst = builder.buildKey("p", false).hash();
+        builder.update(second);
+        String afterSecond = builder.buildKey("p", false).hash();
 
-        assertEquals(md5("\"a\\uD83Db\""), builder.buildKey("p", false).hash());
+        assertEquals(key(first), afterFirst);
+        assertNotEquals(afterFirst, afterSecond);
+        CacheKeyBuilder reversed = new CacheKeyBuilder();
+        reversed.update(second);
+        reversed.update(first);
+        assertNotEquals(afterSecond, reversed.buildKey("p", false).hash());
+    }
+
+    @Test
+    void testBuildKey_pinsTheCanonicalForm() throws Exception {
+        // pins the persisted key format: changing it orphans every upstream cache entry in Redis
+        byte[] canonical = {'{', 0, 0, 0, 1, 'a', '[', '"', 0, 0, 0, 1, 'x', '#', 0, 0, 0, 1, '1', ']', '}'};
+        String expected = HexFormat.of().formatHex(MessageDigest.getInstance("MD5").digest(canonical));
+
+        assertEquals(expected, key("{\"a\": [\"x\", 1]}"));
     }
 
     @Test
     void testBuildKey_isLowercaseMd5Hex() {
-        // pins the persisted key format: changing it orphans every upstream cache entry in Redis
         assertEquals("d41d8cd98f00b204e9800998ecf8427e", new CacheKeyBuilder().buildKey("p", false).hash());
     }
 
-    private static String md5(String text) throws Exception {
-        return HexFormat.of().formatHex(MessageDigest.getInstance("MD5").digest(text.getBytes(StandardCharsets.UTF_8)));
+    private static String key(String json) throws Exception {
+        return key(ProxyUtil.MAPPER.readTree(json));
+    }
+
+    private static String key(JsonNode node) {
+        CacheKeyBuilder builder = new CacheKeyBuilder();
+        builder.update(node);
+        return builder.buildKey("p", false).hash();
     }
 }

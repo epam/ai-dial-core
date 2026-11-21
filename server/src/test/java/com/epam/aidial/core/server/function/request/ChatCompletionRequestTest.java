@@ -3,12 +3,10 @@ package com.epam.aidial.core.server.function.request;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
 
@@ -389,12 +387,12 @@ class ChatCompletionRequestTest {
         List<CacheKey> keys = request.buildCacheKeys(List.of("prefix.body.messages"));
 
         assertEquals(List.of("prefix.body.messages[0]", "prefix.body.messages[1]"), keys.stream().map(CacheKey::path).toList());
-        assertEquals(md5("\"x\""), keys.get(0).hash());
-        assertEquals(md5("\"x\"\"user\""), keys.get(1).hash());
-    }
-
-    private static String md5(String text) throws Exception {
-        return HexFormat.of().formatHex(MessageDigest.getInstance("MD5").digest(text.getBytes(StandardCharsets.UTF_8)));
+        // the string message feeds the digest as it is, then the object message its values
+        CacheKeyBuilder expected = new CacheKeyBuilder();
+        expected.update(TextNode.valueOf("x"));
+        assertEquals(expected.buildKey("p", false).hash(), keys.get(0).hash());
+        expected.update(TextNode.valueOf("user"));
+        assertEquals(expected.buildKey("p", false).hash(), keys.get(1).hash());
     }
 
     private static ChatCompletionRequest request(String body) throws JsonProcessingException {
