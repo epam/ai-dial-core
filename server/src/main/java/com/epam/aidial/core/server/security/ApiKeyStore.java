@@ -160,12 +160,7 @@ public class ApiKeyStore {
     }
 
     /**
-     * Returns the data of a per request key as the Redis master holds it, or null if the key is not there. A replica,
-     * which {@link #getApiKeyData} reads first, may be behind a grant or an attachment added a moment ago.
-     *
-     * <p>
-     *     Note. The method is blocking and shouldn't be run in the event loop thread.
-     * </p>
+     * Returns the data of a per request key as the Redis master holds it, or null if it is not there. Blocking.
      */
     public ApiKeyData getPerRequestKeyDataOnMaster(String perRequestKey) {
         return blockingCallTracer.trace("auth.api_key.lookup_master", () -> readDataOnMaster(perRequestKey));

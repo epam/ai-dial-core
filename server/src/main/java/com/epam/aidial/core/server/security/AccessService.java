@@ -266,8 +266,8 @@ public class AccessService {
     /**
      * All permissions on the resource, for a caller that refuses the request without {@code needed}.
      */
-    public Set<ResourceAccessType> lookupPermissions(ResourceDescriptor resource, ProxyContext context, ResourceAccessType needed) {
-        return lookupPermissions(Set.of(resource), context, ResourceAccessType.ALL, permissionRules, Set.of(needed)).get(resource);
+    public Set<ResourceAccessType> lookupPermissions(ResourceDescriptor resource, ProxyContext context, Set<ResourceAccessType> needed) {
+        return lookupPermissions(Set.of(resource), context, ResourceAccessType.ALL, permissionRules, needed).get(resource);
     }
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
@@ -330,9 +330,9 @@ public class AccessService {
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getKeyAccess(Set<ResourceDescriptor> resources, ApiKeyData apiKeyData) {
-        Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>(getAutoSharedAccess(resources, apiKeyData));
-        getPerRequestPermissions(resources, apiKeyData).forEach((resource, permissions) -> result.merge(resource, permissions, Sets::union));
-        return result;
+        Map<ResourceDescriptor, Set<ResourceAccessType>> accessByResource = new HashMap<>(getAutoSharedAccess(resources, apiKeyData));
+        getPerRequestPermissions(resources, apiKeyData).forEach((resource, permissions) -> accessByResource.merge(resource, permissions, Sets::union));
+        return accessByResource;
     }
 
     /**

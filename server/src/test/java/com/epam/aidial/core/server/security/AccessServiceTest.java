@@ -1005,7 +1005,7 @@ public class AccessServiceTest {
         assertFalse(accessService.hasWriteAccess(granted, context));
         assertTrue(accessService.hasReadAccess(attached, context));
         assertFalse(accessService.hasReadAccess(other, context));
-        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(granted, context, ResourceAccessType.READ));
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(granted, context, Set.of(ResourceAccessType.READ)));
         assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(attached), context).get(attached));
         // the initiator's reach never counts the calling key's grants, the master's copy included
         assertTrue(accessService.lookupInitiatorPermissions(Set.of(granted), context).get(granted).isEmpty());
@@ -1042,7 +1042,7 @@ public class AccessServiceTest {
 
         // read only is short of all the permissions the lookups ask the rules for, but it is what the caller needs
         assertTrue(accessService.hasReadAccess(attached, context));
-        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(attached, context, ResourceAccessType.READ));
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(attached, context, Set.of(ResourceAccessType.READ)));
         assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(attached), context).get(attached));
         // the grant gives more than the read the caller asks for
         assertTrue(accessService.hasReadAccess(granted, context));

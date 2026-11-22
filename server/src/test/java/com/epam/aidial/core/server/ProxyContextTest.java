@@ -11,12 +11,15 @@ import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -179,6 +182,31 @@ public class ProxyContextTest {
         assertNull(context.copyWith(apiKeyData).loadMasterApiKeyData());
 
         verify(apiKeyStore).getPerRequestKeyDataOnMaster("per-request-key");
+    }
+
+    @Test
+    public void testMasterApiKeyDataIsNotReadInProcessOrOnTheEventLoop() throws Exception {
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        Proxy proxy = mock(Proxy.class);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(new Key());
+        apiKeyData.setPerRequestKey("per-request-key");
+        ProxyContext childPass = new ProxyContext(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null, "trace-id", "span-id", "01");
+        childPass.setCallTree(ProxyUtil.MAPPER.createObjectNode());
+        assertNull(childPass.loadMasterApiKeyData());
+
+        ProxyContext context = new ProxyContext(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null, "trace-id", "span-id", "01");
+        Vertx vertx = Vertx.vertx();
+        try {
+            CompletableFuture<ApiKeyData> onEventLoop = new CompletableFuture<>();
+            vertx.runOnContext(ignore -> onEventLoop.complete(context.loadMasterApiKeyData()));
+            assertNull(onEventLoop.get(10, TimeUnit.SECONDS));
+        } finally {
+            vertx.close();
+        }
+
+        verifyNoInteractions(apiKeyStore);
     }
 
     @Test
