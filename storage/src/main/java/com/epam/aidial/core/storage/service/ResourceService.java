@@ -1293,7 +1293,7 @@ public class ResourceService implements AutoCloseable {
         fields.put(SYNCED_ATTRIBUTE, RedisUtil.booleanToRedis(result.synced));
 
         // one round trip, all commands on this key. The expiry goes through RKeys (plain PEXPIRE): RMap.expire is a Lua script,
-        // which a batch sends as EVALSHA without the NOSCRIPT retry
+        // and plain commands keep the batch free of scripts
         RBatch batch = redis.createBatch();
         if (!result.synced) {
             batch.getKeys().clearExpireAsync(key);

@@ -390,6 +390,16 @@ public class ResourceServiceTest {
     }
 
     @Test
+    public void testComputeResourceCreatesTheListingStub() {
+        ResourceDescriptor descriptor = resource("computed-new");
+
+        ResourceItemMetadata metadata = service.computeResource(descriptor, old -> "new");
+
+        assertTrue(storage.exists(descriptor.getAbsoluteFilePath()), "a new resource is listable before its first sync");
+        assertEquals(metadata.getCreatedAt(), metadata.getUpdatedAt());
+    }
+
+    @Test
     public void testComputeResourceDeletesWithoutRereadingMetadata() {
         ResourceDescriptor descriptor = resource("computed-delete");
         service.putResource(descriptor, "old", EtagHeader.ANY);
