@@ -33,8 +33,8 @@ import javax.annotation.Nullable;
  * Resolves the target of an alias, and builds the deployment that serves a call of it ({@link AliasPasses#build}) or
  * a listing shows ({@link AliasPasses#view}). Aliases are managed by admins, so an alias grants every caller who may
  * use it the right to call its target. Who may use it is set by the alias's {@code userRoles}; an alias without them
- * is open to every caller, unless its target is a resource: then the callers who can read it may, or, in the platform
- * bucket, the resource's {@code userRoles}. A resource target is read from storage, so the methods that may resolve
+ * is open to every caller, unless its target is a resource: then the callers who can read it may or, in the platform
+ * bucket, the callers with one of the resource's {@code userRoles}. A resource target is read from storage, so the methods that may resolve
  * one run on the task executor.
  */
 @Slf4j
@@ -291,22 +291,14 @@ public class AliasService {
         if (target == null || !AliasTargets.fits(presentation, target.deployment())) {
             return null;
         }
-        if (alias.getUserRoles() == null && target.isResource()) {
-            boolean isPlatformTarget = ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName());
-            if (isPlatformTarget) {
-                if (!target.deployment().hasAccess(context.getUserRoles())) {
-                    return null;
-                }
-            } else {
-                try {
-                    if (!accessService.hasReadAccess(target.resource(), context)) {
-                        return null;
-                    }
-                } catch (RuntimeException e) {
-                    log.warn("Can't check access to the target of alias {}: {}", alias.getName(), e.getMessage());
-                    return null;
-                }
+        // the alias's own userRoles were checked by the caller; without them, the rule of a call
+        try {
+            if (alias.getUserRoles() == null && !hasAccess(context, alias, target)) {
+                return null;
             }
+        } catch (RuntimeException e) {
+            log.warn("Can't check access to the target of alias {}: {}", alias.getName(), e.getMessage());
+            return null;
         }
         return AliasPasses.view(alias, presentation, target.deployment());
     }
