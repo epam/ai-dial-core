@@ -20,7 +20,9 @@ import com.epam.aidial.core.server.data.SharedByMeDto;
 import com.epam.aidial.core.server.data.SharedResource;
 import com.epam.aidial.core.server.data.SharedResources;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
+import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -50,6 +52,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
@@ -68,15 +71,17 @@ public class ShareService {
     private final ApplicationSchemaService applicationSchemaService;
     private final LongSupplier clock;
     private final ResourceCredentialsService resourceCredentialsService;
+    private final ComplexResourceService complexResourceService;
 
-    private static final Map<ResourceType, ShareResourceLimit> DEFAULT_LIMITS = Map.of(
-            ResourceTypes.APPLICATION, new ShareResourceLimit(10, 72),
-            ResourceTypes.CONVERSATION, new ShareResourceLimit(Integer.MAX_VALUE, 72),
-            ResourceTypes.FILE, new ShareResourceLimit(Integer.MAX_VALUE, 72),
-            ResourceTypes.PROMPT, new ShareResourceLimit(Integer.MAX_VALUE, 72),
-            ResourceTypes.TOOL_SET, new ShareResourceLimit(10, 72),
-            ResourceTypes.CREDENTIALS, new ShareResourceLimit(10, 72),
-            ResourceTypes.SKILL, new ShareResourceLimit(10, 72));
+    private static final Map<ResourceType, Integer> DEFAULT_MAX_ACCEPTED_USERS = Map.of(
+            ResourceTypes.APPLICATION, 10,
+            ResourceTypes.CONVERSATION, Integer.MAX_VALUE,
+            ResourceTypes.FILE, Integer.MAX_VALUE,
+            ResourceTypes.PROMPT, Integer.MAX_VALUE,
+            ResourceTypes.TOOL_SET, 10,
+            ResourceTypes.CREDENTIALS, 10,
+            ResourceTypes.SKILL, 10,
+            ResourceTypes.PROJECT, 10);
 
     private static final Set<ResourceType> CREDS_SHARABLE_RESOURCE_TYPES = Set.of(ResourceTypes.TOOL_SET);
 
@@ -97,7 +102,7 @@ public class ShareService {
             shareResources.add(sharedResource);
         }
 
-        Set<MetadataBase> resultMetadata = new HashSet<>();
+        List<MetadataBase> resultMetadata = new ArrayList<>();
         for (ResourceDescriptor resource : shareResources) {
             String state = resourceService.getResource(resource);
             SharedResources sharedResources = ProxyUtil.convertToObject(state, SharedResources.class);
@@ -119,7 +124,8 @@ public class ShareService {
             }
         }
 
-        return new SharedResourcesResponse(resultMetadata);
+        populateTimestamps(resultMetadata);
+        return new SharedResourcesResponse(new HashSet<>(resultMetadata));
     }
 
     /**
@@ -139,7 +145,7 @@ public class ShareService {
             shareResources.add(shareResource);
         }
 
-        Set<MetadataBase> resultMetadata = new HashSet<>();
+        List<MetadataBase> resultMetadata = new ArrayList<>();
         for (ResourceDescriptor resource : shareResources) {
             String sharedResource = resourceService.getResource(resource);
             SharedByMeDto resourceToUsers = ProxyUtil.convertToObject(sharedResource, SharedByMeDto.class);
@@ -148,7 +154,8 @@ public class ShareService {
             }
         }
 
-        return new SharedResourcesResponse(resultMetadata);
+        populateTimestamps(resultMetadata);
+        return new SharedResourcesResponse(new HashSet<>(resultMetadata));
     }
 
 
@@ -293,7 +300,7 @@ public class ShareService {
     private ShareResourceLimit getLimit(ProxyContext context, ResourceType resourceType) {
         List<String> userRoles = context.getUserRoles();
         Map<String, Role> roles = context.getConfig().getRoles();
-        ShareResourceLimit defaultLimit = DEFAULT_LIMITS.get(resourceType);
+        ShareResourceLimit defaultLimit = getDefaultLimit(resourceType);
         ShareResourceLimit limit = null;
         for (String userRole : userRoles) {
             ShareResourceLimit candidate = Optional.ofNullable(roles.get(userRole)).map(Role::getShare).map(limits -> limits.get(resourceType.name())).orElse(null);
@@ -312,13 +319,15 @@ public class ShareService {
                 }
             }
         }
-        if (limit != null) {
-            return limit;
-        }
-        if (defaultLimit == null) {
+        return (limit != null) ? limit : defaultLimit;
+    }
+
+    private ShareResourceLimit getDefaultLimit(ResourceType resourceType) {
+        Integer maxAcceptedUsers = DEFAULT_MAX_ACCEPTED_USERS.get(resourceType);
+        if (maxAcceptedUsers == null) {
             throw new IllegalArgumentException("Unsupported resource type: " + resourceType);
         }
-        return defaultLimit;
+        return new ShareResourceLimit(maxAcceptedUsers, invitationService.getDefaultTtlInHours());
     }
 
     private void addCredentialsSharing(ProxyContext context,
@@ -394,10 +403,7 @@ public class ShareService {
                 // add user location for each link
                 for (SharedResource resource : links) {
                     int numOfAcceptedUsers = dto.getNumOfAcceptedUsers(resource.getUrl());
-                    ShareResourceLimit limit = dto.getLimits().getOrDefault(resource.getUrl(), DEFAULT_LIMITS.get(resourceType));
-                    if (limit == null) {
-                        throw new IllegalArgumentException("Limit is not found for the resource:" + resource.getUrl());
-                    }
+                    ShareResourceLimit limit = dto.getLimits().getOrDefault(resource.getUrl(), getDefaultLimit(resourceType));
                     if (numOfAcceptedUsers >= limit.getMaxAcceptedUsers()) {
                         throw new IllegalArgumentException("Limit is exceeded on the number of accepted users for the resource: " + resource.getUrl());
                     }
@@ -596,11 +602,11 @@ public class ShareService {
     }
 
     public void copySharedAccess(String bucket, String location, ResourceDescriptor source, ResourceDescriptor destination) {
-        if (!resourceService.hasResource(source)) {
+        if (!hasResource(source)) {
             throw new IllegalArgumentException("source resource %s does not exists".formatted(source.getUrl()));
         }
 
-        if (!resourceService.hasResource(destination)) {
+        if (!hasResource(destination)) {
             throw new IllegalArgumentException("destination resource %s dos not exists".formatted(destination.getUrl()));
         }
 
@@ -645,6 +651,12 @@ public class ShareService {
         copySharedAccess(bucket, location, source, destination);
         // revoke shared access from source
         revokeSharedAccess(bucket, location, Map.of(source, ResourceAccessType.ALL));
+    }
+
+    private boolean hasResource(ResourceDescriptor resource) {
+        return resource.getType().isComplex()
+                ? complexResourceService.hasResource(resource)
+                : resourceService.hasResource(resource);
     }
 
     private void removeSharedResourcePermissions(
@@ -746,6 +758,38 @@ public class ShareService {
                     }
                     return metadata;
                 }).toList();
+    }
+
+    /**
+     * Sets createdAt and updatedAt of the stored resources on the items. It must run before the items are put into a hash set.
+     */
+    private void populateTimestamps(List<MetadataBase> metadata) {
+        // Complex resources (SKILL, PROJECT) keep their timestamps in the marker, not at the resource URL
+        Map<Boolean, List<ResourceItemMetadata>> itemsByComplexity = metadata.stream()
+                .filter(ResourceItemMetadata.class::isInstance)
+                .map(ResourceItemMetadata.class::cast)
+                .collect(Collectors.partitioningBy(item -> item.getDescriptor().getType().isComplex()));
+        List<ResourceItemMetadata> plainItems = itemsByComplexity.get(false);
+        Map<String, ResourceItemMetadata> stored = resourceService.loadMetadata(plainItems).stream()
+                .collect(Collectors.toMap(ResourceItemMetadata::getUrl, Function.identity(), (first, second) -> first));
+        for (ResourceItemMetadata item : plainItems) {
+            ResourceItemMetadata found = stored.get(item.getUrl());
+            if (found != null) {
+                item.setCreatedAt(found.getCreatedAt());
+                item.setUpdatedAt(found.getUpdatedAt());
+            }
+        }
+
+        List<ResourceItemMetadata> complexItems = itemsByComplexity.get(true);
+        Map<String, FolderResourceMarker> markers = complexResourceService.loadMarkers(
+                complexItems.stream().map(MetadataBase::getDescriptor).toList());
+        for (ResourceItemMetadata item : complexItems) {
+            FolderResourceMarker marker = markers.get(item.getUrl());
+            if (marker != null) {
+                item.setCreatedAt(marker.getCreatedAt());
+                item.setUpdatedAt(marker.getUpdatedAt());
+            }
+        }
     }
 
     private ResourceDescriptor getResourceFromLink(String url) {

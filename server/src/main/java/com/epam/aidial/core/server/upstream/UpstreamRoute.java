@@ -7,10 +7,10 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import io.vertx.core.http.HttpClientResponse;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -56,6 +56,18 @@ public class UpstreamRoute {
     private int attemptCount;
 
     private final Set<Upstream> usedUpstreams = new HashSet<>();
+
+    /**
+     * The prefix path the upstream reported caching via {@code X-DIAL-CACHE-BREAKPOINT-PATH}, null if it reported none.
+     */
+    @Getter
+    private String cacheBreakpointPath;
+    /**
+     * Whether a hash was matched for {@link #cacheBreakpointPath} and a store submitted for it. The Redis write
+     * itself completes asynchronously, so this records the decision, not the completed write.
+     */
+    @Getter
+    private boolean cacheEntryStored;
 
     @Nullable
     private final UpstreamCacheContext upstreamCacheContext;
@@ -120,7 +132,7 @@ public class UpstreamRoute {
         fail(status, -1);
     }
 
-    public void fail(HttpClientResponse response) {
+    public void fail(ProxyResponse response) {
         long retryAfter = retrieveRetryAfterSeconds(response);
         HttpStatus status = HttpStatus.fromStatusCode(response.statusCode());
         fail(status, retryAfter);
@@ -141,7 +153,7 @@ public class UpstreamRoute {
         succeed(null, null);
     }
 
-    public void succeed(HttpClientResponse proxyResponse, Deployment deployment) {
+    public void succeed(ProxyResponse proxyResponse, Deployment deployment) {
         verifyCurrentUpstream();
         if (deployment instanceof Model model) {
             updateUpstreamCache(proxyResponse, model);
@@ -149,12 +161,13 @@ public class UpstreamRoute {
         balancer.succeed(upstream);
     }
 
-    private void updateUpstreamCache(HttpClientResponse proxyResponse, Model model) {
+    private void updateUpstreamCache(ProxyResponse proxyResponse, Model model) {
         String breakpointPath = proxyResponse.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH);
         if (breakpointPath == null) {
             // no cache
             return;
         }
+        cacheBreakpointPath = breakpointPath;
         String hash = upstreamCacheContext == null ? null : upstreamCacheContext.getPrefixToHash().get(breakpointPath);
         if (hash == null) {
             if (model.getType() == ModelType.CHAT) {
@@ -165,6 +178,7 @@ public class UpstreamRoute {
         String expireAt = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXPIRE_AT);
         String extraMetadata = proxyResponse.getHeader(Proxy.HEADER_CACHE_EXTRA_METADATA);
         CachedUpstreamEntry entry = new CachedUpstreamEntry(upstream.getEndpoint(), upstream.getId(), breakpointPath, extraMetadata);
+        cacheEntryStored = true;
         taskExecutor.submit(() -> {
             upstreamCacheService.updateEntry(hash, entry, model, expireAt);
             return null;
@@ -193,7 +207,7 @@ public class UpstreamRoute {
      * @param response http response from upstream
      * @return the amount of seconds after which upstream should be available or -1 if the value is not provided
      */
-    private static long retrieveRetryAfterSeconds(HttpClientResponse response) {
+    private static long retrieveRetryAfterSeconds(ProxyResponse response) {
         try {
             String retryAfterHeaderValue = response.getHeader("Retry-After");
             if (retryAfterHeaderValue != null) {

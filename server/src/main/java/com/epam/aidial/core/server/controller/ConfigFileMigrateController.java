@@ -3,12 +3,14 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.SchemaMigrationNameResolver;
 import com.epam.aidial.core.server.data.config.manifest.AdminApplyStatus;
@@ -71,12 +73,14 @@ public class ConfigFileMigrateController {
     public static final int KEY_HASH_LENGTH = 12;
 
     private static final List<String> ALL_TYPES = List.of(
-            "settings", "schemas", "catalog_schemas", "interceptors", "translators", "roles", "keys", "routes",
+            "settings", "schemas", "catalog_schemas", "interceptors", "routers", "translators", "plugins", "roles", "keys", "routes",
             "models", "toolsets", "applications");
 
     private static final List<ManagedTypeSpec> MANAGED_TYPE_SPECS = List.of(
             new ManagedTypeSpec("interceptors", "Interceptor", ResourceTypes.INTERCEPTOR, Config::getInterceptors),
+            new ManagedTypeSpec("routers", "Router", ResourceTypes.ROUTER, Config::getRouters),
             new ManagedTypeSpec("translators", "Translator", ResourceTypes.TRANSLATOR, Config::getTranslators),
+            new ManagedTypeSpec("plugins", "Plugin", ResourceTypes.PLUGIN, Config::getPlugins),
             new ManagedTypeSpec("roles", "Role", ResourceTypes.ROLE, Config::getRoles),
             new ManagedTypeSpec("routes", "Route", ResourceTypes.ROUTE, Config::getRoutes),
             new ManagedTypeSpec("models", "Model", ResourceTypes.MODEL, Config::getModels),
@@ -237,9 +241,9 @@ public class ConfigFileMigrateController {
     /**
      * The percent-encoded admin API path (no leading {@code /v1/}) at which {@code canonicalId} is
      * reachable, matching the convention {@link ResourceDescriptor#getUrl()} uses elsewhere in the API
-     * — encoding matters here because a managed type's short name comes straight from an arbitrary
-     * file-config key (e.g. a model id containing {@code [}/{@code ]}) and isn't restricted the way
-     * {@code ConfigResourceController.ENTITY_NAME_PATTERN} restricts a PUT/DELETE name.
+     * — encoding matters here because {@link ConfigPostProcessor#ENTITY_NAME_PATTERN} allows several
+     * characters (e.g. {@code [}/{@code ]}) that are reserved in a URL path and must be escaped to stay
+     * reachable.
      */
     private static String resourceUrl(String canonicalId) {
         return canonicalId == null ? null : UrlUtil.encodePath(canonicalId);
@@ -273,7 +277,27 @@ public class ConfigFileMigrateController {
                 continue;
             }
             JsonNode specNode = BLOB_MAPPER.valueToTree(entry.getValue());
+            clearPkceArtifacts(spec.resourceType(), specNode);
             collect(new AdminManifest(spec.kind(), canonicalId, specNode), shortName, scratch, dryRun, toApply, results);
+        }
+    }
+
+    /**
+     * {@code code_verifier}/{@code code_challenge} are always derived together by {@code
+     * ResourceAuthSettingsService.setCodeChallengeProperties}, never independent input, so a stray
+     * pair in a file-sourced ToolSet is leftover from a previous run and safe to drop — leaving it
+     * would otherwise fail {@code BaseAuthSettingsValidator}, which forbids {@code code_verifier}
+     * unconditionally. Applications' external services don't need this: {@code
+     * ConfigPostProcessor.validateExternalServices} already drops any that fail the same check at
+     * file-load time.
+     */
+    private static void clearPkceArtifacts(ResourceTypes resourceType, JsonNode specNode) {
+        if (resourceType != ResourceTypes.TOOL_SET) {
+            return;
+        }
+        if (specNode.get("auth_settings") instanceof ObjectNode settings) {
+            settings.remove(ResourceAuthSettings.CODE_VERIFIER_FIELD);
+            settings.remove(ResourceAuthSettings.CODE_CHALLENGE_FIELD);
         }
     }
 
@@ -287,7 +311,7 @@ public class ConfigFileMigrateController {
             Key fileKey = entry.getValue();
             String hash = HashUtil.sha256Hex(secret).substring(0, KEY_HASH_LENGTH);
             String project = fileKey.getProject();
-            String shortName = (project != null && ConfigResourceController.ENTITY_NAME_PATTERN.matcher(project).matches())
+            String shortName = (project != null && ConfigPostProcessor.ENTITY_NAME_PATTERN.matcher(project).matches())
                     ? project.toLowerCase(Locale.ROOT) + "-" + hash
                     : hash;
             String canonicalId = MergedConfigStore.canonicalId(ResourceTypes.PROJECT_KEY, ResourceDescriptor.PLATFORM_BUCKET, shortName);
@@ -313,6 +337,11 @@ public class ConfigFileMigrateController {
             // serialization regardless of the Java object's field state — inject it directly.
             ObjectNode specNode = ProxyUtil.MAPPER.valueToTree(fileKey);
             specNode.put("key", secret);
+            // The duplicate-secret guard rejects a key write whose secret is already used by a
+            // different scratch entry. Since scratch starts as a copy of the merged/live config,
+            // the file-sourced key being migrated still sits under its raw secret there — remove
+            // the shadow so validation sees a genuinely new blob entry, not a collision with itself.
+            scratch.getKeys().remove(secret);
             collect(new AdminManifest("Key", canonicalId, specNode), null, scratch, dryRun, toApply, results);
         }
     }
@@ -427,6 +456,7 @@ public class ConfigFileMigrateController {
         settings.setGlobalInterceptors(fileConfig.getGlobalInterceptors());
         settings.setRetriableErrorCodes(fileConfig.getRetriableErrorCodes());
         settings.setRateLimitSchedule(fileConfig.getRateLimitSchedule());
+        settings.setSpendingLimits(fileConfig.getSpendingLimits());
         JsonNode spec = ProxyUtil.MAPPER.valueToTree(settings);
         collect(new AdminManifest("Settings", canonicalId, spec), null, scratch, dryRun, toApply, results);
     }

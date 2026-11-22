@@ -1,0 +1,62 @@
+// Published to GitHub Packages as com.epam.aidial:aidial-core-plugin-api, by the release workflow with Core's version
+apply plugin: 'java-library'
+apply plugin: 'maven-publish'
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+dependencies {
+    // The provider contract hands settings over as a Jackson tree, so a plugin needs no parse of its own
+    api("com.fasterxml.jackson.core:jackson-databind:${jackson_core_version}")
+    // An origin plugin answers in Vert.x types (Future, Buffer, ReadStream), so Core relays the answer with no wrapping
+    api("io.vertx:vertx-core:${vertx_version}")
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+
+            pom {
+                name = 'AI DIAL Core Plugin API'
+                description = 'The contract a plugin jar compiles against: PluginProvider, Plugin and the request and answer records of AI DIAL Core'
+                url = 'https://github.com/epam/ai-dial-core'
+
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id = 'epam'
+                        name = 'EPAM Systems'
+                        organization = 'EPAM Systems'
+                        organizationUrl = 'https://www.epam.com/'
+                    }
+                }
+
+                scm {
+                    connection = 'scm:git:https://github.com/epam/ai-dial-core.git'
+                    developerConnection = 'scm:git:https://github.com/epam/ai-dial-core.git'
+                    url = 'https://github.com/epam/ai-dial-core'
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = 'GitHubPackages'
+            url = uri("https://maven.pkg.github.com/${System.getenv('GITHUB_REPOSITORY') ?: 'epam/ai-dial-core'}")
+            credentials {
+                username = project.findProperty('gpr.user') ?: System.getenv('GPR_USERNAME')
+                password = project.findProperty('gpr.key') ?: System.getenv('GPR_PASSWORD')
+            }
+        }
+    }
+}

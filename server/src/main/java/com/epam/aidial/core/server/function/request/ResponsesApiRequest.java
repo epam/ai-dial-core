@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -21,6 +22,8 @@ import javax.annotation.Nullable;
 @Slf4j
 @RequiredArgsConstructor
 public class ResponsesApiRequest implements RequestObject {
+    @Getter
+    @JsonIgnore
     private final ObjectNode tree;
 
     @Nullable
@@ -127,11 +130,11 @@ public class ResponsesApiRequest implements RequestObject {
      * Resolves and unwraps the upstream config id encoded into any echoed encrypted content items in
      * {@code input}, mutating them in place back to their provider-native shape.
      *
-     * @return the resolved upstream config id, or {@code null} if {@code input} is missing or carries no
-     *     wrapped item
+     * @return unique resolved affinities; empty if {@code input} is missing or carries no wrapped item
      */
-    @Nullable
-    public String resolveAndUnwrapEncryptedContentAffinity() {
-        return tree.get("input") instanceof ArrayNode input ? EncryptedContentAffinityUtil.resolveAndUnwrap(input) : null;
+    public List<EncryptedContentAffinityUtil.ResolvedAffinity> resolveAndUnwrapEncryptedContentAffinity() {
+        return tree.get("input") instanceof ArrayNode input
+                ? EncryptedContentAffinityUtil.resolveAndUnwrap(input)
+                : List.of();
     }
 }

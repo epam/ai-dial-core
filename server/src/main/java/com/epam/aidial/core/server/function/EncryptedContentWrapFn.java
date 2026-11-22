@@ -33,11 +33,20 @@ public class EncryptedContentWrapFn extends BaseResponseFunction {
         String encryptedUpstreamId = explicitEncryptedUpstreamId != null
                 ? explicitEncryptedUpstreamId
                 : context.getUpstreamRoute().get().getId();
+        String deploymentName = context.getDeployment().getName();
 
-        if (tree.get("item") instanceof ObjectNode item && "response.output_item.done".equals(tree.path("type").asText())) {
-            EncryptedContentAffinityUtil.wrapOutputItem(item, encryptedUpstreamId);
+        String type = tree.path("type").asText();
+        if (tree.get("item") instanceof ObjectNode item
+                && ("response.output_item.done".equals(type) || "response.output_item.added".equals(type))) {
+            EncryptedContentAffinityUtil.wrapOutputItem(item, encryptedUpstreamId, deploymentName);
         } else if (tree.get("response") instanceof ObjectNode response) {
-            EncryptedContentAffinityUtil.wrapOutputArray(response.path("output"), encryptedUpstreamId);
+            EncryptedContentAffinityUtil.wrapOutputArray(response.path("output"), encryptedUpstreamId, deploymentName);
+        } else if (tree instanceof ObjectNode event
+                && ("response.reasoning_summary_part.added".equals(type)
+                        || "response.reasoning_summary_text.delta".equals(type)
+                        || "response.reasoning_summary_text.done".equals(type)
+                        || "response.reasoning_summary_part.done".equals(type))) {
+            EncryptedContentAffinityUtil.wrapSseItemId(event, encryptedUpstreamId, deploymentName);
         }
         return Future.succeededFuture(tree);
     }

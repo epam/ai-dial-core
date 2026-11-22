@@ -1,4 +1,4 @@
-FROM gradle:8.10-jdk21-alpine AS builder
+FROM gradle:9.9.1-jdk25-alpine AS builder
 
 #COPY --from=cache /cache /home/gradle/.gradle
 COPY --chown=gradle:gradle . /home/gradle/src
@@ -6,8 +6,11 @@ COPY --chown=gradle:gradle . /home/gradle/src
 WORKDIR /home/gradle/src
 RUN --mount=type=secret,id=GPR_USERNAME,env=GPR_USERNAME --mount=type=secret,id=GPR_PASSWORD,env=GPR_PASSWORD gradle --no-daemon build --stacktrace -PdisableCompression=true -x test
 RUN mkdir /build && tar -xf /home/gradle/src/server/build/distributions/server*.tar --strip-components=1 -C /build
+# The sample plugins go into the plugin directory samples/forward only on request: --build-arg SAMPLE_PLUGINS=true
+ARG SAMPLE_PLUGINS=false
+RUN if [ "$SAMPLE_PLUGINS" = "true" ]; then mkdir -p /build/plugins/samples/forward && cp /home/gradle/src/plugin-samples/build/libs/*.jar /build/plugins/samples/forward/; fi
 
-FROM eclipse-temurin:21-jdk-alpine
+FROM eclipse-temurin:25-jdk-alpine
 
 ENV OTEL_TRACES_EXPORTER="none"
 ENV OTEL_METRICS_EXPORTER="none"
@@ -28,7 +31,7 @@ COPY --chown=appuser:appuser docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # upgrade/install packages
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat binutils gpgv gnutls libpng zlib musl musl-utils p11-kit p11-kit-trust
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat binutils gpgv gnutls libpng zlib brotli-libs musl musl-utils p11-kit p11-kit-trust
 RUN apk add --no-cache su-exec
 
 HEALTHCHECK --start-period=30s --interval=1m --timeout=3s \

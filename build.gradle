@@ -16,11 +16,17 @@ allprojects {
 
     java {
         toolchain {
-            languageVersion = JavaLanguageVersion.of(21)
+            languageVersion = JavaLanguageVersion.of(25)
         }
     }
 
+    lombok {
+        // the plugin's default Lombok (1.18.34) cannot compile on JDK 25; 1.18.40 is the first that can
+        version.set("1.18.42")
+    }
+
     checkstyle {
+        toolVersion = "10.24.0"
         configDirectory = file("$rootProject.projectDir/checkstyle")
     }
 
@@ -54,9 +60,12 @@ allprojects {
             // absent, it has its own 2.0.x version line.
             force "io.netty:netty-buffer:${netty_version}"
             force "io.netty:netty-codec:${netty_version}"
+            force "io.netty:netty-codec-classes-quic:${netty_version}"
             force "io.netty:netty-codec-dns:${netty_version}"
             force "io.netty:netty-codec-http:${netty_version}"
             force "io.netty:netty-codec-http2:${netty_version}"
+            force "io.netty:netty-codec-http3:${netty_version}"
+            force "io.netty:netty-codec-native-quic:${netty_version}"
             force "io.netty:netty-codec-socks:${netty_version}"
             force "io.netty:netty-common:${netty_version}"
             force "io.netty:netty-handler:${netty_version}"
@@ -70,6 +79,9 @@ allprojects {
             force "io.netty:netty-transport-classes-kqueue:${netty_version}"
             force "io.netty:netty-transport-native-kqueue:${netty_version}"
             force "io.netty:netty-transport-native-unix-common:${netty_version}"
+            // azure-core-http-netty pulls tcnative-boringssl-static 2.0.74.Final (SNYK-JAVA-IONETTY-21755444, -21755446)
+            force "io.netty:netty-tcnative-boringssl-static:${netty_tcnative_version}"
+            force "io.netty:netty-tcnative-classes:${netty_tcnative_version}"
             // opentelemetry-exporter-sender-okhttp pulls okhttp 5.x, which drops okhttp3.internal.Util and
             // breaks mockwebserver 4.x; pin okhttp to the 4.x line the project already targets.
             force "com.squareup.okhttp3:okhttp:${squareup_okhttp3_version}"
@@ -80,6 +92,24 @@ allprojects {
             force 'commons-beanutils:commons-beanutils:1.11.0'
             force "org.apache.httpcomponents.core5:httpcore5:${apache_httpcore5_version}"
             force "org.apache.httpcomponents.core5:httpcore5-h2:${apache_httpcore5_version}"
+            force "org.apache.httpcomponents.client5:httpclient5:${apache_httpclient5_version}"
+            // reactor-core / reactor-netty-http are pulled transitively (e.g. via the AWS SDK's
+            // netty-nio-client); force them to patched versions.
+            force "io.projectreactor:reactor-core:${reactor_core_version}"
+            force "io.projectreactor.netty:reactor-netty-core:${reactor_netty_http_version}"
+            force "io.projectreactor.netty:reactor-netty-http:${reactor_netty_http_version}"
+        }
+    }
+
+    dependencies {
+        // Gradle 9 no longer puts the JUnit Platform launcher on the test runtime classpath
+        testRuntimeOnly platform("org.junit:junit-bom:${junit_version}")
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+        constraints {
+            // Checkstyle (up to 14.x) pulls doxia-core 1.12.0, which brings vulnerable commons-lang3 3.8.1 and plexus-utils 3.3.0
+            checkstyle("org.apache.commons:commons-lang3:${apache_commons_version}")
+            checkstyle("org.codehaus.plexus:plexus-utils:${plexus_utils_version}")
         }
     }
 

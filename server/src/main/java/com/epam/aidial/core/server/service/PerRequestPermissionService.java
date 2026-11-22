@@ -51,7 +51,7 @@ public class PerRequestPermissionService {
             Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.lookupPermissions(Set.of(resource), context);
             Set<ResourceAccessType> actual = result.get(resource);
             Set<ResourceAccessType> expected = resourcePermission.getPermissions();
-            if (!actual.containsAll(expected)) {
+            if (!actual.containsAll(expected) || resource.isFolder() && !accessService.mayPassOnFolder(resource, context)) {
                 throw new PermissionDeniedException("Access to resource is forbidden: " + resourcePermission.getUrl());
             }
         }
@@ -71,10 +71,14 @@ public class PerRequestPermissionService {
         String receiver = request.getReceiver();
         Map<String, PerRequestSharedData> resourcePermissions = apiKeyData.getPerRequestReceivers().computeIfAbsent(receiver, k -> new HashMap<>());
         for (ResourcePermission resourcePermission : request.getResourcePermissions()) {
-            String url = resourcePermission.getUrl();
+            String url = canonicalUrl(resourcePermission.getUrl());
             PerRequestSharedData sharedData = resourcePermissions.computeIfAbsent(url, k -> new PerRequestSharedData(new HashSet<>()));
             sharedData.permissions().addAll(resourcePermission.getPermissions());
         }
+    }
+
+    private String canonicalUrl(String url) {
+        return ResourceDescriptorFactory.fromAnyUrl(url, encryptionService).getUrl();
     }
 
     public void revoke(ProxyContext context, PerRequestReceiver request) {
@@ -93,7 +97,7 @@ public class PerRequestPermissionService {
             return;
         }
         for (ResourcePermission resourcePermission : request.getResourcePermissions()) {
-            String url = resourcePermission.getUrl();
+            String url = canonicalUrl(resourcePermission.getUrl());
             PerRequestSharedData sharedData = resourcePermissions.get(url);
             if (sharedData == null) {
                 continue;

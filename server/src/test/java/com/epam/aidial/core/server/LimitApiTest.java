@@ -117,6 +117,45 @@ public class LimitApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testGetDeploymentUsage_UnknownModel() {
+        Response response = send(HttpMethod.GET, "/v1/deployments/unknown-model/usage", null, null);
+        verify(response, 404);
+    }
+
+    @Test
+    public void testGetDeploymentUsage_AccessDenied() {
+        Response response = send(HttpMethod.GET, "/v1/deployments/gpt-4/usage", null, null);
+        verify(response, 403);
+    }
+
+    @Test
+    public void testGetDeploymentUsage_UnusedDeploymentReportsZeros() {
+        Response response = send(HttpMethod.GET, "/v1/deployments/test-model-v1/usage", null, null);
+        verify(response, 200);
+        JsonNode body = readJson(response);
+        assertEquals(0, body.get("dayTokenStats").get("used").asLong());
+        assertEquals(0, new BigDecimal("0").compareTo(body.get("dayCostStats").get("used").decimalValue()));
+    }
+
+    /**
+     * Unlike {@code /limits}, whose {@code *CostStats} are the caller's account-wide budget/spend, this
+     * endpoint's cost stats are this one deployment's own attributed spend - identical to its entry in
+     * the bulk {@code /v1/user/usage} report, and a bare {@link com.epam.aidial.core.server.data.LimitStats}
+     * rather than a map entry.
+     */
+    @Test
+    public void testGetDeploymentUsage_ReportsOwnCostNotAccountWideCost() {
+        completion("gpt-3-turbo");
+
+        JsonNode usage = readJson(send(HttpMethod.GET, "/v1/deployments/gpt-3-turbo/usage", null, null));
+        JsonNode bulkUsage = deployment(getUserUsage(), "gpt-3-turbo");
+        for (String window : List.of("minuteTokenStats", "dayTokenStats", "weekTokenStats", "monthTokenStats",
+                "hourRequestStats", "dayRequestStats", "minuteCostStats", "dayCostStats", "weekCostStats", "monthCostStats")) {
+            assertEquals(bulkUsage.get(window).toString(), usage.get(window).toString(), window);
+        }
+    }
+
+    @Test
     public void testGetUserLimits_Success() {
         JsonNode body = getUserLimits();
 
@@ -150,11 +189,66 @@ public class LimitApiTest extends ResourceBaseTest {
     @Test
     public void testGetUserLimits_ExcludesApplicationsAndToolsets() {
         JsonNode body = getUserLimits();
-        // "app" is an application and even has a limit configured under the default role, but DIAL never
-        // records rate-limit usage for applications, so reporting it would imply a limit that cannot fire
+        // omitting deploymentTypes defaults to "model" and reproduces today's response exactly
         assertNull(deploymentOrNull(body, "app"));
         assertNull(deploymentOrNull(body, "git"));
         assertNull(deploymentOrNull(body, "my-toolset_2"));
+    }
+
+    /**
+     * {@code deploymentTypes=application} reports Applications instead of Models - toolsets/routes still
+     * never appear, since this parameter only adds one more kind, not every non-Model kind.
+     */
+    @Test
+    public void testGetUserLimits_DeploymentTypesApplication_ReportsApplicationsNotModels() {
+        JsonNode body = getUserLimitsWithTypes("application");
+        assertNotNull(deploymentOrNull(body, "app"));
+        assertNull(deploymentOrNull(body, "test-model-v1"));
+        assertNull(deploymentOrNull(body, "git"));
+        assertNull(deploymentOrNull(body, "my-toolset_2"));
+    }
+
+    /**
+     * {@code deploymentTypes=model,application} reports both kinds together in the same map.
+     */
+    @Test
+    public void testGetUserLimits_DeploymentTypesModelAndApplication_ReportsBoth() {
+        JsonNode body = getUserLimitsWithTypes("model,application");
+        assertNotNull(deploymentOrNull(body, "app"));
+        assertNotNull(deploymentOrNull(body, "test-model-v1"));
+    }
+
+    /**
+     * The parameter applies identically to both endpoints, since they share the same underlying path.
+     */
+    @Test
+    public void testGetUserUsage_DeploymentTypesApplication_SharesBehaviorWithLimits() {
+        Response response = send(HttpMethod.GET, "/v1/user/usage?deploymentTypes=application", null, null);
+        verify(response, 200);
+        JsonNode body = readJson(response);
+        // an Application with no aggregated-cost activity yet is empty usage, same as an unused Model
+        assertNull(deploymentOrNull(body, "app"));
+    }
+
+    /**
+     * {@code deploymentTypes=application} also lists a resource-based custom (non-config) Application,
+     * by name only - {@link com.epam.aidial.core.server.service.DeploymentService#listDeploymentNames}
+     * never reads its content, so this exercises that the lightweight listing round-trips a real
+     * resource's name correctly, not just config-defined Applications.
+     */
+    @Test
+    public void testGetUserLimits_DeploymentTypesApplication_IncludesCustomApplication() {
+        String bucket = "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST";
+        Response created = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/my-custom-application", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application"
+                }
+                """);
+        verify(created, 200);
+
+        JsonNode body = getUserLimitsWithTypes("application");
+        assertNotNull(deploymentOrNull(body, "applications/" + bucket + "/my-custom-application"));
     }
 
     @Test
@@ -269,6 +363,12 @@ public class LimitApiTest extends ResourceBaseTest {
 
     private JsonNode getUserLimits() {
         Response response = send(HttpMethod.GET, "/v1/user/limits", null, null);
+        verify(response, 200);
+        return readJson(response);
+    }
+
+    private JsonNode getUserLimitsWithTypes(String deploymentTypes) {
+        Response response = send(HttpMethod.GET, "/v1/user/limits?deploymentTypes=" + deploymentTypes, null, null);
         verify(response, 200);
         return readJson(response);
     }

@@ -156,7 +156,7 @@ Available values:
 
 Use Share to define resource sharing limits based on user roles.
 
-* `invitation_ttl`: TTL of the invitation link. Default: 72 (hrs)
+* `invitation_ttl`: TTL of the invitation link, in hours. Default: `invitations.ttlInSeconds` static setting (72 hrs if unset).
 * `max_accepted_users`: The maximum number of users who can accept an invitation link for a resource being shared. The limit is applied to the shared resource. Default: 10 for APPLICATION and UNLIMITED for other resource types.
 
 **Example:**

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -12,6 +13,9 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -174,6 +178,193 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyRejectsModelWithUnservedInterface() {
+        // Hard mode rejects the whole batch with a 422 envelope; the soft-mode twin
+        // testApplySoftValidationStillRejectsUnservedInterface pins the 200-envelope shape.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-unserved-interface",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "interfaces": {"openaiChatCompletions": {}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertEquals(1, results.size());
+        assertEquals("FAILED", results.get(0).get("status").asText());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-unserved-interface", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyAcceptsModelWithInBatchTranslator() {
+        // Manifest lists the Model first on purpose: DEPENDENCY_ORDER_COMPARATOR sorts Translator (3)
+        // ahead of Model (9), and mutateScratch stages each success, so the translator is in scratch
+        // by the time the model is validated. Author order must not matter.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-batch-translated",
+                      "spec": {
+                        "type": "chat",
+                        "baseUrl": "http://localhost:7001",
+                        "interfaces": {
+                          "openaiChatCompletions": {},
+                          "anthropicMessages": {"mode": "translator", "translator": "batch-translator"}
+                        }
+                      }
+                    },
+                    {
+                      "kind": "Translator",
+                      "name": "translators/platform/batch-translator",
+                      "spec": {
+                        "in": "anthropicMessages",
+                        "out": "openaiChatCompletions",
+                        "baseUrl": "http://localhost:7001/translate"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        for (JsonNode result : results) {
+            assertEquals("APPLIED", result.get("status").asText(),
+                    () -> "Body: " + response.body());
+        }
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyReportsPluginBeforeTranslator() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Translator",
+                      "name": "translators/platform/apply-order-translator",
+                      "spec": {
+                        "in": "anthropicMessages",
+                        "out": "openaiChatCompletions",
+                        "baseUrl": "http://localhost:7001/translate"
+                      }
+                    },
+                    {
+                      "kind": "Plugin",
+                      "name": "plugins/platform/apply-order-plugin",
+                      "spec": {"type": "test-echo", "settings": {"greeting": "hi"}}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertEquals("plugins/platform/apply-order-plugin", results.get(0).get("entityId").asText(), response::body);
+        assertEquals("translators/platform/apply-order-translator", results.get(1).get("entityId").asText(), response::body);
+        verify(send(HttpMethod.GET, "/v1/plugins/platform/apply-order-plugin", null, "", "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyRouterWithItsInBatchTranslator() {
+        // input order model, router, translator; processing order translator (3), router (5), model (9)
+        String body = """
+                {"manifests": [
+                  {"kind": "Model", "name": "models/platform/apply-order-model",
+                   "spec": {"type": "chat", "endpoint": "http://localhost:4848/chat"}},
+                  {"kind": "Router", "name": "routers/platform/r-batch",
+                   "spec": {"baseUrl": "http://localhost:4848", "interfaces": {"openaiChatCompletions": {},
+                     "anthropicMessages": {"mode": "translator", "translator": "t-batch"}}}},
+                  {"kind": "Translator", "name": "translators/platform/t-batch",
+                   "spec": {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "http://localhost:4848/translate"}}
+                ]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        List<String> order = new ArrayList<>();
+        for (JsonNode result : results) {
+            assertEquals("APPLIED", result.get("status").asText(), response::body);
+            order.add(result.get("entityId").asText());
+        }
+        assertEquals(List.of("translators/platform/t-batch", "routers/platform/r-batch", "models/platform/apply-order-model"), order);
+        verify(send(HttpMethod.GET, "/v1/routers/platform/r-batch", null, "", "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyTypedRouterWithItsInBatchSchema() {
+        String body = """
+                {"manifests": [
+                  {"kind": "Router", "name": "routers/platform/r-typed-batch",
+                   "spec": {"baseUrl": "http://localhost:4848", "applicationTypeSchemaId": "https://dial.test/batch-type",
+                     "applicationProperties": {"tier": "medium"}, "interfaces": {"openaiChatCompletions": {}}}},
+                  {"kind": "Schema", "name": "schemas/platform/batch-type",
+                   "spec": {"$schema": "https://dial.epam.com/application_type_schemas/schema#", "$id": "https://dial.test/batch-type",
+                     "dial:applicationTypeDisplayName": "Batch router type",
+                     "properties": {"tier": {"type": "string", "dial:meta": {"dial:propertyKind": "server", "dial:propertyOrder": 1}}},
+                     "required": ["tier"]}}
+                ]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        for (JsonNode result : ProxyUtil.MAPPER.readTree(response.body()).get("results")) {
+            assertEquals("APPLIED", result.get("status").asText(), response::body);
+        }
+        verify(send(HttpMethod.GET, "/v1/routers/platform/r-typed-batch", null, "", "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyRouterWithLegacyEndpointFailsWithoutPrecheck() {
+        String body = """
+                {"precheck": false, "manifests": [{"kind": "Router", "name": "routers/platform/r-bad",
+                  "spec": {"endpoint": "http://router/chat", "interfaces": {"openaiChatCompletions": {}}}}]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode result = ProxyUtil.MAPPER.readTree(response.body()).get("results").get(0);
+        assertEquals("FAILED", result.get("status").asText());
+        assertTrue(result.get("error").asText().contains("A router declares interfaces, not endpoint"), response::body);
+        verify(send(HttpMethod.GET, "/v1/routers/platform/r-bad", null, "", "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyPrecheckRejectsBatchWithFailingRouterAtomically() {
+        String body = """
+                {"manifests": [
+                  {"kind": "Translator", "name": "translators/platform/t-mixed",
+                   "spec": {"in": "anthropicMessages", "out": "openaiChatCompletions", "baseUrl": "http://localhost:4848/translate"}},
+                  {"kind": "Router", "name": "routers/platform/r-mixed",
+                   "spec": {"baseUrl": "http://localhost:4848", "interceptors": ["i1"], "interfaces": {"openaiChatCompletions": {}}}}
+                ]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        List<String> statuses = new ArrayList<>();
+        ProxyUtil.MAPPER.readTree(response.body()).get("results").forEach(r -> statuses.add(r.get("status").asText()));
+        assertEquals(List.of("SKIPPED", "FAILED"), statuses, response::body);
+        verify(send(HttpMethod.GET, "/v1/translators/platform/t-mixed", null, "", "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/routers/platform/r-mixed", null, "", "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyPrecheckMixedBatchRejectedAtomically() {
         String body = """
                 {
@@ -256,6 +447,108 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.GET, "/v1/models/platform/apply-partial-good", null, "",
                 "authorization", "admin"), 200);
         verify(send(HttpMethod.GET, "/v1/models/platform/apply-partial-bad", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyPrecheckRejectsInvalidResourceDependencies() {
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null,
+                invalidResourceDependenciesBatch(true, "apply-deps-precheck"), "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals("SKIPPED", parsed.get("results").get(0).get("status").asText(), () -> "Body: " + response.body());
+        JsonNode appResult = parsed.get("results").get(1);
+        assertEquals("FAILED", appResult.get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(appResult.get("error").asText().startsWith("Invalid resource dependencies"), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-deps-precheck-model", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/applications/platform/apply-deps-precheck-app", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyPrecheckFalseFailsInvalidResourceDependencies() {
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null,
+                invalidResourceDependenciesBatch(false, "apply-deps-partial"), "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        JsonNode appResult = parsed.get("results").get(1);
+        assertEquals("FAILED", appResult.get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(appResult.get("error").asText().startsWith("Invalid resource dependencies"), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-deps-partial-model", null, "",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/applications/platform/apply-deps-partial-app", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    private static String invalidResourceDependenciesBatch(boolean precheck, String prefix) {
+        return """
+                {
+                  "precheck": %s,
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/%s-model",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
+                      }
+                    },
+                    {
+                      "kind": "Application",
+                      "name": "applications/platform/%s-app",
+                      "spec": {
+                        "endpoint": "http://example.com/v1/completions",
+                        "resourceDependencies": [
+                          {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"url": "users/bob/files/f/"}, "access": ["read"]}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.formatted(precheck, prefix, prefix);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyRouteUpstreamWithoutKeyFails() {
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Interceptor",
+                      "name": "interceptors/platform/apply-route-nokey-int",
+                      "spec": {"endpoint": "http://localhost:7001/forward"}
+                    },
+                    {
+                      "kind": "Route",
+                      "name": "routes/platform/apply-route-nokey",
+                      "spec": {
+                        "paths": ["/v1/apply-route-nokey"],
+                        "methods": ["GET"],
+                        "upstreams": [{"endpoint": "http://localhost:9876", "authType": "BEARER"}]
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        JsonNode routeResult = parsed.get("results").get(1);
+        assertEquals("FAILED", routeResult.get("status").asText(), () -> "Body: " + response.body());
+        assertTrue(routeResult.get("error").asText().contains("requires a key"), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/interceptors/platform/apply-route-nokey-int", null, "",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/routes/platform/apply-route-nokey", null, "",
                 "authorization", "admin"), 404);
     }
 
@@ -444,6 +737,105 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertEquals(0, parsed.get("failed").asInt());
         verify(send(HttpMethod.GET, "/v1/catalog_schemas/platform/apply-catalog-schema-1", null, "",
                 "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyModelCatalogPropertiesTypeMismatch() {
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-catalog-schema-mismatch",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-model-mismatch",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object",
+                        "properties": {"featured": {"type": "boolean"}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-model-catalog-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "catalogSchemaId": "https://dial.epam.com/catalog-schemas/apply-model-mismatch",
+                        "catalogProperties": {"featured": "not-a-boolean"}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-model-catalog-mismatch", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyPrecheckFalseRejectsModelCatalogPropertiesTypeMismatch() {
+        // precheck=false must still reject non-conforming catalog_properties at real-apply time —
+        // exercises ConfigApplyService#applyModel's check directly, bypassing ConfigValidationService.
+        String catalogSchemaBody = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "CatalogSchema",
+                      "name": "catalog_schemas/platform/apply-precheck-false-catalog-mismatch",
+                      "spec": {
+                        "$schema": "https://dial.epam.com/catalog_schemas/schema#",
+                        "$id": "https://dial.epam.com/catalog-schemas/apply-precheck-false-mismatch",
+                        "dial:catalogEntityType": "model",
+                        "dial:catalogDisplayName": "Model",
+                        "type": "object",
+                        "properties": {"featured": {"type": "boolean"}}
+                      }
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, catalogSchemaBody, "authorization", "admin"), 200);
+
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-precheck-false-model-mismatch",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "catalogSchemaId": "https://dial.epam.com/catalog-schemas/apply-precheck-false-mismatch",
+                        "catalogProperties": {"featured": "not-a-boolean"}
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-precheck-false-model-mismatch", null, "",
+                "authorization", "admin"), 404);
     }
 
     @Test
@@ -804,6 +1196,194 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void testApplyToolSetWithoutSecretFailsWhenStoredSecretIsUnreadable() {
+        String toolSetPath = "toolsets/platform/apply-toolset-unreadable";
+        String manifest = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "ToolSet",
+                      "name": "%s",
+                      "spec": {
+                        "transport": "http",
+                        "endpoint": "http://localhost:9876/mcp",
+                        "display_name": "Apply Toolset",
+                        "auth_settings": {
+                          "authentication_type": "OAUTH",
+                          "client_id": "my-client-id",
+                          %s
+                          "redirect_uri": "http://admin/callback",
+                          "authorization_endpoint": "http://localhost:9876/authorize",
+                          "token_endpoint": "http://localhost:9876/token"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        try (TestWebServer server = new TestWebServer(9876)) {
+            server.map(HttpMethod.POST, "/mcp", 401, "");
+
+            Response created = send(HttpMethod.POST, "/v1/admin/apply", null,
+                    manifest.formatted(toolSetPath, "\"client_secret\": \"my-client-secret\","), "authorization", "admin");
+            verify(created, 200);
+            assertEquals(1, ProxyUtil.MAPPER.readTree(created.body()).get("applied").asInt(), created.body());
+
+            corruptStoredToolSetSecrets(toolSetPath);
+            String storedBefore = readStoredBlob(toolSetPath);
+
+            Response response = send(HttpMethod.POST, "/v1/admin/apply", null,
+                    manifest.formatted(toolSetPath, ""), "authorization", "admin");
+            verify(response, 200);
+            JsonNode result = ProxyUtil.MAPPER.readTree(response.body()).get("results").get(0);
+            assertEquals("FAILED", result.get("status").asText(), response.body());
+            assertTrue(result.get("error").asText().contains("can't be decrypted"), response.body());
+            assertEquals(storedBefore, readStoredBlob(toolSetPath));
+        }
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyRejectsOutOfContractEntityName() {
+        // /v1/admin/apply must enforce the same entity-name contract as the single-entity PUT —
+        // it must not be a back door that lets a name PUT would reject slip into blob storage.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/has space",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
+        verify(send(HttpMethod.GET, "/v1/models/platform/has%20space", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyAcceptsExtendedCharsInEntityName() {
+        // Covers every character ENTITY_NAME_PATTERN allows beyond the base alphanumeric/./-/_ set,
+        // in one name, so widening the pattern later just means adding a character here instead of
+        // a new test method: '@' is common in real-world deployment ids; '[' / ']' show up in
+        // legacy model ids carrying a context-window suffix (e.g. "claude-opus-4-8[1m]"); '(' / ')'
+        // show up in vendor-qualified ids (e.g. "gpt-4(preview)").
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/org@apply-model(preview)[1m]",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/org@apply-model(preview)%5B1m%5D", null, "",
+                "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyRejectsInvalidToolSetName() {
+        // '.' passes ENTITY_NAME_PATTERN but fails the rebuild's isValidToolSetKey — apply must
+        // reject it up front, same as the single-entity PUT (PlatformAppToolsetApiTest), instead of
+        // writing a blob that serves until the next rebuild and then vanishes.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "ToolSet",
+                      "name": "toolsets/platform/my.apply-toolset",
+                      "spec": {
+                        "transport": "http",
+                        "endpoint": "http://localhost:9876",
+                        "display_name": "Apply Toolset"
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        verify(send(HttpMethod.GET, "/v1/toolsets/platform/my.apply-toolset", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyApplicationRouteEncryptsUpstreamSecretAtRest() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Application",
+                      "name": "applications/platform/apply-app-route-secret",
+                      "spec": {
+                        "endpoint": "http://example.com/v1/completions",
+                        "display_name": "Apply App Route Secret",
+                        "routes": {
+                          "apply-route": {
+                            "paths": ["/v1/apply-route"],
+                            "methods": ["GET"],
+                            "upstreams": [
+                              {"endpoint": "http://localhost:9876", "key": "app-route-secret-1"}
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+
+        // Raw blob must never carry the plaintext secret — only its ENC[...] envelope.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "apply-app-route-secret");
+        String rawBlob = resourceService.getResource(descriptor);
+        assertNotNull(rawBlob, "Application blob must exist");
+        assertTrue(rawBlob.contains("ENC["), () -> "Route upstream secret must be encrypted at rest: " + rawBlob);
+        assertFalse(rawBlob.contains("app-route-secret-1"), () -> "Plaintext upstream key must not appear in blob: " + rawBlob);
+
+        // The merged in-memory Config must hold the plaintext — this is what the live routing path reads.
+        MergedConfigStore store = (MergedConfigStore) dial.getProxy().getConfigStore();
+        Application application = store.get().getApplications().get("apply-app-route-secret");
+        assertNotNull(application, "Applied application must be present in merged config");
+        Route route = application.getRoutes().get("apply-route");
+        assertNotNull(route, "Application route must be present");
+        assertEquals("app-route-secret-1", route.getUpstreams().get(0).getKey());
+    }
+
+    @Test
+    @SneakyThrows
     void batchKeyRotationRemovesOldSecret() {
         // FINDING #2: applying a key with a changed secret via /v1/admin/apply must revoke the
         // old auth bearer.
@@ -840,6 +1420,150 @@ public class AdminApplyApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
+    void applyKeyDuplicateSecretFailsSecondEntity() {
+        // ApiKeyStore indexes keys by plaintext secret, so two key entities sharing one secret
+        // would silently collapse their auth, roles and project attribution. The second entity
+        // in the batch must fail and leave nothing behind.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-dup-key-a",
+                      "spec": {"key": "apply-dup-secret", "project": "projA", "roles": ["admin"]}
+                    },
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-dup-key-b",
+                      "spec": {"key": "apply-dup-secret", "project": "projB", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+        assertTrue(parsed.get("results").get(1).get("error").asText()
+                        .contains("already used by a different key entity"), () -> "Body: " + response.body());
+        assertFalse(response.body().contains("apply-dup-secret"),
+                () -> "Response must not echo the secret: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/apply-dup-key-a", null, "",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/keys/platform/apply-dup-key-b", null, "",
+                "authorization", "admin"), 404);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-dup-secret"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void applyKeyRotateToExistingSecretFailsEntity() {
+        String bodyA = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-rotate-dup-key-a",
+                      "spec": {"key": "apply-rotate-dup-a", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        String bodyB = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-rotate-dup-key-b",
+                      "spec": {"key": "apply-rotate-dup-b", "project": "projB", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        String bodyRotate = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-rotate-dup-key-a",
+                      "spec": {"key": "apply-rotate-dup-b", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyA, "authorization", "admin"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyB, "authorization", "admin"), 200);
+
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, bodyRotate, "authorization", "admin");
+        verify(response, 422);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("failed").asInt(), () -> "Body: " + response.body());
+
+        // Both original secrets still authenticate; the rotation was refused wholesale.
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-rotate-dup-a"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-rotate-dup-b"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void applyKeyUpdateWithUnchangedSecretSucceeds() {
+        // An update re-supplying the entity's own current secret is not a collision with itself —
+        // the guard only polices new secrets.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-unchanged-key",
+                      "spec": {"key": "apply-unchanged-secret", "project": "projA", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        String bodyUpdated = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-unchanged-key",
+                      "spec": {"key": "apply-unchanged-secret", "project": "projB", "roles": ["default"]}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin"), 200);
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, bodyUpdated, "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "apply-unchanged-secret"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void applyKeyWithFileKeySecretFails() {
+        // The file→blob handoff for keys goes through the migration endpoint; a direct apply
+        // claiming a file-sourced key's secret must fail.
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Key",
+                      "name": "keys/platform/apply-file-secret-key",
+                      "spec": {"key": "proxyKey1", "project": "someone-else", "roles": ["admin"]}
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 422);
+        assertFalse(response.body().contains("proxyKey1"),
+                () -> "Response must not echo the secret: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/keys/platform/apply-file-secret-key", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
     void testApplyEmptyManifestsBatchOk() {
         Response response = send(HttpMethod.POST, "/v1/admin/apply", null, "{\"manifests\": []}",
                 "authorization", "admin");
@@ -864,7 +1588,8 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     {
                       "kind": "Settings",
                       "name": "settings/platform/global",
-                      "spec": {"globalInterceptors": ["interceptor1"], "retriableErrorCodes": []}
+                      "spec": {"globalInterceptors": ["interceptor1"], "retriableErrorCodes": [],
+                               "spendingLimits": {"mode": "enforce"}}
                     }
                   ]
                 }
@@ -885,6 +1610,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertNotNull(globalInterceptors);
         assertEquals(1, globalInterceptors.size());
         assertEquals("interceptor1", globalInterceptors.get(0).asText());
+        assertEquals("enforce", settings.get("spendingLimits").get("mode").asText());
     }
 
     @Test
@@ -922,6 +1648,54 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     .put("config", new JsonObject()
                             .put("write", new JsonObject().put("softValidation", true))
                             .put("onInvalidEntity", "skip"));
+        }
+
+        @Test
+        @SneakyThrows
+        void testApplySoftValidationStillRejectsUnservedInterface() {
+            // Previously this returned APPLIED_INVALID with the blob written — a model the rebuild
+            // discards every time. Only cross-references stay soft-tolerable.
+            String body = """
+                    {
+                      "precheck": false,
+                      "manifests": [
+                        {
+                          "kind": "Model",
+                          "name": "models/platform/apply-soft-unserved",
+                          "spec": {
+                            "type": "chat",
+                            "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                            "interfaces": {"openaiChatCompletions": {}}
+                          }
+                        }
+                      ]
+                    }
+                    """;
+            // Soft mode reports the failure in the result row with a 200 envelope; the hard-mode
+            // twin testApplyRejectsModelWithUnservedInterface pins the 422 envelope.
+            Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(),
+                    () -> "Body: " + response.body());
+            verify(send(HttpMethod.GET, "/v1/models/platform/apply-soft-unserved", null, "",
+                    "authorization", "admin"), 404);
+        }
+
+        @Test
+        @SneakyThrows
+        void testApplyAdmitsPluginOfUnknownTypeAsInvalid() {
+            String body = """
+                    {
+                      "precheck": false,
+                      "manifests": [
+                        {"kind": "Plugin", "name": "plugins/platform/apply-soft-plugin", "spec": {"type": "missing"}}
+                      ]
+                    }
+                    """;
+            Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+            verify(response, 200);
+            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+            assertEquals("APPLIED_INVALID", parsed.get("results").get(0).get("status").asText(), response::body);
         }
 
         @Test

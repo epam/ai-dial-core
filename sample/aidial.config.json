@@ -22,6 +22,18 @@
                 "status": 200,
                 "body": "OK"
             }
+          },
+        "openrouter": {
+            "paths": ["/v1/chat/completions"],
+            "rewritePath": true,
+            "methods": ["POST"],
+            "upstreams": [
+                {
+                    "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+                    "key": "${OPENROUTER_API_KEY}",
+                    "authType": "BEARER"
+                }
+            ]
         }
     },
     "interceptors": {
@@ -126,6 +138,9 @@
             "overrideName": "/some[!exotic?]/model/name",
             "displayName": "GPT-3.5",
             "displayVersion": "Turbo",
+            "provider": "Azure",
+            "deprecationDate": "2027-06-30",
+            "endOfService": "2027-12-31",
             "endpoint": "http://localhost:7001/openai/deployments/gpt-35-turbo/chat/completions",
             "upstreams": [
                 {
@@ -248,6 +263,14 @@
         "proxyKey2": {
             "project": "TestProject2",
             "role": "default"
+        }
+    },
+    "aliases": {
+        "assistant-v1": {
+            "displayName": "Assistant",
+            "description": "General-purpose assistant.",
+            "userRoles": ["role1"],
+            "target": {"path": "models/chat-gpt-35-turbo"}
         }
     },
     "rateLimitSchedule": {

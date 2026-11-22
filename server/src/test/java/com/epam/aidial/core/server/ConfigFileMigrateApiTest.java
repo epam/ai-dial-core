@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.config.MergedConfigStore;
@@ -70,6 +71,67 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
             }
         }
         assertEquals(1, occurrences, () -> "Expected exactly one 'test-model-v1' entry: " + models.body());
+    }
+
+    @Test
+    @SneakyThrows
+    void testMigratePlugins() {
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, "{\"types\": [\"plugins\"]}",
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertTrue(idsWithStatus(results, "migrated").contains("plugins/platform/file-plugin"),
+                () -> "Body: " + response.body());
+        assertEquals("Plugin", findByResourceUrl(results, "plugins/platform/file-plugin").get("kind").asText(),
+                () -> "Body: " + response.body());
+
+        Response get = send(HttpMethod.GET, "/v1/plugins/platform/file-plugin", null, "", "authorization", "admin");
+        verify(get, 200);
+        JsonNode plugin = ProxyUtil.MAPPER.readTree(get.body());
+        assertEquals("test-echo", plugin.get("type").asText());
+        assertEquals("hi", plugin.get("settings").get("greeting").asText());
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/routers.json")
+    void testMigrateFileRouters() {
+        String body = """
+                {"types": ["routers"]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        JsonNode r1 = findByResourceUrl(results, "routers/platform/r1");
+        assertEquals("Router", r1.get("kind").asText(), () -> "Body: " + response.body());
+        assertEquals("r1", r1.get("key").asText(), () -> "Body: " + response.body());
+        assertEquals("migrated", r1.get("status").asText(), () -> "Body: " + response.body());
+        Response migrated = send(HttpMethod.GET, "/v1/routers/platform/r1", null, "", "authorization", "admin");
+        verify(migrated, 200);
+        assertEquals("analysts", ProxyUtil.MAPPER.readTree(migrated.body()).get("userRoles").get(0).asText());
+
+        Response again = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(again, 200);
+        for (JsonNode result : ProxyUtil.MAPPER.readTree(again.body()).get("results")) {
+            assertEquals("skipped", result.get("status").asText(), () -> "Body: " + again.body());
+            assertEquals("already in blob", result.get("reason").asText(), () -> "Body: " + again.body());
+        }
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/routers-typed.json")
+    void testMigrateTypedFileRouter() {
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, "{\"types\": [\"routers\"]}",
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode r3 = findByResourceUrl(ProxyUtil.MAPPER.readTree(response.body()).get("results"), "routers/platform/r3");
+        assertEquals("migrated", r3.get("status").asText(), () -> "Body: " + response.body());
+        Response migrated = send(HttpMethod.GET, "/v1/routers/platform/r3", null, "", "authorization", "admin");
+        verify(migrated, 200);
+        assertEquals("medium", ProxyUtil.MAPPER.readTree(migrated.body()).get("applicationProperties").get("tier").asText());
     }
 
     @Test
@@ -145,10 +207,51 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    @DialConfigLocation("dial-config/bracket-named-model.json")
+    @DialConfigLocation("dial-config/config-file-migrate.json")
+    void testMigrateApplicationPreservesAndEncryptsUpstreamSecret() {
+        String body = """
+                {"types": ["applications"]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+        assertTrue(idsWithStatus(results, "migrated").contains("applications/platform/app-route-secret"),
+                () -> "Body: " + response.body());
+
+        // Raw blob must never carry the plaintext secret — only its ENC[...] envelope.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "app-route-secret");
+        String rawBlob = resourceService.getResource(descriptor);
+        assertNotNull(rawBlob, "Migrated application blob must exist");
+        assertTrue(rawBlob.contains("ENC["), () -> "Route upstream secret must be encrypted at rest: " + rawBlob);
+        assertFalse(rawBlob.contains("app-route-secret-1"), () -> "Plaintext upstream key must not appear in blob: " + rawBlob);
+
+        // The merged in-memory Config must hold the plaintext.
+        MergedConfigStore store = (MergedConfigStore) dial.getProxy().getConfigStore();
+        Application application = store.get().getApplications().get("app-route-secret");
+        assertNotNull(application, "Migrated application must be present in merged config");
+        Route route = application.getRoutes().get("index-search");
+        assertNotNull(route, "Application route must be present");
+        assertEquals("app-route-secret-1", route.getUpstreams().get(0).getKey());
+
+        // GET must never leak the secret, encrypted or plaintext (WRITE_ONLY suppresses the field).
+        Response get = send(HttpMethod.GET, "/v1/applications/platform/app-route-secret", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertFalse(get.body().contains("app-route-secret-1"), () -> "GET must never leak upstream secrets: " + get.body());
+        assertFalse(get.body().contains("ENC["), () -> "GET must never leak ciphertext: " + get.body());
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/bracket-paren-named-model.json")
     void testMigrateModelWithUriUnsafeNameReportsEncodedReachableResourceUrl() {
         // A model name only has to be legal configuration; brackets are legal there but illegal in a
         // URI path, so resourceUrl must percent-encode the name for the admin API path to be reachable.
+        // Parens are legal in both configuration and a URI path segment (RFC 3986 sub-delims), so the
+        // fixture's '(preview)' survives unescaped alongside the escaped '[1m]'.
         String body = """
                 {"types": ["models"]}
                 """;
@@ -160,8 +263,8 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
 
         JsonNode result = results.get(0);
         assertEquals("migrated", result.get("status").asText(), () -> "Body: " + response.body());
-        assertEquals("anthropic.claude-opus-4-8[1m]", result.get("key").asText(), () -> "Body: " + response.body());
-        String resourceUrl = "models/platform/anthropic.claude-opus-4-8%5B1m%5D";
+        assertEquals("anthropic.claude-opus-4-8(preview)[1m]", result.get("key").asText(), () -> "Body: " + response.body());
+        String resourceUrl = "models/platform/anthropic.claude-opus-4-8(preview)%5B1m%5D";
         assertEquals(resourceUrl, result.get("resourceUrl").asText(), () -> "Body: " + response.body());
 
         verify(send(HttpMethod.GET, "/v1/" + resourceUrl, null, "", "authorization", "admin"), 200);
@@ -254,6 +357,35 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
     @Test
     @SneakyThrows
     @DialConfigLocation("dial-config/config-file-migrate.json")
+    void testMigrateToolSetStripsStalePkceArtifacts() {
+        // The fixture's "oauth-toolset-stray-pkce" carries auth_settings.code_verifier/code_challenge
+        // left over from a previous live run. BaseAuthSettingsValidator forbids code_verifier
+        // unconditionally, so migrating it as-is would fail with "Field 'CODE_VERIFIER' is forbidden
+        // for OAUTH authentication." unless the controller strips both stray fields first.
+        String body = """
+                {"types": ["toolsets"]}
+                """;
+        try (TestWebServer ignore = new TestWebServer(9876)) {
+            Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, body,
+                    "authorization", "admin");
+            verify(response, 200);
+            JsonNode results = ProxyUtil.MAPPER.readTree(response.body()).get("results");
+            assertTrue(idsWithStatus(results, "migrated").contains("toolsets/platform/oauth-toolset-stray-pkce"),
+                    () -> "Body: " + response.body());
+
+            Response get = send(HttpMethod.GET, "/v1/toolsets/platform/oauth-toolset-stray-pkce", null, "",
+                    "authorization", "admin");
+            verify(get, 200);
+            assertFalse(get.body().contains("stale-code-verifier-from-a-previous-live-run"),
+                    () -> "Stale code_verifier must not survive migration: " + get.body());
+            assertFalse(get.body().contains("stale-code-challenge-from-a-previous-live-run"),
+                    () -> "Stale code_challenge must not survive migration: " + get.body());
+        }
+    }
+
+    @Test
+    @SneakyThrows
+    @DialConfigLocation("dial-config/config-file-migrate.json")
     void testMigrateSchemasUseLastPathSegmentAsBlobName() {
         // The 4 fixture schemas' $id values have distinct last path segments, so each migrates
         // verbatim under that segment as its blob name — no disambiguation needed.
@@ -313,7 +445,7 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
     @DialConfigLocation("dial-config/config-file-migrate-bad-schema.json")
     void testMigrateSchemaWithUnresolvableBlobNameReportsKeyOnly() {
         // The $id's last path segment ("bad~schema~name") has characters that don't match
-        // ConfigResourceController.ENTITY_NAME_PATTERN, so no blob name can ever be derived for it —
+        // ConfigPostProcessor.ENTITY_NAME_PATTERN, so no blob name can ever be derived for it —
         // the result must fall back to the $id as key, with no resourceUrl (nothing was, or could be,
         // written). Tildes are valid, unescaped URI characters, so the $id itself still passes the
         // config file's own schema-meta-schema validation at startup.
@@ -355,6 +487,8 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
         assertTrue(settings.get("globalInterceptors").isArray());
         assertTrue(settings.get("retriableErrorCodes").isArray());
         assertEquals("UTC", settings.get("rateLimitSchedule").get("timezone").asText());
+        assertEquals("shadow", settings.get("spendingLimits").get("mode").asText());
+        assertEquals("PERSONAL", settings.get("spendingLimits").get("defaultCostObject").asText());
     }
 
     @Test

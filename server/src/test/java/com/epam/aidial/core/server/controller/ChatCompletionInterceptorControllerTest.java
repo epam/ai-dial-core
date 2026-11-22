@@ -8,29 +8,41 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.proxy.ProxyClient;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,6 +61,7 @@ public class ChatCompletionInterceptorControllerTest {
     void stubConfig() {
         // buildUri resolves translator references against the request's config on every call
         lenient().when(context.getConfig()).thenReturn(new Config());
+        lenient().when(proxy.getProxyClient()).thenAnswer(invocation -> new ProxyClient(proxy.getClient(), null, null));
     }
 
     @Test
@@ -238,5 +251,66 @@ public class ChatCompletionInterceptorControllerTest {
         assertNotNull(updatedBody);
         ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(updatedBody.getBytes());
         assertEquals("overrideName", tree.get("model").asText());
+    }
+
+    @Test
+    void handleProxyResponseError_answersBadGateway() {
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, Answers.RETURNS_DEEP_STUBS);
+        when(context.getProxyRequest()).thenReturn(proxyRequest);
+        when(context.getProxyApiKeyData()).thenReturn(null);
+        when(context.respond(eq(HttpStatus.BAD_GATEWAY), any(ErrorData.class)))
+                .thenReturn(Future.succeededFuture());
+
+        ChatCompletionInterceptorController controller =
+                new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+        controller.handleProxyResponseError(new RuntimeException("ContentLengthNotAllowedException"));
+
+        verify(proxyRequest).reset();
+        ArgumentCaptor<ErrorData> captor = ArgumentCaptor.forClass(ErrorData.class);
+        verify(context).respond(eq(HttpStatus.BAD_GATEWAY), captor.capture());
+        assertEquals(String.valueOf(HttpStatus.BAD_GATEWAY), captor.getValue().getError().getCode());
+        assertEquals("Failed to receive response header from interceptor",
+                captor.getValue().getError().getMessage());
+        assertEquals("Failed to receive response header from interceptor",
+                captor.getValue().getError().getDisplayMessage());
+    }
+
+    @Test
+    void handleProxyResponseError_withoutProxyRequest_stillAnswersBadGateway() {
+        when(context.getProxyRequest()).thenReturn(null);
+        when(context.getProxyApiKeyData()).thenReturn(null);
+        when(context.respond(eq(HttpStatus.BAD_GATEWAY), any(ErrorData.class)))
+                .thenReturn(Future.succeededFuture());
+
+        ChatCompletionInterceptorController controller =
+                new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS);
+        controller.handleProxyResponseError(new RuntimeException("ContentLengthNotAllowedException"));
+
+        verify(context).respond(eq(HttpStatus.BAD_GATEWAY), any(ErrorData.class));
+        verify(context, never()).setProxyRequest(any());
+    }
+
+    @Test
+    void handle_bodyReadFailure_respondsUnprocessableEntity() {
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor1");
+        Config config = new Config();
+        config.setInterceptors(Map.of("interceptor1", interceptor));
+
+        when(context.getConfig()).thenReturn(config);
+        when(context.getInterceptors()).thenReturn(List.of("interceptor1"));
+        when(context.getDeployment()).thenReturn(interceptor);
+        when(context.getRequest()).thenReturn(request);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.body()).thenReturn(Future.failedFuture(new RuntimeException("connection reset")));
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+
+        new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS).handle();
+
+        verify(request, times(1)).body();
+        verify(context).respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+        verify(context, never()).setRequestBodyWithTimestamp(any());
+        verify(proxy, never()).getTaskExecutor();
     }
 }

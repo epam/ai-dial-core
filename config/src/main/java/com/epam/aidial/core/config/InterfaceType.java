@@ -1,6 +1,5 @@
 package com.epam.aidial.core.config;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonValue;
 import jakarta.annotation.Nullable;
 import lombok.Getter;
@@ -14,26 +13,22 @@ import java.util.List;
 @Getter
 public enum InterfaceType {
 
-    @JsonAlias({"openai_chat_completions"})
     OPENAI_CHAT_COMPLETIONS(
             "openaiChatCompletions",
             "/v1/chat/completions",
             List.of("prefix.body.tools", "prefix.body.messages")
     ),
     // an embeddings request carries no prompt prefix to cache, so it contributes no cache keys
-    @JsonAlias({"openai_embeddings"})
     OPENAI_EMBEDDINGS(
             "openaiEmbeddings",
             "/v1/embeddings",
             List.of()
     ),
-    @JsonAlias({"openai_responses"})
     OPENAI_RESPONSES(
             "openaiResponses",
             "/v1/responses",
             List.of("prefix.body.tools", "prefix.body.instructions", "prefix.body.input")
     ),
-    @JsonAlias({"anthropic_messages"})
     ANTHROPIC_MESSAGES(
             "anthropicMessages",
             "/v1/messages",

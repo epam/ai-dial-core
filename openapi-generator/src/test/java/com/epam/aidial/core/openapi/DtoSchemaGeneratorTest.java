@@ -2,16 +2,24 @@ package com.epam.aidial.core.openapi;
 
 import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Operator;
+import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import com.epam.aidial.core.openapi.annotations.ApiSubType;
 import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
+import com.epam.aidial.core.server.data.PricingData;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -101,6 +109,71 @@ class DtoSchemaGeneratorTest {
             assertFalse(node.has("plainValue"), "plainValue must not be exposed as a property");
             assertFalse(node.has("localeMap"), "localeMap must not be exposed as a property");
         }
+    }
+
+    @Test
+    void fieldAnnotatedJsonValueEnumUsesItsSerializedValuesNotConstantNames() {
+        // Operator's @JsonValue sits on its backing field (a Lombok @Getter enum), not a method — unlike
+        // a hand-written @JsonValue method, which jsonschema-module-jackson already handles on its own
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(Operator.class);
+
+        Map<String, ObjectNode> schemas = generator.getSchemas();
+        ObjectNode schema = schemas.get("Operator");
+        assertNotNull(schema, "Operator schema should be generated");
+        assertEquals("string", schema.get("type").asText());
+
+        ArrayNode enumValues = (ArrayNode) schema.get("enum");
+        assertNotNull(enumValues, "Operator schema should list its enum values");
+        List<String> actual = new ArrayList<>();
+        enumValues.forEach(node -> actual.add(node.asText()));
+        List<String> expected = Arrays.stream(Operator.values()).map(Operator::getSymbol).collect(Collectors.toList());
+        assertEquals(expected, actual, "Enum values should be the @JsonValue symbols, not the constant names");
+    }
+
+    @Test
+    void pricingRatesAreFlatStringOrPricingRateTree() {
+        for (Class<?> type : List.of(Pricing.class, PricingData.class)) {
+            DtoSchemaGenerator generator = new DtoSchemaGenerator();
+            generator.processType(type);
+
+            ObjectNode schema = generator.getSchemas().get(generator.resolveTypeName(type));
+            assertNotNull(schema, type.getSimpleName() + " schema should be generated");
+
+            ObjectNode properties = (ObjectNode) schema.get("properties");
+            int rates = 0;
+            for (Map.Entry<String, JsonNode> property : properties.properties()) {
+                if (property.getKey().equals("unit")) {
+                    continue;
+                }
+                rates++;
+                ArrayNode oneOf = (ArrayNode) property.getValue().get("oneOf");
+                assertNotNull(oneOf, type.getSimpleName() + "." + property.getKey() + " should be a oneOf");
+                assertEquals(2, oneOf.size());
+                assertEquals("string", oneOf.get(0).get("type").asText());
+                assertEquals("#/components/schemas/PricingRate", oneOf.get(1).get("$ref").asText());
+            }
+            assertEquals(4, rates, "prompt, completion, cacheRead and cacheWrite should all be unions");
+        }
+    }
+
+    @Test
+    void regexPatternIsStringNotObject() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(Route.class);
+
+        Map<String, ObjectNode> schemas = generator.getSchemas();
+        ObjectNode route = schemas.get(generator.resolveTypeName(Route.class));
+        assertNotNull(route, "Route schema should be generated");
+
+        ObjectNode items = (ObjectNode) route.get("properties").get("paths").get("items");
+        ObjectNode pattern = items.has("$ref")
+                ? schemas.get(items.get("$ref").asText().substring("#/components/schemas/".length()))
+                : items;
+        assertNotNull(pattern, "the paths item schema should be resolvable");
+        assertEquals("string", pattern.get("type").asText());
+        assertEquals("regex", pattern.get("format").asText());
+        assertFalse(pattern.has("properties"), "a Pattern must not expose its bean shape");
     }
 
     @ApiSchema(

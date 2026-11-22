@@ -12,6 +12,7 @@ import com.epam.aidial.core.config.AuthenticationType;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.server.vertx.FutureUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -79,8 +80,6 @@ public class IdentityProvider {
     // random salt is used to digest user email
     private final String loggingSalt;
 
-    private final MessageDigest sha256Digest;
-
     // the flag determines if user email should be obfuscated
     private final boolean obfuscateUserEmail;
 
@@ -118,6 +117,11 @@ public class IdentityProvider {
      * The path to the claim to extract user ID
      */
     private final String[] userIdPath;
+
+    /**
+     * The path to the claim to extract the user's email address
+     */
+    private final String[] userEmailPath;
 
     /**
      * Claim paths to log for debugging purposes
@@ -200,11 +204,6 @@ public class IdentityProvider {
             loggingSalt = null;
         }
 
-        try {
-            sha256Digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalArgumentException(e);
-        }
         obfuscateUserEmail = settings.getBoolean("obfuscateUserEmail", true);
 
         audience = settings.getString("audience", null);
@@ -214,6 +213,8 @@ public class IdentityProvider {
         userDisplayName = getClaimPath(settings, "userDisplayName", null);
 
         userIdPath = getClaimPath(settings, "userIdPath", new String[]{USER_SUB});
+
+        userEmailPath = getClaimPath(settings, "userEmailPath", new String[]{USER_EMAIL});
 
         claimPathsToLog = getAsStringList(settings, "claimPathsToLog", List.of(USER_SUB, USER_OID, USER_EMAIL)).stream()
                         .collect(Collectors.toMap(
@@ -326,24 +327,17 @@ public class IdentityProvider {
     }
 
     private Future<JwkResult> getJwk(String kid) {
-        /* The result of vertx.executeBlocking is a future that contains Vert.x context which is valid during a request
-         * execution. So, if we put that future in a cache, it will contain a context from the initial request, that
-         * may be invalid for further requests. For this reason, when we retrieve the future from the cache, we must
-         * extract the value and put it into another future (Promise) which holds a valid context of a current request.
-         * */
-        Promise<JwkResult> promise = Promise.promise();
-        cache.computeIfAbsent(kid, key -> taskExecutor.submit(() -> {
+        return FutureUtil.shareLookup(cache, kid, () -> taskExecutor.submit(() -> {
             JwkResult jwkResult;
             long currentTime = System.currentTimeMillis();
             try {
-                Jwk jwk = jwkProvider.get(key);
+                Jwk jwk = jwkProvider.get(kid);
                 jwkResult = new JwkResult(jwk, null, currentTime + positiveCacheExpirationMs);
             } catch (Exception e) {
                 jwkResult = new JwkResult(null, e, currentTime + negativeCacheExpirationMs);
             }
             return jwkResult;
-        })).onSuccess(promise::complete).onFailure(promise::fail);
-        return promise.future();
+        }));
     }
 
     private Future<DecodedJWT> verifyJwt(DecodedJWT jwt) {
@@ -396,7 +390,13 @@ public class IdentityProvider {
     private String extractUserHash(String keyClaim) {
         if (keyClaim != null && obfuscateUserEmail) {
             String keyClaimWithSalt = loggingSalt + keyClaim;
-            byte[] hash = sha256Digest.digest(keyClaimWithSalt.getBytes(StandardCharsets.UTF_8));
+            byte[] hash;
+            try {
+                // a digest per call: MessageDigest is not thread-safe, and requests are validated on several event loops at once
+                hash = MessageDigest.getInstance("SHA-256").digest(keyClaimWithSalt.getBytes(StandardCharsets.UTF_8));
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException(e);
+            }
 
             StringBuilder hashString = new StringBuilder();
             for (byte b : hash) {
@@ -495,7 +495,8 @@ public class IdentityProvider {
                 extractUserHash(userKey),
                 extractUserClaims(map),
                 extractStringClaim(map, projectPath),
-                extractStringClaim(map, userDisplayName));
+                extractStringClaim(map, userDisplayName),
+                extractStringClaim(map, userEmailPath));
     }
 
     private void logClaims(Map<String, Object> claims) {

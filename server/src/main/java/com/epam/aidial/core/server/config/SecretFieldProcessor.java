@@ -7,22 +7,28 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 public class SecretFieldProcessor {
 
-    public static final String ENC_PREFIX = "ENC[";
-    public static final String ENC_SUFFIX = "]";
-    public static final String SECRET_REF_PREFIX = "${SECRET:";
+    private static final String ENC_PREFIX = "ENC[";
+    private static final String ENC_SUFFIX = "]";
+    private static final String SECRET_REF_PREFIX = "${SECRET:";
 
     private static final ConcurrentHashMap<Class<?>, List<Field>> FIELDS_CACHE = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Class<?>, Boolean> HAS_ENCRYPTED_FIELD_CACHE = new ConcurrentHashMap<>();
@@ -41,7 +47,7 @@ public class SecretFieldProcessor {
             return;
         }
         byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-        walk(entity, aad, true);
+        walk(entity, aad, true, false);
     }
 
     public void decryptFields(Object entity, ResourceDescriptor descriptor) {
@@ -49,18 +55,37 @@ public class SecretFieldProcessor {
             return;
         }
         byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-        walk(entity, aad, false);
+        walk(entity, aad, false, false);
     }
 
-    public String resolveSecret(String value, ResourceDescriptor descriptor) {
-        if (value == null) {
-            return null;
+    /**
+     * As {@link #decryptFields}, but a field that fails to decrypt is set to null and logged instead of
+     * aborting the walk - used where one bad secret must not block every other field in the same object
+     * graph from decrypting, or block the write that follows from completing.
+     */
+    public void decryptFieldsLenient(Object entity, ResourceDescriptor descriptor) {
+        if (entity == null) {
+            return;
         }
-        if (value.startsWith(ENC_PREFIX) && value.endsWith(ENC_SUFFIX)) {
-            byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
-            return decryptEnvelope(value, aad, "value");
-        }
-        return value;
+        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        walk(entity, aad, false, true);
+    }
+
+    /**
+     * Paths (such as {@code upstreams[0].key}) of the encrypted fields that hold an {@code ENC[...]} value which
+     * cannot be decrypted. Reads only: nothing is changed, and plaintext values are never reported.
+     */
+    public List<String> findUnreadableFields(Object entity, ResourceDescriptor descriptor) {
+        List<String> unreadableFields = new ArrayList<>();
+        byte[] aad = descriptor.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8);
+        traverse(entity, null, (owner, field, value, ownerPath) -> {
+            try {
+                decryptValue(value, aad, field.getName());
+            } catch (SecurityException e) {
+                unreadableFields.add(new Path(ownerPath, field.getName()).render());
+            }
+        });
+        return unreadableFields;
     }
 
     /**
@@ -102,6 +127,10 @@ public class SecretFieldProcessor {
                         applyStrip(entryObj, valueType);
                     }
                 }
+            }
+            Class<?> objectType = objectClassWithEncryptedField(field);
+            if (objectType != null && target.get(name) instanceof ObjectNode nested) {
+                applyStrip(nested, objectType);
             }
         }
     }
@@ -150,6 +179,12 @@ public class SecretFieldProcessor {
                     && source.get(name) instanceof ObjectNode sourceEntries) {
                 mergeMap(targetEntries, sourceEntries, valueType);
             }
+            Class<?> objectType = objectClassWithEncryptedField(field);
+            if (objectType != null
+                    && target.get(name) instanceof ObjectNode targetObj
+                    && source.get(name) instanceof ObjectNode sourceObj) {
+                mergeInto(targetObj, sourceObj, objectType);
+            }
         }
     }
 
@@ -165,16 +200,10 @@ public class SecretFieldProcessor {
         }
     }
 
-    // Pair each target (request) element with its preserved source (blob) element. The matcher keys
-    // on the canonical JSON name "endpoint" (blobs are always written via the canonical mapper, so
-    // the field is present under that name) and falls back to index pairing when "endpoint" is
-    // absent — preserving prior behavior for non-keyed arrays. Iteration follows the request, so the
-    // desired set/order wins; duplicate endpoints match in relative order (stable two-pointer).
-    // Contract: endpoint-less elements use strict same-index pairing only. A consumed or
-    // out-of-bounds index slot yields no preservation (request value, possibly null, wins) — this is
-    // deterministic and never throws. Because an endpoint match can consume the slot an endpoint-less
-    // element would otherwise take, clients mixing endpoint-keyed and endpoint-less elements in one
-    // array must supply secrets explicitly for the unkeyed elements (or avoid the mix).
+    // Pairs each target (request) element with its source (blob) element to preserve omitted secrets:
+    // by "endpoint", then "baseUrl" (for endpoint-less, interface-routed upstreams), falling back to
+    // same-index pairing when neither is present. Mixing identified and unidentified elements in one
+    // array can let an identity match consume the slot an unidentified element would otherwise take.
     private void mergeArray(ArrayNode targets, ArrayNode sources, Class<?> nestedType) {
         boolean[] consumed = new boolean[sources.size()];
         for (int i = 0; i < targets.size(); i++) {
@@ -193,18 +222,11 @@ public class SecretFieldProcessor {
     private int matchSourceIndex(ObjectNode targetObj, ArrayNode sources, boolean[] consumed, int targetIndex) {
         JsonNode endpointNode = targetObj.get("endpoint");
         if (endpointNode != null && endpointNode.isTextual()) {
-            String endpoint = endpointNode.textValue();
-            for (int j = 0; j < sources.size(); j++) {
-                if (consumed[j] || !(sources.get(j) instanceof ObjectNode sourceObj)) {
-                    continue;
-                }
-                JsonNode sourceEndpoint = sourceObj.get("endpoint");
-                if (sourceEndpoint != null && sourceEndpoint.isTextual()
-                        && endpoint.equals(sourceEndpoint.textValue())) {
-                    return j;
-                }
-            }
-            return -1;
+            return matchByField(sources, consumed, "endpoint", endpointNode.textValue());
+        }
+        JsonNode baseUrlNode = targetObj.get("baseUrl");
+        if (baseUrlNode != null && baseUrlNode.isTextual()) {
+            return matchByField(sources, consumed, "baseUrl", baseUrlNode.textValue());
         }
         if (targetIndex < sources.size() && !consumed[targetIndex] && sources.get(targetIndex).isObject()) {
             return targetIndex;
@@ -212,7 +234,38 @@ public class SecretFieldProcessor {
         return -1;
     }
 
-    private void walk(Object entity, byte[] aad, boolean encrypt) {
+    private static int matchByField(ArrayNode sources, boolean[] consumed, String field, String value) {
+        for (int j = 0; j < sources.size(); j++) {
+            if (consumed[j] || !(sources.get(j) instanceof ObjectNode sourceObj)) {
+                continue;
+            }
+            JsonNode sourceValue = sourceObj.get(field);
+            if (sourceValue != null && sourceValue.isTextual() && value.equals(sourceValue.textValue())) {
+                return j;
+            }
+        }
+        return -1;
+    }
+
+    private void walk(Object entity, byte[] aad, boolean encrypt, boolean lenient) {
+        traverse(entity, null, (owner, field, value, ownerPath) -> {
+            String transformed = transform(value, aad, field.getName(), owner.getClass(), encrypt, lenient);
+            // Reference identity, not Objects.equals: encrypt/decrypt return the *input*
+            // reference unchanged on no-op paths (null/empty, already enveloped,
+            // ${secret:...} placeholders). Skipping field.set in those cases avoids a
+            // redundant reflective write.
+            if (transformed != value) {
+                field.set(owner, transformed);
+            }
+        });
+    }
+
+    /**
+     * The single walk over an entity graph: visits every {@link EncryptedField} String field, descending through
+     * nested objects, collections and maps that carry one. Everything that reads or rewrites those fields goes
+     * through it, so they cannot disagree on which fields exist.
+     */
+    private void traverse(Object entity, Path path, FieldVisitor visitor) {
         if (entity == null) {
             return;
         }
@@ -220,44 +273,73 @@ public class SecretFieldProcessor {
         for (Field field : declaredFieldsIncludingInherited(cls)) {
             try {
                 if (field.isAnnotationPresent(EncryptedField.class) && field.getType() == String.class) {
-                    String value = (String) field.get(entity);
-                    String transformed = encrypt ? encryptValue(value, aad, field.getName())
-                            : decryptValue(value, aad, field.getName());
-                    // Reference identity, not Objects.equals: encrypt/decrypt return the *input*
-                    // reference unchanged on no-op paths (null/empty, already enveloped,
-                    // ${secret:...} placeholders). Skipping field.set in those cases avoids a
-                    // redundant reflective write.
-                    if (transformed != value) {
-                        field.set(entity, transformed);
-                    }
+                    visitor.visit(entity, field, (String) field.get(entity), path);
                     continue;
                 }
-                Object child = field.get(entity);
-                recurseInto(child, aad, encrypt);
+                traverseChild(field.get(entity), path, field.getName(), visitor);
             } catch (IllegalAccessException e) {
                 throw new IllegalStateException("Reflection failure on " + cls.getName() + "." + field.getName(), e);
             }
         }
     }
 
-    private void recurseInto(Object child, byte[] aad, boolean encrypt) {
+    // Lenient mode only ever applies to decrypt: an encrypt failure must still fail the write rather
+    // than silently persist null in place of a real secret.
+    private String transform(String value, byte[] aad, String fieldName, Class<?> cls, boolean encrypt, boolean lenient) {
+        if (encrypt) {
+            return encryptValue(value, aad, fieldName);
+        }
+        if (!lenient) {
+            return decryptValue(value, aad, fieldName);
+        }
+        try {
+            return decryptValue(value, aad, fieldName);
+        } catch (SecurityException e) {
+            log.warn("Can't decrypt field '{}' on {}, dropping it: {}", fieldName, cls.getSimpleName(), e.getMessage());
+            return null;
+        }
+    }
+
+    private void traverseChild(Object child, Path parent, String fieldName, FieldVisitor visitor) {
         if (child == null) {
             return;
         }
         if (child instanceof Collection<?> collection) {
+            Path path = new Path(parent, fieldName);
+            int index = 0;
             for (Object item : collection) {
                 if (item != null && classHasEncryptedField(item.getClass())) {
-                    walk(item, aad, encrypt);
+                    traverse(item, new Path(path, index), visitor);
                 }
+                index++;
             }
         } else if (child instanceof Map<?, ?> map) {
-            for (Object value : map.values()) {
+            Path path = new Path(parent, fieldName);
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                Object value = entry.getValue();
                 if (value != null && classHasEncryptedField(value.getClass())) {
-                    walk(value, aad, encrypt);
+                    traverse(value, new Path(path, entry.getKey()), visitor);
                 }
             }
         } else if (classHasEncryptedField(child.getClass())) {
-            walk(child, aad, encrypt);
+            traverse(child, new Path(parent, fieldName), visitor);
+        }
+    }
+
+    @FunctionalInterface
+    private interface FieldVisitor {
+        /** {@code ownerPath} locates {@code owner} in the walked graph; it is {@code null} for the root entity. */
+        void visit(Object owner, Field field, String value, Path ownerPath) throws IllegalAccessException;
+    }
+
+    /** Where an object sits in the walked graph; rendered, like {@code upstreams[0].key}, only when asked for. */
+    private record Path(Path parent, Object key) {
+        String render() {
+            String prefix = parent == null ? "" : parent.render();
+            if (key instanceof Integer index) {
+                return prefix + "[" + index + "]";
+            }
+            return prefix.isEmpty() ? String.valueOf(key) : prefix + "." + key;
         }
     }
 
@@ -350,21 +432,11 @@ public class SecretFieldProcessor {
     }
 
     private static Class<?> elementClassWithEncryptedField(Field field) {
-        java.lang.reflect.Type generic = field.getGenericType();
-        if (!(generic instanceof java.lang.reflect.ParameterizedType pt)) {
-            return null;
-        }
         if (!Collection.class.isAssignableFrom(field.getType())) {
             return null;
         }
-        java.lang.reflect.Type[] args = pt.getActualTypeArguments();
-        if (args.length != 1) {
-            return null;
-        }
-        if (args[0] instanceof Class<?> elementClass && classHasEncryptedField(elementClass)) {
-            return elementClass;
-        }
-        return null;
+        Class<?> elementClass = resolveNestedClass(field);
+        return (elementClass != null && classHasEncryptedField(elementClass)) ? elementClass : null;
     }
 
     /**
@@ -373,21 +445,29 @@ public class SecretFieldProcessor {
      * passes have to descend into it the same way they descend into arrays.
      */
     private static Class<?> valueClassWithEncryptedField(Field field) {
-        java.lang.reflect.Type generic = field.getGenericType();
-        if (!(generic instanceof java.lang.reflect.ParameterizedType pt)) {
-            return null;
-        }
         if (!Map.class.isAssignableFrom(field.getType())) {
             return null;
         }
-        java.lang.reflect.Type[] args = pt.getActualTypeArguments();
-        if (args.length != 2) {
+        Class<?> valueClass = resolveNestedClass(field);
+        return (valueClass != null && classHasEncryptedField(valueClass)) ? valueClass : null;
+    }
+
+    /**
+     * The type of a plain (non-{@code Collection}, non-{@code Map}) object-valued field that itself
+     * carries — directly or transitively — an {@link EncryptedField}. Lets {@link #mergeInto}/
+     * {@link #applyStrip} descend through a bare nested-object field the same way they already
+     * descend through array- and map-valued fields.
+     */
+    private static Class<?> objectClassWithEncryptedField(Field field) {
+        Class<?> type = field.getType();
+        if (field.isAnnotationPresent(EncryptedField.class)
+                || Collection.class.isAssignableFrom(type)
+                || Map.class.isAssignableFrom(type)
+                || type.isPrimitive()
+                || type.getName().startsWith("java.")) {
             return null;
         }
-        if (args[1] instanceof Class<?> valueClass && classHasEncryptedField(valueClass)) {
-            return valueClass;
-        }
-        return null;
+        return classHasEncryptedField(type) ? type : null;
     }
 
     private static boolean classHasEncryptedField(Class<?> cls) {
@@ -397,12 +477,58 @@ public class SecretFieldProcessor {
         return HAS_ENCRYPTED_FIELD_CACHE.computeIfAbsent(cls, SecretFieldProcessor::computeHasEncryptedField);
     }
 
+    /**
+     * Transitive: a class "has" an encrypted field if it declares one directly, or if any field's
+     * type (or, for a {@code Collection}/{@code Map} field, its element/value type) does. This is
+     * what lets {@link #recurseInto} descend through e.g. {@code Application.routes} into
+     * {@code Route.upstreams} to reach {@code Upstream.key} — {@code Route} itself carries no
+     * {@code @EncryptedField}. {@code visiting} guards against infinite recursion on a cyclic type
+     * graph; {@link #HAS_ENCRYPTED_FIELD_CACHE} only gets populated once the outer call returns, so
+     * it can't protect against a cycle mid-computation on its own.
+     */
     private static boolean computeHasEncryptedField(Class<?> cls) {
-        for (Field f : declaredFieldsIncludingInherited(cls)) {
-            if (f.isAnnotationPresent(EncryptedField.class)) {
-                return true;
-            }
+        return computeHasEncryptedField(cls, new HashSet<>());
+    }
+
+    private static boolean computeHasEncryptedField(Class<?> cls, Set<Class<?>> visiting) {
+        if (!visiting.add(cls)) {
+            return false;
         }
-        return false;
+        try {
+            for (Field f : declaredFieldsIncludingInherited(cls)) {
+                if (f.isAnnotationPresent(EncryptedField.class)) {
+                    return true;
+                }
+                Class<?> nested = resolveNestedClass(f);
+                if (nested != null && !nested.isPrimitive() && !nested.getName().startsWith("java.")
+                        && computeHasEncryptedField(nested, visiting)) {
+                    return true;
+                }
+            }
+            return false;
+        } finally {
+            visiting.remove(cls);
+        }
+    }
+
+    /**
+     * A field's own type, or — for a {@code Collection}/{@code Map} field — its generic
+     * element/value type. Shared by {@link #computeHasEncryptedField} and by
+     * {@link #elementClassWithEncryptedField}/{@link #valueClassWithEncryptedField}'s own
+     * generic-type resolution.
+     */
+    private static Class<?> resolveNestedClass(Field field) {
+        Class<?> type = field.getType();
+        if (Collection.class.isAssignableFrom(type) || Map.class.isAssignableFrom(type)) {
+            if (field.getGenericType() instanceof ParameterizedType pt) {
+                Type[] args = pt.getActualTypeArguments();
+                int idx = Map.class.isAssignableFrom(type) ? 1 : 0;
+                if (args.length > idx && args[idx] instanceof Class<?> c) {
+                    return c;
+                }
+            }
+            return null;
+        }
+        return type;
     }
 }

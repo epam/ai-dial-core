@@ -3,7 +3,10 @@ package com.epam.aidial.core.credentials.validation;
 import com.epam.aidial.core.config.ResourceAuthSettings;
 import com.epam.aidial.core.credentials.data.credentials.TokenEndpointAuthMethod;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
+import org.apache.commons.lang3.StringUtils;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Set;
 
 /**
@@ -34,6 +37,22 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
         if (resourceAuthSettingsChangeMode != ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT
                 && resourceAuthSettings.getTokenEndpointAuthMethod() != null) {
             TokenEndpointAuthMethod.parse(resourceAuthSettings.getTokenEndpointAuthMethod());
+        }
+        if (StringUtils.isNotBlank(resourceAuthSettings.getResource())) {
+            validateResourceIndicator(resourceAuthSettings.getResource());
+        }
+    }
+
+    // RFC 8707 §2: an absolute URI without a fragment.
+    private static void validateResourceIndicator(String resource) {
+        URI uri;
+        try {
+            uri = new URI(resource);
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("Field 'resource' must be a valid URI: " + e.getMessage());
+        }
+        if (!uri.isAbsolute() || uri.getFragment() != null) {
+            throw new IllegalArgumentException("Field 'resource' must be an absolute URI without a fragment");
         }
     }
 
@@ -115,7 +134,8 @@ public class OauthAuthSettingsValidator extends BaseAuthSettingsValidator {
                         ResourceAuthSettingsField.CODE_VERIFIER,
                         ResourceAuthSettingsField.CODE_CHALLENGE_METHOD,
                         ResourceAuthSettingsField.SCOPES_SUPPORTED,
-                        ResourceAuthSettingsField.API_KEY_HEADER)
+                        ResourceAuthSettingsField.API_KEY_HEADER,
+                        ResourceAuthSettingsField.RESOURCE)
                 ).build();
     }
 

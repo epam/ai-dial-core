@@ -9,6 +9,7 @@ import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.concurrent.Executor;
+import javax.annotation.Nullable;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 
@@ -26,13 +27,23 @@ public class McpHttpClientBuilder implements AutoCloseable {
     private final HttpClient redirectSafeHttpClient;
 
     public McpHttpClientBuilder(Settings settings) {
-        this.httpClient = HttpClient.newBuilder()
+        this(settings, null);
+    }
+
+    /**
+     * @param proxySelector routes the shared client through an outbound proxy; {@code null} connects directly
+     */
+    public McpHttpClientBuilder(Settings settings, @Nullable ProxySelector proxySelector) {
+        HttpClient.Builder builder = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(settings.getConnectTimeout()))
                 // the SDK's own default client builder requests HTTP/1.1; that preference is otherwise
                 // lost because callers replace this builder's clientBuilder field wholesale rather than
                 // layering onto it, so pin it here instead
-                .version(HttpClient.Version.HTTP_1_1)
-                .build();
+                .version(HttpClient.Version.HTTP_1_1);
+        if (proxySelector != null) {
+            builder.proxy(proxySelector);
+        }
+        this.httpClient = builder.build();
         this.redirectSafeHttpClient = new RedirectSafeHttpClient(httpClient);
     }
 
@@ -40,9 +51,13 @@ public class McpHttpClientBuilder implements AutoCloseable {
         return new HttpClientBuilder(redirectSafeHttpClient);
     }
 
+    /**
+     * Aborts whatever is still in flight instead of waiting for it: {@code HttpClient.close()} blocks
+     * until every exchange completes, so one request a server never answers would hang shutdown.
+     */
     @Override
     public void close() {
-        httpClient.close();
+        httpClient.shutdownNow();
     }
 
     @Data

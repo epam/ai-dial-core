@@ -1,18 +1,23 @@
 package com.epam.aidial.core.server.limiter;
 
 import com.epam.aidial.core.config.CostLimit;
-import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Limit;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.RateLimitSchedule;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.RoleBasedEntity;
+import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.CostItemLimitStats;
 import com.epam.aidial.core.server.data.ItemLimitStats;
 import com.epam.aidial.core.server.data.LimitStats;
 import com.epam.aidial.core.server.data.UserLimitStats;
+import com.epam.aidial.core.server.limiter.budget.BudgetCounterStore;
+import com.epam.aidial.core.server.limiter.budget.BudgetEnforcer;
+import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
+import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ModelCostCalculator;
@@ -24,10 +29,10 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -41,9 +46,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
+import javax.annotation.Nullable;
 
 @Slf4j
-@RequiredArgsConstructor
 public class RateLimiter {
 
     private static final Limit DEFAULT_LIMIT = new Limit();
@@ -60,9 +66,31 @@ public class RateLimiter {
 
     private final ConfigStore configStore;
 
+    private final BlockingCallTracer blockingCallTracer;
+
+    private final BudgetEnforcer budgetEnforcer;
+
+    public RateLimiter(AsyncTaskExecutor taskExecutor, ResourceService resourceService, ConfigStore configStore,
+                       BlockingCallTracer blockingCallTracer) {
+        this.taskExecutor = taskExecutor;
+        this.resourceService = resourceService;
+        this.configStore = configStore;
+        this.blockingCallTracer = blockingCallTracer;
+        this.budgetEnforcer = new BudgetEnforcer(new BudgetCounterStore(taskExecutor, resourceService));
+    }
+
     public Future<Void> increase(
             RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody,
             InterfaceType interfaceType, JsonNode liveUsageNode) {
+        return increase(roleBasedEntity, bucket, usage, requestBody, responseBody, interfaceType, liveUsageNode, null);
+    }
+
+    /**
+     * @param budgetPayer the budget picked by the pre-call check, charged with the call's cost besides the legacy records
+     */
+    public Future<Void> increase(
+            RoleBasedEntity roleBasedEntity, String bucket, TokenUsage usage, Buffer requestBody, Buffer responseBody,
+            InterfaceType interfaceType, JsonNode liveUsageNode, @Nullable BudgetPayer budgetPayer) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
@@ -80,6 +108,10 @@ public class RateLimiter {
                 }
 
                 costFuture = updateCostLimits(roleBasedEntity, bucket, cost, schedule);
+                if (budgetPayer != null) {
+                    costFuture = Future.all(costFuture, budgetEnforcer.charge(
+                            budgetPayer, roleBasedEntity.getName(), cost, System.currentTimeMillis(), schedule)).mapEmpty();
+                }
             } else {
                 costFuture = Future.succeededFuture();
             }
@@ -100,11 +132,49 @@ public class RateLimiter {
         }
     }
 
+    /**
+     * Records a deployment's aggregated cost - the sum rolled up from descendants it called in a
+     * chain, as opposed to cost it reports directly itself. Written to its own record, entirely
+     * apart from both the caller's global spend and the deployment's direct-cost record, so it can
+     * never inflate what the caller is billed/capped on nor be conflated with unrelated direct
+     * activity under the same deployment name.
+     */
+    public Future<Void> recordAggregatedCost(String deploymentName, String bucket, BigDecimal cost) {
+        if (resourceService == null || cost == null || cost.compareTo(BigDecimal.ZERO) <= 0) {
+            return Future.succeededFuture();
+        }
+        RateLimitSchedule schedule = configStore.get().getRateLimitSchedule();
+        ResourceDescriptor descriptor = getResourceDescription(bucket, getPathToAggregatedCosts(deploymentName));
+        return taskExecutor.submit(() -> updateCostLimit(descriptor, cost, schedule));
+    }
+
     public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity) {
+        return checkLimits(context, roleBasedEntity, false);
+    }
+
+    /**
+     * Checks the caller's limits like {@link #limit(ProxyContext, RoleBasedEntity)}, and the result also carries the
+     * caller's spend caps, whichever check rejects. A reached spend cap is checked first and wins over every other
+     * limit. A failure to read the spend record fails the future with {@link SpendReadException}, unless a token or
+     * request limit rejects the call, which then decides the result without caps. With enforced budgets, an
+     * unreadable budget fails with {@link SpendReadException} only when a budget for the model caps the caller, and
+     * with the unwrapped failure otherwise.
+     */
+    public Future<RateLimitResult> limitWithSpendCaps(ProxyContext context, RoleBasedEntity roleBasedEntity) {
+        return checkLimits(context, roleBasedEntity, true);
+    }
+
+    private Future<RateLimitResult> checkLimits(ProxyContext context, RoleBasedEntity roleBasedEntity, boolean withSpendCaps) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
                 return Future.succeededFuture(RateLimitResult.SUCCESS);
+            }
+            boolean isBudgetApplicable = BudgetEnforcer.isApplicable(context, roleBasedEntity);
+            if (isBudgetApplicable) {
+                // before any check can refuse the call, so whichever check decides, the call names the mode and, in
+                // shadow and enforce, its cost object
+                context.setBudgetCheck(BudgetEnforcer.startCheck(context));
             }
             String name = roleBasedEntity.getName();
             Limit limit = getLimitByUser(context, roleBasedEntity);
@@ -118,7 +188,89 @@ public class RateLimiter {
                 return Future.succeededFuture(new RateLimitResult(HttpStatus.FORBIDDEN, "Access denied", "Access denied", -1));
             }
 
-            return taskExecutor.submit(() -> checkLimit(context, limit, roleBasedEntity));
+            boolean isEnforced = BudgetEnforcer.isEnforced(context, roleBasedEntity);
+            if (withSpendCaps && isEnforced) {
+                return checkBudgetsWithSpendCaps(context, (Model) roleBasedEntity, limit);
+            }
+            // in shadow the budget is checked and its payer charged on every route, while the legacy cost limit,
+            // and the spend caps read from it, still decide
+            boolean isBudgetCheck = isBudgetApplicable && context.getConfig().getSpendingLimits().getMode() != SpendingLimitMode.OFF;
+            Future<RateLimitResult> legacyResult = submitCheck(context, limit, roleBasedEntity, withSpendCaps, isEnforced);
+            if (!isBudgetCheck) {
+                return legacyResult;
+            }
+            return legacyResult.compose(result -> {
+                if (result.status() != HttpStatus.OK) {
+                    return Future.succeededFuture(result);
+                }
+                RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+                return budgetEnforcer.check(context, (Model) roleBasedEntity, System.currentTimeMillis(), schedule)
+                        // in shadow the budget never rejects, so the legacy result decides
+                        .map(budgetResult -> budgetResult.status() != HttpStatus.OK ? budgetResult : result);
+            });
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
+    }
+
+    /**
+     * The {@code enforce} check of a route that reports spend caps. The budget comes first, so a used-up budget
+     * wins over a token or request limit and their records are not touched. Then the token and request limits run,
+     * and the role cost limit is skipped. A failed budget load decides only when no token or request limit rejects,
+     * as an unreadable role record does; a failure of that check itself decides the answer.
+     */
+    private Future<RateLimitResult> checkBudgetsWithSpendCaps(ProxyContext context, Model model, Limit limit) {
+        RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+        return budgetEnforcer.checkWithSpendCaps(context, model, System.currentTimeMillis(), schedule).compose(
+                budgetResult -> budgetResult.status() != HttpStatus.OK
+                        ? Future.succeededFuture(budgetResult)
+                        : submitCheck(context, limit, model, false, true).map(result -> result.withSpendCaps(budgetResult.spendCaps())),
+                budgetError -> submitCheck(context, limit, model, false, true).compose(result -> result.status() != HttpStatus.OK
+                        ? Future.succeededFuture(result)
+                        : Future.failedFuture(budgetError)));
+    }
+
+    private Future<RateLimitResult> submitCheck(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity,
+                                                boolean withSpendCaps, boolean isCostCheckSkipped) {
+        return taskExecutor.submit(() -> blockingCallTracer.trace("rate_limit.check", () -> {
+            BlockingCallTracer.currentSpan().setAttribute("dial.deployment", roleBasedEntity.getName());
+            RateLimitResult result = checkLimit(context, limit, roleBasedEntity, withSpendCaps, isCostCheckSkipped);
+            BlockingCallTracer.currentSpan().setAttribute("dial.rate_limit.status", result.status().getCode());
+            return result;
+        }));
+    }
+
+    /**
+     * Whether any cost window of the caller is enforced, the per-minute one and a cap of 0 included. Uses the same
+     * unlimited threshold as {@link SpendCaps}, so a window too large to report is not a limit to fail closed on.
+     * When budgets are enforced, the budget check raises {@link SpendReadException} only for a budget that caps the
+     * caller, so it answers true.
+     */
+    public boolean hasCostLimit(ProxyContext context) {
+        if (BudgetEnforcer.isEnforced(context, context.getDeployment())) {
+            return true;
+        }
+        CostLimit costLimit = getCostLimitByUser(context);
+        return Stream.of(costLimit.getMinute(), costLimit.getDay(), costLimit.getWeek(), costLimit.getMonth())
+                .anyMatch(SpendCaps::isLimited);
+    }
+
+    /**
+     * The caller's spend caps as the pre-request check sees them, read without checking or charging anything -
+     * for a request whose limits are enforced by another one, such as the call a translator makes back to Core.
+     */
+    public Future<SpendCaps> readSpendCaps(ProxyContext context) {
+        if (resourceService == null) {
+            return Future.succeededFuture(SpendCaps.EMPTY);
+        }
+        try {
+            RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+            if (BudgetEnforcer.isReadFromBudgets(context)) {
+                return budgetEnforcer.readSpendCaps(context, System.currentTimeMillis(), schedule);
+            }
+            CostLimit costLimit = getCostLimitByUser(context);
+            return taskExecutor.submit(() -> blockingCallTracer.trace("rate_limit.read_spend",
+                    () -> buildSpendCaps(loadCostRateLimit(context), costLimit, System.currentTimeMillis(), schedule)));
         } catch (Throwable e) {
             return Future.failedFuture(e);
         }
@@ -145,6 +297,62 @@ public class RateLimiter {
         collectTokenLimitStats(context, limitStats, timestamp, name, schedule);
         collectRequestLimitStats(context, limitStats, timestamp, name, schedule);
         collectCostLimitStats(context, limitStats, timestamp, schedule);
+        return limitStats;
+    }
+
+    /**
+     * Reports a single deployment's own attributed usage - unlike {@link #getLimitStats}, whose
+     * {@code *CostStats} are the caller's account-wide budget/spend, this deployment's token/request
+     * stats are capped by its real {@link Limit} and its cost stats are the deployment's own direct +
+     * aggregated spend against the unlimited sentinel, since no per-deployment cost cap exists.
+     */
+    public Future<LimitStats> getDeploymentUsage(RoleBasedEntity roleBasedEntity, ProxyContext context) {
+        try {
+            // skip checking limits if redis is not available
+            if (resourceService == null) {
+                return Future.succeededFuture();
+            }
+            Limit limit = getLimitByUser(context, roleBasedEntity);
+            return taskExecutor.submit(() -> collectDeploymentUsage(context, limit, roleBasedEntity.getName()));
+        } catch (Throwable e) {
+            return Future.failedFuture(e);
+        }
+    }
+
+    private LimitStats collectDeploymentUsage(ProxyContext context, Limit limit, String name) {
+        String bucketLocation = BucketBuilder.buildInitiatorBucket(context);
+        RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+        long timestamp = System.currentTimeMillis();
+        Map<String, StatsTarget> targetsByRecordPath = new HashMap<>();
+        LimitStats limitStats = buildDeploymentLimitStats(bucketLocation, limit, name, timestamp, schedule, targetsByRecordPath);
+        List<Pair<ResourceItemMetadata, String>> records = loadLimitRecords(bucketLocation, targetsByRecordPath.keySet());
+        for (Pair<ResourceItemMetadata, String> loaded : records) {
+            String path = loaded.getKey().getDescriptor().getAbsoluteFilePath();
+            StatsTarget target = targetsByRecordPath.get(path);
+            target.type().collect(loaded.getValue(), target.stats(), timestamp, schedule);
+        }
+        return limitStats;
+    }
+
+    /**
+     * Builds a single deployment's {@link LimitStats} and wires its token/request/cost record paths into
+     * {@code targetsByRecordPath}, so both {@link #collectUserStats} (many deployments, one listing) and
+     * {@link #collectDeploymentUsage} (one deployment) assemble the same per-deployment shape.
+     */
+    private LimitStats buildDeploymentLimitStats(
+            String bucketLocation, Limit limit, String name, long timestamp,
+            RateLimitSchedule schedule, Map<String, StatsTarget> targetsByRecordPath) {
+        // DEFAULT_COST_LIMIT leaves every cost window at the unlimited sentinel: an entry reports the
+        // deployment's attributed spend, and only the global budget can cap it
+        LimitStats limitStats = create(limit, DEFAULT_COST_LIMIT, timestamp, schedule);
+        targetsByRecordPath.put(getLimitAbsolutePath(bucketLocation, getPathToTokens(name)),
+                new StatsTarget(limitStats, LimitType.TOKENS));
+        targetsByRecordPath.put(getLimitAbsolutePath(bucketLocation, getPathToRequests(name)),
+                new StatsTarget(limitStats, LimitType.REQUESTS));
+        targetsByRecordPath.put(getLimitAbsolutePath(bucketLocation, getPathToDeploymentCosts(name)),
+                new StatsTarget(limitStats, LimitType.COSTS));
+        targetsByRecordPath.put(getLimitAbsolutePath(bucketLocation, getPathToAggregatedCosts(name)),
+                new StatsTarget(limitStats, LimitType.AGGREGATED_COSTS));
         return limitStats;
     }
 
@@ -184,15 +392,7 @@ public class RateLimiter {
         for (RoleBasedEntity deployment : deployments) {
             String name = deployment.getName();
             Limit limit = getLimitByUser(context, deployment);
-            // DEFAULT_COST_LIMIT leaves every cost window at the unlimited sentinel: an entry reports the
-            // deployment's attributed spend, and only the global budget can cap it
-            LimitStats limitStats = create(limit, DEFAULT_COST_LIMIT, timestamp, schedule);
-            String tokensPath = getLimitAbsolutePath(bucketLocation, getPathToTokens(name));
-            String requestsPath = getLimitAbsolutePath(bucketLocation, getPathToRequests(name));
-            String costsPath = getLimitAbsolutePath(bucketLocation, getPathToDeploymentCosts(name));
-            targetsByRecordPath.put(tokensPath, new StatsTarget(limitStats, LimitType.TOKENS));
-            targetsByRecordPath.put(requestsPath, new StatsTarget(limitStats, LimitType.REQUESTS));
-            targetsByRecordPath.put(costsPath, new StatsTarget(limitStats, LimitType.COSTS));
+            LimitStats limitStats = buildDeploymentLimitStats(bucketLocation, limit, name, timestamp, schedule, targetsByRecordPath);
             statsByDeployment.put(name, limitStats);
         }
 
@@ -218,6 +418,11 @@ public class RateLimiter {
         userLimitStats.setDayCostStats(costStats.getDayCostStats());
         userLimitStats.setWeekCostStats(costStats.getWeekCostStats());
         userLimitStats.setMonthCostStats(costStats.getMonthCostStats());
+
+        // additive: the legacy cost stats above are not touched by budgets
+        BudgetEnforcer.BudgetReport budgetReport = budgetEnforcer.collectStats(context, timestamp, schedule);
+        userLimitStats.setCostObject(budgetReport.costObject());
+        userLimitStats.setBudgets(budgetReport.budgets());
 
         if (dropEmpty) {
             statsByDeployment.values().removeIf(stats -> !hasUsage(stats));
@@ -291,6 +496,14 @@ public class RateLimiter {
         COSTS {
             @Override
             void collect(String json, LimitStats stats, long timestamp, RateLimitSchedule schedule) {
+                collectCostLimitStats(json, stats, timestamp, schedule);
+            }
+        },
+        AGGREGATED_COSTS {
+            @Override
+            void collect(String json, LimitStats stats, long timestamp, RateLimitSchedule schedule) {
+                // same record shape and same additive collection as a direct-cost record - the two
+                // are read into the same LimitStats fields and sum, whichever is processed first
                 collectCostLimitStats(json, stats, timestamp, schedule);
             }
         };
@@ -426,9 +639,14 @@ public class RateLimiter {
         return ResourceDescriptorFactory.fromEntityPath(ResourceTypes.LIMIT, bucketLocation, bucketLocation, path);
     }
 
-    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity) {
+    private RateLimitResult checkLimit(ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity, boolean withSpendCaps,
+                                       boolean isCostCheckSkipped) {
         long timestamp = System.currentTimeMillis();
         RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
+        CostLimit costLimit = getCostLimitByUser(context);
+        if (withSpendCaps) {
+            return checkLimitWithSpendCaps(context, limit, roleBasedEntity, costLimit, timestamp, schedule);
+        }
 
         // Check token limits
         RateLimitResult tokenResult = checkTokenLimit(context, limit, timestamp, schedule, roleBasedEntity);
@@ -442,20 +660,73 @@ public class RateLimiter {
             return requestResult;
         }
 
-        // Check cost limits
-        CostLimit costLimit = getCostLimitByUser(context);
-        return checkCostLimit(context, costLimit, timestamp, schedule);
-    }
-
-    private RateLimitResult checkCostLimit(ProxyContext context, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
-        String costsPath = getPathToCosts();
-        ResourceDescriptor resourceDescription = getResourceDescription(context, costsPath);
-        String prevValue = resourceService.getResource(resourceDescription);
-        CostRateLimit rateLimit = ProxyUtil.convertToObject(prevValue, CostRateLimit.class);
-        if (rateLimit == null) {
+        // the legacy cost limit is ignored when budgets enforce
+        if (isCostCheckSkipped) {
             return RateLimitResult.SUCCESS;
         }
-        return rateLimit.check(timestamp, schedule, costLimit);
+
+        // Check cost limits
+        CostRateLimit costRateLimit = loadCostRateLimit(context);
+        return costRateLimit == null ? RateLimitResult.SUCCESS : costRateLimit.check(timestamp, schedule, costLimit);
+    }
+
+    /**
+     * Reads the spend record first, so a reached spend cap wins over every other limit and is rejected without touching
+     * the token or request records. A failed read decides only when no other limit rejects: the request is then
+     * about to go upstream with its spend unknown, so it fails with {@link SpendReadException}.
+     */
+    private RateLimitResult checkLimitWithSpendCaps(
+            ProxyContext context, Limit limit, RoleBasedEntity roleBasedEntity, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
+        CostRateLimit costRateLimit = null;
+        SpendCaps spendCaps = null;
+        SpendReadException readError = null;
+        try {
+            costRateLimit = loadCostRateLimit(context);
+            spendCaps = buildSpendCaps(costRateLimit, costLimit, timestamp, schedule);
+        } catch (RuntimeException e) {
+            readError = new SpendReadException(e);
+        }
+
+        SpendCap reported = spendCaps == null ? null : spendCaps.reported();
+        if (reported != null && reported.isExceeded()) {
+            return costRateLimit.check(timestamp, schedule, costLimit).withSpendCaps(spendCaps);
+        }
+
+        RateLimitResult tokenResult = checkTokenLimit(context, limit, timestamp, schedule, roleBasedEntity);
+        if (tokenResult.status() != HttpStatus.OK) {
+            return tokenResult.withSpendCaps(spendCaps);
+        }
+
+        RateLimitResult requestResult = checkRequestLimit(context, limit, timestamp, schedule, roleBasedEntity);
+        if (requestResult.status() != HttpStatus.OK) {
+            return requestResult.withSpendCaps(spendCaps);
+        }
+
+        if (readError != null) {
+            throw readError;
+        }
+        // only the per-minute window or a cap of 0 can reject here: neither is reported
+        RateLimitResult costResult = costRateLimit == null ? RateLimitResult.SUCCESS : costRateLimit.check(timestamp, schedule, costLimit);
+        return costResult.withSpendCaps(spendCaps);
+    }
+
+    @Nullable
+    private CostRateLimit loadCostRateLimit(ProxyContext context) {
+        ResourceDescriptor resourceDescription = getResourceDescription(context, getPathToCosts());
+        return ProxyUtil.convertToObject(resourceService.getResource(resourceDescription), CostRateLimit.class);
+    }
+
+    private static SpendCaps buildSpendCaps(@Nullable CostRateLimit rateLimit, CostLimit costLimit, long timestamp, RateLimitSchedule schedule) {
+        return SpendCaps.of(List.of(
+                buildSpendCap(CalendarPeriod.DAY, rateLimit == null ? null : rateLimit.getDay(), costLimit.getDay(), timestamp, schedule),
+                buildSpendCap(CalendarPeriod.WEEK, rateLimit == null ? null : rateLimit.getWeek(), costLimit.getWeek(), timestamp, schedule),
+                buildSpendCap(CalendarPeriod.MONTH, rateLimit == null ? null : rateLimit.getMonth(), costLimit.getMonth(), timestamp, schedule)));
+    }
+
+    private static SpendCap buildSpendCap(
+            CalendarPeriod period, @Nullable CostFixedRateBucket bucket, BigDecimal total, long timestamp, RateLimitSchedule schedule) {
+        BigDecimal used = bucket == null ? BigDecimal.ZERO : bucket.reconcile(timestamp, period, schedule);
+        return new SpendCap(period, used, total, CalendarWindowCalculator.nextPeriodStart(period, timestamp, schedule));
     }
 
     private RateLimitResult checkTokenLimit(
@@ -536,7 +807,8 @@ public class RateLimiter {
     private Limit getLimitByUser(ProxyContext context, RoleBasedEntity roleBasedEntity) {
         String name = roleBasedEntity.getName();
         List<String> userRoles;
-        if (roleBasedEntity.getUserRoles() == null) {
+        // the target pass of an alias call: the caller reaches the target through the alias, not through its roles
+        if (roleBasedEntity.getUserRoles() == null || DeploymentService.isLent(context, roleBasedEntity)) {
             // find limits for all user roles
             userRoles = context.getUserRoles();
         } else {
@@ -616,6 +888,10 @@ public class RateLimiter {
 
     private static String getPathToDeploymentCosts(String name) {
         return String.format("%s/costs", name);
+    }
+
+    private static String getPathToAggregatedCosts(String name) {
+        return String.format("%s/aggregated-costs", name);
     }
 
     private static Limit getLimit(Map<String, Role> roles, String userRole, String name, Limit defaultLimit) {

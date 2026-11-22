@@ -23,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.Scanner;
+import javax.annotation.Nullable;
 
 @Slf4j
 @UtilityClass
@@ -43,7 +44,7 @@ public class ModelCostCalculator {
         return switch (pricing.getUnit()) {
             case "token" -> calculate(tokenUsage, pricing, interfaceType, responseBody, liveUsageNode);
             case "char_without_whitespace" ->
-                    calculate(model.getType(), requestBody, responseBody, pricing.getPrompt(), pricing.getCompletion());
+                    calculate(model.getType(), requestBody, responseBody, flatRate(pricing.getPrompt()), flatRate(pricing.getCompletion()));
             default -> null;
         };
     }
@@ -53,13 +54,14 @@ public class ModelCostCalculator {
         if (tokenUsage == null) {
             return null;
         }
-        String promptRate = pricing.getPrompt();
-        String completionRate = pricing.getCompletion();
 
         // streaming: already accumulated live by a per-event Fn; non-streaming: one cheap whole-body parse
         JsonNode nativeRoot = liveUsageNode != null ? liveUsageNode
                 : responseBody == null ? MissingNode.getInstance() : JsonUtil.tryParse(responseBody.getBytes());
         UsageEvalContext evalContext = UsageEvalContext.build(interfaceType, nativeRoot);
+
+        String promptRate = resolveRate(pricing.getPrompt(), evalContext, null);
+        String completionRate = resolveRate(pricing.getCompletion(), evalContext, null);
 
         PromptTokensDetails details = tokenUsage.getPromptTokensDetails();
         long cachedTokens = evalContext.resolveCounter(StandardField.CACHED_READ_TOKENS)
@@ -103,11 +105,18 @@ public class ModelCostCalculator {
         return cost;
     }
 
-    private static String resolveRate(PricingRate pricingRate, UsageEvalContext evalContext, String promptRate) {
+    private static String resolveRate(PricingRate pricingRate, UsageEvalContext evalContext, @Nullable String defaultRate) {
         if (pricingRate == null) {
-            return promptRate;
+            return defaultRate;
         }
-        return PricingRateEvaluator.evaluate(pricingRate, evalContext).orElse(promptRate);
+        return PricingRateEvaluator.evaluate(pricingRate, evalContext).orElse(defaultRate);
+    }
+
+    // char_without_whitespace pricing has no usage data to evaluate a decision tree against
+    // (validated at config load time - see ConfigPostProcessor#validatePricing), so only the
+    // flat leaf rate applies here.
+    private static String flatRate(PricingRate pricingRate) {
+        return pricingRate == null ? null : pricingRate.getRate();
     }
 
     private static BigDecimal addCost(BigDecimal cost, String rate, long tokens) {

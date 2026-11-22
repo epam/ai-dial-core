@@ -1,5 +1,11 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Application;
+import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.service.ResourceService;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
@@ -55,6 +61,69 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
         Response getAfterDelete = send(HttpMethod.GET, "/v1/applications/platform/my-platform-app", null, "",
                 "authorization", "admin");
         verify(getAfterDelete, 404);
+    }
+
+    @Test
+    void testApplicationPutOmittingRouteSecretPreservesIt() {
+        String bodyWithSecret = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Platform App With Secret",
+                  "routes": {
+                    "my-route": {
+                      "paths": ["/v1/my-route"],
+                      "methods": ["GET"],
+                      "upstreams": [{"endpoint": "http://localhost:9876", "key": "platform-route-secret-1"}]
+                    }
+                  }
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/applications/platform/app-preserve-secret", null, bodyWithSecret,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
+
+        // Raw blob must never carry the plaintext secret — only its ENC[...] envelope.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.APPLICATION,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "app-preserve-secret");
+        String rawBlob = resourceService.getResource(descriptor);
+        assertNotNull(rawBlob, "Application blob must exist");
+        assertTrue(rawBlob.contains("ENC["), () -> "Upstream secret must be encrypted at rest: " + rawBlob);
+
+        Response get = send(HttpMethod.GET, "/v1/applications/platform/app-preserve-secret", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertFalse(get.body().contains("platform-route-secret-1"),
+                () -> "GET must never leak upstream secrets: " + get.body());
+
+        // Re-PUT the same body MINUS the secret field — simulates a naive GET-then-PUT round-trip.
+        String bodyWithoutSecret = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Platform App With Secret",
+                  "routes": {
+                    "my-route": {
+                      "paths": ["/v1/my-route"],
+                      "methods": ["GET"],
+                      "upstreams": [{"endpoint": "http://localhost:9876"}]
+                    }
+                  }
+                }
+                """;
+        Response put2 = send(HttpMethod.PUT, "/v1/applications/platform/app-preserve-secret", null, bodyWithoutSecret,
+                "authorization", "admin");
+        verify(put2, 200);
+
+        String rawBlobAfter = resourceService.getResource(descriptor);
+        assertNotNull(rawBlobAfter, "Application blob must still exist");
+        assertTrue(rawBlobAfter.contains("ENC["),
+                () -> "Secret must still be present (preserved) after omitting it in PUT: " + rawBlobAfter);
+
+        MergedConfigStore store = (MergedConfigStore) dial.getProxy().getConfigStore();
+        Application application = store.get().getApplications().get("app-preserve-secret");
+        assertNotNull(application, "Application must be present in merged config");
+        assertEquals("platform-route-secret-1",
+                application.getRoutes().get("my-route").getUpstreams().get(0).getKey());
     }
 
     @Test
@@ -619,5 +688,37 @@ public class PlatformAppToolsetApiTest extends ResourceBaseTest {
         Response put = send(HttpMethod.PUT, "/v1/applications/platform/function-app", null, body,
                 "authorization", "admin", "If-None-Match", "*");
         verify(put, 400);
+    }
+
+    @Test
+    void testMalformedResourceDependenciesSectionRejected() {
+        // The platform bucket is always admin context, so only shape validation applies — but it
+        // must apply here too: this surface bypasses ResourceController.validateCustomApplication.
+        String body = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Platform App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"url": "users/bob/files/f/"}, "access": ["read"]}
+                  ]
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/applications/platform/bad-dependency-app", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 400);
+
+        // A valid section is accepted on the same surface.
+        String validBody = """
+                {
+                  "endpoint": "http://application1/v1/completions",
+                  "display_name": "Platform App",
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk_1", "target": {"url": "skills/{current-user}/"}, "access": ["write"]}
+                  ]
+                }
+                """;
+        put = send(HttpMethod.PUT, "/v1/applications/platform/good-dependency-app", null, validBody,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 200);
     }
 }

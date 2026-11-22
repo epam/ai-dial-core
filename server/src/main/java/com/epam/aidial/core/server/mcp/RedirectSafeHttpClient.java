@@ -10,11 +10,20 @@ import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Flow;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import javax.annotation.Nullable;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 
@@ -109,7 +118,8 @@ final class RedirectSafeHttpClient extends HttpClient {
 
     @Override
     public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request, HttpResponse.BodyHandler<T> bodyHandler) {
-        return sendWithRedirects(request, bodyHandler, 0);
+        Instant deadline = request.timeout().map(Instant.now()::plus).orElse(null);
+        return sendWithRedirects(request, bodyHandler, 0, deadline);
     }
 
     @Override
@@ -119,27 +129,85 @@ final class RedirectSafeHttpClient extends HttpClient {
         return delegate.sendAsync(request, bodyHandler, pushPromiseHandler);
     }
 
+    /**
+     * @param deadline when the caller's request timeout runs out, or {@code null} if it set none. The timeout
+     *                 bounds the request as a whole, so each hop gets only what is left of it - otherwise every
+     *                 redirect would restart the clock, and a server could stretch one request far past it.
+     */
     private <T> CompletableFuture<HttpResponse<T>> sendWithRedirects(HttpRequest request,
-            HttpResponse.BodyHandler<T> bodyHandler, int redirectCount) {
+            HttpResponse.BodyHandler<T> bodyHandler, int redirectCount, @Nullable Instant deadline) {
+        AtomicReference<HttpResponse.ResponseInfo> abandonedRedirect = new AtomicReference<>();
         HttpResponse.BodyHandler<T> guardedHandler = responseInfo -> {
             boolean willFollow = resolveFollowTarget(
                     responseInfo.statusCode(), responseInfo.headers(), request.uri(), redirectCount).isPresent();
             if (willFollow) {
-                // this response is discarded wholesale in the thenCompose below - only .statusCode()/.headers()
-                // are ever read from it, never .body() - so faking the body's type here is safe
-                @SuppressWarnings("unchecked")
-                HttpResponse.BodySubscriber<T> discarding = (HttpResponse.BodySubscriber<T>) HttpResponse.BodySubscribers.discarding();
-                return discarding;
+                abandonedRedirect.set(responseInfo);
+                return abandonBody();
             }
             return bodyHandler.apply(responseInfo);
         };
-        return delegate.sendAsync(request, guardedHandler).thenCompose(response -> {
-            Optional<URI> target = resolveFollowTarget(response.statusCode(), response.headers(), request.uri(), redirectCount);
-            if (target.isEmpty()) {
-                return CompletableFuture.completedFuture(response);
+        return delegate.sendAsync(request, guardedHandler).handle((response, error) -> {
+            if (error == null) {
+                return resolveFollowTarget(response.statusCode(), response.headers(), request.uri(), redirectCount)
+                        .map(target -> follow(request, target, bodyHandler, redirectCount, deadline))
+                        .orElseGet(() -> CompletableFuture.completedFuture(response));
             }
-            return sendWithRedirects(rebuild(request, target.get()), bodyHandler, redirectCount + 1);
-        });
+            // abandoning a redirect's body cancels its exchange, which the client may report as a failure even
+            // though the redirect itself was received - that failure is this class's own doing, so follow anyway
+            HttpResponse.ResponseInfo redirect = abandonedRedirect.get();
+            return Optional.ofNullable(redirect)
+                    .flatMap(info -> resolveFollowTarget(info.statusCode(), info.headers(), request.uri(), redirectCount))
+                    .map(target -> follow(request, target, bodyHandler, redirectCount, deadline))
+                    .orElseGet(() -> CompletableFuture.failedFuture(error));
+        }).thenCompose(Function.identity());
+    }
+
+    private <T> CompletableFuture<HttpResponse<T>> follow(HttpRequest request, URI target,
+            HttpResponse.BodyHandler<T> bodyHandler, int redirectCount, @Nullable Instant deadline) {
+        Duration remaining = deadline == null ? null : Duration.between(Instant.now(), deadline);
+        if (remaining != null && (remaining.isZero() || remaining.isNegative())) {
+            return CompletableFuture.failedFuture(new HttpTimeoutException("request timed out"));
+        }
+        return sendWithRedirects(rebuild(request, target, remaining), bodyHandler, redirectCount + 1, deadline);
+    }
+
+    /**
+     * A followed redirect's body is never read - only its status and headers matter - so it is abandoned as soon
+     * as the headers are in. Waiting for it to be discarded instead would hang on a server that never sends it, and
+     * no request timeout covers a body. The body completes before the subscription is cancelled, because on
+     * HTTP/2 cancelling reports the reset through {@code onError} synchronously.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T> HttpResponse.BodySubscriber<T> abandonBody() {
+        return (HttpResponse.BodySubscriber<T>) new HttpResponse.BodySubscriber<Object>() {
+            private final CompletableFuture<Object> body = new CompletableFuture<>();
+
+            @Override
+            public CompletionStage<Object> getBody() {
+                return body;
+            }
+
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                body.complete(null);
+                subscription.cancel();
+            }
+
+            @Override
+            public void onNext(List<ByteBuffer> item) {
+                // never requested
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                body.completeExceptionally(throwable);
+            }
+
+            @Override
+            public void onComplete() {
+                body.complete(null);
+            }
+        };
     }
 
     /**
@@ -167,12 +235,14 @@ final class RedirectSafeHttpClient extends HttpClient {
         return McpClientUtils.isSameOrigin(requestUri, target) ? Optional.of(target) : Optional.empty();
     }
 
-    private static HttpRequest rebuild(HttpRequest request, URI target) {
+    private static HttpRequest rebuild(HttpRequest request, URI target, @Nullable Duration timeout) {
         HttpRequest.Builder builder = HttpRequest.newBuilder(target)
                 .method(request.method(), request.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody()))
                 .expectContinue(request.expectContinue());
         request.headers().map().forEach((name, values) -> values.forEach(value -> builder.header(name, value)));
-        request.timeout().ifPresent(builder::timeout);
+        if (timeout != null) {
+            builder.timeout(timeout);
+        }
         return builder.build();
     }
 

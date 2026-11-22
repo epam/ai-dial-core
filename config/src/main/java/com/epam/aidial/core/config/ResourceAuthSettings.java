@@ -27,6 +27,7 @@ public class ResourceAuthSettings {
     /** Wire names, for the JSON-level redaction in {@code ConfigResourceController}. */
     public static final String CLIENT_SECRET_FIELD = "client_secret";
     public static final String CODE_VERIFIER_FIELD = "code_verifier";
+    public static final String CODE_CHALLENGE_FIELD = "code_challenge";
     public static final String CLIENT_SECRET_HINT_FIELD = "client_secret_hint";
 
     public static final int HINT_LENGTH = 4;
@@ -55,6 +56,8 @@ public class ResourceAuthSettings {
 
     @JsonAlias({"tokenEndpoint", "token_endpoint"})
     private String tokenEndpoint;
+
+    private String resource;
 
     @JsonAlias({"redirectUri", "redirect_uri"})
     private String redirectUri;

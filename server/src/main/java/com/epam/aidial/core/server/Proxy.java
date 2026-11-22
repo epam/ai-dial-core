@@ -16,12 +16,17 @@ import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
+import com.epam.aidial.core.server.proxy.ProxyClient;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.security.IdpNotFoundException;
+import com.epam.aidial.core.server.service.AdminConsentService;
+import com.epam.aidial.core.server.service.AdminSystemExportService;
+import com.epam.aidial.core.server.service.AdminSystemImportService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.BackgroundJobService;
@@ -32,6 +37,7 @@ import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
+import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.ResourceOperationService;
@@ -51,6 +57,8 @@ import com.epam.aidial.core.server.service.config.ConfigApplyService;
 import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -60,6 +68,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.vertx.core.Future;
@@ -94,6 +103,16 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
+    public static final String OPENAPI_PATH = "/openapi.yaml";
+    public static final String HEADER_DIAL_TRACE_ID = "X-DIAL-TRACE-ID";
+    public static final String HEADER_DIAL_SPAN_ID = "X-DIAL-SPAN-ID";
+    /**
+     * Not {@code X-DIAL-} prefixed on purpose: this is the W3C Trace Context name and renaming it would
+     * make it unreadable to every standard client.
+     */
+    public static final String HEADER_TRACEPARENT = "traceparent";
+    private static final String EXPOSED_TRACE_HEADERS =
+            HEADER_TRACEPARENT + ", " + HEADER_DIAL_TRACE_ID + ", " + HEADER_DIAL_SPAN_ID;
 
     public static final Pattern TOOLSET_PROXY_PATTERN = RouteTemplate.TOOL_SET_MCP_PROXY.getPattern();
     public static final Pattern TOOLSET_PROXY_METADATA_PATTERN = RouteTemplate.TOOL_SET_PROXY_METADATA.getPattern();
@@ -129,6 +148,10 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_CLIENT_CHANNEL_ID = "X-DIAL-CLIENT-CHANNEL-ID";
     public static final String HEADER_DEPLOYMENT_ID = "X-DIAL-DEPLOYMENT-ID";
     public static final String HEADER_DEPLOYMENT_FEATURES = "X-DIAL-DEPLOYMENT-FEATURES";
+    public static final String HEADER_ROUTER = "X-DIAL-ROUTER";
+    public static final String HEADER_API = "X-DIAL-API";
+    public static final String HEADER_ROUTER_ATTEMPTS = "X-DIAL-ROUTER-ATTEMPTS";
+    public static final String HEADER_ROUTER_NOTICE = "X-DIAL-ROUTER-NOTICE";
 
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);
@@ -163,6 +186,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final HeartbeatService heartbeatService;
     private final UpstreamCacheService upstreamCacheService;
     private final ConsentService consentService;
+    private final AdminConsentService adminConsentService;
     private final DeploymentService deploymentService;
     private final HealthCheckController healthCheckController;
     private final WellKnownResourceMetadataService resourceMetadataService;
@@ -192,6 +216,14 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final ConfigAuthorizationService configAuthService;
     private final ConfigApplyService configApplyService;
     private final ConfigValidationService configValidationService;
+    private final TracingSettings tracingSettings;
+    private final BlockingCallTracer blockingCallTracer;
+    private final AdminSystemExportService adminSystemExportService;
+    private final AdminSystemExportService.Settings adminSystemExportSettings;
+    private final OrgUnitService orgUnitService;
+    private final AdminSystemImportService adminSystemImportService;
+    private final AdminSystemImportService.Settings adminSystemImportSettings;
+    private final ProxyClient proxyClient;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -202,7 +234,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
     }
 
-    private void handleError(Throwable error, HttpServerRequest request) {
+    public void handleError(Throwable error, HttpServerRequest request) {
         if (!request.response().ended()) {
             HttpStatus status;
             String message;
@@ -231,6 +263,12 @@ public class Proxy implements Handler<HttpServerRequest> {
      */
     private void handleRequest(HttpServerRequest request) {
         enableCors(request);
+        // before the short-circuits below: /health, /version, MCP metadata, OPTIONS and the early
+        // rejections are responses too, and the error ones are exactly where a client needs the id
+        SpanContext spanContext = Span.current().getSpanContext();
+        if (tracingSettings.responseTraceHeaders()) {
+            putTraceHeaders(request.response(), spanContext);
+        }
 
         if (request.version() != HttpVersion.HTTP_1_1) {
             respond(request, HttpStatus.HTTP_VERSION_NOT_SUPPORTED);
@@ -257,7 +295,7 @@ public class Proxy implements Handler<HttpServerRequest> {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
                 return;
             }
-        } else {
+        } else if (!isSystemImport(request)) {
             // not only the case, Content-Length can be missing when Transfer-Encoding: chunked
             if (contentLength > resourceService.getMaxSize()) {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
@@ -276,12 +314,23 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
+        if (request.method() == HttpMethod.GET && path.equals(OPENAPI_PATH)) {
+            String spec = OpenApiSpec.get();
+            if (spec == null) {
+                respond(request, HttpStatus.NOT_FOUND, "OpenAPI specification is not available");
+            } else {
+                respond(request, HttpStatus.OK, spec, Map.of(
+                        HttpHeaders.CONTENT_TYPE.toString(), "application/yaml; charset=utf-8",
+                        HttpHeaders.CACHE_CONTROL.toString(), "public, max-age=300"));
+            }
+            return;
+        }
+
         if (request.method() == HttpMethod.GET && isMcpResourceMetadataPath(request.path())) {
             resourceMetadataController.handle(request);
             return;
         }
 
-        SpanContext spanContext = Span.current().getSpanContext();
         String traceId = spanContext.getTraceId();
         String spanId = spanContext.getSpanId();
         String traceFlags = spanContext.getTraceFlags().asHex();
@@ -295,6 +344,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     /**
      * The method authorizes HTTP request by user access token or (and) API key.
+     *
      * <p>
      * There are four possible use cases:
      *     <ol>
@@ -347,16 +397,21 @@ public class Proxy implements Handler<HttpServerRequest> {
                     .compose(extractedClaims -> Future.succeededFuture(new AuthorizationResult(new ApiKeyData(), extractedClaims)))
                     .transform(result -> {
                         if (result.failed()) {
-                            if (!Strings.CI.startsWith(authorization, "bearer ")) {
-                                return Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header"));
+                            if (Strings.CI.startsWith(authorization, "bearer ")
+                                    && result.cause() instanceof IdpNotFoundException) {
+                                // IdpNotFoundException indicates that JWT parsing failed and none of the IdP checks succeeded.
+                                // OpenAI's Responses API uses the Authorization header to send the API key.
+                                String token = AccessTokenValidator.extractTokenFromHeader(authorization);
+                                return apiKeyStore.getApiKeyData(token, clientIpAddress)
+                                        .map(apiKeyData -> new AuthorizationResult(apiKeyData, null))
+                                        .onFailure(error -> log.debug("Fallback to api key verification failed", error));
                             }
-                            // OpenAI's Responses API uses the Authorization header to send the API key.
-                            String token = AccessTokenValidator.extractTokenFromHeader(authorization);
-                            return apiKeyStore.getApiKeyData(token, clientIpAddress)
-                                    .map(apiKeyData -> new AuthorizationResult(apiKeyData, null));
+                            log.debug("Can't extract claims from authorization header", result.cause());
+                            return Future.failedFuture(result.cause());
                         }
                         return Future.succeededFuture(result.result());
-                    });
+                    })
+                    .recover(ignore -> Future.failedFuture(new HttpException(HttpStatus.UNAUTHORIZED, "Bad Authorization header")));
         }
 
         // see https://github.com/epam/ai-dial-core/issues/675
@@ -403,6 +458,22 @@ public class Proxy implements Handler<HttpServerRequest> {
         return apiKey;
     }
 
+    /**
+     * Core's own trace ids, as the W3C {@code traceparent} plus the DIAL-specific pair kept for existing
+     * consumers. Exposed through CORS, or a browser client - the reason issue #1253 exists - cannot read them.
+     */
+    private static void putTraceHeaders(HttpServerResponse response, SpanContext spanContext) {
+        if (!spanContext.isValid()) {
+            // no SDK attached: the ids are all-zeros, and a traceparent built from them is malformed
+            return;
+        }
+        response.putHeader(HEADER_TRACEPARENT, "00-%s-%s-%s".formatted(
+                spanContext.getTraceId(), spanContext.getSpanId(), spanContext.getTraceFlags().asHex()));
+        response.putHeader(HEADER_DIAL_TRACE_ID, spanContext.getTraceId());
+        response.putHeader(HEADER_DIAL_SPAN_ID, spanContext.getSpanId());
+        response.putHeader(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, EXPOSED_TRACE_HEADERS);
+    }
+
     private static void enableCors(HttpServerRequest request) {
         HttpServerResponse response = request.response();
         response.putHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
@@ -425,19 +496,27 @@ public class Proxy implements Handler<HttpServerRequest> {
     private Future<?> processAuthorizationResult(ExtractedClaims extractedClaims,
                                                  HttpServerRequest request, ApiKeyData apiKeyData,
                                                  String traceId, String spanId, String traceFlags) {
-        // Clear context when the response is actually closed, not when controller completes
-        request.response().closeHandler(v -> ContextManager.clearContext());
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
-            ContextManager.setProxyContext(context);
-            ControllerTemplate controllerTemplate = ControllerSelector.select(request);
-            Controller controller = controllerTemplate.build(this, context);
-            future = controller.handle();
+            future = dispatch(context);
         } catch (Exception t) {
             future = Future.failedFuture(t);
         }
         return future;
+    }
+
+    /**
+     * Serves an authenticated pass: the controller of the request's method and path handles it. A child pass of an
+     * origin plugin's in-process call, or the in-process target pass of an alias call, starts here too.
+     */
+    @SneakyThrows
+    public Future<?> dispatch(ProxyContext context) {
+        GenAiTraceAttributes.initialize(context);
+        ContextManager.setProxyContext(context);
+        ControllerTemplate controllerTemplate = ControllerSelector.select(context.getRequest());
+        Controller controller = controllerTemplate.build(this, context);
+        return controller.handle();
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {
@@ -461,5 +540,10 @@ public class Proxy implements Handler<HttpServerRequest> {
     private static boolean isMcpResourceMetadataPath(String path) {
         return TOOLSET_PROXY_METADATA_PATTERN.matcher(path).matches()
                 || APPLICATION_MCP_PROXY_METADATA_PATTERN.matcher(path).matches();
+    }
+
+    private static boolean isSystemImport(HttpServerRequest request) {
+        String path = request.path();
+        return request.method() == HttpMethod.POST && path != null && RouteTemplate.ADMIN_SYSTEM_IMPORT.matches(path);
     }
 }

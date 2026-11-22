@@ -2,7 +2,9 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -15,8 +17,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
 import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -48,20 +48,36 @@ public class ProxyUtil {
     private static final MultiMap TRACE_HEADERS = MultiMap.caseInsensitiveMultiMap()
             .add("traceparent", "whatever")
             .add("tracestate", "whatever");
-    private static final MultiMap HOP_BY_HOP_HEADERS = MultiMap.caseInsensitiveMultiMap()
-            .add(HttpHeaders.CONNECTION, "whatever")
-            .add(HttpHeaders.KEEP_ALIVE, "whatever")
-            .add(HttpHeaders.HOST, "whatever")
-            .add(HttpHeaders.PROXY_AUTHENTICATE, "whatever")
-            .add(HttpHeaders.PROXY_AUTHORIZATION, "whatever")
-            .add("te", "whatever")
-            .add("trailer", "whatever")
-            .add(HttpHeaders.TRANSFER_ENCODING, "whatever")
-            .add(HttpHeaders.UPGRADE, "whatever")
-            .add(HttpHeaders.CONTENT_LENGTH, "whatever")
-            .add(Proxy.HEADER_API_KEY, "whatever")
-            .add(Proxy.HEADER_X_API_KEY, "whatever");
+    private static MultiMap HOP_BY_HOP_HEADERS = baseHopByHopHeaders();
     public static final String METADATA_PREFIX = "metadata/";
+
+    /**
+     * Rebuilds the hop-by-hop header set from the built-in defaults plus the configured additions.
+     * Safe to call more than once (e.g. from tests) - each call replaces the previous set rather than appending to it.
+     */
+    public static void init(ProxySettings settings) {
+        MultiMap headers = baseHopByHopHeaders();
+        for (String header : settings.additionalHopByHopHeaders()) {
+            headers.add(header, "whatever");
+        }
+        HOP_BY_HOP_HEADERS = headers;
+    }
+
+    private static MultiMap baseHopByHopHeaders() {
+        return MultiMap.caseInsensitiveMultiMap()
+                .add(HttpHeaders.CONNECTION, "whatever")
+                .add(HttpHeaders.KEEP_ALIVE, "whatever")
+                .add(HttpHeaders.HOST, "whatever")
+                .add(HttpHeaders.PROXY_AUTHENTICATE, "whatever")
+                .add(HttpHeaders.PROXY_AUTHORIZATION, "whatever")
+                .add("te", "whatever")
+                .add("trailer", "whatever")
+                .add(HttpHeaders.TRANSFER_ENCODING, "whatever")
+                .add(HttpHeaders.UPGRADE, "whatever")
+                .add(HttpHeaders.CONTENT_LENGTH, "whatever")
+                .add(Proxy.HEADER_API_KEY, "whatever")
+                .add(Proxy.HEADER_X_API_KEY, "whatever");
+    }
 
     public static void copyHeaders(MultiMap from, MultiMap to) {
         copyHeaders(from, to, MultiMap.caseInsensitiveMultiMap());
@@ -88,15 +104,11 @@ public class ProxyUtil {
         }
     }
 
-    public static void setOverrideNameHeader(HttpClientRequest request, Deployment deployment) {
-        setOverrideNameHeader(request.headers(), deployment);
-    }
-
     public static int contentLength(HttpServerRequest request, int defaultValue) {
         return contentLength(request.headers(), defaultValue);
     }
 
-    public static int contentLength(HttpClientResponse request, int defaultValue) {
+    public static int contentLength(ProxyResponse request, int defaultValue) {
         MultiMap header = request.headers();
         return contentLength(header, defaultValue);
     }
@@ -264,18 +276,33 @@ public class ProxyUtil {
         return socketAddress.host();
     }
 
-    public void copyResponse(HttpServerResponse response, HttpClientResponse proxyResponse) {
+    public void copyResponse(HttpServerResponse response, ProxyResponse proxyResponse) {
         response.setStatusCode(proxyResponse.statusCode());
         copyHeaders(proxyResponse.headers(), response.headers());
     }
 
-    public void handleChunkedResponse(HttpServerResponse response, HttpClientResponse proxyResponse) {
+    public void handleChunkedResponse(HttpServerResponse response, ProxyResponse proxyResponse) {
         response.setChunked(true);
         copyResponse(response, proxyResponse);
         String contentType = proxyResponse.getHeader(HttpHeaders.CONTENT_TYPE);
         if (Strings.CI.contains(contentType, "text/event-stream")) {
             response.putHeader("X-Accel-Buffering", "no");
         }
+    }
+
+    /**
+     * Parses the request's body at a controller's parse site, and sets it as the request's body. A pass Core serves
+     * in process (an origin plugin's call, or an alias pass's to its target) already has the tree: it is taken as it
+     * is, and only the body's timestamp is set, as the chain sets the body when it serialises the tree.
+     */
+    public ObjectNode parseRequestBody(ProxyContext context, Buffer body) throws IOException {
+        ObjectNode tree = context.getCallTree();
+        if (tree != null) {
+            context.setRequestBodyTimestamp(System.currentTimeMillis());
+            return tree;
+        }
+        context.setRequestBodyWithTimestamp(body);
+        return parseObject(body);
     }
 
     public ObjectNode parseObject(Buffer buffer) throws IOException {

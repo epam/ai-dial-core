@@ -29,7 +29,7 @@ public class FeaturesData {
     private boolean allowResume = true;
     private boolean accessibleByPerRequestKey = true;
     private boolean contentParts = false;
-    private boolean temperature = true;
+    private boolean temperature = false;
     private boolean cache = false;
     private boolean autoCaching = false;
     private boolean parallelToolCalls = true;

@@ -12,26 +12,43 @@ import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.controller.ResponsesController;
+import com.epam.aidial.core.server.controller.SpendCapCheck;
+import com.epam.aidial.core.server.data.AnthropicErrorData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.BuildUpstreamCacheFn;
+import com.epam.aidial.core.server.function.CollectDeploymentsFn;
 import com.epam.aidial.core.server.function.CollectMessagesTokenUsageFn;
+import com.epam.aidial.core.server.function.CollectRequestApplicationFilesFn;
+import com.epam.aidial.core.server.function.CollectRequestStandardAttachmentsFn;
+import com.epam.aidial.core.server.function.ResolveResourceDependenciesFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
+import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
+import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
+import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
+import com.epam.aidial.core.server.limiter.SpendCap;
+import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.token.MessagesTokenUsageParser;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
 import java.util.List;
+import javax.annotation.Nullable;
 
 /**
  * Anthropic Messages API pass-through controller. Mirrors {@link ResponsesController} but forwards
@@ -41,20 +58,40 @@ import java.util.List;
 @Slf4j
 public class MessagesController extends MessagesBaseController {
 
+    /**
+     * The caller's caps as read by {@link #verifyLimit()}; null when no caps were read.
+     */
+    @Nullable
+    private SpendCaps spendCaps;
+
     public MessagesController(Proxy proxy, ProxyContext context) {
         super(proxy, context);
     }
 
     /**
-     * Appends {@link BuildUpstreamCacheFn} before the base chain's terminal {@code CollectDeploymentsFn},
-     * so upstream cache pinning applies to {@code POST /anthropic/v1/messages} but not to
-     * {@link MessagesCountTokensController}, which inherits the base chain unchanged.
+     * The base chain plus {@link BuildUpstreamCacheFn}: upstream cache pinning applies to {@code POST /anthropic/v1/messages}
+     * but not to {@link MessagesCountTokensController}.
      */
     @Override
     protected List<BaseRequestFunction<RequestObject>> buildEnhancementFunctions() {
-        List<BaseRequestFunction<RequestObject>> functions = new ArrayList<>(super.buildEnhancementFunctions());
-        functions.add(functions.size() - 1, new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES));
-        return functions;
+        return List.of(new CollectRequestStandardAttachmentsFn(proxy, context),
+                new ApplyDefaultDeploymentSettingsFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES),
+                new EnhanceDeploymentRequestFn(proxy, context),
+                new CollectRequestApplicationFilesFn(proxy, context),
+                new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES),
+                new CollectDeploymentsFn(proxy, context),
+                new ResolveResourceDependenciesFn<>(proxy, context));
+    }
+
+    /**
+     * Adds GenAI request attributes here rather than in the base parser, so that
+     * {@link MessagesCountTokensController} - which generates nothing - publishes none.
+     */
+    @Override
+    protected MessagesApiRequest parseBody(Buffer body) {
+        MessagesApiRequest request = super.parseBody(body);
+        GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.ANTHROPIC_MESSAGES, request.getTree());
+        return request;
     }
 
     @ApiOperations({
@@ -75,18 +112,39 @@ public class MessagesController extends MessagesBaseController {
                             @ApiResponse(code = 200, description = OpenApiDescriptions.RESPONSE_SUCCESS,
                                     body = @ApiSchema(schemaRef = "ProxyResponse"),
                                     headers = {
-                                            @ApiHeader(name = Proxy.HEADER_UPSTREAM_ATTEMPTS, description = "Number of upstream attempts performed before returning the response")
+                                            @ApiHeader(name = Proxy.HEADER_UPSTREAM_ATTEMPTS,
+                                                    description = "Number of upstream attempts performed before returning the response"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-status",
+                                                    description = "DIAL spend cap status before this request: `allowed`, or `allowed_warning` past 75%. "
+                                                            + "Sent only when the caller has a day/week/month cost limit, or with enforced budgets "
+                                                            + "exactly one budget in their cost object; "
+                                                            + "the upstream's own `anthropic-ratelimit-*` headers are removed"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-representative-claim", description = "Always `overage`"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-overage-status", description = "Same value as `anthropic-ratelimit-unified-status`"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-overage-utilization",
+                                                    description = "Used/total of the reported spend cap, floored to two decimals and capped at 0.99"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-overage-surpassed-threshold",
+                                                    description = "`0.75` or `0.95` once the utilization reaches it; absent below 75%"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-reset", description = "When the reported spend cap resets, Unix seconds"),
+                                            @ApiHeader(name = "anthropic-ratelimit-unified-overage-reset", description = "Same value as `anthropic-ratelimit-unified-reset`")
                                     }),
                             @ApiResponse(code = 400),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 415),
-                            @ApiResponse(code = 429, description = "Rate limit exceeded", body = @ApiSchema(implementation = ErrorData.class)),
+                            @ApiResponse(code = 429, description = "DIAL limit reached, with an Anthropic-format error body "
+                                    + "(`{\"type\":\"error\",\"error\":{\"type\":...,\"message\":...}}`). A reached spend cap, or with enforced budgets "
+                                    + "used-up budgets for the model, gives `billing_error`, "
+                                    + "`x-should-retry: false` and `anthropic-ratelimit-unified-*` headers describing the cap; "
+                                    + "an unreadable spend counter of a caller with a cost limit gives `billing_error` with only `x-should-retry: false` and "
+                                    + "`anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`; "
+                                    + "a token, request or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only; "
+                                    + "with enforced budgets, no budget for the model gives the DIAL error body naming the model and the cost object",
+                                    body = @ApiSchema(implementation = AnthropicErrorData.class)),
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 503)
-                    }
-            )
+                    })
     })
     @Override
     public Future<?> handle() {
@@ -95,28 +153,68 @@ public class MessagesController extends MessagesBaseController {
 
     @Override
     protected Future<Void> verifyLimit() {
-        return checkLimits(context.getDeployment())
-                .map(rateLimit -> {
-                    rateLimit.throwIfError();
-                    return null;
-                });
+        String deploymentName = context.getDeployment().getName();
+        return SpendCapCheck.verify(proxy, context, isSubjectToLimits(context.getDeployment()), new SpendCapCheck.Answers() {
+            @Override
+            public HttpException spendCapReached(SpendCap cap, @Nullable String displayMessage, long nowMillis) {
+                return AnthropicLimitResponses.spendCapReached(cap, nowMillis);
+            }
+
+            @Override
+            public HttpException spendUnavailable() {
+                return AnthropicLimitResponses.spendUnavailable();
+            }
+
+            @Override
+            public Throwable limitCheckFailed(Throwable error) {
+                // any failure other than an unreadable spend record is a server error Claude Code retries
+                return AnthropicLimitResponses.limitCheckFailed();
+            }
+
+            @Override
+            public void rejectOtherLimit(RateLimitResult result) {
+                if (result.status() == HttpStatus.TOO_MANY_REQUESTS && result.breach() != null) {
+                    throw AnthropicLimitResponses.limitReached(result.breach(), deploymentName, System.currentTimeMillis());
+                }
+                result.throwIfError();
+            }
+        }).map(caps -> {
+            spendCaps = caps;
+            return null;
+        });
+    }
+
+    /**
+     * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
+     * An alias pass leaves the headers its target pass wrote.
+     */
+    private void putLimitHeaders(HttpServerResponse response, ProxyResponse proxyResponse) {
+        if (context.getDeployment() instanceof AliasPass) {
+            return;
+        }
+        AnthropicLimitResponses.stripUpstreamRateLimitHeaders(response.headers());
+        if (proxyResponse.statusCode() == 200 && spendCaps != null && spendCaps.reported() != null) {
+            AnthropicLimitResponses.putSpendHeaders(response.headers(), spendCaps.reported());
+        }
     }
 
     @Override
-    protected void processResponse(HttpClientResponse proxyResponse) {
+    protected void processResponse(ProxyResponse proxyResponse) {
         if (!context.isStreamingRequest()) {
             proxyResponse.body()
+                    .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                     .compose(body -> handleNonStreamingResponse(proxyResponse, body))
                     .onFailure(this::handleProxyConnectionError);
             return;
         }
 
         BufferingReadStream responseStream = createResponseStream(proxyResponse,
-                () -> new MessagesSseListener(List.of(new CollectMessagesTokenUsageFn(proxy, context))));
+                () -> new MessagesSseListener(RouterModelFn.withRouterModel(proxy, context, List.of(new CollectMessagesTokenUsageFn(proxy, context)))));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+        putLimitHeaders(response, proxyResponse);
+        putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
         responseStream.pipe()
                 .endOnFailure(false)
@@ -126,13 +224,17 @@ public class MessagesController extends MessagesBaseController {
                 .onFailure(error -> handleResponseError(error, responseStream));
     }
 
-    private Future<Void> handleNonStreamingResponse(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Void> handleNonStreamingResponse(ProxyResponse proxyResponse, Buffer upstreamBody) {
+        // the one buffered answer Core does not otherwise re-serialize: a decided request pays a parse for the router name
+        Buffer body = context.getDecision() != null && proxyResponse.statusCode() == 200
+                ? RouterModelFn.rewrite(upstreamBody, context.getDecision().getAnswerName()) : upstreamBody;
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
+        putLimitHeaders(response, proxyResponse);
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
-        response.putHeader(Proxy.HEADER_UPSTREAM_ATTEMPTS, Integer.toString(context.getUpstreamRoute().getAttemptCount()));
+        putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
         return collectTokenUsage(body)
                 .transform(result -> {
                     if (result.failed()) {
@@ -159,13 +261,20 @@ public class MessagesController extends MessagesBaseController {
         endResponse.run();
         proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
         Upstream currentUpstream = context.getUpstreamRoute().get();
-        log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}. Tokens: {}.",
+        log.info("Sent response to client. Deployment: {}. Interface: {}. Endpoint: {}. Upstream: {}. Length: {}."
+                        + " Timing: {} (body={}, connect={}, header={}, body={}). Tokens: {}. Upstream.extraData: {}",
                 context.getDeployment().getName(),
                 InterfaceType.ANTHROPIC_MESSAGES.getValue(),
                 context.getProxyRequestUri(),
                 currentUpstream == null ? "N/A" : currentUpstream.getEndpoint(),
                 context.getResponseBody() == null ? 0 : context.getResponseBody().length(),
-                context.getTokenUsage() == null ? "N/A" : context.getTokenUsage());
+                context.getResponseBodyTimestamp() - context.getRequestTimestamp(),
+                context.getRequestBodyTimestamp() - context.getRequestTimestamp(),
+                context.getProxyConnectTimestamp() - context.getRequestBodyTimestamp(),
+                context.getProxyResponseTimestamp() - context.getProxyConnectTimestamp(),
+                context.getResponseBodyTimestamp() - context.getProxyResponseTimestamp(),
+                context.getTokenUsage() == null ? "N/A" : context.getTokenUsage(),
+                currentUpstream == null ? "N/A" : currentUpstream.getExtraData());
 
         finalizeRequest();
     }

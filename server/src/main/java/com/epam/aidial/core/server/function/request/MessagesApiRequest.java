@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -25,6 +26,7 @@ public class MessagesApiRequest implements RequestObject {
     private static final String CONTENT_NODE = "content";
     private static final String CACHE_CONTROL_NODE = "cache_control";
 
+    @Getter
     private final ObjectNode tree;
 
     @Override
@@ -81,7 +83,7 @@ public class MessagesApiRequest implements RequestObject {
     private void appendItemCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
         List<JsonNode> elements = CacheKeyBuilder.elements(tree.get(node));
         for (int index = 0; index < elements.size(); index++) {
-            JsonNode element = elements.get(index);
+            JsonNode element = asBlock(elements.get(index));
             updateExcludingCacheControl(builder, element);
             result.add(builder.buildKey(CachePrefixPath.node(node, index), hasCacheControl(element)));
         }
@@ -110,7 +112,7 @@ public class MessagesApiRequest implements RequestObject {
             }
             List<JsonNode> blocks = CacheKeyBuilder.elements(sorted.get(CONTENT_NODE));
             for (int contentIndex = 0; contentIndex < blocks.size(); contentIndex++) {
-                JsonNode block = blocks.get(contentIndex);
+                JsonNode block = asBlock(blocks.get(contentIndex));
                 updateExcludingCacheControl(builder, block);
                 result.add(builder.buildKey(
                         CachePrefixPath.contentBlock("messages", index, contentIndex),
@@ -135,6 +137,14 @@ public class MessagesApiRequest implements RequestObject {
                 builder.update(entry.getValue());
             }
         }
+    }
+
+    /**
+     * A string as its text block {@code {"type": "text", "text": <s>}}, any other node as it is, so a client switching
+     * between the two shapes keeps its pin.
+     */
+    private static JsonNode asBlock(JsonNode node) {
+        return node.isTextual() ? ProxyUtil.MAPPER.createObjectNode().put("type", "text").put("text", node.textValue()) : node;
     }
 
     private static boolean hasCacheControl(JsonNode block) {

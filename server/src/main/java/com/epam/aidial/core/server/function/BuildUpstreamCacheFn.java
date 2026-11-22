@@ -26,7 +26,7 @@ public class BuildUpstreamCacheFn extends BaseRequestFunction<RequestObject> {
         if (context.getDeployment() instanceof Model model && isCacheSupported(model)) {
             CachePolicy policy = CachePolicy.fromString(context.getRequestHeader(Proxy.HEADER_CACHE_POLICY));
             CacheBreakpointContext cacheBreakpointContext =
-                    upstreamCacheService.buildCacheBreakpointContext(request, policy, model, interfaceType);
+                    upstreamCacheService.buildCacheBreakpointContext(request, policy, model, interfaceType, context.getInitiatorId());
             context.setCacheBreakpointContext(cacheBreakpointContext);
         }
         return false;

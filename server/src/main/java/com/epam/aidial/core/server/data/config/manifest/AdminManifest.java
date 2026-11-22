@@ -17,13 +17,17 @@ import com.fasterxml.jackson.databind.JsonNode;
                 @ApiSubType(discriminatorValue = "Schema", type = AdminSchemaManifest.class),
                 @ApiSubType(discriminatorValue = "CatalogSchema", type = AdminCatalogSchemaManifest.class),
                 @ApiSubType(discriminatorValue = "Interceptor", type = AdminInterceptorManifest.class),
+                @ApiSubType(discriminatorValue = "Router", type = AdminRouterManifest.class),
                 @ApiSubType(discriminatorValue = "Translator", type = AdminTranslatorManifest.class),
+                @ApiSubType(discriminatorValue = "Plugin", type = AdminPluginManifest.class),
                 @ApiSubType(discriminatorValue = "Role", type = AdminRoleManifest.class),
                 @ApiSubType(discriminatorValue = "Key", type = AdminKeyManifest.class),
                 @ApiSubType(discriminatorValue = "Route", type = AdminRouteManifest.class),
                 @ApiSubType(discriminatorValue = "Model", type = AdminModelManifest.class),
                 @ApiSubType(discriminatorValue = "ToolSet", type = AdminToolSetManifest.class),
-                @ApiSubType(discriminatorValue = "Application", type = AdminApplicationManifest.class)
+                @ApiSubType(discriminatorValue = "Application", type = AdminApplicationManifest.class),
+                @ApiSubType(discriminatorValue = "Policy", type = AdminPolicyManifest.class),
+                @ApiSubType(discriminatorValue = "PolicyAssignment", type = AdminPolicyAssignmentManifest.class)
         }
 )
 public record AdminManifest(String kind, String name, JsonNode spec) {

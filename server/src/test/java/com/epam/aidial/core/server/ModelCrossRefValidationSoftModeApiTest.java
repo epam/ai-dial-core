@@ -107,6 +107,48 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
         assertEquals("valid", body.get("status").asText());
     }
 
+    // Soft mode admits only what the rebuild itself tolerates — cross-references, which a later
+    // interceptor write repairs. A rebuild invariant is rejected even here: admitting it would write
+    // a blob the next reload discards, and under onInvalidEntity=abort would stop the pod starting.
+
+    @Test
+    void testSoftModeStillRejectsUnservedInterface() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "interfaces": {"openaiChatCompletions": {}}
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-unserved-interface", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        assertTrue(put.body().contains("interfaces.openaiChatCompletions"),
+                () -> "Expected the offending field in the body: " + put.body());
+        assertTrue(put.body().contains("declares no base_url"),
+                () -> "Expected the rebuild's own message: " + put.body());
+
+        // the blob must never have been written — otherwise it poisons the next rebuild
+        verify(send(HttpMethod.GET, "/v1/models/platform/soft-unserved-interface", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    void testSoftModeStillRejectsBadCachePricing() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "pricing": {"unit": "char_without_whitespace", "prompt": "0.1", "cacheRead": "0.01"}
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-bad-pricing", null, body,
+                "authorization", "admin", "If-None-Match", "*");
+        verify(put, 422);
+        verify(send(HttpMethod.GET, "/v1/models/platform/soft-bad-pricing", null, "",
+                "authorization", "admin"), 404);
+    }
+
     private JsonNode waitForGetMatching(String url, Predicate<JsonNode> predicate) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         JsonNode last = null;

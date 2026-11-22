@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import org.apache.commons.lang3.mutable.MutableObject;
@@ -66,7 +67,7 @@ public class ApiKeyStoreTest {
                 .build();
         redisServer.start();
         ConfigSupport configSupport = new ConfigSupport();
-        org.redisson.config.Config redisClientConfig = configSupport.fromJSON("""
+        org.redisson.config.Config redisClientConfig = configSupport.fromYAML("""
                 {
                   "singleServerConfig": {
                      "address": "redis://localhost:16370"
@@ -93,7 +94,7 @@ public class ApiKeyStoreTest {
         for (String key : keys.getKeys()) {
             keys.delete(key);
         }
-        store = new ApiKeyStore(taskExecutor, redissonClient, null, new JsonObject());
+        store = new ApiKeyStore(taskExecutor, redissonClient, null, new JsonObject(), BlockingCallTracer.NOOP);
     }
 
     @Test

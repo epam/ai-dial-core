@@ -12,14 +12,18 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.service.AdminManagedFieldsWriteMode;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -1135,6 +1139,206 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                 }
                 """, "authorization", "user");
         assertEquals(400, put.status(), () -> put.body());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testExternalServiceWritePreservesEncryptedRouteUpstreamSecret() throws Exception {
+        String appUrl = createPlainDynamicApp("user", "mgmt-route-secret-app");
+        Response withRoute = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Mgmt App",
+                    "routes": {
+                        "index-search": {
+                            "paths": ["/v1/index(/[^/]+)*$"],
+                            "rewritePath": true,
+                            "methods": ["POST"],
+                            "upstreams": [{"endpoint": "http://localhost:4848", "key": "route-secret-1"}]
+                        }
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, withRoute.status(), () -> withRoute.body());
+
+        Response put = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/billing-api", null, """
+                {
+                    "display_name": "Billing",
+                    "auth_settings": {
+                        "authentication_type": "API_KEY",
+                        "api_key_header": "X-API-Key"
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, put.status(), () -> put.body());
+
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService);
+        String rawBlob = dial.getProxy().getResourceService().getResource(descriptor);
+        assertNotNull(rawBlob, "Application blob must exist");
+        assertTrue(rawBlob.contains("ENC["),
+                () -> "Route-upstream secret must survive an external-service write, still encrypted: " + rawBlob);
+        assertFalse(rawBlob.contains("route-secret-1"),
+                () -> "Plaintext upstream key must not appear in blob: " + rawBlob);
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testExternalServiceWriteSucceedsWithCorruptedRouteUpstreamSecret() throws Exception {
+        String appUrl = createPlainDynamicApp("user", "mgmt-corrupted-route-secret-app");
+        Response withRoute = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {
+                    "endpoint": "http://localhost:7001/v1/x",
+                    "display_name": "Mgmt App",
+                    "routes": {
+                        "index-search": {
+                            "paths": ["/v1/index(/[^/]+)*$"],
+                            "rewritePath": true,
+                            "methods": ["POST"],
+                            "upstreams": [{"endpoint": "http://localhost:4848", "key": "route-secret-1"}]
+                        }
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, withRoute.status(), () -> withRoute.body());
+
+        // Plant a corrupted envelope, bypassing the API's encrypt path, to simulate ciphertext that
+        // can no longer be decrypted (rotated key, bit rot). It must be structurally valid (correct
+        // Base64, long enough) so encryptFields' "already enveloped" check leaves it untouched instead
+        // of healing it by re-encrypting it as plaintext on the next write.
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService);
+        String corruptedEnvelope = "ENC[" + Base64.getEncoder().encodeToString(new byte[64]) + "]";
+        JsonNode rawBlob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ((ObjectNode) rawBlob.get("routes").get("index-search").get("upstreams").get(0))
+                .put("key", corruptedEnvelope);
+        resourceService.putResource(descriptor, rawBlob.toString(), EtagHeader.ANY, null, false);
+
+        // ExternalServiceService#serializeEncrypted's post-write decrypt-back-to-plaintext step must
+        // not fail the write just because the application also carries an undecryptable route secret.
+        Response put = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/billing-api", null, """
+                {
+                    "display_name": "Billing",
+                    "auth_settings": {
+                        "authentication_type": "API_KEY",
+                        "api_key_header": "X-API-Key"
+                    }
+                }
+                """, "authorization", "user");
+        assertEquals(200, put.status(), () -> put.body());
+
+        Response delete = send(HttpMethod.DELETE, "/v1/" + appUrl + "/external-services/billing-api",
+                null, "", "authorization", "user");
+        assertEquals(200, delete.status(), () -> delete.body());
+    }
+
+    private static String oauthExternalService(String clientSecretField) {
+        return """
+                {"auth_settings": {"authentication_type": "OAUTH", "client_id": "dyn-client-id", %s
+                    "authorization_endpoint": "http://localhost:9876/authorize", "token_endpoint": "http://localhost:9876/token",
+                    "redirect_uri": "http://localhost:3000/auth/signin", "token_endpoint_auth_method": "client_secret_post"}}
+                """.formatted(clientSecretField);
+    }
+
+    private static String secretField(String secret) {
+        return "\"client_secret\": \"" + secret + "\",";
+    }
+
+    private Response putApplicationWithServices(String appUrl, String externalServicesJson) {
+        return send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {"endpoint": "http://localhost:7001/v1/x", "display_name": "Mgmt App", "external_services": %s}
+                """.formatted(externalServicesJson), "authorization", "user");
+    }
+
+    // An application with OAuth services `salesforce` and `good`, the secret of `salesforce` then made undecryptable.
+    private String createAppWithUnreadableSalesforce(String appName) throws Exception {
+        String appUrl = createPlainDynamicApp("user", appName);
+        Response created = putApplicationWithServices(appUrl, """
+                {"salesforce": %s, "good": %s}
+                """.formatted(oauthExternalService(secretField("initial-secret-1111")),
+                oauthExternalService(secretField("good-secret-wxyz"))));
+        assertEquals(200, created.status(), () -> created.body());
+        corruptStoredAuthSettings(ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService),
+                "/external_services/salesforce/auth_settings");
+        return appUrl;
+    }
+
+    private JsonNode storedExternalService(String appUrl, String serviceId) throws Exception {
+        return ProxyUtil.MAPPER.readTree(readStoredBlob(appUrl)).get("external_services").get(serviceId);
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testApplicationWriteWithUnreadableExternalServiceSecret() throws Exception {
+        String appUrl = createAppWithUnreadableSalesforce("unreadable-secret-app-put");
+        String storedBefore = readStoredBlob(appUrl);
+        String keepsStoredSecrets = "{\"salesforce\": %s, \"good\": %s}".formatted(
+                oauthExternalService(""), oauthExternalService(""));
+
+        // Omitting the secret would keep the unreadable one: refused, and nothing is written.
+        Response refused = putApplicationWithServices(appUrl, keepsStoredSecrets);
+        assertEquals(400, refused.status(), () -> refused.body());
+        assertTrue(refused.body().contains("salesforce") && refused.body().contains("can't be decrypted"), refused::body);
+        assertFalse(refused.body().contains(CORRUPTED_CIPHERTEXT), refused::body);
+        assertEquals(storedBefore, readStoredBlob(appUrl));
+
+        // A new secret replaces it, and the other service keeps its own.
+        Response replaced = putApplicationWithServices(appUrl, "{\"salesforce\": %s, \"good\": %s}".formatted(
+                oauthExternalService(secretField("fresh-secret-abcd")), oauthExternalService("")));
+        assertEquals(200, replaced.status(), () -> replaced.body());
+        Response get = send(HttpMethod.GET, "/v1/" + appUrl, null, "", "authorization", "user");
+        JsonNode services = ProxyUtil.MAPPER.readTree(get.body()).get("external_services");
+        assertEquals("abcd", services.get("salesforce").get("auth_settings").get("client_secret_hint").asText());
+        assertEquals("wxyz", services.get("good").get("auth_settings").get("client_secret_hint").asText());
+
+        // Changing the authentication type does not keep the secret, so an unreadable one is no obstacle.
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(appUrl, encryptionService);
+        corruptStoredAuthSettings(descriptor, "/external_services/salesforce/auth_settings");
+        String apiKeyService = "{\"auth_settings\": {\"authentication_type\": \"API_KEY\", \"api_key_header\": \"X-Key\"}}";
+        Response retyped = putApplicationWithServices(appUrl, "{\"salesforce\": %s, \"good\": %s}".formatted(
+                apiKeyService, oauthExternalService("")));
+        assertEquals(200, retyped.status(), () -> retyped.body());
+
+        // Dropping an unreadable service needs nothing from it.
+        corruptStoredAuthSettings(descriptor, "/external_services/good/auth_settings");
+        Response dropped = putApplicationWithServices(appUrl, "{\"salesforce\": %s}".formatted(apiKeyService));
+        assertEquals(200, dropped.status(), () -> dropped.body());
+        assertNull(ProxyUtil.MAPPER.readTree(readStoredBlob(appUrl)).get("external_services").get("good"));
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testExternalServiceWriteWithUnreadableSecretInTheApplication() throws Exception {
+        String appUrl = createAppWithUnreadableSalesforce("unreadable-secret-service-put");
+        String salesforceBefore = storedExternalService(appUrl, "salesforce").toString();
+
+        // A healthy sibling is written, and the unreadable service is left exactly as stored.
+        Response good = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/good", null,
+                oauthExternalService(secretField("good-new-secret-qrst")), "authorization", "user");
+        assertEquals(200, good.status(), () -> good.body());
+        assertEquals("qrst", ProxyUtil.MAPPER.readTree(good.body()).get("auth_settings").get("client_secret_hint").asText());
+        assertEquals(salesforceBefore, storedExternalService(appUrl, "salesforce").toString());
+
+        Response refused = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/salesforce", null,
+                oauthExternalService(""), "authorization", "user");
+        assertEquals(400, refused.status(), () -> refused.body());
+        assertTrue(refused.body().contains("salesforce") && refused.body().contains("can't be decrypted"), refused::body);
+        assertEquals(salesforceBefore, storedExternalService(appUrl, "salesforce").toString());
+
+        Response replaced = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/salesforce", null,
+                oauthExternalService(secretField("fresh-secret-abcd")), "authorization", "user");
+        assertEquals(200, replaced.status(), () -> replaced.body());
+        assertEquals("abcd", ProxyUtil.MAPPER.readTree(replaced.body()).get("auth_settings").get("client_secret_hint").asText());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/external-service-credentials.json")
+    void testExternalServiceTypeChangeWithUnreadableSecret() throws Exception {
+        String appUrl = createAppWithUnreadableSalesforce("unreadable-secret-type-change");
+
+        Response changed = send(HttpMethod.PUT, "/v1/" + appUrl + "/external-services/salesforce", null, """
+                {"auth_settings": {"authentication_type": "API_KEY", "api_key_header": "X-Key"}}
+                """, "authorization", "user");
+        assertEquals(200, changed.status(), () -> changed.body());
     }
 
     @Test

@@ -25,6 +25,9 @@ public class RefreshTokenRequest {
     @JsonProperty("refresh_token")
     private String refreshToken;
 
+    @JsonProperty("resource")
+    private String resource;
+
 
     public String buildFormData() {
         StringBuilder formData = new StringBuilder();
@@ -32,6 +35,7 @@ public class RefreshTokenRequest {
         appendIfNotNull(formData, "client_secret", clientSecret);
         appendIfNotNull(formData, "grant_type", grantType);
         appendIfNotNull(formData, "refresh_token", refreshToken);
+        appendIfNotNull(formData, "resource", resource);
         return formData.toString();
     }
 

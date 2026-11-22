@@ -5,10 +5,21 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.RouteType;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
+import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
+import com.epam.aidial.core.server.proxy.embedded.VertxHostDelegate;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -18,8 +29,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
@@ -29,12 +38,16 @@ import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 
 @Slf4j
 @Getter
@@ -73,6 +86,8 @@ public class ProxyContext {
     private String userId;
     private List<String> userRoles;
     private String userProject;
+    // what the pre-call budget check found, for the analytics row and the charge; null when budgets were not considered
+    private BudgetCheck budgetCheck;
     private String userHash;
     private TokenUsage tokenUsage;
     private List<UsagePerModel> usagePerModel;
@@ -80,10 +95,11 @@ public class ProxyContext {
     // for non-streaming requests, where ModelCostCalculator parses responseBody directly instead.
     private JsonNode pricingUsageNode;
     private Route route;
+    private RouteType routeType;
     private UpstreamRoute upstreamRoute;
-    private HttpClientRequest proxyRequest;
+    private ProxyRequest proxyRequest;
     private String proxyRequestUri;
-    private HttpClientResponse proxyResponse;
+    private ProxyResponse proxyResponse;
     private Buffer requestBody;
     private Buffer responseBody;
     private long requestTimestamp;
@@ -105,6 +121,35 @@ public class ProxyContext {
     private ServerWebSocket serverWebSocket;
     private boolean isStoreResponse;
     private boolean isBackgroundJob;
+    // read from the log layout, which AsyncTaskExecutor may run on a virtual thread sharing this Vert.x context
+    private final Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
+    // the merged chat completions body, or the terminal Responses frame - whichever surface streamed
+    private String assembledStreamingResponse;
+    // the body of the in-process call this child pass serves: an origin plugin's call, or an alias pass's to its target
+    private ObjectNode callTree;
+    /**
+     * Whether this child pass is the target pass of an alias call, served in process under an alias whose span is a
+     * server span of the alias chain (not an origin plugin's): it writes its span attributes and log enrichment on the
+     * current span, the alias pass's, which an origin plugin's call does not.
+     */
+    private boolean aliasTargetPass;
+    // the tree the chain serialised into requestBody, kept for the plugin of an embedded interface until it is called
+    private ObjectNode requestTree;
+    // the hosts of the in-process calls this pass's plugin makes, one per attempt
+    private List<VertxHostDelegate> hostDelegates;
+    // the router's verdict when a router in decision mode chose the deployment of this pass
+    private RouterDecision decision;
+    // X-DIAL-APPLICATION-PROPERTIES for a typed router, built once in the pass that reaches it, before any connection
+    private String routerPropertiesHeader;
+    // the upstream's whole buffered body arrived: a failure after this is not a broken answer to fall back from
+    private boolean upstreamBodyReceived;
+    // what the serving deployment's report returned for this pass's span, for the router row of a decided request
+    private TokenStatsTracker.UsageStats spanUsageStats;
+    // the client's body bytes as they arrived, kept while a decision may still fall back to another candidate
+    private Buffer originalRequestBody;
+
+    // the org units above those where the caller holds a role, read at most once per request
+    private Set<String> unitsAboveHeldRoles;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -171,6 +216,9 @@ public class ProxyContext {
             body = Buffer.buffer();
         }
 
+        // the one funnel every short and error response passes through, and the only place on those paths
+        // that knows the status: the controllers finalize the request before it is set
+        GenAiTraceAttributes.setFailureStatus(this, status);
         response.setStatusCode(status).end(body);
 
         if (status < 200 || status >= 300) {
@@ -193,6 +241,12 @@ public class ProxyContext {
 
     public Config getConfig() {
         return proxy.getConfigStore().get();
+    }
+
+    public TracingSettings getTracingSettings() {
+        // respond(...) enriches the span on the error path, and a context can reach it without a proxy -
+        // an NPE from tracing there would turn an error response into a failure to respond at all
+        return proxy == null ? null : proxy.getTracingSettings();
     }
 
     public String getProject() {
@@ -294,11 +348,76 @@ public class ProxyContext {
                 .orElse(null);
     }
 
+    /**
+     * The budget that pays for this call: picked by the pre-call check and charged after the call.
+     */
+    @Nullable
+    public BudgetPayer getBudgetPayer() {
+        return budgetCheck == null ? null : budgetCheck.payer();
+    }
+
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
         return new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
     }
 
     public boolean isOriginalRequest() {
         return apiKeyData.getPerRequestKey() == null;
+    }
+
+    /**
+     * Merges the streamed chat completions body at most once per request, from {@code responseBody} - the one
+     * body there is. Both the analytics log and the GenAI trace attributes read it, and merging it twice
+     * doubles a full-body scan and merge.
+     */
+    public String assembledChatCompletionsResponse() {
+        if (assembledStreamingResponse == null && responseBody != null) {
+            assembledStreamingResponse = AnalyticsLogContext.assembleStreamingChatCompletionsResponse(responseBody);
+        }
+        return assembledStreamingResponse;
+    }
+
+    /**
+     * The body of the in-process call this pass serves, while the request's body is not set: the parse sites take it
+     * in place of parsing, and the chain sets the body when it serialises the tree. Null once the body is set, and on
+     * a pass that serves no call.
+     */
+    public ObjectNode getCallTree() {
+        return requestBody == null ? callTree : null;
+    }
+
+    public void addHostDelegate(VertxHostDelegate hostDelegate) {
+        if (hostDelegates == null) {
+            hostDelegates = new ArrayList<>();
+        }
+        hostDelegates.add(hostDelegate);
+    }
+
+    /**
+     * Ends the in-process calls of this pass's plugin, as the pass has ended.
+     */
+    public void closeHostDelegates() {
+        if (hostDelegates != null) {
+            hostDelegates.forEach(VertxHostDelegate::close);
+            hostDelegates.clear();
+        }
+    }
+
+    /**
+     * Whether Core serves this pass in process, for an origin plugin's call or as the target pass of an alias call
+     * ({@link #isAliasTargetPass}).
+     */
+    public boolean isChildPass() {
+        return callTree != null;
+    }
+
+    /**
+     * Sets the body and, on the first call only, the time it was read: a re-parse of the saved bytes (a fallback to
+     * a router's next candidate, a pre-flight skip) is not a second read.
+     */
+    public void setRequestBodyWithTimestamp(Buffer body) {
+        requestBody = body;
+        if (requestBodyTimestamp == 0) {
+            requestBodyTimestamp = System.currentTimeMillis();
+        }
     }
 }

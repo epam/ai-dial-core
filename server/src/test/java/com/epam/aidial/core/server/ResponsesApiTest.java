@@ -63,6 +63,27 @@ public class ResponsesApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testResponsesApiUnversionedPath() throws IOException, InterruptedException {
+        String responseBody = getResponseBody();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            try (CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
+                TestWebServer.Handler handler = request -> {
+                    MockResponse response = new MockResponse();
+                    response.setResponseCode(200);
+                    response.setChunkedBody(responseBody, 200);
+                    return response;
+                };
+                server.map(HttpMethod.POST, "/openai/v1/responses", handler);
+                HttpUriRequest httpUriRequest = createHttpUriRequest("/openai/responses");
+                String result = client.execute(
+                        httpUriRequest,
+                        response -> new String(response.getEntity().getContent().readAllBytes(), StandardCharsets.UTF_8));
+                assertLinesMatch(responseBody.lines(), result.lines());
+            }
+        }
+    }
+
+    @Test
     public void testAutoCachingPinsSecondTurnToSameUpstream() throws IOException, InterruptedException {
         AtomicReference<String> firstUpstreamKey = new AtomicReference<>();
         AtomicReference<String> secondUpstreamKey = new AtomicReference<>();
@@ -222,13 +243,13 @@ public class ResponsesApiTest extends ResourceBaseTest {
             itemA.put("type", "reasoning");
             itemA.put("id", "rs_1");
             itemA.put("encrypted_content", "cipher-1");
-            EncryptedContentAffinityUtil.wrapOutputItem(itemA, "up-a");
+            EncryptedContentAffinityUtil.wrapOutputItem(itemA, "up-a", "responses-cache");
 
             ObjectNode itemB = ProxyUtil.MAPPER.createObjectNode();
             itemB.put("type", "reasoning");
             itemB.put("id", "rs_2");
             itemB.put("encrypted_content", "cipher-2");
-            EncryptedContentAffinityUtil.wrapOutputItem(itemB, "up-b");
+            EncryptedContentAffinityUtil.wrapOutputItem(itemB, "up-b", "responses-cache");
 
             String requestBody = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
                     + "\"input\":[" + itemA + "," + itemB + "]}";
@@ -247,7 +268,7 @@ public class ResponsesApiTest extends ResourceBaseTest {
             item.put("type", "reasoning");
             item.put("id", "rs_1");
             item.put("encrypted_content", "cipher-1");
-            EncryptedContentAffinityUtil.wrapOutputItem(item, "up-nonexistent");
+            EncryptedContentAffinityUtil.wrapOutputItem(item, "up-nonexistent", "responses-cache");
 
             String requestBody = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
                     + "\"input\":[" + item + "]}";
@@ -269,7 +290,11 @@ public class ResponsesApiTest extends ResourceBaseTest {
     }
 
     private HttpUriRequest createHttpUriRequest() {
-        String uri = "http://127.0.0.1:" + serverPort + "/openai/v1/responses";
+        return createHttpUriRequest("/openai/v1/responses");
+    }
+
+    private HttpUriRequest createHttpUriRequest(String path) {
+        String uri = "http://127.0.0.1:" + serverPort + path;
         String requestBody = """
                 {
                    "model": "gpt-3-turbo",

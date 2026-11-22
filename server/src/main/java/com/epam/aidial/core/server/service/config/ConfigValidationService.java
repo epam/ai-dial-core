@@ -5,6 +5,8 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
+import com.epam.aidial.core.server.config.KeyValidator;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.data.config.manifest.AdminApplicationManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminCatalogSchemaManifest;
@@ -12,21 +14,31 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPluginManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRoleManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminRouteManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminRouterManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSchemaManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminSettingsManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminToolSetManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminTranslatorManifest;
 import com.epam.aidial.core.server.data.config.manifest.ValidationResult;
 import com.epam.aidial.core.server.data.config.manifest.ValidationStatus;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.ResourceDependencyValidator;
+import com.epam.aidial.core.server.service.policy.PolicyAssignmentPrecheck;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
 import com.epam.aidial.core.server.validation.ValidationUtil;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import jakarta.validation.ConstraintViolationException;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,13 +52,31 @@ public class ConfigValidationService {
 
     private final ResourceService resourceService;
     private final boolean softValidation;
+    private final CatalogSchemaService catalogSchemaService;
+    private final PluginRegistry pluginRegistry;
+    private final ApplicationSchemaService applicationSchemaService;
 
-    public ConfigValidationService(ResourceService resourceService, boolean softValidation) {
+    public ConfigValidationService(ResourceService resourceService, boolean softValidation,
+                                   CatalogSchemaService catalogSchemaService, PluginRegistry pluginRegistry, ApplicationSchemaService applicationSchemaService) {
         this.resourceService = resourceService;
         this.softValidation = softValidation;
+        this.catalogSchemaService = catalogSchemaService;
+        this.pluginRegistry = pluginRegistry;
+        this.applicationSchemaService = applicationSchemaService;
+    }
+
+    public PolicyAssignmentPrecheck newPolicyPrecheck() {
+        return new PolicyAssignmentPrecheck(resourceService);
     }
 
     public ValidationResult validateOnly(AdminManifest entry, Config scratch) {
+        return validateOnly(entry, scratch, newPolicyPrecheck());
+    }
+
+    /**
+     * @param policyPrecheck shared by the entries of one batch, so that a policy record sees the valid ones before it
+     */
+    public ValidationResult validateOnly(AdminManifest entry, Config scratch, PolicyAssignmentPrecheck policyPrecheck) {
         String id = entry.name();
         ConfigManifestSupport.ParsedManifest parsed;
         try {
@@ -65,15 +95,12 @@ public class ConfigValidationService {
                 case AdminModelManifest modelManifest -> {
                     Model model = modelManifest.spec();
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateOverridePaths(model, warnings);
-                    boolean invalidOverridePaths = !warnings.isEmpty();
-                    ConfigPostProcessor.validatePricing(model, warnings);
-                    ConfigPostProcessor.validateUpstreamInterfaces(model, warnings);
-                    ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
+                    ConfigPostProcessor.validateModelInvariants(model, scratch.getTranslators(), warnings);
+                    catalogSchemaService.validate(model, warnings);
+                    boolean hardFailure = !warnings.isEmpty();
+                    boolean softFailure = !ConfigPostProcessor.validateCrossReferences(model, scratch, warnings);
                     UpstreamExtraDataMerger.validateNoOverlap(model);
-                    // Override paths stay fatal in soft mode, matching ConfigApplyService#applyModel — otherwise
-                    // precheck greenlights a batch whose real-apply phase refuses the model mid-write.
-                    if (!warnings.isEmpty() && (invalidOverridePaths || !softValidation)) {
+                    if (hardFailure || (softFailure && !softValidation)) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(scratch, ResourceTypes.MODEL, parsed.name());
@@ -83,12 +110,24 @@ public class ConfigValidationService {
                 }
                 case AdminInterceptorManifest interceptorManifest -> {
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateOverridePaths(interceptorManifest.spec(), warnings);
+                    ConfigPostProcessor.validateInterfaces(interceptorManifest.spec(), warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                     String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
                             scratch, ResourceTypes.INTERCEPTOR, parsed.name());
+                    if (dupError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, dupError);
+                    }
+                }
+                case AdminRouterManifest routerManifest -> {
+                    List<ValidationWarning> warnings = applicationSchemaService.validateRouter(scratch, parsed.name().name(),
+                            routerManifest.spec());
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                    String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
+                            scratch, ResourceTypes.ROUTER, parsed.name());
                     if (dupError != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                     }
@@ -101,26 +140,48 @@ public class ConfigValidationService {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                 }
+                case AdminPluginManifest pluginManifest -> {
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validatePlugin(id, pluginManifest.spec(), pluginRegistry, !softValidation, warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                }
                 case AdminRoleManifest roleManifest -> { }
-                case AdminRouteManifest routeManifest -> { }
+                case AdminRouteManifest routeManifest -> {
+                    List<ValidationWarning> warnings = new ArrayList<>();
+                    ConfigPostProcessor.validateRouteInvariants(routeManifest.spec(), warnings);
+                    if (!warnings.isEmpty()) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                }
                 case AdminKeyManifest keyManifest -> {
                     Key key = keyManifest.spec();
-                    if (StringUtils.isBlank(key.getKey())) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, "Key.key must be provided explicitly");
+                    String error = KeyValidator.validateRequiredFields(key);
+                    if (error == null) {
+                        String canonicalId = MergedConfigStore.canonicalId(
+                                ResourceTypes.PROJECT_KEY, parsed.name().bucket(), parsed.name().name());
+                        Key prior = scratch.getKeys().get(canonicalId);
+                        String oldSecret = prior == null ? null : prior.getKey();
+                        error = KeyValidator.validateSecretNotTaken(scratch, canonicalId, key, oldSecret);
                     }
-                    if (StringUtils.isBlank(key.getProject())) {
-                        return new ValidationResult(id, ValidationStatus.FAILED, "Project key is undefined");
-                    }
-                    if (StringUtils.isBlank(key.getRole()) && (key.getRoles() == null || key.getRoles().isEmpty())) {
-                        return new ValidationResult(id, ValidationStatus.FAILED,
-                                "Invalid key: at least one role must be assigned to the key " + key.getProject());
+                    if (error != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, error);
                     }
                 }
                 case AdminApplicationManifest applicationManifest -> {
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validateOverridePaths(applicationManifest.spec(), warnings);
+                    ConfigPostProcessor.validateInterfaces(applicationManifest.spec(), warnings);
                     if (!warnings.isEmpty()) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
+                    }
+                    String pluginError = ApplicationService.pluginOutsidePlatformError(parsed.name().bucket(), applicationManifest.spec());
+                    if (pluginError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, pluginError);
+                    }
+                    String dependencyError = ResourceDependencyValidator.findShapeError(applicationManifest.spec());
+                    if (dependencyError != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, dependencyError);
                     }
                     if (ResourceDescriptor.PLATFORM_BUCKET.equals(parsed.name().bucket())) {
                         String dupError = ConfigManifestSupport.validateDeploymentIdUniqueness(
@@ -139,6 +200,12 @@ public class ConfigValidationService {
                         }
                     }
                 }
+                case AdminPolicyManifest policyManifest -> {
+                    policyPrecheck.checkPolicy(parsed.name().name(), policyManifest.spec());
+                }
+                case AdminPolicyAssignmentManifest assignmentManifest -> {
+                    policyPrecheck.checkAssignment(parsed.name().name(), assignmentManifest.spec());
+                }
                 case AdminSchemaManifest schemaManifest -> {
                     String schemaError = ConfigManifestSupport.validateSchema(schemaManifest.spec(), parsed.name(), scratch,
                             ResourceTypes.APP_TYPE_SCHEMA, resourceService);
@@ -154,7 +221,7 @@ public class ConfigValidationService {
                     }
                 }
             }
-        } catch (IllegalArgumentException | ConstraintViolationException ex) {
+        } catch (IllegalArgumentException | ConstraintViolationException | HttpException ex) {
             return new ValidationResult(id, ValidationStatus.FAILED, ex.getMessage());
         }
         return new ValidationResult(id, ValidationStatus.VALID, null);
