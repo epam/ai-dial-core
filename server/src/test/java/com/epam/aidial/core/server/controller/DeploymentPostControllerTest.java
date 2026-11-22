@@ -136,6 +136,8 @@ public class DeploymentPostControllerTest {
         lenient().when(context.getConfig()).thenReturn(new Config());
         lenient().when(proxy.getProxyClient()).thenAnswer(invocation -> new ProxyClient(proxy.getClient(), null, null));
         lenient().when(proxy.getBlockingCallTracer()).thenReturn(BlockingCallTracer.NOOP);
+        // every upstream call first checks that the client is still connected
+        lenient().when(context.getResponse()).thenReturn(mock(HttpServerResponse.class));
     }
 
     @SuppressWarnings("checkstyle:LineLength")

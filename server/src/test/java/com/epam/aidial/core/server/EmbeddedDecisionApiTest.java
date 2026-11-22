@@ -187,9 +187,9 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
             Decided decide = awaitDecided(0);
             decide.settled().future().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
             assertFalse(decide.cancelled().get(), "Core does not watch the client of a decide request");
-            // the pass goes on to the chosen model, as for an HTTP router: let it finish before Core shuts down
-            awaitCondition(() -> received.stream().anyMatch(served -> isFor(served, "m1")));
+            // the client is gone, so the pass answers 499 before the upstream call instead of serving the chosen model
             Thread.sleep(500);
+            assertTrue(received.stream().noneMatch(served -> isFor(served, "m1")), "no upstream call for a gone client");
         }
     }
 

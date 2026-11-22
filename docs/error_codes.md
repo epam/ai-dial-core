@@ -85,6 +85,10 @@ On the Responses routes (`/openai/v1/responses`, `/openai/responses`) a reached 
 
 With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these spend-cap answers on both routes when the budgets that cover the model are used up, and a 429 with the DIAL error body that names the model and the cost object when no budget covers the model.
 
+#### 499 CLIENT CLOSED REQUEST
+
+The client closed the connection before Core called the upstream, so Core dropped the request. No client receives this status: it appears only in logs and traces.
+
 #### 500 INTERNAL SERVER ERROR
 
 The status code indicates that the server encountered an unexpected condition that prevented it from fulfilling the request. This error is a generic "catch-all" response to server issues, indicating that the server cannot find a more appropriate 5XX error to respond with.
@@ -103,6 +107,7 @@ Common causes are that a server is down for maintenance or overloaded. During ma
 In overload cases, some server-side applications will reject requests with a 503 status when resource thresholds like memory, CPU, or connection pool limits are met.
 
 - All retries to upstream servers are returned with 429 error
+- The pod already serves `proxy.maxInFlightRequests` requests; the response carries `Retry-After: 1`
 - The application controller is not available
 - Code interpreter is not available
 

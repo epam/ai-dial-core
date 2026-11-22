@@ -481,7 +481,8 @@ public class AiDial {
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
                     adminSystemExportService, adminSystemExportSettings, orgUnitService,
-                    adminSystemImportService, adminSystemImportSettings, proxyClient);
+                    adminSystemImportService, adminSystemImportSettings, proxyClient,
+                    settings("proxy").getInteger("maxInFlightRequests", 0));
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn

@@ -69,6 +69,8 @@ class RouteWebSocketHandler {
     }
 
     private Future<Void> handleWebSocket(ServerWebSocket serverWebSocket) {
+        // an upgraded connection never ends its HTTP response, so the in-flight slot goes back here
+        context.getReleaseInFlightSlot().run();
         serverWebSocket.pause();
         Promise<Void> promise = Promise.promise();
         promise.future().onComplete(result -> serverWebSocket.resume());

@@ -566,6 +566,19 @@ public class BaseDeploymentPostController {
         // no additional headers by default
     }
 
+    /**
+     * Finalizes the request and returns true when the client has closed the connection: an upstream call
+     * made now is paid for and its answer thrown away. Nobody receives the status; the trace and the log do.
+     */
+    protected boolean abandonIfClientGone() {
+        if (!context.getResponse().closed()) {
+            return false;
+        }
+        log.info("Client closed the connection before the upstream call. Deployment: {}", context.getDeployment().getName());
+        respond(HttpStatus.CLIENT_CLOSED_REQUEST);
+        return true;
+    }
+
     protected boolean isRetriableError(int statusCode) {
         if (context.getDeployment() instanceof AliasPass && !decisions.hasFallback()) {
             // the target pass has already retried its own upstreams; the alias relays its answer, unless a decision
@@ -577,6 +590,9 @@ public class BaseDeploymentPostController {
     }
 
     protected boolean nextUpstream() {
+        if (abandonIfClientGone()) {
+            return false;
+        }
         UpstreamRoute route = context.getUpstreamRoute();
         try {
             route.next();
