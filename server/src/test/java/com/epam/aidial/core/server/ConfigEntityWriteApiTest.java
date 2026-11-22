@@ -1,8 +1,10 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -101,6 +103,30 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
               "methods": ["GET"],
               "upstreams": [{"endpoint": "http://localhost:7001"}],
               "response": {"status": 201, "body": "created"}
+            }
+            """;
+
+    private static final String ROUTE_BODY_BEARER = """
+            {
+              "paths": ["/foo"],
+              "methods": ["GET"],
+              "upstreams": [{"endpoint": "http://localhost:7001", "authType": "BEARER", "key": "route-key"}]
+            }
+            """;
+
+    private static final String ROUTE_BODY_BEARER_NO_KEY = """
+            {
+              "paths": ["/foo"],
+              "methods": ["GET"],
+              "upstreams": [{"endpoint": "http://localhost:7001", "authType": "BEARER"}]
+            }
+            """;
+
+    private static final String ROUTE_BODY_CUSTOM_HEADER_NO_KEY = """
+            {
+              "paths": ["/foo"],
+              "methods": ["GET"],
+              "upstreams": [{"endpoint": "http://localhost:7001", "authType": {"type": "CUSTOM_HEADER", "headerName": "X-Api-Token"}}]
             }
             """;
 
@@ -262,6 +288,21 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
         Response put = send(HttpMethod.PUT, "/v1/translators/platform/no-such-translator", null,
                 TRANSLATOR_BODY, "authorization", "admin");
         verify(put, 200);
+    }
+
+    @Test
+    void testApplicationPutWithDecisionModeRejected() {
+        // decision mode is a router setting: no interface of any deployment kind takes it
+        String body = """
+                {
+                  "endpoint": "http://localhost:7003/chat",
+                  "interfaces": {"openaiChatCompletions": {"mode": "decision", "base_url": "http://r"}}
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/applications/platform/a", null, body, "authorization", "admin");
+        verify(put, 400);
+
+        verify(send(HttpMethod.GET, "/v1/applications/platform/a", null, "", "authorization", "admin"), 404);
     }
 
     @Test
@@ -502,6 +543,46 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testKeyPutThatWouldKeepAnUnreadableSecretIsRefused() {
+        String keyBody = """
+                {
+                  "key": "%s",
+                  "project": "projB",
+                  "roles": ["admin"]
+                }
+                """;
+        String path = "/v1/keys/platform/test-key-unreadable";
+        verify(send(HttpMethod.PUT, path, null, keyBody.formatted("secret-unreadable-old"),
+                "authorization", "admin", "If-None-Match", "*"), 200);
+        corruptStoredEnvelope(ResourceDescriptorFactory.fromAnyUrl("keys/platform/test-key-unreadable", encryptionService), "", "key");
+        String storedBefore = readStoredBlob("keys/platform/test-key-unreadable");
+
+        Response refused = send(HttpMethod.PUT, path, null, KEY_BODY_PROJECT_B_NO_KEY, "authorization", "admin");
+        verify(refused, 400);
+        assertTrue(refused.body().contains("send a new value for: key"), refused::body);
+        assertEquals(storedBefore, readStoredBlob("keys/platform/test-key-unreadable"));
+
+        verify(send(HttpMethod.PUT, path, null, keyBody.formatted("secret-unreadable-new"), "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "secret-unreadable-new"), 200);
+    }
+
+    @Test
+    void testRoutePutThatWouldKeepAnUnreadableUpstreamKeyIsRefused() {
+        String path = "/v1/routes/platform/test-route-unreadable-key";
+        verify(send(HttpMethod.PUT, path, null, ROUTE_BODY_BEARER, "authorization", "admin", "If-None-Match", "*"), 200);
+        corruptStoredEnvelope(ResourceDescriptorFactory.fromAnyUrl("routes/platform/test-route-unreadable-key", encryptionService),
+                "/upstreams/0", "key");
+        String storedBefore = readStoredBlob("routes/platform/test-route-unreadable-key");
+
+        Response refused = send(HttpMethod.PUT, path, null, ROUTE_BODY_BEARER_NO_KEY, "authorization", "admin");
+        verify(refused, 400);
+        assertTrue(refused.body().contains("upstreams[0].key"), refused::body);
+        assertEquals(storedBefore, readStoredBlob("routes/platform/test-route-unreadable-key"));
+
+        verify(send(HttpMethod.PUT, path, null, ROUTE_BODY_BEARER, "authorization", "admin"), 200);
+    }
+
+    @Test
     void testKeyPutCreate409OnDuplicateSecret() {
         String bodyA = """
                 {
@@ -670,6 +751,37 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
         Response put = send(HttpMethod.PUT, "/v1/routes/platform/no-such-route-create", null,
                 ROUTE_BODY, "authorization", "admin");
         verify(put, 200);
+    }
+
+    @Test
+    void testRoutePutUpstreamWithoutKeyRejected() {
+        for (String body : new String[] {ROUTE_BODY_BEARER_NO_KEY, ROUTE_BODY_CUSTOM_HEADER_NO_KEY}) {
+            Response put = send(HttpMethod.PUT, "/v1/routes/platform/test-route-no-key", null,
+                    body, "authorization", "admin", "If-None-Match", "*");
+            verify(put, 422);
+            assertTrue(put.body().contains("upstreams[0].authType") && put.body().contains("requires a key"),
+                    () -> "Expected the authType warning: " + put.body());
+
+            Response get = send(HttpMethod.GET, "/v1/routes/platform/test-route-no-key", null, "",
+                    "authorization", "admin");
+            verify(get, 404);
+        }
+
+        // If-None-Match: * answers 412 when a blob exists, so a 200 shows the refused PUTs wrote nothing.
+        verify(send(HttpMethod.PUT, "/v1/routes/platform/test-route-no-key", null,
+                ROUTE_BODY_BEARER, "authorization", "admin", "If-None-Match", "*"), 200);
+    }
+
+    @Test
+    void testRoutePutOmittedUpstreamKeyKeptOnUpdate() {
+        verify(send(HttpMethod.PUT, "/v1/routes/platform/test-route-keep-key", null,
+                ROUTE_BODY_BEARER, "authorization", "admin", "If-None-Match", "*"), 200);
+
+        verify(send(HttpMethod.PUT, "/v1/routes/platform/test-route-keep-key", null,
+                ROUTE_BODY_BEARER_NO_KEY, "authorization", "admin"), 200);
+
+        verify(send(HttpMethod.GET, "/v1/routes/platform/test-route-keep-key", null, "",
+                "authorization", "admin"), 200);
     }
 
     @Test

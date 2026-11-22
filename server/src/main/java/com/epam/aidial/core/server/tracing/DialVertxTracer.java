@@ -23,7 +23,8 @@ public class DialVertxTracer<I, O> implements VertxTracer<I, O> {
 
     private static final List<String> PATHS = List.of(
             Proxy.HEALTH_CHECK_PATH,
-            Proxy.VERSION_PATH
+            Proxy.VERSION_PATH,
+            Proxy.OPENAPI_PATH
     );
 
     private final VertxTracer<I, O> delegate;

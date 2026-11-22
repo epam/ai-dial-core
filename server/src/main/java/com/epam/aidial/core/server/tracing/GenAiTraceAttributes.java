@@ -238,9 +238,16 @@ public final class GenAiTraceAttributes {
         return statusCode < 200 || statusCode >= 300 ? "failed" : "completed";
     }
 
-    private static String resolveConversationId(ProxyContext context) {
+    /**
+     * Shared with the analytics log, so it must not depend on whether span enrichment is enabled.
+     */
+    public static String resolveConversationId(ProxyContext context) {
+        TracingSettings settings = context.getTracingSettings();
+        if (settings == null) {
+            return null;
+        }
         // TracingSettings drops blank and credential header names
-        for (String header : context.getTracingSettings().conversationIdHeaders()) {
+        for (String header : settings.conversationIdHeaders()) {
             String value = context.getRequest().headers().get(header);
             if (value != null && !value.isBlank()) {
                 String conversationId = value.trim();
@@ -288,6 +295,11 @@ public final class GenAiTraceAttributes {
             return;
         }
         context.getTracingAttributes().put(key.getKey(), value);
+        if (context.isChildPass() && !context.isAliasTargetPass()) {
+            // a pass served in process has no server span of its own: the current one is its plugin's pass. The target
+            // pass of an alias call writes on the alias pass's span, which then shows the target's values
+            return;
+        }
         Span span = Span.current();
         if (span.isRecording()) {
             span.setAttribute(key, value);

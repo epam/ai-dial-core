@@ -30,7 +30,7 @@
 
 > [!NOTE]
 > HTTP Proxy provides unified API to different chat completion and embedding models and applications.
-> Written in Java 21 and built on top of [Eclipse Vert.x](https://vertx.io/).
+> Written in Java 25 and built on top of [Eclipse Vert.x](https://vertx.io/).
 
 ![ai-dial-core](./dial-core.png)
 
@@ -86,7 +86,7 @@ repositories {
 > 
 > See more details [here](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) to generate personal access token in GitHub.
 
-Build the project with Gradle and Java 21:
+Build the project with Gradle and Java 25:
 
 ```
 ./gradlew build
@@ -137,14 +137,20 @@ Priority order:
 |------------------------------------------|:------------------:|:--------:|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | config.files                             | aidial.config.json |    No    | List of paths to dynamic settings. Refer to [example](sample/aidial.config.json) of the file with [dynamic settings](#dynamic-settings).                                                                                                                                                                        |
 | config.reload                            |       60000        |    No    | Config reload interval in milliseconds.                                                                                                                                                                                                                                                                         |
+| plugins.dir                              |      plugins       |    No    | Preview. Directory Core loads plugin code from at start, relative to the working directory: each plugin in a plugin directory `<group>/<plugin>` of its own, with its own class loader. A jar directly in this directory or in a group directory stops the start. A missing directory loads none. Refer to [Plugins](/docs/dynamic-settings/plugins.md#plugin-code). |
+| plugins.include                          |       ["*"]        |    No    | Preview. Patterns of the plugin directories Core loads: `*` or `<group>/<plugin>`, where either part may be `*`. A JSON array or one comma-separated string. Env: `aidial.plugins.include`. Refer to [Plugins](/docs/dynamic-settings/plugins.md#including-and-excluding-plugins). |
+| plugins.exclude                          |         []         |    No    | Preview. Patterns of the plugin directories Core does not load or open, even when `plugins.include` names them; same form as `plugins.include`. Env: `aidial.plugins.exclude`, e.g. `builtin/echo,custom/old`. Refer to [Plugins](/docs/dynamic-settings/plugins.md#including-and-excluding-plugins). |
 | vertx.*                                  |         -          |    No    | Vertx settings. Refer to [vertx.io](https://vertx.io/docs/apidocs/io/vertx/core/VertxOptions.html) to learn more.                                                                                                                                                                                               |
 | server.*                                 |         -          |    No    | Vertx HTTP server settings for incoming requests. Refer to [HTTP server options](https://vertx.io/docs/apidocs/io/vertx/core/http/HttpServerOptions.html) to learn more.                                                                                                                                        |
+| server.instances                         |         1          |    No    | Number of HTTP servers Core starts on `server.port`. Vert.x hands each new client connection to the next one, so connections spread over that many event loops; the event-loop count (`vertx.eventLoopPoolSize`) is the useful maximum. A value above 1 lets a pod serve more requests per second; where analytics rows carry request and response bodies (API keys without `secured`), the analytics writer can then fall behind and fill the heap, so set `analytics.maxPendingBodyHeapPercent` there, or keep 1. With a value above 1, `server.port` must not be 0 (use a fixed port, or -1 for one shared random port). Env: `aidial.server.instances`. |
 | client.*                                 |         -          |    No    | Vertx HTTP client settings for outbound requests. Refer to [HTTP client options](https://vertx.io/docs/apidocs/io/vertx/core/http/HttpClientOptions.html) to learn more.                                                                                                                                        |
 | client.proxyOptions.*                    |   _(disabled)_      |    No    | Outbound HTTP proxy (`host`, `port`, `username`, `password`, `type` — `HTTP`, `SOCKS4` or `SOCKS5`) for Core's own outbound calls to external services — the shared `client` (upstreams, MCP/OAuth discovery, application schema fetch) and, per identity provider, JWKS fetching (`identityProviders.*.jwksUrl`). Refer to [ProxyOptions](https://vertx.io/docs/apidocs/io/vertx/core/net/ProxyOptions.html) to learn more.                                                                                                                                        |
 | client.nonProxyHosts                     |     _(empty)_       |    No    | JSON array of host patterns (`*` wildcard supported) excluded from `client.proxyOptions`; matching requests connect directly instead of through the proxy.                                                                                                                                                     |
 | webSocketClient.*                        |         -          |    No    | Vertx web socket client settings for outbound requests. Refer to [WebSocket client options](https://vertx.io/docs/apidocs/io/vertx/core/http/WebSocketClientOptions.html) to learn more.                                                                                                                        |
 | invitations.ttlInSeconds                 |       259200       |    No    | Default invitation time to live, in seconds (must be a positive integer), rounded up to whole hours. Used when a user's role does not define `share.<RESOURCE_TYPE>.invitation_ttl` (see `roles.*.share.*`) for a shared resource type.                                                                        |
+| orgUnits.enabled                         |       false        |    No    | Preview. Turns on org units: shared-space folders recorded as units, managed through `/v1/org-units/public`. Off, those routes answer 404. See [org units](docs/org-units.md). |
 | perRequestApiKey.ttl                     |        1800        |    No    | The TTL in seconds of per request API key                                                                                                                                                                                                                                                                       |
+| deploymentStats.ttlMs                    |      3600000       |    No    | The TTL in milliseconds (must be positive) of the per-trace usage record kept in Redis, refreshed on each write. A trace whose root is a background Responses job keeps it for at least `backgroundJob.jobTtlMs` + `backgroundJob.scanIntervalMs`                                                               |
 | asyncTaskExecutor.useVirtualThreads      |        true        |    No    | The flag determines if virtual threads are used to run blocking tasks or platform threads.                                                                                                                                                                                                                      |
 | config.jsonMergeStrategy.overwriteArrays |       false        |    No    | Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.                                                                                                                                                                          |
 | apiKeyValidation.proxyCount              |         0          | No | The count of trusted proxies between the client and DIAL Core server. See [selecting an IP address in HTTP header X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) for more details. The default value means there are no proxies. |
@@ -155,9 +161,10 @@ Priority order:
 | analytics.collectHeaders                 |       false        |    No    | If `true`, adds a `headers` object with the request headers to each analytics log entry, filtered by `analytics.headersAllowlist` / `analytics.headersBlacklist`. **Note**: enabling this may write sensitive data to logs; curate the lists for your setup.                                                                  |
 | analytics.headersBlacklist               | ["authorization", "api-key", "cookie", "proxy-authorization"] | No | JSON array of case-insensitive regex patterns (full-match); request headers whose name matches any pattern are excluded when `analytics.collectHeaders` is enabled. Literal names (e.g. `authorization`) match themselves; use patterns like `x-stainless-.*` to drop a whole family of headers.                                                                                                                                                                           |
 | analytics.headersAllowlist               |     _(disabled)_     | No | Optional JSON array of case-insensitive regex patterns (full-match). When present, only request headers whose name matches at least one pattern are collected (`analytics.headersBlacklist` still wins over the allowlist). Omit the key to disable the allowlist and collect all non-blocked headers. Example — keep just OTel and useful client headers: `["traceparent", "tracestate", "user-agent", "x-forwarded-.*"]`.                                                                                                                                                                           |
+| analytics.maxPendingBodyHeapPercent      |         -1         |    No    | Limit on the request and response bodies held by analytics log rows that wait to be written, as a percent of the JVM's maximum heap. It is a number, for example `10` or `2.5`. The default `-1`, like any value of 0 or below, means no limit. With a positive value, while the waiting rows hold that share of the heap or more, Core writes new rows without `request.body`, `response.body` and `assembled_response`, and every other field is still written, until the writer catches up. Set it where bodies are logged under high load, or where `server.instances` is above 1; `10` is a starting point. Env var: `aidial.analytics.maxPendingBodyHeapPercent`. The gauge `dial_analytics_log_pending_body_bytes` shows the bytes held now, and the counter `dial_analytics_log_bodies_skipped_total` counts the rows written without bodies because of this limit (not those of `secured` keys), see [Tracing](/docs/tracing.md#wait-metrics). |
 | tracing.genAiSpanAttributes              |       true        |    No    | If `true`, adds [OTel GenAI semantic-convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) `gen_ai.*` and `dial.*` attributes to the request span and to OTel log records. Prompts, completions and tool payloads are never published. Refer to [Tracing](/docs/tracing.md) to learn more. |
 | tracing.responseTraceHeaders             |       true        |    No    | If `true`, every response carries the W3C `traceparent` of Core's own root span, plus `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID`, all exposed via CORS. Omitted when no OpenTelemetry SDK is attached and the span context is invalid.                                                                   |
-| tracing.conversationIdHeaders            | ["x-claude-code-session-id", "thread-id", "x-session-id", "x-dial-client-channel-id", "X-CONVERSATION-ID"] | No | JSON array of request headers, in priority order, that may carry a conversation or session id; the first usable one present is published as `gen_ai.conversation.id` when `tracing.genAiSpanAttributes` is enabled. Matching is case-insensitive, and a value over 256 characters is skipped in favour of the next header. The known credential header names are rejected with a warning. The defaults cover Claude Code, OpenAI Codex CLI, OpenCode and DIAL Chat; an operator-supplied array replaces them outright. |
+| tracing.conversationIdHeaders            | ["x-claude-code-session-id", "thread-id", "x-session-id", "x-dial-client-channel-id", "X-CONVERSATION-ID"] | No | JSON array of request headers, in priority order, that may carry a conversation or session id; the first usable one present is published as `gen_ai.conversation.id` when `tracing.genAiSpanAttributes` is enabled, and is always written to each analytics log entry as `session.id` (omitted when no header matches). Matching is case-insensitive, and a value over 256 characters is skipped in favour of the next header. The known credential header names are rejected with a warning. The defaults cover Claude Code, OpenAI Codex CLI, OpenCode and DIAL Chat; an operator-supplied array replaces them outright. |
 | proxy.additionalHopByHopHeaders          |     _(empty)_       |    No    | JSON array of extra header names to strip from requests/responses forwarded through the proxy, on top of the built-in hop-by-hop headers (`Connection`, `Keep-Alive`, `Host`, etc.). Names are matched case-insensitively; blank entries are ignored.                                                          |
 
 #### Collecting claims
@@ -197,6 +204,7 @@ without putting the raw address in the log.
 | identityProviders.*.audience                  |    -    |    No    | If the setting is set it will be validated against the claim `aud` in JWT                                                                                                                                                                                                                                                                                                               |
 | identityProviders.*.userDisplayName           |    -    |    No    | Path to the claim in JWT token or user info response where user display name can be taken. The resolved value is returned as `userDisplayName` by `GET /v1/user/info`.                                                                                                                                                                                                                                                                                              |
 | identityProviders.*.userIdPath           |   sub   |    No    | Path to the claim in JWT token or user info response where user ID can be taken. Can differ based on each IDP. E.g. Microsoft Entra ID uses `oid`.                                                                                                                                                                                                                                                                                                        |
+| identityProviders.*.userEmailPath        |  email  |    No    | Path to the claim in JWT token or user info response where the user's email address can be taken, e.g. `upn` for Microsoft Entra ID when the tenant has no guest users, whose `upn` is not their address; otherwise add the `email` optional claim and keep the default. A rule or an org-unit role assignment on the `email` source matches this value. |
 | identityProviders.*.offlineClient             |    -    |    No    | OAuth client core uses to obtain a user's platform-wide offline credentials for `DIAL_NATIVE` external services (`/v1/user/offline-credentials`). Object with `clientId` (required), `tokenEndpoint` (required), `authorizationEndpoint` (required), `clientSecret`, `redirectUri` and `scopes` (default `["openid", "offline_access"]`). **Note**: `issuerPattern` must also match the issuer of **ID tokens** minted by this client — on Microsoft Entra ID, v1 access tokens (`sts.windows.net/...`) and v2 ID tokens (`login.microsoftonline.com/.../v2.0`) carry different issuers, and a pattern covering only one of them breaks the later credential refresh. |
 
 </details>
@@ -278,7 +286,7 @@ without putting the raw address in the log.
 <details> 
 <summary><b>Complex Resource Limits Configurations</b></summary>
 
-Per-resource limits for folder-as-resource complex resources (e.g. skills), enforced on whole-resource
+Per-resource limits for folder-as-resource complex resources (skills, projects), enforced on whole-resource
 PUT and single-file PUT. Exceeding a limit rejects the request and leaves nothing observable written.
 These limits also bound listing reads, archive (ZIP download) size and how long a mutation holds the
 resource lock (a single-file PUT copies the whole current version under the lock).
@@ -288,6 +296,7 @@ resource lock (a single-file PUT copies the whole current version under the lock
 | complexResource.maxFiles           |   100    |    No    | Max number of files a complex resource may contain.               |
 | complexResource.maxTotalBytes      | 16777216 |    No    | Max aggregate size in bytes of all files in a complex resource.   |
 | complexResource.maxFileSizeBytes   | 1048576  |    No    | Max size in bytes of a single file within a complex resource.     |
+| complexResource.types.\<group\>    |    -     |    No    | Per-type override keyed by URL group (`skills`, `projects`) with any subset of `maxFiles`, `maxTotalBytes`, `maxFileSizeBytes`; unset fields fall back to the values above. The built-in `projects` override is 1000 files, 67108864 total bytes, 5242880 bytes per file; setting `types` replaces it. |
 
 </details>
 
@@ -307,6 +316,35 @@ reclaiming resources tombstoned by DELETE and GCs stale versions left behind by 
 </details>
 
 <details> 
+<summary><b>Budget Counter Sweep Configurations</b></summary>
+
+Periodic job that deletes the spend counters of withdrawn budgets: a row is removed once both its windows have closed
+and no assignment or self-applying policy exists for its budget.
+
+| Setting                                | Default  | Required | Description                                                                                                                                          |
+|-----------------------------------------|:--------:|:--------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| budgetCounterSweep.period                |  300000  |    No    | Period in milliseconds between sweeps of the spend counters of withdrawn budgets. A row is deleted once both its windows have closed and no assignment or self-applying policy exists for its budget. |
+| budgetCounterSweep.batch                 |   500    |    No    | Number of counter rows handled per sweep tick.                                                                                                       |
+
+</details>
+
+<details> 
+<summary><b>Background Job Configurations</b></summary>
+
+Background responses are polled through this Core instance's own HTTP endpoint, so polling requests pass
+through the interceptor chain.
+
+| Setting                    | Default                               | Required | Description                                                                                                  |
+|-----------------------------|:-------------------------------------:|:--------:|--------------------------------------------------------------------------------------------------------------|
+| backgroundJob.localBaseUrl | http://localhost:{actual server port} |    No    | Base URL that background job polling and the [alias](/docs/dynamic-settings/aliases.md) requests not served in process (MCP, feature endpoints, Messages `count_tokens`, background Responses, stored-response operations) use to reach this Core instance's own HTTP endpoint. |
+| backgroundJob.pollTimeoutMs | 300000                               |    No    | Timeout in milliseconds of a single polling request. A request exceeding it fails and counts as a poll failure. |
+| backgroundJob.pollGiveUpStatusCodes | [401, 403, 404]               |    No    | HTTP status codes of a polling response that make the job give up immediately instead of retrying.         |
+| backgroundJob.jobTtlMs     | 86400000                              |    No    | Lifetime in milliseconds of a background job and its per-request API key. The scheduler's next scan expires a job older than this. |
+| backgroundJob.scanIntervalMs | 600000                              |    No    | Interval in milliseconds between the scheduler's scans of stored jobs. A scan schedules each job for polling or expires it. |
+
+</details>
+
+<details> 
 <summary><b>Client Channel Configurations</b></summary>
 
 Server-Sent Events channel used to relay JSON-RPC requests/responses between a toolset deployment and
@@ -322,12 +360,39 @@ the client subscribed with no events ever reaching it.
 </details>
 
 <details> 
+<summary><b>Admin System Export Configurations</b></summary>
+
+Settings of `POST /v1/admin/system-export`, which streams the `public` and `platform` buckets (or those listed in the optional `scope` query parameter) as a ZIP archive.
+Refer to [Admin system export](docs/admin-system-export.md) to learn more.
+
+| Setting                        | Default | Required | Description                                                                                                                                              |
+|--------------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| adminSystemExport.stallTimeout | 60000   |    No    | Time in milliseconds the export waits for a slow client to take the buffered data before it fails and the connection is reset. Raise it if clients with slow connections fail. It must be positive and below the 5 minute lock period (300000), otherwise Core does not start. |
+
+</details>
+
+<details> 
+<summary><b>Admin System Import Configurations</b></summary>
+
+Settings of `POST /v1/admin/system-import`, which merges the archive
+`POST /v1/admin/system-export` produces into the `public` and `platform` buckets, or replaces them with it (`mode=replace`). Refer to [Admin system import](docs/admin-system-import.md) to learn more.
+
+| Setting                            | Default | Required | Description                                                                                                                                              |
+|-------------------------------------|:-------:|:--------:|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| adminSystemImport.stallTimeout     | 60000   |    No    | Time in milliseconds the stage phase waits for the next chunk of the upload before failing it with `408` and releasing the guard. Must be positive, otherwise Core does not start. |
+| adminSystemImport.progressInterval | 15000   |    No    | Time in milliseconds between progress lines on the response while the replace phase runs. Must be positive, otherwise Core does not start.              |
+| adminSystemImport.parallelism      | 4       |    No    | Blob storage calls a system import runs at a time while it stages, wipes, copies and deletes its staging. Must be at least 1, otherwise Core does not start. Above 5, also raise the JVM option `-Dhttp.maxConnections` to at least this value, so idle connections to blob storage are reused instead of reopened. |
+
+</details>
+
+<details> 
 <summary><b>Redis Configurations</b></summary>
 
 | Setting                                  | Default | Required | Description                                                                                                                                                                                                                                                                                                                                                                                    |
 |------------------------------------------|:-------:|:--------:|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | redis.singleServerConfig.address         |    -    |   Yes    | Redis single server addresses, e.g. "redis://host:port". Either `singleServerConfig` or `clusterServersConfig` must be provided.                                                                                                                                                                                                                                                               |
 | redis.clusterServersConfig.nodeAddresses |    -    |   Yes    | Json array with Redis cluster server addresses, e.g. ["redis://host1:port1","redis://host2:port2"]. Either `singleServerConfig` or `clusterServersConfig` must be provided.                                                                                                                                                                                                                    |
+| redis.singleServerConfig.* / redis.clusterServersConfig.* | - | No | Any other Redisson setting, e.g. `retryAttempts`, `retryInterval`, `timeout`, `pingConnectionInterval`, `keepAlive`, `connectionPoolSize`. Top-level Redisson settings such as `nettyThreads`, `threads` and `sslVerificationMode` go directly under `redis`. Core fails to start on a setting Redisson does not know, so check the names against the [Redisson configuration docs](https://redisson.pro/docs/configuration/) when upgrading. To detect dead connections early, set `pingConnectionInterval` (e.g. 30000) and `keepAlive` to `true`. |
 | redis.provider.*                         |    -    |    No    | Provider specific settings                                                                                                                                                                                                                                                                                                                                                                     |
 | redis.provider.name                      |    -    |   Yes    | Provider name. The valid values are `aws-elasti-cache`(see [instructions](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/auth-iam.html)), `gcp-memory-store`(see [instructions](https://cloud.google.com/memorystore/docs/cluster/access-control)), `azure-redis-cache`(see [instructions](https://learn.microsoft.com/en-us/azure/azure-cache-for-redis/cache-managed-identity). |
 | redis.provider.userId                    |    -    |   Yes    | IAM-enabled user ID. **Note**. It's applied to `aws-elasti-cache`                                                                                                                                                                                                                                                                                                                              |
@@ -352,11 +417,12 @@ the client subscribed with no events ever reaching it.
 <details> 
 <summary><b>Applications Configurations</b></summary>
 
-| Setting                         | Default | Required | Description                                                                                                                           |
-|---------------------------------|:-------:|:--------:|---------------------------------------------------------------------------------------------------------------------------------------|
-| applications.includeCustomApps  |  false  |    No    | The flag indicates whether applications should be included into openai listing (required for Code Apps, Custom Apps, Quick Apps, etc) |
-| applications.controllerEndpoint |    -    |    No    | The endpoint to Application Controller Web Service that manages deployments for applications with functions                           |
-| applications.controllerTimeout  | 240000  |    No    | The timeout of operations to Application Controller Web Service                                                                       |
+| Setting                                    | Default | Required | Description                                                                                                                                                                                                                                                                                                                                 |
+|--------------------------------------------|:-------:|:--------:|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| applications.includeCustomApps             |  false  |    No    | The flag indicates whether applications should be included into openai listing (required for Code Apps, Custom Apps, Quick Apps, etc)                                                                                                                                                                                                       |
+| applications.controllerEndpoint            |    -    |    No    | The endpoint to Application Controller Web Service that manages deployments for applications with functions                                                                                                                                                                                                                                 |
+| applications.controllerTimeout             | 240000  |    No    | The timeout of operations to Application Controller Web Service                                                                                                                                                                                                                                                                             |
+| applications.allowUserAuthoredDependencies |  false  |    No    | Whether user-authored applications may declare `resource_dependencies` (scoped access to the calling user's resources outside the appdata sandbox). Admin-authored applications are not gated. The setting gates writes only: an application saved earlier keeps resolving while its admin consent stands; withdraw the consent to stop it. |
 
 </details>
 
@@ -394,15 +460,23 @@ DIAL Core stores user data in the following storages:
 |------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | routes                 | A list of registered routes in DIAL Core. Refer to [Routes](/docs/dynamic-settings/routes.md) to see dynamic settings.                                                                                                                                                          |
 | interceptors           | A list of deployed DIAL Interceptors and their parameters. Refer to [Interceptors](/docs/dynamic-settings/interceptors.md) to see dynamic settings.                                                                                                                             |
+| plugins                | Preview. Plugin instances DIAL Core runs in process: the type of their plugin code and their settings. Refer to [Plugins](/docs/dynamic-settings/plugins.md) to see dynamic settings.                                                                                           |
 | globalInterceptors     | A list of interceptors to be executed for any deployment on chat completion request. Refer to [Interceptors](/docs/dynamic-settings/interceptors.md) to learn more.                                                                                                             |
 | applications           | A list of deployed applications and their parameters. Refer to [Applications](/docs/dynamic-settings/applications.md) to see dynamic settings.                                                                                                                                  |
 | models                 | A list of deployed models and their parameters. Refer to [Models](/docs/dynamic-settings/models.md) to see dynamic settings.                                                                                                                                                    |
 | toolsets               | A list of available toolsets and their parameters. Refer to [Toolsets](/docs/dynamic-settings/toolsets.md) to see dynamic settings.                                                                                                                                             |
+| routers                | A list of routers: deployments that pick the model serving a request. Refer to [Routers](/docs/dynamic-settings/routers.md) to see dynamic settings.                                                                                                                            |
+| aliases                | Admin-managed deployments of their own that forward calls to a model, application or toolset and grant callers the right to call it. Refer to [Aliases](/docs/dynamic-settings/aliases.md) to see dynamic settings. |
 | roles                  | API key or JWT roles and their parameters. Refer to [Roles](/docs/dynamic-settings/roles.md) to see dynamic settings.                                                                                                                                                           |
 | keys                   | API keys and their parameters. Refer to [API Keys](/docs/dynamic-settings/keys.md) to see dynamic settings.                                                                                                                                                                     |
 | retriableErrorCodes    | List of Retriable Error Codes for handling outages at LLM Providers. This list extends the existing error codes (429, 502, 503, 504) but doesn't override them.                                                                                                                 |
 | rateLimitSchedule      | Deployment-wide anchor (timezone, week start day, reset time) for the DAY/WEEK/MONTH fixed calendar rate-limit windows. Refer to [Roles](/docs/dynamic-settings/roles.md#ratelimitschedule) to see dynamic settings.                                                            |
+| orgUnitRoles           | Roles that can be assigned at an org unit, replacing or adding to the built-in `admin`, `editor` and `viewer`. Refer to [Org units](/docs/org-units.md#roles) to learn more.                                                                                    |
+| spendingLimits         | Budget based spending limits: `mode` (`off`, `shadow` or `enforce`, default `off`) and `defaultCostObject` (default `ORG`), the cost object of a call that carries no project. In `shadow` budgets are checked, metered and charged but never reject, and the legacy `costLimit` decides; in `enforce` a JWT caller is checked against budgets only (`429` when none can pay) and the legacy `costLimit` is ignored. API key callers always use the legacy `costLimit`. When the mode is `shadow` or `enforce` and `defaultCostObject` has no unexpired cost budget, Core logs a warning on each config rebuild and sets the gauge `dial_budget_personal_missing` to 1. In `shadow`, a call that `enforce` would reject is logged at INFO with its reason, user, cost object and model. In `enforce`, the Claude Code and Codex routes (`/anthropic/v1/messages`, `/anthropic/api/oauth/usage`, `/openai/v1/responses`, `/openai/responses`) also report the caller's budget as their spend caps, only when the caller has exactly one budget in the cost object; see [Claude Code spend limits](docs/anthropic-spend-limits.md) and [Codex spend limits](docs/codex-spend-limits.md). A JWT caller's cost object is the claim named by `identityProviders.*.projectPath`, so set it to the claim that holds the project. |
 | applicationTypeSchemas | Map of application schemas where key - schema ID, value - schema itself in JSON format. All schemas must be conformed to the root schema `https://dial.epam.com/application_type_schemas/schema#`. See [link](config/src/main/resources/custom-application-schemas/schema.json) |
+
+Budget policies are managed through the policy API or admin manifests. See
+[Budget policy display names](docs/dynamic-settings/policies.md) for naming budgets shown in user statistics.
 
 ## Claude Code commands
 
@@ -418,6 +492,19 @@ The workflow is split across three commands so each invocation maps to a single 
 
 > [!NOTE]
 > To add a new command, drop a Markdown file into [`.claude/commands/`](.claude/commands) and append a row to the table above.
+
+## Spec-driven process (OpenSpec)
+
+Behaviour specs and change proposals live under [`openspec/`](openspec) and follow [OpenSpec](https://github.com/Fission-AI/OpenSpec):
+`openspec/specs/<capability>/spec.md` describes current behaviour, `openspec/changes/<id>/` holds a proposal with its spec deltas, design and tasks, and `openspec/config.yaml` holds the project rules. See the "Process" section of [`CLAUDE.md`](CLAUDE.md) for the propose / apply / archive steps.
+
+Prerequisites: [Node.js](https://nodejs.org/) 20.19 or newer. The OpenSpec CLI is pinned and run through `npx`, so no global install is required:
+
+```bash
+npx -y @fission-ai/openspec@1.14.3 validate --all --strict
+```
+
+Claude Code entry points: the `/opsx:*` commands under [`.claude/commands/opsx/`](.claude/commands/opsx) (`explore`, `propose`, `apply`, `update`, `sync`, `archive`) and the `sdd-*` workflows under [`.claude/workflows/`](.claude/workflows).
 
 ## License
 

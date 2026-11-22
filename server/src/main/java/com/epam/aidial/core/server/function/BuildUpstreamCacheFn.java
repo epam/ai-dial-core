@@ -33,7 +33,7 @@ public class BuildUpstreamCacheFn extends BaseRequestFunction<RequestObject> {
                 return false;
             }
             CacheBreakpointContext cacheBreakpointContext =
-                    upstreamCacheService.buildCacheBreakpointContext(request, policy, model, interfaceType);
+                    upstreamCacheService.buildCacheBreakpointContext(request, policy, model, interfaceType, context.getInitiatorId());
             context.setCacheBreakpointContext(cacheBreakpointContext);
         }
         return false;

@@ -11,6 +11,7 @@ import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.data.ResourceUpload;
 import com.epam.aidial.core.storage.data.UserMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.Compression;
@@ -38,6 +39,7 @@ import org.jclouds.blobstore.domain.StorageType;
 import org.jclouds.io.Payload;
 import org.redisson.api.BatchResult;
 import org.redisson.api.RBatch;
+import org.redisson.api.RKeys;
 import org.redisson.api.RMap;
 import org.redisson.api.RMapAsync;
 import org.redisson.api.RScoredSortedSet;
@@ -56,7 +58,6 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -158,6 +159,7 @@ public class ResourceService implements AutoCloseable {
     private final Map<String, Long> resourceTypeExpiration;
     private final Supplier<String> senderPodIdSupplier;
     private final BlockingCallTracer blockingCallTracer;
+    private final TempFolderCleaner tempFolderCleaner;
 
     public ResourceService(TimerService timerService,
                            RedissonClient redis,
@@ -201,6 +203,7 @@ public class ResourceService implements AutoCloseable {
         this.resourceQueue = "resource:" + BlobStorageUtil.toStoragePath(prefix, "queue");
         this.resourceTypeExpiration = Objects.requireNonNullElseGet(settings.resourceTypesExpiration, Map::of);
         this.senderPodIdSupplier = senderPodIdSupplier;
+        this.tempFolderCleaner = new TempFolderCleaner(blobStore, TEMP_FOLDER, TEMP_FILE_TTL);
         this.syncTimer = timerService.scheduleWithFixedDelay(settings.syncPeriod, settings.syncPeriod, this::sync);
         this.tempCleanupTimer = timerService.scheduleWithFixedDelay(TEMP_CLEANUP_PERIOD, TEMP_CLEANUP_PERIOD, this::cleanupTempFolder);
     }
@@ -212,11 +215,17 @@ public class ResourceService implements AutoCloseable {
         tempCleanupTimer.close();
     }
 
+    /**
+     * Events are published only for {@link ResourceTypes#EVENT_TYPES}.
+     */
     public ResourceTopic.Subscription subscribeResources(Collection<ResourceDescriptor> resources,
                                                          Consumer<ResourceEvent> subscriber) {
         return topic.subscribe(resources, subscriber);
     }
 
+    /**
+     * Events are published only for {@link ResourceTypes#EVENT_TYPES}.
+     */
     public ResourceTopic.Subscription subscribeAllResources(Consumer<ResourceEvent> subscriber) {
         return topic.subscribeAll(subscriber);
     }
@@ -363,8 +372,22 @@ public class ResourceService implements AutoCloseable {
     /**
      * Loads content of resource metadata into the result.
      */
-    @SneakyThrows
     public void load(List<ResourceItemMetadata> items, List<Pair<ResourceItemMetadata, String>> result) {
+        loadItems(items, true, result);
+    }
+
+    /**
+     * Loads the stored metadata (timestamps, etag, author) of the items without their bodies, in Redis batches.
+     * An item whose resource does not exist is omitted.
+     */
+    public List<ResourceItemMetadata> loadMetadata(List<ResourceItemMetadata> items) {
+        List<Pair<ResourceItemMetadata, String>> result = new ArrayList<>();
+        loadItems(items, false, result);
+        return result.stream().map(Pair::getLeft).toList();
+    }
+
+    @SneakyThrows
+    private void loadItems(List<ResourceItemMetadata> items, boolean withBody, List<Pair<ResourceItemMetadata, String>> result) {
         final int size = items.size();
         int batches = size / BATCH_SIZE;
         int rem = size % BATCH_SIZE;
@@ -375,7 +398,7 @@ public class ResourceService implements AutoCloseable {
             int end = cur + BATCH_SIZE;
             int start = cur;
             Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> runReadBatch(start, end, items));
+                    .submit(() -> runReadBatch(start, end, items, withBody));
             futures.add(future);
             cur = end;
         }
@@ -383,7 +406,7 @@ public class ResourceService implements AutoCloseable {
             int end = cur + rem;
             int start = cur;
             Future<List<Pair<ResourceItemMetadata, String>>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> runReadBatch(start, end, items));
+                    .submit(() -> runReadBatch(start, end, items, withBody));
             futures.add(future);
         }
 
@@ -393,7 +416,7 @@ public class ResourceService implements AutoCloseable {
     }
 
     @SneakyThrows
-    private List<Pair<ResourceItemMetadata, String>> runReadBatch(int start, int end, List<ResourceItemMetadata> items) {
+    private List<Pair<ResourceItemMetadata, String>> runReadBatch(int start, int end, List<ResourceItemMetadata> items, boolean withBody) {
         if (end - start <= 0) {
             return List.of();
         }
@@ -405,7 +428,7 @@ public class ResourceService implements AutoCloseable {
             String redisKey = redisKey(meta.getDescriptor());
             redisKeys.add(redisKey);
             RMapAsync<String, byte[]> map = batch.getMap(redisKey, REDIS_MAP_CODEC);
-            map.getAllAsync(REDIS_FIELDS);
+            map.getAllAsync(withBody ? REDIS_FIELDS : REDIS_FIELDS_NO_BODY);
         }
         log.debug("Start executing Redis batch with start={}, end={}", start, end);
         BatchResult<?> batchResult = batch.execute();
@@ -420,8 +443,9 @@ public class ResourceService implements AutoCloseable {
             if (redisResult == null) {
                 missed.add(metadata);
             } else if (redisResult.exists()) {
-                Pair<ResourceItemMetadata, String> pair = Pair.of(toResourceItemMetadata(metadata.getDescriptor(), redisResult),
-                        new String(redisResult.body, StandardCharsets.UTF_8));
+                Pair<ResourceItemMetadata, String> pair = withBody
+                        ? Pair.of(toResourceItemMetadata(metadata.getDescriptor(), redisResult), new String(redisResult.body, StandardCharsets.UTF_8))
+                        : Pair.of(toMetadata(metadata.getDescriptor(), redisResult), null);
                 result.add(pair);
             }
             // else: cached as absent, so omitted - its blob object can still be listed until the delete
@@ -431,7 +455,9 @@ public class ResourceService implements AutoCloseable {
         List<Future<Pair<ResourceItemMetadata, String>>> futures = new ArrayList<>();
         for (ResourceItemMetadata metadata : missed) {
             Future<Pair<ResourceItemMetadata, String>> future = VIRTUAL_THREAD_PER_TASK_EXECUTOR
-                    .submit(() -> getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false));
+                    .submit(() -> withBody
+                            ? getResourceWithMetadata(metadata.getDescriptor(), EtagHeader.ANY, false)
+                            : getBlobMetadata(metadata.getDescriptor()));
             futures.add(future);
         }
         log.debug("Start loading missing resources from blob storage: {}", missed.size());
@@ -500,6 +526,16 @@ public class ResourceService implements AutoCloseable {
             return null;
         }
 
+        return toMetadata(descriptor, result);
+    }
+
+    @Nullable
+    private Pair<ResourceItemMetadata, String> getBlobMetadata(ResourceDescriptor descriptor) {
+        Result result = blobGet(blobKey(descriptor), false);
+        return result.exists() ? Pair.of(toMetadata(descriptor, result), null) : null;
+    }
+
+    private static ResourceItemMetadata toMetadata(ResourceDescriptor descriptor, Result result) {
         return descriptor.getType().requireCompression()
                 ? toResourceItemMetadata(descriptor, result)
                 : toFileMetadata(descriptor, result);
@@ -782,63 +818,8 @@ public class ResourceService implements AutoCloseable {
      */
     @VisibleForTesting
     Void cleanupTempFolder() {
-        log.debug("Cleaning up temp folder");
-        try {
-            LocalDateTime now = LocalDateTime.now();
-            String token = null;
-            exit: do {
-                PageSet<? extends StorageMetadata> set = blobStore.list(TEMP_FOLDER, token, PAGE_SIZE, true);
-                for (StorageMetadata meta : set) {
-                    if (meta.getType() != StorageType.BLOB) {
-                        continue;
-                    }
-                    String path = meta.getName();
-                    if (isExpiredTempFile(path, now)) {
-                        try {
-                            blobStore.delete(path);
-                        } catch (Throwable e) {
-                            log.warn("Failed to delete expired temp file: {}", path, e);
-                        }
-                    } else {
-                        break exit;
-                    }
-
-                }
-                token = set.getNextMarker();
-            } while (token != null);
-        } catch (Throwable e) {
-            log.warn("Failed to clean up temp folder", e);
-        }
-
+        tempFolderCleaner.cleanup();
         return null;
-    }
-
-    private static boolean isExpiredTempFile(String path, LocalDateTime now) {
-        String prefix = TEMP_FOLDER + ResourceDescriptor.PATH_SEPARATOR;
-        if (!path.startsWith(prefix)) {
-            throw invalidTempPathException(path);
-        }
-
-        int folderStart = prefix.length();
-        int folderEnd = path.indexOf(ResourceDescriptor.PATH_SEPARATOR, folderStart);
-        if (folderEnd < 0) {
-            throw invalidTempPathException(path);
-        }
-
-        String folder = path.substring(folderStart, folderEnd);
-        LocalDateTime uploadTs;
-        try {
-            uploadTs = LocalDateTime.parse(folder, TEMP_FOLDER_FORMATTER);
-        } catch (DateTimeParseException e) {
-            log.warn("Unexpected folder name in temp folder: {}", folder);
-            throw invalidTempPathException(path);
-        }
-
-        return uploadTs.plus(TEMP_FILE_TTL).isBefore(now);
-    }
-
-    private static IllegalArgumentException invalidTempPathException(String path) {
-        return new IllegalArgumentException("Invalid path to temp file: " + path);
     }
 
     public FileMetadata finishFileUpload(ResourceDescriptor descriptor, ResourceUpload resourceUpload, EtagHeader etagHeader) {
@@ -1025,6 +1006,49 @@ public class ResourceService implements AutoCloseable {
 
     private void publishEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag,
             @Nullable Map<String, String> metadata) {
+        if (descriptor.getType().isComplex()) {
+            // Writes of a complex resource are internal (marker, version files): the complex resource engine
+            // publishes events for the logical resource and file URLs via publishLogicalEvent.
+            return;
+        }
+        publishTopicEvent(descriptor, action, timestamp, etag, metadata);
+    }
+
+    /**
+     * Publishes an event for a logical URL of a complex resource (the resource itself or a file inside it).
+     */
+    public void publishLogicalEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp,
+                                    @Nullable String etag) {
+        publishTopicEvent(descriptor, action, timestamp, etag, null);
+    }
+
+    /**
+     * Tells every pod that a resource changed, whatever its type, for a change made outside the write path of this
+     * service, such as a direct blob copy.
+     */
+    public void publishUpdate(ResourceDescriptor descriptor) {
+        publishUpdate(descriptor.getUrl());
+    }
+
+    /**
+     * Same as {@link #publishUpdate(ResourceDescriptor)} for an event that is not about one resource, with a
+     * {@code url} that no resource has.
+     */
+    public void publishUpdate(String url) {
+        ResourceEvent event = new ResourceEvent()
+                .setUrl(url)
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setTimestamp(System.currentTimeMillis())
+                .setSenderPodId(senderPodIdSupplier.get());
+        topic.publish(event);
+    }
+
+    private void publishTopicEvent(ResourceDescriptor descriptor, ResourceEvent.Action action, long timestamp, String etag,
+            @Nullable Map<String, String> metadata) {
+        if (!ResourceTypes.EVENT_TYPES.contains(descriptor.getType())) {
+            return;
+        }
+
         ResourceEvent event = new ResourceEvent()
                 .setUrl(descriptor.getUrl())
                 .setAction(action)
@@ -1040,7 +1064,8 @@ public class ResourceService implements AutoCloseable {
         return a.compareTo(b) > 0 ? Pair.of(a, b) : Pair.of(b, a);
     }
 
-    private Void sync() {
+    @VisibleForTesting
+    Void sync() {
         log.debug("Syncing");
         try {
             RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
@@ -1278,6 +1303,116 @@ public class ResourceService implements AutoCloseable {
     private void flushToBlobStore(String redisKey) {
         RMap<String, byte[]> map = sync(redisKey);
         map.delete();
+    }
+
+    /**
+     * Drops the queued and cached Redis entries of the given bucket locations (e.g. {@code public/}, {@code
+     * platform/}), with no blob I/O: every member of the sync queue whose blob key starts with one of them, and
+     * every cache map whose key is {@code <type>:<storage path>} for a {@link ResourceTypes} name and a storage
+     * path under one of them. It does not take per-key locks, so a writer holding only a per-resource lock can
+     * race with it; callers that need exclusion take the bucket locks around this call. Used by a system import
+     * after promoting its blobs, so that neither a cached copy nor a queued write masks the import.
+     */
+    public void invalidate(Collection<String> bucketLocations) {
+        removeQueuedEntries(bucketLocations);
+        removeCachedEntries(bucketLocations);
+    }
+
+    /**
+     * Like {@link #invalidate} for the given blobs only, e.g. {@code platform/roles/r1}: drops their queued and cached
+     * entries and leaves every other resource of their buckets alone. It scans nothing, so its cost grows with the
+     * number of blobs, in batches of {@link #BATCH_SIZE}. A blob that is not a resource has no entry and is skipped.
+     */
+    public void invalidateBlobs(Collection<String> blobPaths) {
+        RScoredSortedSet<String> queue = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
+        RKeys keys = redis.getKeys();
+        List<String> batch = new ArrayList<>(BATCH_SIZE);
+        for (String blobPath : blobPaths) {
+            String redisKey = redisKeyOfBlob(blobPath);
+            if (redisKey != null) {
+                batch.add(redisKey);
+            }
+            if (batch.size() == BATCH_SIZE) {
+                removeEntries(queue, keys, batch);
+                batch.clear();
+            }
+        }
+        if (!batch.isEmpty()) {
+            removeEntries(queue, keys, batch);
+        }
+    }
+
+    private static void removeEntries(RScoredSortedSet<String> queue, RKeys keys, List<String> redisKeys) {
+        queue.removeAll(redisKeys);
+        keys.delete(redisKeys.toArray(new String[0]));
+    }
+
+    private String redisKeyOfBlob(String blobPath) {
+        String[] segments = blobPath.split(ResourceDescriptor.PATH_SEPARATOR, 3);
+        if (segments.length < 3) {
+            return null;
+        }
+        try {
+            return RedisUtil.redisKey(ResourceTypes.of(segments[1]), blobPath, prefix);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private void removeQueuedEntries(Collection<String> bucketLocations) {
+        RScoredSortedSet<String> set = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
+        List<String> toRemove = new ArrayList<>();
+        for (String redisKey : set) {
+            if (startsWithAny(blobKeyFromRedisKey(redisKey), bucketLocations)) {
+                toRemove.add(redisKey);
+            }
+        }
+        if (!toRemove.isEmpty()) {
+            set.removeAll(toRemove);
+        }
+    }
+
+    private void removeCachedEntries(Collection<String> bucketLocations) {
+        RKeys keys = redis.getKeys();
+        for (String bucketLocation : bucketLocations) {
+            String pattern = "*:" + BlobStorageUtil.toStoragePath(prefix, bucketLocation) + "*";
+            List<String> batch = new ArrayList<>(BATCH_SIZE);
+            for (String key : keys.getKeysByPattern(pattern)) {
+                if (isResourceTypeKey(key)) {
+                    batch.add(key);
+                    if (batch.size() == BATCH_SIZE) {
+                        keys.delete(batch.toArray(new String[0]));
+                        batch.clear();
+                    }
+                }
+            }
+            if (!batch.isEmpty()) {
+                keys.delete(batch.toArray(new String[0]));
+            }
+        }
+    }
+
+    /**
+     * {@code getKeysByPattern} also matches lock keys ({@code lock:public/...}) and other non-cache keys sharing
+     * the prefix, so every match is filtered on the client: only a key whose text before the first {@code ':'} is
+     * a {@link ResourceTypes} name is deleted.
+     */
+    private static boolean isResourceTypeKey(String redisKey) {
+        try {
+            ResourceTypes.valueOf(RedisUtil.getResourceType(redisKey));
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private static boolean startsWithAny(String value, Collection<String> prefixes) {
+        for (String candidate : prefixes) {
+            if (value.startsWith(candidate)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String getEtag(ResourceDescriptor descriptor) {

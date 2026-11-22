@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -26,6 +27,7 @@ public record BackgroundJobRecord(
         String project,
         String userHash,
         String conversationId,
+        String sessionId,
         String jobTitle,
         boolean securedApiKey,
         String userId,
@@ -35,6 +37,10 @@ public record BackgroundJobRecord(
         Map<String, List<String>> requestHeaders,
         String deploymentName,
         String parentDeployment,
+        List<String> executionPath,
+        // the router's verdict and the router row's place when a router in decision mode chose the deployment
+        RouterDecision.AnalyticsDecision decision,
+        RouterDecision.Hop routerHop,
         String requestProtocol,
         String requestMethod,
         String requestUri,
@@ -52,6 +58,7 @@ public record BackgroundJobRecord(
                 .project(context.getProject())
                 .userHash(context.getUserHash())
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
+                .sessionId(GenAiTraceAttributes.resolveConversationId(context))
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
                 .securedApiKey(context.isSecuredApiKey())
                 .userId(context.getUserId())
@@ -60,8 +67,13 @@ public record BackgroundJobRecord(
                 .userClaims(context.getUserClaims())
                 .requestHeaders(AnalyticsLogContext.toHeadersMap(context.getRequest().headers()))
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
-                .parentDeployment(AnalyticsLogContext.getParentDeployment(
-                        context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
+                .parentDeployment(context.getDecision() != null
+                        ? context.getDecision().getRouterName()
+                        : AnalyticsLogContext.getParentDeployment(
+                                context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
+                .executionPath(context.getExecutionPath())
+                .decision(context.getDecision() == null ? null : context.getDecision().toAnalyticsDecision())
+                .routerHop(context.getDecision() == null ? null : context.getDecision().getHop())
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
                 .requestMethod(context.getRequest().method().name())
                 .requestUri(context.getRequest().uri())

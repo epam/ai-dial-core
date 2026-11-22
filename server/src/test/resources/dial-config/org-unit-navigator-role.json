@@ -1,0 +1,26 @@
+{
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    }
+  },
+  "roles": {
+    "default": {
+      "limits": {}
+    }
+  },
+  "orgUnitRoles": {
+    "navigator": {
+      "description": "Sees the unit's child units, not its content",
+      "permissions": [
+        {
+          "actions": [
+            "read"
+          ],
+          "pathPattern": "org-units/**"
+        }
+      ]
+    }
+  }
+}

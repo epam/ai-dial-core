@@ -2,6 +2,9 @@ package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.config.databind.JsonArrayToSchemaMapDeserializer;
 import com.epam.aidial.core.config.databind.MapToJsonArraySerializer;
+import com.epam.aidial.core.config.policy.CostObjectIndex;
+import com.epam.aidial.core.config.policy.Policy;
+import com.epam.aidial.core.config.policy.PolicyAssignment;
 import com.epam.aidial.core.config.validation.CatalogPropertiesConformToSchemas;
 import com.epam.aidial.core.config.validation.ConformToCatalogMetaSchema;
 import com.epam.aidial.core.config.validation.ConformToMetaSchema;
@@ -29,22 +32,40 @@ public class Config {
     // maintain the order of routes defined in the config
     // key: route name (file-sourced) or canonical id "routes/<bucket>/<name>" (blob/API-sourced)
     private LinkedHashMap<String, Route> routes = new LinkedHashMap<>();
-    // key: deployment id (short name); shared namespace with applications/toolsets/interceptors
+    // key: deployment id (short name); shared namespace with applications/toolsets/interceptors/routers
     private Map<String, Model> models = Map.of();
-    // key: deployment id (short name); shared namespace with models/toolsets/interceptors
+    // key: deployment id (short name); shared namespace with models/toolsets/interceptors/routers
     private Map<String, Application> applications = Map.of();
-    // key: deployment id (short name); shared namespace with models/applications/interceptors
+    // key: deployment id (short name); shared namespace with models/applications/interceptors/routers
     private Map<String, ToolSet> toolsets = Map.of();
+    // key: deployment id (short name); shared namespace with models/applications/toolsets/interceptors/routers
+    private Map<String, Alias> aliases = Map.of();
     // key: raw API key secret (file-sourced) or canonical id "keys/<bucket>/<name>" (blob/API-sourced)
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private Map<String, Key> keys = new HashMap<>();
     // key: role name (short name); not part of the deployment-id namespace above
     private Map<String, Role> roles = new HashMap<>();
     private Set<Integer> retriableErrorCodes = Set.of();
-    // key: deployment id (short name); shared namespace with models/applications/toolsets
+    // key: deployment id (short name); shared namespace with models/applications/toolsets/routers
     private Map<String, Interceptor> interceptors = Map.of();
+    // key: deployment id (short name); shared namespace with models/applications/toolsets/interceptors
+    private Map<String, Router> routers = Map.of();
     // key: translator name, as referenced by interfaces.<type>.translator
     private Map<String, Translator> translators = Map.of();
+    // key: plugin name (short name)
+    private Map<String, Plugin> plugins = Map.of();
+    // key: role name; replaces the built-in org unit role of that name, or adds a role
+    private Map<String, OrgUnitRole> orgUnitRoles = Map.of();
+
+    // key: path relative to the policies folder, "<costObject>/<name>" or "<name>" for a global policy
+    @JsonIgnore
+    private Map<String, Policy> policies = Map.of();
+    // key: path relative to the assignments folder, "<costObject>/<id>"
+    @JsonIgnore
+    private Map<String, PolicyAssignment> policyAssignments = Map.of();
+    // derived from the two maps above; replaced together with them
+    @JsonIgnore
+    private CostObjectIndex costObjectIndex = CostObjectIndex.EMPTY;
 
     // key: schema $id (URI string)
     @JsonDeserialize(using = JsonArrayToSchemaMapDeserializer.class)
@@ -70,6 +91,8 @@ public class Config {
     // deployment-wide anchor for the DAY/WEEK/MONTH fixed calendar rate-limit windows
     private RateLimitSchedule rateLimitSchedule = new RateLimitSchedule();
 
+    private SpendingLimits spendingLimits = new SpendingLimits();
+
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {
         Application application = applications.get(deploymentId);
@@ -87,7 +110,17 @@ public class Config {
             return toolSet;
         }
 
-        return interceptors.get(deploymentId);
+        Router router = routers.get(deploymentId);
+        if (router != null) {
+            return router;
+        }
+
+        Interceptor interceptor = interceptors.get(deploymentId);
+        if (interceptor != null) {
+            return interceptor;
+        }
+
+        return aliases.get(deploymentId);
     }
 
     public boolean isDeploymentExists(String deploymentId) {

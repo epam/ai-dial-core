@@ -17,6 +17,9 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.proxy.ProxyClient;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -38,8 +41,6 @@ import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -92,11 +93,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -133,6 +134,7 @@ public class DeploymentPostControllerTest {
     void stubConfig() {
         // the controller resolves translator references against the request's config on every routing step
         lenient().when(context.getConfig()).thenReturn(new Config());
+        lenient().when(proxy.getProxyClient()).thenAnswer(invocation -> new ProxyClient(proxy.getClient(), null, null));
         lenient().when(proxy.getBlockingCallTracer()).thenReturn(BlockingCallTracer.NOOP);
     }
 
@@ -409,7 +411,7 @@ public class DeploymentPostControllerTest {
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -430,7 +432,7 @@ public class DeploymentPostControllerTest {
     @ParameterizedTest
     @NullSource
     @EnumSource(value = InterfaceMode.class, names = {"PASSTHROUGH", "TRANSLATOR"})
-    public void testHandleProxyRequest_NamesTheDeploymentForTranslators(InterfaceMode mode) {
+    public void testHandleProxyRequest_NamesTheDeploymentInEveryMode(InterfaceMode mode) {
         when(context.getRequest()).thenReturn(request);
 
         Model model = new Model();
@@ -442,7 +444,7 @@ public class DeploymentPostControllerTest {
         when(context.getDeployment()).thenReturn(model);
         when(request.headers()).thenReturn(new HeadersMultiMap());
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
         ApiKeyData proxyApiKeyData = new ApiKeyData();
@@ -453,10 +455,8 @@ public class DeploymentPostControllerTest {
 
         controller.handleProxyRequest(proxyRequest);
 
-        // the deployment id, not overrideName: it is what the translator calls Core back with
-        String expected = mode == InterfaceMode.TRANSLATOR ? "openai-gpt-5.4-mini" : null;
-        verify(proxyRequest, expected == null ? never() : times(1))
-                .putHeader(eq(Proxy.HEADER_DEPLOYMENT_ID), eq("openai-gpt-5.4-mini"));
+        // the deployment id, not overrideName: the path and the body's model carry overrideName
+        verify(proxyRequest).putHeader(eq(Proxy.HEADER_DEPLOYMENT_ID), eq("openai-gpt-5.4-mini"));
     }
 
     @Test
@@ -743,6 +743,70 @@ public class DeploymentPostControllerTest {
     }
 
     @Test
+    public void testHandleRequestBody_RejectsInvalidJson() {
+        when(context.getDeployment()).thenReturn(chainModel());
+
+        controller.handleRequestBody(Buffer.buffer("{not json"));
+
+        verify(context).respond(BAD_REQUEST);
+    }
+
+    @Test
+    public void testHandleRequestBody_KeepsTheChainRejectionStatus() {
+        stubChatCompletionRequest();
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        doThrow(new HttpException(FORBIDDEN, "Required resource dependencies are not accessible"))
+                .when(apiKeyStore).assignPerRequestApiKey(any());
+        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(true));
+
+        controller.handleRequestBody(Buffer.buffer(CHAIN_BODY));
+
+        verify(context).respond(FORBIDDEN, "Required resource dependencies are not accessible");
+        verify(proxy, never()).getClient();
+    }
+
+    @Test
+    public void testHandleRequestBody_RespondsBadRequestWhenTheChainThrowsAnyOtherException() {
+        // development's behaviour, unchanged: only an HttpException carries its own status
+        stubChatCompletionRequest();
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        doThrow(new IllegalStateException("unexpected")).when(apiKeyStore).assignPerRequestApiKey(any());
+        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(true));
+
+        controller.handleRequestBody(Buffer.buffer(CHAIN_BODY));
+
+        verify(context).respond(BAD_REQUEST);
+        verify(proxy, never()).getClient();
+    }
+
+    private static final String CHAIN_BODY = """
+            {
+                "model": "name",
+                "messages": [],
+                "stream": false
+            }
+            """;
+
+    private static Model chainModel() {
+        Model model = new Model();
+        model.setName("name");
+        model.setEndpoint("http://host/model");
+        return model;
+    }
+
+    private void stubChatCompletionRequest() {
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
+        when(context.getRequest()).thenReturn(request);
+        when(context.getDeployment()).thenReturn(chainModel());
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        proxyApiKeyData.setInterceptorIndex(0);
+        when(context.getProxyApiKeyData()).thenReturn(proxyApiKeyData);
+    }
+
+    @Test
     public void testHandleRequestBody_InterfacesBaseUrl() {
         when(context.getRequest()).thenReturn(request);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
@@ -851,7 +915,7 @@ public class DeploymentPostControllerTest {
         when(request.headers()).thenReturn(headers);
         when(context.getDeployment()).thenReturn(application);
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -884,20 +948,20 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
         ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
-        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
+        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any(), any());
         assertEquals(InterfaceType.OPENAI_CHAT_COMPLETIONS, interfaceTypeCaptor.getValue());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(any(AnalyticsLogContext.class));
@@ -919,20 +983,20 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
         when(request.path()).thenReturn("/openai/deployments/name/embeddings");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
         ArgumentCaptor<InterfaceType> interfaceTypeCaptor = ArgumentCaptor.forClass(InterfaceType.class);
-        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any());
+        verify(rateLimiter).increase(eq(model), any(), any(), any(), any(), interfaceTypeCaptor.capture(), any(), any());
         assertEquals(InterfaceType.OPENAI_EMBEDDINGS, interfaceTypeCaptor.getValue());
     }
 
@@ -967,14 +1031,14 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer("{}"));
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
         when(request.path()).thenReturn("/openai/deployments/name/embeddings");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
         when(bufferingReadStream.getContent()).thenReturn(Buffer.buffer("{}"));
         Map<String, Object> tracingAttributes = getTracingAttributes();
@@ -1010,21 +1074,21 @@ public class DeploymentPostControllerTest {
         when(context.getUpstreamRoute()).thenReturn(upstreamRoute);
         when(context.getResponseBody()).thenReturn(Buffer.buffer());
         when(proxy.getTokenStatsTracker()).thenReturn(tokenStatsTracker);
-        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
+        when(rateLimiter.increase(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Future.succeededFuture());
         when(context.getRequest()).thenReturn(request);
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
         // an interface declaring no mode is what every config written before mode existed is: still charged
         verify(rateLimiter).increase(
-                eq(model), any(), any(), any(), any(), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS), any());
+                eq(model), any(), any(), any(), any(), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS), any(), any());
     }
 
     @ParameterizedTest
@@ -1074,13 +1138,13 @@ public class DeploymentPostControllerTest {
         when(request.uri()).thenReturn("/test");
         when(request.path()).thenReturn("/openai/deployments/name/chat/completions");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
         // the translator calls Core back for the completion; that inner request carries the usage to limits
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any(), any());
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(logStore).save(any(AnalyticsLogContext.class));
         verify(bufferingReadStream).end(response);
@@ -1106,12 +1170,12 @@ public class DeploymentPostControllerTest {
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any(), any());
         verify(tokenStatsTracker).getUsageStats(eq(context));
         verify(context).setTokenUsage(any(TokenUsage.class));
         verify(context).setUsagePerModel(any());
@@ -1152,12 +1216,12 @@ public class DeploymentPostControllerTest {
         when(request.method()).thenReturn(HttpMethod.POST);
         when(request.uri()).thenReturn("/test");
         when(request.headers()).thenReturn(new HeadersMultiMap());
-        when(context.getProxyResponse()).thenReturn(mock(HttpClientResponse.class));
+        when(context.getProxyResponse()).thenReturn(mock(ProxyResponse.class));
         BufferingReadStream bufferingReadStream = mock(BufferingReadStream.class);
 
         controller.handleResponse(bufferingReadStream);
 
-        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any());
+        verify(rateLimiter, never()).increase(any(), any(), any(), any(), any(), any(), any(), any());
         verify(rateLimiter).recordAggregatedCost(eq("inner-app"), any(), eq(new BigDecimal("0.40")));
         verify(rateLimiter).recordAggregatedCost(eq("router-app"), any(), eq(new BigDecimal("0.40")));
         verify(bufferingReadStream).end(response);
@@ -1206,7 +1270,7 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(request.headers()).thenReturn(new HeadersMultiMap());
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -1243,7 +1307,7 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(request.headers()).thenReturn(new HeadersMultiMap());
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -1278,7 +1342,7 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(request.headers()).thenReturn(new HeadersMultiMap());
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -1323,7 +1387,7 @@ public class DeploymentPostControllerTest {
         when(context.getRequest()).thenReturn(request);
         when(request.headers()).thenReturn(new HeadersMultiMap());
 
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, RETURNS_DEEP_STUBS);
         MultiMap proxyHeaders = new HeadersMultiMap();
         when(proxyRequest.headers()).thenReturn(proxyHeaders);
 
@@ -1340,5 +1404,26 @@ public class DeploymentPostControllerTest {
         verify(proxyRequest).putHeader(eq(HEADER_APPLICATION_ID), eq("customApp"));
 
         verify(proxyRequest, never()).putHeader(eq(HEADER_APPLICATION_PROPERTIES), anyString());
+    }
+
+    @Test
+    public void testInterceptorReentryDispatchesToNextInterceptorWithoutReadingBody() throws Exception {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setInterceptors(List.of("interceptor1", "interceptor2"));
+        apiKeyData.setInterceptorIndex(0);
+
+        when(context.getRequest()).thenReturn(request);
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn(HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        when(request.path()).thenReturn("/openai/deployments/interceptor/chat/completions");
+        when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(context.getInterceptors()).thenReturn(apiKeyData.getInterceptors());
+        when(context.respond(NOT_FOUND, "Interceptor is not found")).thenReturn(Future.succeededFuture());
+
+        controller.handle("interceptor");
+
+        // the body is read by the interceptor controller itself, not on reentry
+        verify(request, never()).body();
+        // interceptor2 is not declared in the config, so reaching this response proves it was dispatched to
+        verify(context).respond(NOT_FOUND, "Interceptor is not found");
     }
 }

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -78,6 +79,23 @@ public class FeaturesApiTest extends ResourceBaseTest {
         String inboundPath = "/v1/deployments/chat-gpt-35-turbo/tokenize";
         String upstream = "http://localhost:7001/upstream/v1/deployments/gpt-35-turbo/tokenizer";
         testUpstreamEndpoint(inboundPath, upstream);
+    }
+
+    @Test
+    @SneakyThrows
+    void testTokenizeEndpointNamesTheDeployment() {
+        AtomicReference<String> deploymentId = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(7001)) {
+            server.map(HttpMethod.POST, "/upstream/v1/deployments/gpt-35-turbo/tokenizer", request -> {
+                deploymentId.set(request.getHeader(Proxy.HEADER_DEPLOYMENT_ID));
+                return TestWebServer.createResponse(200, "PONG");
+            });
+
+            Response response = send(HttpMethod.POST, "/v1/deployments/chat-gpt-35-turbo/tokenize", null, "",
+                    Proxy.HEADER_DEPLOYMENT_ID, "spoofed");
+            verify(response, 200, "PONG");
+        }
+        assertEquals("chat-gpt-35-turbo", deploymentId.get());
     }
 
     @Test

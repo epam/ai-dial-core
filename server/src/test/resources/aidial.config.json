@@ -11,6 +11,11 @@
       "baseUrl": "http://localhost:4089/translator"
     }
   },
+  "plugins": {
+    "file-plugin": {"type": "test-echo", "settings": {"greeting": "hi"}},
+    "valid-plugin": {"type": "test-echo", "settings": {"greeting": "hi"}},
+    "bad/plugin": {"type": "test-echo", "settings": {"greeting": "hi"}}
+  },
   "routes" : {
     "route-rate" : {
       "paths": ["/+v1/rate"],
@@ -60,6 +65,11 @@
       "paths": ["/v1/bearer"],
       "methods": ["GET"],
       "upstreams": [{"endpoint": "http://localhost:9876", "key": "bearerKey123", "authType": "BEARER"}]
+    },
+    "custom_header": {
+      "paths": ["/v1/custom_header"],
+      "methods": ["GET"],
+      "upstreams": [{"endpoint": "http://localhost:9876", "key": "customKey123", "authType": {"type": "CUSTOM_HEADER", "headerName": "X-Api-Token"}}]
     },
     "vector_store_query": {
       "paths": ["/v1/vector_store(/[^/]+)*$"],
@@ -146,6 +156,9 @@
       "type": "chat",
       "displayName": "Test Model",
       "displayVersion": "1.0",
+      "provider": "Azure",
+      "deprecationDate": "2027-06-30",
+      "endOfService": "2027-12-31",
       "endpoint" : "http://localhost:7001/openai/deployments/test-model-v1/chat/completions"
     },
     "chat-gpt-35-turbo": {
@@ -311,6 +324,15 @@
       "upstreams": [
         {"endpoint": "http://upstream-a/v1/messages", "key": "keyA", "id": "up-a"},
         {"endpoint": "http://upstream-b/v1/messages", "key": "keyB", "id": "up-b"}
+      ]
+    },
+    "claude-cache-tiers": {
+      "type": "chat",
+      "interfaces": { "anthropicMessages": {"base_url": "http://localhost:4848"} },
+      "features": { "autoCachingSupported": true },
+      "upstreams": [
+        {"endpoint": "http://upstream-a/v1/messages", "key": "keyA", "id": "up-a", "tier": 0},
+        {"endpoint": "http://upstream-b/v1/messages", "key": "keyB", "id": "up-b", "tier": 1}
       ]
     },
     "claude-override": {

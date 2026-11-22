@@ -4,8 +4,10 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Upstream;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
@@ -91,6 +93,12 @@ public class UpstreamRouteProvider {
             context.setEntry(entry);
             context.setPrefixToHash(breakpointContext.prefixToHash());
         }
+        if (deployment instanceof AliasPass) {
+            // Core's own address: a status the target pass answers is about that call, not about this upstream,
+            // so it must not be remembered for the next call of the alias
+            TieredBalancer balancer = new TieredBalancer(key, upstreams, generatorFactory.get());
+            return new UpstreamRoute(taskExecutor, upstreamCacheService, balancer, 1, null);
+        }
         return get(key, upstreams, deployment.getMaxRetryAttempts(), context);
     }
 
@@ -139,8 +147,10 @@ public class UpstreamRouteProvider {
             }
             if (originalUpstream != null) {
                 context.setOriginalUpstream(originalUpstream);
-            } else {
+            } else if (cachedId != null || cachedEndpoint != null) {
                 log.warn("cached upstream doesn't exist any longer in config: id={}, endpoint={}", cachedId, cachedEndpoint);
+            } else {
+                log.debug("no cached upstream found: prefixPath={}", context.getEntry().prefixPath());
             }
         }
         return new UpstreamRoute(taskExecutor, upstreamCacheService, wrapper.balancer, result, context);
@@ -171,6 +181,7 @@ public class UpstreamRouteProvider {
             case Model ignored -> "model";
             case Application ignored -> "application";
             case ToolSet ignored -> "toolset";
+            case Router ignored -> "router";
             default ->
                     throw new IllegalArgumentException("Unsupported deployment type: " + deployment.getClass().getName());
         };

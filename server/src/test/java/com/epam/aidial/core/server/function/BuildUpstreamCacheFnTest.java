@@ -62,7 +62,7 @@ public class BuildUpstreamCacheFnTest {
         new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES).apply(request);
 
         verify(proxy.getUpstreamCacheService(), enabled ? times(1) : never())
-                .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES));
+                .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES), any());
     }
 
     @ParameterizedTest
@@ -75,7 +75,7 @@ public class BuildUpstreamCacheFnTest {
         new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES).apply(request);
 
         verify(proxy.getUpstreamCacheService(), mode.servesCompletion() ? times(1) : never())
-                .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES));
+                .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES), any());
         verify(context, mode.servesCompletion() ? times(1) : never()).setCacheBreakpointContext(any());
     }
 
@@ -88,7 +88,7 @@ public class BuildUpstreamCacheFnTest {
         new BuildUpstreamCacheFn(proxy, context, InterfaceType.OPENAI_CHAT_COMPLETIONS).apply(request);
 
         verify(proxy.getUpstreamCacheService())
-                .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+                .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS), any());
         verify(context).setCacheBreakpointContext(any());
     }
 
@@ -103,7 +103,7 @@ public class BuildUpstreamCacheFnTest {
         HttpException error = assertThrows(HttpException.class, () -> fn.apply(request));
 
         assertEquals(HttpStatus.BAD_REQUEST, error.getStatus());
-        verify(proxy.getUpstreamCacheService(), never()).buildCacheBreakpointContext(any(), any(), any(), any());
+        verify(proxy.getUpstreamCacheService(), never()).buildCacheBreakpointContext(any(), any(), any(), any(), any());
     }
 
     private static Model cacheSupportedModelWith(InterfaceType type, InterfaceMode mode) {
@@ -132,7 +132,7 @@ public class BuildUpstreamCacheFnTest {
 
         assertFalse(res);
         verify(proxy.getUpstreamCacheService()).buildCacheBreakpointContext(
-                eq(request), eq(CachePolicy.CACHE_PRIORITY), eq(model), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS));
+                eq(request), eq(CachePolicy.CACHE_PRIORITY), eq(model), eq(InterfaceType.OPENAI_CHAT_COMPLETIONS), any());
         verify(context).setCacheBreakpointContext(any(CacheBreakpointContext.class));
     }
 
@@ -145,13 +145,14 @@ public class BuildUpstreamCacheFnTest {
         model.setFeatures(features);
         when(context.getDeployment()).thenReturn(model);
         when(context.getRequestHeader(eq(Proxy.HEADER_CACHE_POLICY))).thenReturn("cache-priority");
+        when(context.getInitiatorId()).thenReturn("user-1");
         RequestObject request = new ChatCompletionRequest(ProxyUtil.MAPPER.createObjectNode());
 
         Boolean res = fn.apply(request);
 
         assertFalse(res);
         verify(proxy.getUpstreamCacheService()).buildCacheBreakpointContext(
-                eq(request), eq(CachePolicy.CACHE_PRIORITY), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES));
+                eq(request), eq(CachePolicy.CACHE_PRIORITY), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES), eq("user-1"));
         verify(context).setCacheBreakpointContext(any(CacheBreakpointContext.class));
     }
 }

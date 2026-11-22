@@ -20,7 +20,8 @@ public class ApiKeyAuthSettingsValidator extends BaseAuthSettingsValidator {
                         ResourceAuthSettingsField.CODE_CHALLENGE,
                         ResourceAuthSettingsField.CODE_VERIFIER,
                         ResourceAuthSettingsField.CODE_CHALLENGE_METHOD,
-                        ResourceAuthSettingsField.SCOPES_SUPPORTED)
+                        ResourceAuthSettingsField.SCOPES_SUPPORTED,
+                        ResourceAuthSettingsField.RESOURCE)
                 ).build();
     }
 }

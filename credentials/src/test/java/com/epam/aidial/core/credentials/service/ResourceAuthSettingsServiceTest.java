@@ -174,7 +174,7 @@ class ResourceAuthSettingsServiceTest {
         newToolSet.setForwardPerRequestKey(true);
 
         // When
-        Assertions.assertThrows(IllegalArgumentException.class, () -> resourceAuthSettingsService.processResourceAuthSettings(newToolSet, null));
+        Assertions.assertThrows(IllegalArgumentException.class, () -> resourceAuthSettingsService.processResourceAuthSettings(newToolSet, null, false));
     }
 
     @Test
@@ -188,7 +188,7 @@ class ResourceAuthSettingsServiceTest {
                 .thenReturn(mockRegistration);
 
         // When
-        resourceAuthSettingsService.processResourceAuthSettings(newToolSet, null);
+        resourceAuthSettingsService.processResourceAuthSettings(newToolSet, null, false);
 
         // Then
         verify(oauthAuthSettingsValidator, times(1)).validate(
@@ -214,7 +214,7 @@ class ResourceAuthSettingsServiceTest {
                 .thenReturn(mockRegistration);
 
         // When
-        resourceAuthSettingsService.processResourceAuthSettings(newToolSet, null);
+        resourceAuthSettingsService.processResourceAuthSettings(newToolSet, null, false);
 
         // Then
         verify(oauthAuthSettingsValidator, times(1)).validate(
@@ -237,7 +237,7 @@ class ResourceAuthSettingsServiceTest {
         // When
         when(validatorFactory.getValidator(AuthenticationType.API_KEY)).thenReturn(apiKeyAuthSettingsValidator);
 
-        resourceAuthSettingsService.processResourceAuthSettings(newToolSet, null);
+        resourceAuthSettingsService.processResourceAuthSettings(newToolSet, null, false);
 
         // Then
         verify(apiKeyAuthSettingsValidator, times(1)).validate(
@@ -257,7 +257,7 @@ class ResourceAuthSettingsServiceTest {
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
 
         // When
-        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         // Then
         verify(oauthAuthSettingsValidator, times(1)).validate(
@@ -281,7 +281,7 @@ class ResourceAuthSettingsServiceTest {
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
 
         // When
-        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         // Then
         verify(oauthAuthSettingsValidator, times(1)).validate(
@@ -307,7 +307,7 @@ class ResourceAuthSettingsServiceTest {
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
 
         // When
-        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         // Then
         verify(oauthAuthSettingsValidator, times(1)).validate(
@@ -325,6 +325,63 @@ class ResourceAuthSettingsServiceTest {
     }
 
     @Test
+    void testProcessResourceAuthSettings_OauthUpdate_UnreadableSecretOmitted_Throws() {
+        ToolSet updatedToolSet = createOauthToolSet("clientId", null);
+        ToolSet existingToolSet = createOauthToolSet("clientId", null);
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        IllegalArgumentException exception = Assertions.assertThrows(IllegalArgumentException.class,
+                () -> resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, true));
+
+        assertEquals("Secret of " + RESOURCE_NAME + " can't be decrypted; send a new value for: client_secret", exception.getMessage());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_OauthUpdate_UnreadableSecretReplaced_RegeneratesPkce() {
+        ToolSet updatedToolSet = createOauthToolSetWithPkce("clientId", "newClientSecret", null, null, null);
+        ToolSet existingToolSet = createOauthToolSetWithPkce("clientId", null,
+                CodeChallengeMethod.S256.getValue(), "origChallenge", null);
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, true);
+
+        ResourceAuthSettings result = updatedToolSet.getAuthSettings();
+        assertEquals("newClientSecret", result.getClientSecret());
+        assertEquals(CodeChallengeMethod.S256.getValue(), result.getCodeChallengeMethod());
+        Assertions.assertNotNull(result.getCodeVerifier());
+        Assertions.assertNotEquals("origChallenge", result.getCodeChallenge());
+        assertEquals(CodeChallenge.compute(CodeChallengeMethod.S256, new CodeVerifier(result.getCodeVerifier())).getValue(),
+                result.getCodeChallenge());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_OauthUpdate_UnreadableSecretReplaced_NoPkceMethod_LeavesPkceEmpty() {
+        ToolSet updatedToolSet = createOauthToolSet("clientId", "newClientSecret");
+        ToolSet existingToolSet = createOauthToolSet("clientId", null);
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, true);
+
+        Assertions.assertNull(updatedToolSet.getAuthSettings().getCodeVerifier());
+        Assertions.assertNull(updatedToolSet.getAuthSettings().getCodeChallenge());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_UnreadableSecret_AuthTypeChangedToApiKey_DoesNotThrow() {
+        ToolSet updatedToolSet = createApiKeyToolSet("apiKeyHeader");
+        ToolSet existingToolSet = createOauthToolSet("clientId", null);
+
+        when(validatorFactory.getValidator(AuthenticationType.API_KEY)).thenReturn(apiKeyAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, true);
+
+        assertEquals(AuthenticationType.API_KEY, updatedToolSet.getAuthSettings().getAuthenticationType());
+    }
+
+    @Test
     void testProcessResourceAuthSettings_DcrToolsetUpdate_WithClientIdButNoSecret_PreservesDynamicallyRegistered() {
         // Frontend echoes back client_id (returned by GET) but no client_secret (never returned).
         // dynamically_registered must NOT be reset to false — the toolset is still DCR.
@@ -334,7 +391,7 @@ class ResourceAuthSettingsServiceTest {
 
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
 
-        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         assertEquals(Boolean.TRUE, updatedToolSet.getAuthSettings().getDynamicallyRegistered());
         verify(resourceRegistrationService, never()).register(any(), any(), any(), anyBoolean());
@@ -350,7 +407,7 @@ class ResourceAuthSettingsServiceTest {
 
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
 
-        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         assertEquals(Boolean.FALSE, updatedToolSet.getAuthSettings().getDynamicallyRegistered());
         verify(resourceRegistrationService, never()).register(any(), any(), any(), anyBoolean());
@@ -364,7 +421,7 @@ class ResourceAuthSettingsServiceTest {
 
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
 
-        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         verifyNoInteractions(resourceRegistrationService);
         assertEquals("client_secret_basic", updatedToolSet.getAuthSettings().getTokenEndpointAuthMethod());
@@ -378,10 +435,33 @@ class ResourceAuthSettingsServiceTest {
 
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
 
-        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         verifyNoInteractions(resourceRegistrationService);
         assertEquals("none", updatedToolSet.getAuthSettings().getTokenEndpointAuthMethod());
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideResourceOnUpdateCases")
+    void testProcessResourceAuthSettings_OauthUpdate_Resource(String requested, String stored, String expected) {
+        ToolSet updatedToolSet = createOauthToolSetWithResource(requested);
+        ToolSet existingToolSet = createOauthToolSetWithResource(stored);
+
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
+
+        verifyNoInteractions(resourceRegistrationService);
+        assertEquals(expected, updatedToolSet.getAuthSettings().getResource());
+    }
+
+    private static Stream<Arguments> provideResourceOnUpdateCases() {
+        return Stream.of(
+                // omitted by a client that does not know the field: keep what registration stored
+                Arguments.of(null, "https://mcp.example.com/mcp", "https://mcp.example.com/mcp"),
+                Arguments.of("https://api.example.com", "https://mcp.example.com/mcp", "https://api.example.com"),
+                Arguments.of("", "https://mcp.example.com/mcp", null),
+                Arguments.of(null, null, null));
     }
 
     @Test
@@ -393,7 +473,7 @@ class ResourceAuthSettingsServiceTest {
         // When
         when(validatorFactory.getValidator(AuthenticationType.API_KEY)).thenReturn(apiKeyAuthSettingsValidator);
 
-        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         // Then
         verify(apiKeyAuthSettingsValidator, times(1)).validate(
@@ -513,7 +593,7 @@ class ResourceAuthSettingsServiceTest {
                 .thenReturn(expectedAuthType == AuthenticationType.OAUTH ? oauthAuthSettingsValidator : apiKeyAuthSettingsValidator);
 
         // When
-        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet);
+        resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         // Then
         verify(validatorFactory.getValidator(expectedAuthType), times(1))
@@ -563,6 +643,15 @@ class ResourceAuthSettingsServiceTest {
         authSettings.setClientId(clientId);
         authSettings.setClientSecret(clientSecret);
         authSettings.setTokenEndpointAuthMethod(tokenEndpointAuthMethod);
+        return createToolSet(authSettings);
+    }
+
+    private static ToolSet createOauthToolSetWithResource(String resource) {
+        ResourceAuthSettings authSettings = new ResourceAuthSettings();
+        authSettings.setAuthenticationType(AuthenticationType.OAUTH);
+        authSettings.setClientId("clientId");
+        authSettings.setClientSecret("clientSecret");
+        authSettings.setResource(resource);
         return createToolSet(authSettings);
     }
 
