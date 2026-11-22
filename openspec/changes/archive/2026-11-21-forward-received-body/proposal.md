@@ -26,9 +26,6 @@ tree from pass to pass, so its last pass serializes the whole body again for the
 - **Behaviour change** for origins and analytics readers: the body keeps the client's layout (whitespace, key order,
   escapes) instead of Core's compact JSON; the JSON value is the same. The analytics row's `request.body`, which is
   the body Core sends, shows the same layout.
-- **Behaviour change**: a chat completion that Core used to forward as received when the chain changed nothing, but
-  whose bytes Core and an origin may read differently (a repeated key, content after the object, not UTF-8), is now
-  sent serialized.
 
 Out of scope:
 
@@ -56,8 +53,8 @@ None.
   whether they changed the body. No config, settings or API change; the plugin API is unchanged.
 - Cost per pass whose body is unchanged or changed only in `model`: one full serialization fewer, one UTF-8 check of
   the body more, and one copy of the body when `model` is replaced.
-- Motivation: CPU profiles of Core under load (perf improvement initiative). An A/B on the direct path in October
-  measured 26% less Core CPU per request. PR #2100; there is no GitHub issue.
+- Motivation: CPU profiles of Core under load (perf improvement initiative); the A/B in design.md measured 12% less
+  Core CPU per request on the direct path. PR #2100; there is no GitHub issue.
 - Supersedes: alias-in-process-hop D3, embedded-call D3 (the child pass gets the parent's body, not only its tree).
 - Dependencies: none. The decide-body change named above is a separate PR; the two touch different code and merge
   independently.

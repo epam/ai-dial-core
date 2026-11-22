@@ -4,8 +4,8 @@
 
 Each controller parses the client's body into a tree and wraps it in a request object (`ChatCompletionRequest`,
 `ResponsesApiRequest`, `MessagesApiRequest`). The enhancement chain changes the tree through that object: the model
-name, defaults, the interceptor configuration, encrypted content. After the chain, Messages, Responses and every pass
-Core serves in process serialize the whole tree; chat completions serialize it when the chain reports a change. A pass
+name, defaults, the interceptor configuration, encrypted content. After the chain, every pass serializes the whole tree:
+chat completions too, since applying the deployment defaults always reports a change. A pass
 Core serves in process (an alias's target, an origin plugin's call) gets the parent's tree and no bytes, so it always
 serializes. The model is usually the only thing that changes, and the client's bytes already hold everything else.
 
@@ -64,16 +64,15 @@ stand-in bytes as today. An embedded plugin gets `serialize()` as `body` and the
 
 | What | Today | After | Requirement |
 |------|-------|-------|-------------|
-| Body unchanged (Messages, Responses, in-process passes) | the tree serialized, compact | the client's bytes | Body sent to the origin |
+| Body unchanged (chat completions, Messages, Responses, in-process passes) | the tree serialized, compact | the client's bytes | Body sent to the origin |
 | Only `model` changed | the tree serialized | the client's bytes with the model replaced | Body sent to the origin |
-| Chat completion unchanged, bytes read differently (repeated key, content after the object, not UTF-8) | the client's bytes | the tree serialized | Body sent to the origin |
 | Analytics row `request.body` | Core's compact JSON | the body sent, in the client's layout | analytics-log "Bodies in the analytics row" (wording unchanged) |
 
 ## Effect per request
 
 | Per pass | Today | After | How measured |
 |----------|-------|-------|--------------|
-| Body unchanged or only `model` changed | 1 parse, 1 full serialization (always for Messages, Responses and in-process passes) | 1 parse, 1 UTF-8 check, no serialization; 1 copy when `model` is replaced | A/B on the direct path, 2026-11-21 (650 KB mean body, plugin-served model, same nodes, JFR): serialization 6.68 → 0.15 ms, parse 2.95 → 3.89 ms per request, net −5.6 of 45.0 ms (−12%). The October "26% less" compared against a slow baseline run |
+| Body unchanged or only `model` changed | 1 parse, 1 full serialization | 1 parse, 1 UTF-8 check, no serialization; 1 copy when `model` is replaced | A/B on the direct path, 2026-11-21 (650 KB mean body, plugin-served model, same nodes, JFR): serialization 6.68 → 0.15 ms, parse 2.95 → 3.89 ms per request, net −5.6 of 45.0 ms (−12%). The October "26% less" compared against a slow baseline run |
 | Any other change | 1 parse, 1 serialization | the same, plus the UTF-8 check | - |
 | In-process alias, router and model chain | the last pass serializes the whole body | the last pass replaces `model` in the client's bytes; the router's stand-in serialization stays | task 5.1, 2026-11-21: serialization 7.39 → 0.25 ms, parse 3.36 → 4.32 ms per user request through tier alias → router → alias → model, net −6.2 ms |
 | Redis and blob round trips | - | unchanged | - |

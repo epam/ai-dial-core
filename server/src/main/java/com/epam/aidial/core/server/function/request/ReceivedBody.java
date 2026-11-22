@@ -134,7 +134,8 @@ public final class ReceivedBody {
      * replaced, or the tree serialized when the bytes have no top-level model string.
      */
     ReceivedBody withModel(String model) {
-        return bytes != null && modelStart >= 0 ? new ReceivedBody(tree, bytes, modelStart, modelEnd, model) : withoutBytes();
+        // a null model means no splice to the bytes, so the tree's model:null is sent serialized
+        return model != null && bytes != null && modelStart >= 0 ? new ReceivedBody(tree, bytes, modelStart, modelEnd, model) : withoutBytes();
     }
 
     /**
