@@ -92,11 +92,7 @@ public class CacheKeyBuilder {
         digest.update(OBJECT_END);
     }
 
-    /**
-     * Feeds a name with no tag before it, so it cannot read as a value: the API at the start of a traversal and the
-     * request section before its elements. Pins of every API share one Redis key space, and a chat message and a
-     * Responses input item of the same JSON would otherwise give the same key.
-     */
+    // an untagged name, the API or a request section, so the same JSON in two APIs or two sections gives two keys
     void section(String name) {
         text(name);
     }

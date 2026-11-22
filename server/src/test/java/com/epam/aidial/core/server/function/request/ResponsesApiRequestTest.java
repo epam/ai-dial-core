@@ -314,6 +314,18 @@ class ResponsesApiRequestTest {
         assertEquals("prefix.body.input[0]", keys.get(0).path());
     }
 
+    @Test
+    void testBuildCacheKeys_sameJsonInTwoSectionsOrTwoApisGivesTwoKeys() throws Exception {
+        String item = "{\"type\": \"message\", \"role\": \"user\", \"content\": \"hi\"}";
+        String asTool = request("{\"tools\": [" + item + "]}").buildCacheKeys(List.of("prefix.body.tools")).get(0).hash();
+        String asInput = request("{\"input\": [" + item + "]}").buildCacheKeys(List.of("prefix.body.input")).get(0).hash();
+        String asChatMessage = new ChatCompletionRequest((ObjectNode) ProxyUtil.MAPPER.readTree("{\"messages\": [" + item + "]}"))
+                .buildCacheKeys(List.of("prefix.body.messages")).get(0).hash();
+
+        assertNotEquals(asTool, asInput, "a section's name is in the key");
+        assertNotEquals(asInput, asChatMessage, "the API is in the key");
+    }
+
     private static ResponsesApiRequest request(String body) throws JsonProcessingException {
         return new ResponsesApiRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
     }
