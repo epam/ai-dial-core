@@ -15,6 +15,7 @@ import com.networknt.schema.resource.AllowSchemaLoader;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -288,7 +289,8 @@ public final class PluginRegistry {
     private static String outsideRef(JsonNode node) {
         for (Map.Entry<String, JsonNode> field : node.properties()) {
             JsonNode value = field.getValue();
-            if (field.getKey().equals("$ref") && value.isTextual() && !value.asText().startsWith("#") && !DRAFT_07.contains(value.asText())) {
+            if (field.getKey().equals("$ref") && value.isTextual() && !value.asText().startsWith("#")
+                    && !DRAFT_07.contains(StringUtils.substringBefore(value.asText(), "#"))) {
                 return value.asText();
             }
         }

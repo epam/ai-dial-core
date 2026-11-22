@@ -74,8 +74,7 @@ LinkageError`), with `StackOverflowError` added. A schema that refers to itself 
 `{"allOf": [{"$ref": "#"}]}`, passes the start (the validator allows ref cycles) and overflows on every check; the
 guard turns that, and any other failure of the check, into one warning on `settings`.
 
-`validate()` gets a
-default that accepts everything, so a plugin whose rules a schema can say needs no validation code.
+`validate()` gets a default that accepts everything, so a plugin whose rules a schema can say needs no validation code.
 
 **Rejected: a hint for the admin console only** - the schema and `validate()` would drift, and the console would
 accept what Core refuses.
@@ -87,7 +86,7 @@ it throws would hide the schema's precise message.
 At load Core checks each declared schema in five steps, and a failure of any stops the start with a message naming
 the id and the plugin directory:
 
-1. `$schema` is absent or the draft-07 IRI (`http://` or `https://json-schema.org/draft-07/schema`, with or without
+1. `$schema`, at the root and in every subschema, is absent or the draft-07 IRI (`http://` or `https://json-schema.org/draft-07/schema`, with or without
    `#`; the validator maps both forms to its bundled meta-schema). Neither the meta-schema nor the V7 factory refuses
    another draft by itself: the meta-schema only asks for a URI, and the factory compiles a schema by the draft its
    `$schema` names.

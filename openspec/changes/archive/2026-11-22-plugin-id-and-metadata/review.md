@@ -10,8 +10,8 @@
 - `PluginProvider` gets `id()` (falling back to a deprecated `type()`), `description()`, `targets()`,
   `settingsSchema()` and a default `validate()`; `PluginTarget` is new. A jar that overrides only `type()` loads
   unchanged.
-- A declared settings schema is checked at start (draft-07 `$schema` only, no `$ref` outside the document or the
-  draft-07 meta-schema, valid against the meta-schema, compiled with a loader that allows only the bundled
+- A declared settings schema is checked at start (draft-07 `$schema` only, in every subschema; no `$ref` outside the document or
+  the draft-07 meta-schema, valid against the meta-schema, compiled with a loader that allows only the bundled
   meta-schema) and runs before `validate()` on every write and rebuild, which it skips on a violation. A check that
   throws, a stack overflow included, is one warning on `settings`. Empty or null targets and throwing metadata stop
   the start, naming the provider class and its plugin directory.

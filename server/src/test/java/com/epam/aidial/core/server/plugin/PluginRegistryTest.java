@@ -206,6 +206,15 @@ class PluginRegistryTest {
     }
 
     @Test
+    void testRefIntoTheMetaSchemaLoads() throws IOException {
+        writeJar("custom/good/good.jar", JarEchoPluginProvider.MetaSchemaPointer.class.getName());
+
+        PluginRegistry registry = PluginRegistry.load(settings());
+
+        assertNotNull(registry.settingsSchema("good"));
+    }
+
+    @Test
     void testDraft07NamedByItsHttpsAddressLoads() throws IOException {
         writeJar("custom/good/good.jar", JarEchoPluginProvider.HttpsDraft.class.getName());
 

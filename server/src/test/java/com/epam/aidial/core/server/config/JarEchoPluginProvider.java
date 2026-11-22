@@ -198,6 +198,21 @@ public class JarEchoPluginProvider implements PluginProvider {
     }
 
     /**
+     * A provider of id {@code good} whose schema refers to a definition of the draft-07 meta-schema.
+     */
+    public static class MetaSchemaPointer extends WithSchema {
+        @Override
+        public String id() {
+            return "good";
+        }
+
+        @Override
+        String schema() {
+            return "{\"type\": \"object\", \"properties\": {\"n\": {\"$ref\": \"http://json-schema.org/draft-07/schema#/definitions/nonNegativeInteger\"}}}";
+        }
+    }
+
+    /**
      * A provider of id {@code good} whose schema names draft-07 by its https address.
      */
     public static class HttpsDraft extends WithSchema {
