@@ -1107,14 +1107,16 @@ public class ResourceService implements AutoCloseable {
     }
 
     /**
-     * Creates the empty object that makes a new record listable before its first sync. Under the lock a sync takes
-     * and only while the record is unsynced, so the stub cannot land on top of the record a sync uploaded. With the
-     * lock busy a sync is at the record, and its upload makes the record listable.
+     * Creates the empty object that makes a new record listable before its first sync: under the lock a sync takes,
+     * while the record is unsynced and no object exists yet, so the stub never lands on top of the record a sync
+     * uploaded, also when another write made the record unsynced again since. With the lock busy a sync is at the
+     * record, and its upload makes it listable. The existence check is one blob request per record created.
      */
     private void putStubUnlessSynced(ResourceDescriptor descriptor, String redisKey, Result result) {
         try (var lock = lockService.tryLock(redisKey)) {
-            if (lock != null && !readFieldsOnMaster(redisKey, true).isEmpty()) {
-                blobPut(blobKey(descriptor), result.toStub());
+            String blobKey = blobKey(descriptor);
+            if (lock != null && !readFieldsOnMaster(redisKey, true).isEmpty() && !blobExists(blobKey)) {
+                blobPut(blobKey, result.toStub());
             }
         }
     }
