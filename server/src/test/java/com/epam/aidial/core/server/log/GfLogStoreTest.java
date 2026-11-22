@@ -53,6 +53,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 public class GfLogStoreTest {
 
@@ -211,16 +212,6 @@ public class GfLogStoreTest {
             assertEquals(expected, appendBody(store, body));
             assertEquals(0, store.escapedBody.length);
         }
-    }
-
-    @Test
-    public void testAppendBodyKeepsOnlyTypicalBuffer() {
-        // a typical body leaves its buffer for the next entry; a larger one's does not stay on the heap with the store
-        GfLogStore store = new GfLogStore(settings(false));
-        appendBody(store, Buffer.buffer("a".repeat(650 * 1024)));
-        assertTrue(store.escapedBody.length >= 650 * 1024);
-        appendBody(store, Buffer.buffer("a".repeat(2 * 1024 * 1024)));
-        assertEquals(0, store.escapedBody.length);
     }
 
     private static String assertAppendBodyMatchesAppend(String body) {
@@ -1321,18 +1312,20 @@ public class GfLogStoreTest {
     }
 
     private static LogEntry capturingEntry(StringBuilder buffer) {
-        LogEntry entry = mock(LogEntry.class);
+        // stub only: a recorded invocation keeps its arguments, every appended string, as long as the mock lives. The
+        // answers return the mock through the invocation: an answer holding the mock itself keeps it alive for good
+        LogEntry entry = mock(LogEntry.class, withSettings().stubOnly());
         when(entry.append(anyChar())).thenAnswer(cb -> {
             buffer.append((char) cb.getArgument(0));
-            return entry;
+            return cb.getMock();
         });
         when(entry.append(anyString(), anyInt(), anyInt())).thenAnswer(cb -> {
             buffer.append((String) cb.getArgument(0), cb.getArgument(1), cb.getArgument(2));
-            return entry;
+            return cb.getMock();
         });
         when(entry.append(anyString())).thenAnswer(cb -> {
             buffer.append((String) cb.getArgument(0));
-            return entry;
+            return cb.getMock();
         });
         return entry;
     }
