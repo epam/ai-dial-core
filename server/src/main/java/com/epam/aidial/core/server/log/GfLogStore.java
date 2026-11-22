@@ -580,12 +580,14 @@ public class GfLogStore implements LogStore {
             buffer = buffer.slice(0, MAX_BODY_SIZE_BYTES);
         }
         int length = escapeUtf8(buffer.getBytes());
-        // gflog has no byte append, so the escaped body is decoded here and gflog encodes it again
-        String escaped = new String(escapedBody, 0, length, StandardCharsets.UTF_8);
-        if (escapedBody.length > escapedCapacity(MAX_BODY_SIZE_BYTES)) {
-            // escapes can grow a body sixfold; keep no more than the largest body starts with between entries
+        byte[] escapedBytes = escapedBody;
+        if (escapedBytes.length > escapedCapacity(MAX_BODY_SIZE_BYTES)) {
+            // escapes can grow a body sixfold; keep no more than the largest body starts with between entries, also when
+            // the decode below fails
             escapedBody = new byte[0];
         }
+        // gflog has no byte append, so the escaped body is decoded here and gflog encodes it again
+        String escaped = new String(escapedBytes, 0, length, StandardCharsets.UTF_8);
         entry.append(escaped);
         if (largeBuffer) {
             // append a special marker that entry is cut off due to its large size
@@ -615,7 +617,9 @@ public class GfLogStore implements LogStore {
             int remaining = bytes.length - i;
             if (escaped.length - j < 6 + remaining) {
                 // room for this escape and for every remaining byte, so plain bytes need no check
-                escaped = escapedBody = Arrays.copyOf(escaped, Math.max(escaped.length * 2, j + 6 + remaining));
+                // doubling, but never past what escaping every remaining byte could need
+                int capacity = Math.min(Math.max(escaped.length * 2, j + 6 + remaining), j + 6 * remaining);
+                escaped = escapedBody = Arrays.copyOf(escaped, capacity);
             }
             escaped[j++] = '\\';
             escaped[j++] = e;
