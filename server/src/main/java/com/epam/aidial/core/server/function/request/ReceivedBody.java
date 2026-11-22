@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufUtil;
 import io.vertx.core.buffer.Buffer;
@@ -125,6 +126,7 @@ public final class ReceivedBody {
     /**
      * Whether {@link #serialize} gives the received bytes, the model replaced or not, rather than the tree serialized.
      */
+    @VisibleForTesting
     boolean hasBytes() {
         return bytes != null;
     }

@@ -28,6 +28,17 @@ class ReceivedBodyTest {
     }
 
     @Test
+    void testWithModel_dropsTheBytesForNullModel() throws IOException {
+        ReceivedBody received = ReceivedBody.parse(Buffer.buffer("{\"model\": \"m\"}"));
+
+        received.tree().putNull("model");
+        ReceivedBody renamed = received.withModel(null);
+
+        assertFalse(renamed.hasBytes());
+        assertEquals("{\"model\":null}", renamed.serialize().toString());
+    }
+
+    @Test
     void testWithModel_dropsTheBytesWithoutModelString() throws IOException {
         ReceivedBody received = ReceivedBody.parse(Buffer.buffer("{\"stream\": true}"));
         assertTrue(received.hasBytes());
