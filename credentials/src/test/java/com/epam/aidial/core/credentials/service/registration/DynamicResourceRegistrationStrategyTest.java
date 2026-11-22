@@ -132,7 +132,25 @@ class DynamicResourceRegistrationStrategyTest {
                 "Error must name the unsupported method, got: " + error.getMessage());
     }
 
+    @Test
+    void testRegister_resourceFromPublishedMetadata() {
+        ClientRegistration result = runRegistration("client_secret_basic", "https://test.endpoint.com/mcp");
+
+        assertEquals("https://test.endpoint.com/mcp", result.getResource());
+    }
+
+    @Test
+    void testRegister_noPublishedResource_fallsBackToEndpoint() {
+        ClientRegistration result = runRegistration("client_secret_basic", null);
+
+        assertEquals("https://test.endpoint.com", result.getResource());
+    }
+
     private ClientRegistration runRegistrationWithResponseMethod(String responseMethod) {
+        return runRegistration(responseMethod, null);
+    }
+
+    private ClientRegistration runRegistration(String responseMethod, String publishedResource) {
         String resourceId = "testResource";
         String resourceEndpoint = "https://test.endpoint.com";
         String resourceRedirectUri = "https://redirect.uri";
@@ -142,6 +160,7 @@ class DynamicResourceRegistrationStrategyTest {
 
         AuthorizationServerProtectedResourceMetadata protectedResourceMetadata = mock(AuthorizationServerProtectedResourceMetadata.class);
         when(protectedResourceMetadata.getScopesSupported()).thenReturn(List.of("scope1"));
+        lenient().when(protectedResourceMetadata.getResource()).thenReturn(publishedResource);
 
         when(protectedResourceMetadataService.getProtectedResourceMetadata(resourceId, resourceEndpoint))
                 .thenReturn(protectedResourceMetadata);

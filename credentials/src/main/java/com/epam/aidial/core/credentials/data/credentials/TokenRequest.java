@@ -17,6 +17,7 @@ public class TokenRequest {
     private String grantType;
     private String codeVerifier;
     private String redirectUri;
+    private String resource;
 
     public String buildFormData() {
         StringBuilder formData = new StringBuilder();
@@ -27,6 +28,7 @@ public class TokenRequest {
         appendIfNotNull(formData, "grant_type", grantType);
         appendIfNotNull(formData, "redirect_uri", redirectUri);
         appendIfNotNull(formData, "code_verifier", codeVerifier);
+        appendIfNotNull(formData, "resource", resource);
         return formData.toString();
     }
 

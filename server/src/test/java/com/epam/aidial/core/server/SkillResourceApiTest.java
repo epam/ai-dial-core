@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
@@ -20,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -70,6 +73,64 @@ public class SkillResourceApiTest extends ResourceBaseTest {
         }
         // the marker must not leak into the archive
         assertFalse(unpacked.containsKey(MARKER_NAME));
+    }
+
+    @Test
+    void testSubscriptionReceivesResourceAndFileEvents() {
+        String skillUrl = "skills/" + bucket + "/subscribed-skill";
+        try (EventStream events = subscribe("{\"resources\": [{\"url\": \"" + skillUrl + "\"}]}")) {
+            Map<String, byte[]> files = new LinkedHashMap<>();
+            files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+            verify(uploadSkill("/subscribed-skill", files), 200);
+            assertEvent(events, skillUrl, "CREATE");
+            assertEvent(events, skillUrl + "/files/SKILL.md", "CREATE");
+
+            verify(putSkillFile("/subscribed-skill", "scripts/run.sh", "echo hi".getBytes(StandardCharsets.UTF_8)), 200);
+            assertEvent(events, skillUrl, "UPDATE");
+            assertEvent(events, skillUrl + "/files/scripts/run.sh", "CREATE");
+
+            verify(putSkillFile("/subscribed-skill", "scripts/run.sh", "echo bye".getBytes(StandardCharsets.UTF_8)), 200);
+            assertEvent(events, skillUrl, "UPDATE");
+            assertEvent(events, skillUrl + "/files/scripts/run.sh", "UPDATE");
+
+            verify(deleteSkillFile("/subscribed-skill", "scripts/run.sh"), 200);
+            assertEvent(events, skillUrl, "UPDATE");
+            assertEvent(events, skillUrl + "/files/scripts/run.sh", "DELETE");
+
+            verify(deleteSkill("/subscribed-skill"), 200);
+            assertEvent(events, skillUrl, "DELETE");
+            assertEvent(events, skillUrl + "/files/SKILL.md", "DELETE");
+
+            // internal marker and version files are never exposed
+            assertTrue(events.events.isEmpty());
+        }
+    }
+
+    @Test
+    void testSubscriptionIsScopedToResource() {
+        String otherUrl = "skills/" + bucket + "/other-skill";
+        try (EventStream events = subscribe("{\"resources\": [{\"url\": \"" + otherUrl + "\"}]}")) {
+            Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+            verify(uploadSkill("/unrelated-skill", files), 200);
+            verify(uploadSkill("/other-skill", files), 200);
+
+            assertEvent(events, otherUrl, "CREATE");
+            assertEvent(events, otherUrl + "/files/SKILL.md", "CREATE");
+            assertTrue(events.events.isEmpty());
+        }
+    }
+
+    @Test
+    void testSubscriptionToSkillFolderIsRejected() {
+        Response response = operationRequest("/v1/ops/resource/subscribe",
+                "{\"resources\": [{\"url\": \"skills/" + bucket + "/folder/\"}]}");
+        verify(response, 400, "resource folder is not supported: skills/" + bucket + "/folder/");
+    }
+
+    private static void assertEvent(EventStream events, String url, String action) {
+        JsonNode event = ProxyUtil.convertToObject(events.take(), JsonNode.class);
+        assertEquals(url, event.get("url").asText());
+        assertEquals(action, event.get("action").asText());
     }
 
     @Test
@@ -438,6 +499,62 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    @SneakyThrows
+    void testMetadataListingTimestampsFollowWrites() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/listed/skill-a", files), 200);
+        awaitNextMillisecond();
+        verify(putSkillFile("/listed/skill-a", "docs/notes.md", "hello".getBytes(StandardCharsets.UTF_8)), 200);
+
+        // the write moved updatedAt past createdAt, and the marker blob has not caught up with it yet,
+        // so a listing built from the blob alone would report the creation time
+        JsonNode item = itemMetadata("listed/skill-a");
+        assertTrue(item.get("updatedAt").asLong() > item.get("createdAt").asLong(), item.toString());
+        assertTrue(markerBlob("listed/skill-a").getUpdatedAt() < item.get("updatedAt").asLong(), item.toString());
+
+        JsonNode listed = listedItem(listMetadata("listed"), skillUrl("listed/skill-a/"));
+        assertEquals(item.get("createdAt"), listed.get("createdAt"));
+        assertEquals(item.get("updatedAt"), listed.get("updatedAt"));
+    }
+
+    @Test
+    void testRecursiveMetadataListingTimestampsFollowWrites() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/listed/sub/skill-b", files), 200);
+        awaitNextMillisecond();
+        verify(putSkillFile("/listed/sub/skill-b", "docs/notes.md", "hello".getBytes(StandardCharsets.UTF_8)), 200);
+
+        JsonNode item = itemMetadata("listed/sub/skill-b");
+        assertTrue(markerBlob("listed/sub/skill-b").getUpdatedAt() < item.get("updatedAt").asLong(), item.toString());
+
+        Response listing = send(HttpMethod.GET, "/v2/metadata/skills/" + bucket + "/listed", "recursive=true", "");
+        verify(listing, 200);
+        JsonNode listed = listedItem(listing, skillUrl("listed/sub/skill-b/"));
+        assertEquals(item.get("createdAt"), listed.get("createdAt"));
+        assertEquals(item.get("updatedAt"), listed.get("updatedAt"));
+
+        // a grouping folder has no marker document and keeps its folder marker blob's timestamps
+        ResourceItemMetadata folderBlob = storedBlobMetadata(skillUrl("listed/sub/"), ComplexResourceService.FOLDER_MARKER_NAME);
+        JsonNode folder = listedItem(listing, skillUrl("listed/sub/"));
+        assertNotNull(folderBlob.getUpdatedAt());
+        assertEquals(folderBlob.getCreatedAt(), timestamp(folder, "createdAt"));
+        assertEquals(folderBlob.getUpdatedAt(), timestamp(folder, "updatedAt"));
+    }
+
+    @Test
+    void testMetadataListingTimestampsFallBackToMarkerBlob() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/listed/legacy", files), 200);
+        ResourceItemMetadata blob = markerBlob("listed/legacy");
+        assertNotNull(blob.getUpdatedAt());
+        stripMarkerTimestamps(blob.getDescriptor());
+
+        JsonNode listed = listedItem(listMetadata("listed"), skillUrl("listed/legacy/"));
+        assertEquals(blob.getCreatedAt(), timestamp(listed, "createdAt"));
+        assertEquals(blob.getUpdatedAt(), timestamp(listed, "updatedAt"));
+    }
+
+    @Test
     void testMetadataFilesListing() {
         Map<String, byte[]> files = new LinkedHashMap<>();
         files.put("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
@@ -661,6 +778,48 @@ public class SkillResourceApiTest extends ResourceBaseTest {
     }
 
     @Test
+    @SneakyThrows
+    void testSharedSkillCarriesTimestamps() {
+        Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
+        verify(uploadSkill("/timestamps-skill", files), 200);
+
+        Response share = operationRequest("/v1/ops/resource/share/create", """
+                {
+                  "invitationType": "link",
+                  "resources": [
+                    { "url": "skills/%s/timestamps-skill" }
+                  ]
+                }
+                """.formatted(bucket));
+        verify(share, 200);
+        InvitationLink invitationLink = ProxyUtil.convertToObject(share.body(), InvitationLink.class);
+        assertNotNull(invitationLink);
+        verify(send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey2"), 200);
+
+        Response metadataResponse = listMetadata("timestamps-skill");
+        verify(metadataResponse, 200);
+        JsonNode metadata = ProxyUtil.MAPPER.readTree(metadataResponse.body());
+
+        String listRequest = """
+                {
+                  "resourceTypes": ["SKILL"],
+                  "with": "%s"
+                }
+                """;
+        JsonNode withMe = ProxyUtil.MAPPER.readTree(operationRequest("/v1/ops/resource/share/list", listRequest.formatted("me"), "Api-key", "proxyKey2").body())
+                .get("resources").get(0);
+        JsonNode byMe = ProxyUtil.MAPPER.readTree(operationRequest("/v1/ops/resource/share/list", listRequest.formatted("others")).body())
+                .get("resources").get(0);
+
+        for (JsonNode item : List.of(withMe, byMe)) {
+            assertTrue(item.get("createdAt").isNumber());
+            assertTrue(item.get("updatedAt").isNumber());
+            assertEquals(metadata.get("createdAt"), item.get("createdAt"));
+            assertEquals(metadata.get("updatedAt"), item.get("updatedAt"));
+        }
+    }
+
+    @Test
     void testCleanUpShareAccessWhenOnResourceDeletion() {
         Map<String, byte[]> files = Map.of("SKILL.md", VALID_MANIFEST.getBytes(StandardCharsets.UTF_8));
         verify(uploadSkill("/delete-cleanup-skill", files), 200);
@@ -692,6 +851,21 @@ public class SkillResourceApiTest extends ResourceBaseTest {
 
     private Response listMetadata(String relativePath, String... headers) {
         return send(HttpMethod.GET, "/v2/metadata/skills/" + bucket + "/" + relativePath, null, "", headers);
+    }
+
+    @SneakyThrows
+    private JsonNode itemMetadata(String relativePath) {
+        Response response = listMetadata(relativePath);
+        verify(response, 200);
+        return ProxyUtil.MAPPER.readTree(response.body());
+    }
+
+    private ResourceItemMetadata markerBlob(String skillPath) {
+        return storedBlobMetadata(skillUrl(skillPath + "/"), ComplexResourceService.MARKER_NAME);
+    }
+
+    private String skillUrl(String relativePath) {
+        return "skills/" + bucket + "/" + relativePath;
     }
 
     private Response listSkillFiles(String skillPath, String... headers) {

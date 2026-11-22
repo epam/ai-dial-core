@@ -19,6 +19,9 @@ User is authenticated by Core but doesn't have insufficient permissions to a res
 - lack of privileges for access to model, application
 - admin can approve publications only
 - access to attached files in chat completion request
+- a required resource dependency of the application is not accessible to the user or not approved by an administrator
+- only administrators can manage an application's admin consent, and only for an application they can read in the config, the public or review bucket, or their own bucket
+- a user changes an application's resource dependencies while `applications.allowUserAuthoredDependencies` is off
 
 #### 404 NOT FOUND
 
@@ -45,6 +48,7 @@ The status code indicates a request conflict with the current state of the targe
  - Application must be stopped before deployment
  - Application must be started before undeployment
  - Application must be stopped before deleting
+ - The application's resource dependencies changed since the administrator reviewed them
 
 #### 412 PRECONDITION FAILED
 
@@ -57,7 +61,7 @@ In that case, the request (usually an upload or a modification of a resource) ca
 
 The status code indicates that the request entity was larger than limits defined by server:
 - `maxUploadedFileSize` defined in storage settings if content type is `multipart/form-data`. The default value is 512 Mb.
-- `maxSize` defined in resource settings. The default value is 67 Mb
+- `maxSize` defined in resource settings. The default value is 67 Mb. It does not apply to the archive sent to `POST /v1/admin/system-import`.
 
 #### 415 UNSUPPORTED_MEDIA_TYPE
 
@@ -74,6 +78,12 @@ The status code indicates the client has sent too many requests in a given amoun
 A Retry-After header may be included to this response to indicate how long a client should wait before making the request again.
 
 That usually happens on chat completion or router requests indicating that user exceeds limits on tokens, requests per specific interval such minute, hour or day.
+
+On the Anthropic-compatible routes (`/anthropic/*`) the response body has the Anthropic error shape and a reached spend cap carries `anthropic-ratelimit-unified-*` headers; see [Claude Code spend limits](anthropic-spend-limits.md).
+
+On the Responses routes (`/openai/v1/responses`, `/openai/responses`) a reached day, week or month spend cap gives an error of type `usage_limit_reached` with `resets_at` and `limit_window_minutes` and `x-codex-primary-*` headers, which Codex CLI shows as a usage-limit message; see [Codex spend limits](codex-spend-limits.md).
+
+With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these spend-cap answers on both routes when the budgets that cover the model are used up, and a 429 with the DIAL error body that names the model and the cost object when no budget covers the model.
 
 #### 500 INTERNAL SERVER ERROR
 

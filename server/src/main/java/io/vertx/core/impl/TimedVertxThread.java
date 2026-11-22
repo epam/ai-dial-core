@@ -1,6 +1,6 @@
 package io.vertx.core.impl;
 
-import com.epam.aidial.core.storage.util.LatencyBuckets;
+import com.epam.aidial.core.storage.metrics.LatencyBuckets;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Timer;
 import io.vertx.core.spi.VertxThreadFactory;
@@ -24,7 +24,7 @@ public class TimedVertxThread extends VertxThread {
         timer = Timer.builder("dial_event_loop_task_duration")
                 .description("Time an event-loop thread runs one outermost context dispatch")
                 .tag("name", name)
-                .serviceLevelObjectives(LatencyBuckets.WAIT_BUCKETS)
+                .serviceLevelObjectives(LatencyBuckets.waitBuckets())
                 .register(Metrics.globalRegistry);
     }
 

@@ -27,6 +27,18 @@ class EntityBucketBindingTest {
         assertTrue(RouteTemplate.CONFIG_RESOURCE.matches("/v1/routes/platform/route1"));
         assertTrue(RouteTemplate.CONFIG_RESOURCE.matches("/v1/schemas/platform/example"));
         assertTrue(RouteTemplate.CONFIG_RESOURCE.matches("/v1/settings/platform/global"));
+        assertTrue(RouteTemplate.CONFIG_RESOURCE.matches("/v1/routers/platform/r1"));
+        // one segment is the router lookup, not a config entity
+        assertFalse(RouteTemplate.CONFIG_RESOURCE.matches("/v1/routers/r1"));
+    }
+
+    @Test
+    void configResourceRegexMatchesPolicyRecordsWithOneFolderLevel() {
+        assertTrue(RouteTemplate.CONFIG_RESOURCE.matches("/v1/policies/platform/anthropic-pro-500"));
+        assertTrue(RouteTemplate.CONFIG_RESOURCE.matches("/v1/policies/platform/ORG/personal-standard"));
+        assertTrue(RouteTemplate.CONFIG_RESOURCE.matches("/v1/policy_assignments/platform/project-a/grant-1"));
+        assertTrue(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/metadata/policy_assignments/platform/project-a/"));
+        assertTrue(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/metadata/policies/platform/"));
     }
 
     @Test
@@ -36,8 +48,24 @@ class EntityBucketBindingTest {
         assertTrue(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/metadata/models/platform/gpt-4"));
         assertTrue(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/metadata/interceptors/platform/"));
         assertTrue(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/metadata/settings/platform/"));
+        assertTrue(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/metadata/routers/platform/"));
         assertFalse(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/metadata/widgets/public/foo"));
         assertFalse(RouteTemplate.CONFIG_RESOURCE_METADATA.matches("/v1/models/platform/gpt-4"));
+    }
+
+    @Test
+    void aliasesHaveTheirOwnRoutesAndLiveInThePublicOrPlatformBucket() {
+        assertTrue(RouteTemplate.ALIAS_RESOURCE.matches("/v1/aliases/public/assistant-v1"));
+        assertTrue(RouteTemplate.ALIAS_RESOURCE.matches("/v1/aliases/platform/assistant-v1"));
+        assertTrue(RouteTemplate.ALIAS_RESOURCE_METADATA.matches("/v1/metadata/aliases/public/"));
+        assertTrue(RouteTemplate.ALIAS_RESOURCE_METADATA.matches("/v1/metadata/aliases/platform/"));
+        assertFalse(RouteTemplate.RESOURCE.matches("/v1/aliases/public/assistant-v1"));
+        assertFalse(RouteTemplate.RESOURCE_METADATA.matches("/v1/metadata/aliases/public/"));
+        assertFalse(RouteTemplate.CONFIG_RESOURCE.matches("/v1/aliases/public/assistant-v1"));
+
+        assertTrue(EntityBucketBinding.isAllowed("aliases", "public"));
+        assertTrue(EntityBucketBinding.isAllowed("aliases", "platform"));
+        assertFalse(EntityBucketBinding.isAllowed("aliases", "3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST"));
     }
 
     @Test
@@ -82,6 +110,21 @@ class EntityBucketBindingTest {
         // files / prompts / conversations also accept user buckets via the wildcard.
         assertTrue(EntityBucketBinding.isAllowed("files", "Userbucket123"));
         assertTrue(EntityBucketBinding.isAllowed("prompts", "Userbucket123"));
+    }
+
+    @Test
+    void limitRecordsLiveInThePlatformBucketOnly() {
+        assertTrue(EntityBucketBinding.isAllowed("policies", EntityBucketBinding.PLATFORM_BUCKET));
+        assertTrue(EntityBucketBinding.isAllowed("policy_assignments", EntityBucketBinding.PLATFORM_BUCKET));
+        assertFalse(EntityBucketBinding.isAllowed("policies", "public"));
+        assertFalse(EntityBucketBinding.isAllowed("policy_assignments", "Userbucket123"));
+    }
+
+    @Test
+    void routersLiveInThePlatformBucketOnly() {
+        assertTrue(EntityBucketBinding.isAllowed("routers", EntityBucketBinding.PLATFORM_BUCKET));
+        assertFalse(EntityBucketBinding.isAllowed("routers", "public"));
+        assertFalse(EntityBucketBinding.isAllowed("routers", "Userbucket123"));
     }
 
     @Test

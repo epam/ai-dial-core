@@ -28,7 +28,7 @@ public interface ConfigAuthorizationService {
      * dispatch (Owner-vs-Public view selection per §1.5).
      *
      * <p>Used at two call sites: (a) the {@code /v1/admin/*} cross-entity endpoints (apply,
-     * validate, export, audit, health/config, schema) which do not have a per-entity
+     * validate, system-export, audit, health/config, schema) which do not have a per-entity
      * {@code (type, bucket)} dimension and gate on the admin role only; (b) {@code projectionFor()}
      * in per-entity GET / listing controllers, where "admin OR bucket-owner" yields the Owner view
      * and everyone else gets Public.

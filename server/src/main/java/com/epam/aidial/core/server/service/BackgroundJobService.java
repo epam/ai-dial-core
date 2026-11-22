@@ -2,13 +2,11 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.Translator;
-import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -20,8 +18,7 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
-import com.epam.aidial.core.server.token.UsagePerModel;
-import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResponseIdUtil;
@@ -34,9 +31,12 @@ import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.RequestOptions;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
 
@@ -45,6 +45,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -59,12 +60,14 @@ public class BackgroundJobService {
     private final ApiKeyStore apiKeyStore;
     private final RateLimiter rateLimiter;
     private final TokenStatsTracker tokenStatsTracker;
-    private final UpstreamRouteProvider upstreamRouteProvider;
-    private final ResponsesApiClient client;
+    private final HttpClient httpClient;
     private final LogStore logStore;
     private final CredentialEncryptionService encryptionService;
     private final Settings settings;
+    private final BackgroundOperationTracer backgroundTracer;
     private BackgroundJobScheduler scheduler;
+    @Setter
+    private volatile String localBaseUrl;
 
     public BackgroundJobService(
             Vertx vertx,
@@ -77,11 +80,11 @@ public class BackgroundJobService {
             ApiKeyStore apiKeyStore,
             RateLimiter rateLimiter,
             TokenStatsTracker tokenStatsTracker,
-            UpstreamRouteProvider upstreamRouteProvider,
-            ResponsesApiClient client,
+            HttpClient httpClient,
             LogStore logStore,
             CredentialEncryptionService encryptionService,
-            Settings settings) {
+            Settings settings,
+            BackgroundOperationTracer backgroundTracer) {
         this.vertx = vertx;
         this.redis = redis;
         this.prefix = prefix;
@@ -92,16 +95,16 @@ public class BackgroundJobService {
         this.apiKeyStore = apiKeyStore;
         this.rateLimiter = rateLimiter;
         this.tokenStatsTracker = tokenStatsTracker;
-        this.upstreamRouteProvider = upstreamRouteProvider;
-        this.client = client;
+        this.httpClient = httpClient;
         this.logStore = logStore;
         this.encryptionService = encryptionService;
         this.settings = settings;
+        this.backgroundTracer = backgroundTracer;
     }
 
     public void init() {
         scheduler = new BackgroundJobScheduler(vertx, redis, prefix, resourceService, taskExecutor,
-                settings, this::jobPoller, this::expireJob);
+                settings, this::jobPoller, this::expireJob, backgroundTracer);
         scheduler.init();
     }
 
@@ -110,9 +113,8 @@ public class BackgroundJobService {
                 .onSuccess(ignore -> scheduler.schedule(dialId, System.currentTimeMillis() + settings.getInitialPollIntervalMs()));
     }
 
-    public Future<Boolean> isJobActive(String dialId) {
-        return taskExecutor.submit(() ->
-                resourceService.hasResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId)));
+    public Boolean isJobActive(String dialId) {
+        return resourceService.hasResource(ResponseIdUtil.getBackgroundJobDescriptor(dialId));
     }
 
     public Future<Boolean> deleteJob(String dialId) {
@@ -157,7 +159,14 @@ public class BackgroundJobService {
         ResourceDescriptor descriptor = ResponseIdUtil.getBackgroundJobDescriptor(dialId);
         BackgroundJobRecord record = BackgroundJobRecord.from(context, key -> encryptKey(descriptor, key));
         String json = ProxyUtil.convertToString(record);
-        return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY)).mapEmpty();
+        return taskExecutor.submit(() -> resourceService.putResource(descriptor, json, EtagHeader.NEW_ONLY))
+                .onSuccess(ignore -> {
+                    if (context.getDecision() != null) {
+                        // this job's poller writes the router row when the job ends
+                        context.getDecision().takeRow();
+                    }
+                })
+                .mapEmpty();
     }
 
     private Future<Boolean> deleteJobRecord(String dialId) {
@@ -192,34 +201,18 @@ public class BackgroundJobService {
     }
 
     @VisibleForTesting
-    Future<ResponsesApiClient.TerminalResult> poll(ResponseMapping mapping, String apiKey) {
-        Config config = configStore.get();
-        Deployment deployment = config.selectDeployment(mapping.getDeploymentName());
-        if (deployment == null) {
-            return Future.failedFuture("Deployment {} not found");
-        }
-        Map<String, Translator> translators = config.getTranslators();
-        String targetUrl = DeploymentEndpointUtil.resolveResponseItemUri(deployment, translators,
-                InterfacePathMapping.GET_OPENAI_RESPONSES_BY_ID, mapping.getUpstreamResponseId(), null);
-        if (targetUrl == null) {
-            return Future.failedFuture("Deployment " + deployment.getName() + " does not have a responses endpoint");
-        }
-        Upstream upstream;
-        try {
-            // resolved the way the original request was routed, so that a deployment declaring no upstreams of
-            // its own builds the same synthetic upstream the mapping's key was issued against
-            upstream = upstreamRouteProvider.get(deployment, null,
-                    dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.OPENAI_RESPONSES, translators),
-                    mapping.getUpstreamKey()).next();
-        } catch (Exception e) {
-            return Future.failedFuture("Failed to get upstream for deployment " + deployment.getName()
-                    + " and upstream key " + mapping.getUpstreamKey() + ": " + e.getMessage());
-        }
-        return client.send(targetUrl, HttpMethod.GET, upstream, apiKey)
+    Future<ResponsesApiClient.TerminalResult> poll(String dialResponseId, String apiKey) {
+        String url = DeploymentEndpointUtil.resolveLocalResponseItemUri(localBaseUrl, dialResponseId);
+        RequestOptions options = new RequestOptions()
+                .setAbsoluteURI(url)
+                .setMethod(HttpMethod.GET)
+                .setTimeout(settings.getPollTimeoutMs());
+        return httpClient.request(options)
+                .compose(request -> request.putHeader(Proxy.HEADER_API_KEY, apiKey).send())
                 .compose(response -> {
                     int statusCode = response.statusCode();
                     if (statusCode != 200) {
-                        return Future.failedFuture("Unexpected status " + statusCode + " from upstream for background job " + mapping.getUpstreamResponseId());
+                        return Future.failedFuture(new PollStatusException(statusCode, dialResponseId));
                     }
                     return response.body().map(ResponsesApiClient::parseTerminalBody);
                 });
@@ -258,25 +251,39 @@ public class BackgroundJobService {
                                 });
                     }
 
-                    Future<List<UsagePerModel>> statsFuture = limitFuture.compose(ignored -> {
-                        if (!hasUsage || traceId == null || spanId == null) {
-                            return Future.succeededFuture(List.of());
+                    Future<TokenStatsTracker.UsageStats> statsFuture = limitFuture.compose(ignored -> {
+                        if (traceId == null || spanId == null) {
+                            return Future.succeededFuture(TokenStatsTracker.UsageStats.EMPTY);
                         }
-                        return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage)
+                        if (!hasUsage) {
+                            // the router row's cost is what the job's span rolled up
+                            return jobRecord.routerHop() == null
+                                    ? Future.succeededFuture(TokenStatsTracker.UsageStats.EMPTY)
+                                    : tokenStatsTracker.getUsageStats(traceId, spanId).otherwise(TokenStatsTracker.UsageStats.EMPTY);
+                        }
+                        // a job started by a child usually ends after its root, whose endSpan deletes the record
+                        boolean rootMayHaveEnded = !Boolean.TRUE.equals(jobRecord.isRootSpan());
+                        return tokenStatsTracker.updateDeploymentStats(traceId, spanId, responseMapping.getDeploymentName(), usage, rootMayHaveEnded)
                                 .compose(stats -> recordAggregatedCosts(stats.aggregatedCosts(), responseMapping.getInitiatorBucket())
-                                        .map(ignored2 -> stats.usagePerModel()));
+                                        .map(ignored2 -> stats));
                     });
 
                     if (traceId != null && Boolean.TRUE.equals(jobRecord.isRootSpan())) {
-                        statsFuture = statsFuture.compose(list -> tokenStatsTracker.endSpan(traceId).map(ignored -> list));
+                        statsFuture = statsFuture.compose(stats -> tokenStatsTracker.endSpan(traceId).map(ignored -> stats));
                     }
 
-                    Future<List<UsagePerModel>> finalStatsFuture = statsFuture;
+                    Future<TokenStatsTracker.UsageStats> finalStatsFuture = statsFuture;
                     statsFuture.eventually(() -> invalidatePerRequestKey(perRequestKey))
                             .onComplete(ignored -> {
-                                List<UsagePerModel> usagePerModel = finalStatsFuture.succeeded()
-                                        ? finalStatsFuture.result() : List.of();
-                                logStore.save(AnalyticsLogContext.from(jobRecord, result, usagePerModel));
+                                TokenStatsTracker.UsageStats stats = finalStatsFuture.succeeded()
+                                        ? finalStatsFuture.result() : TokenStatsTracker.UsageStats.EMPTY;
+                                // without usage of its own, the span was only read for the router row
+                                AnalyticsLogContext serving = AnalyticsLogContext.from(jobRecord, result,
+                                        hasUsage ? stats.usagePerModel() : List.of());
+                                logStore.save(serving);
+                                if (jobRecord.routerHop() != null) {
+                                    logStore.save(AnalyticsLogContext.routerRow(serving, jobRecord.decision(), jobRecord.routerHop(), stats));
+                                }
                             })
                             .onFailure(error -> log.error("Failed to finalize background job {}", responseId, error));
                 });
@@ -362,6 +369,9 @@ public class BackgroundJobService {
         int maxParallelJobs = 100;
         long scanIntervalMs = TimeUnit.MINUTES.toMillis(10);
         long schedulerTickIntervalMs = TimeUnit.SECONDS.toMillis(5);
+        long pollTimeoutMs = TimeUnit.MINUTES.toMillis(5);
+        String localBaseUrl;
+        Set<Integer> pollGiveUpStatusCodes = Set.of(401, 403, 404);
     }
 
     @RequiredArgsConstructor
@@ -372,7 +382,7 @@ public class BackgroundJobService {
 
         public Future<Boolean> poll() {
             String apiKey = decryptKey(ResponseIdUtil.getBackgroundJobDescriptor(dialId), record.perRequestKey());
-            return BackgroundJobService.this.poll(mapping, apiKey)
+            return BackgroundJobService.this.poll(dialId, apiKey)
                     .compose(result -> {
                                 if (result != null) {
                                     return completeAndProcess(dialId, record, mapping, result)

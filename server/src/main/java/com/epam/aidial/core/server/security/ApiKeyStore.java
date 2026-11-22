@@ -34,6 +34,7 @@ import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPA
 
 /**
  * The store keeps per request and project API key data.
+ *
  * <p>
  *     Per request key is assigned during the request and terminated in the end of the request.
  *     Project keys are hosted by external secure storage and might be periodically updated by {@link FileConfigStore}.
@@ -76,6 +77,7 @@ public class ApiKeyStore {
 
     /**
      * Assigns a new generated per request key to the {@link ApiKeyData}.
+     *
      * <p>
      *     Note. The method is blocking and shouldn't be run in the event loop thread.
      * </p>
@@ -176,6 +178,7 @@ public class ApiKeyStore {
     /**
      * Rebuilds the project-key store from two explicitly-classified partitions and atomically swaps
      * the {@code keys} reference once (single-atomic-swap invariant, per OQ-12).
+     *
      * <p>
      *     Note. The method is blocking and shouldn't be run in the event loop thread.
      * </p>

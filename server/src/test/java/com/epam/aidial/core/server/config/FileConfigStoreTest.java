@@ -1,17 +1,24 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Router;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -19,10 +26,14 @@ import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 public class FileConfigStoreTest {
@@ -35,7 +46,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_ArrayMergeStrategy_Overwrite() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(true), apiKeyStore, List.of());
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(true), apiKeyStore, PluginRegistry.EMPTY, List.of());
         Set<String> expectedUserRoles = Set.of("second_role1");
 
         Config config = fileConfigStore.get();
@@ -46,7 +57,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_ArrayMergeStrategy_Concat() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(false), apiKeyStore, List.of());
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(false), apiKeyStore, PluginRegistry.EMPTY, List.of());
         Set<String> expectedUserRoles = Set.of("first_role1", "second_role1");
 
         Config config = fileConfigStore.get();
@@ -57,7 +68,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_DefaultArrayMergeStrategy_Concat() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore, List.of());
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore, PluginRegistry.EMPTY, List.of());
         Set<String> expectedUserRoles = Set.of("first_role1", "second_role1");
 
         Config config = fileConfigStore.get();
@@ -68,7 +79,7 @@ public class FileConfigStoreTest {
 
     @Test
     public void testLoad_OnlyValidToolSets() {
-        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore, List.of());
+        FileConfigStore fileConfigStore = new FileConfigStore(vertx, prepareSettings(null), apiKeyStore, PluginRegistry.EMPTY, List.of());
         Set<String> expectedToolSetNames = Set.of("toolset-1_2");
 
         Config config = fileConfigStore.get();
@@ -91,7 +102,7 @@ public class FileConfigStoreTest {
         settings.put("reload", 1000);
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> new FileConfigStore(vertx, settings, apiKeyStore, List.of()));
+                () -> new FileConfigStore(vertx, settings, apiKeyStore, PluginRegistry.EMPTY, List.of()));
         assertTrue(error.getMessage().contains(expectedKey), error.getMessage());
         assertTrue(error.getMessage().contains("canonical-ID shape"), error.getMessage());
     }
@@ -102,11 +113,100 @@ public class FileConfigStoreTest {
         Consumer<Config> callback = seen::set;
 
         FileConfigStore fileConfigStore = new FileConfigStore(
-                vertx, prepareSettings(null), apiKeyStore, List.of(callback));
+                vertx, prepareSettings(null), apiKeyStore, PluginRegistry.EMPTY, List.of(callback));
 
         Config loaded = fileConfigStore.get();
         assertNotNull(seen.get());
         assertSame(loaded, seen.get());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testBadOrgUnitRolesKeepThePreviousConfig(@TempDir Path dir) throws Exception {
+        String roles = """
+                {"orgUnitRoles": {"auditor": {"description": "x", "permissions": [{"actions": ["read"], "pathPattern": "%s"}]}}}
+                """;
+        Path file = dir.resolve("aidial.config.json");
+        Files.writeString(file, roles.formatted("files/**"));
+        FileConfigStore store = new FileConfigStore(vertx,
+                new JsonObject().put("files", new JsonArray().add(file.toString())).put("reload", 1000), apiKeyStore, PluginRegistry.EMPTY, List.of());
+        ArgumentCaptor<Handler<Long>> periodic = ArgumentCaptor.forClass(Handler.class);
+        verify(vertx).setPeriodic(eq(1000L), eq(1000L), periodic.capture());
+        Config before = store.get();
+
+        Files.writeString(file, roles.formatted("file/**"));
+        assertThrows(IllegalArgumentException.class, store::reload);
+        periodic.getValue().handle(1L);
+        assertSame(before, store.get());
+
+        Files.writeString(file, roles.formatted("prompts/**"));
+        periodic.getValue().handle(2L);
+        assertEquals("prompts/**", store.get().getOrgUnitRoles().get("auditor").getPermissions().get(0).getPathPattern());
+    }
+
+    @Test
+    public void testLoad_RouterWithInterfaces() {
+        JsonObject settings = new JsonObject()
+                .put("files", new JsonArray().add("dial-config/routers.json"))
+                .put("reload", 1000);
+
+        Config config = new FileConfigStore(vertx, settings, apiKeyStore, PluginRegistry.EMPTY, List.of()).get();
+
+        Router router = assertInstanceOf(Router.class, config.selectDeployment("r1"));
+        assertEquals("r1", router.getName());
+        assertEquals(Set.of("analysts"), router.getUserRoles());
+        assertEquals(Set.of("openaiChatCompletions", "openaiEmbeddings", "anthropicMessages"), router.getInterfaces().keySet());
+    }
+
+    @Test
+    public void testLoad_RouterInDecisionMode() {
+        JsonObject settings = new JsonObject()
+                .put("files", new JsonArray().add("dial-config/router-decision.json"))
+                .put("reload", 1000);
+
+        Config config = new FileConfigStore(vertx, settings, apiKeyStore, PluginRegistry.EMPTY, List.of()).get();
+
+        Router r1 = config.getRouters().get("r1");
+        assertEquals(Router.Mode.DECISION, r1.getMode());
+        assertNull(r1.getDecision());
+        assertNull(config.getRouters().get("r2").getMode());
+        assertEquals(Boolean.TRUE, config.getRouters().get("r3").getDecision().getBody());
+        assertEquals(200L, config.getRouters().get("r-slow").getDecision().getTimeoutMs());
+    }
+
+    @Test
+    public void testLoad_RouterWithUpstreamsRejected(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("aidial.config.json");
+        Files.writeString(file, """
+                {"routers": {"r1": {"baseUrl": "http://router", "upstreams": [{"endpoint": "http://x"}]}}}
+                """);
+
+        Exception error = assertThrows(Exception.class, () -> new FileConfigStore(vertx, fileSettings(file), apiKeyStore, PluginRegistry.EMPTY, List.of()));
+        assertTrue(rootMessage(error).contains("upstreams"), rootMessage(error));
+    }
+
+    @Test
+    public void testLoad_RouterNameTakenByModelRejected(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("aidial.config.json");
+        Files.writeString(file, """
+                {"models": {"x": {"endpoint": "http://model/chat"}},
+                 "routers": {"x": {"baseUrl": "http://router", "interfaces": {"openaiChatCompletions": {}}}}}
+                """);
+
+        Exception error = assertThrows(Exception.class, () -> new FileConfigStore(vertx, fileSettings(file), apiKeyStore, PluginRegistry.EMPTY, List.of()));
+        assertTrue(rootMessage(error).contains("duplicate is found x"), rootMessage(error));
+    }
+
+    private static JsonObject fileSettings(Path file) {
+        return new JsonObject().put("files", new JsonArray().add(file.toString())).put("reload", 1000);
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable cause = error;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return String.valueOf(cause.getMessage());
     }
 
     private static JsonObject prepareSettings(@Nullable Boolean overwriteArrays) {

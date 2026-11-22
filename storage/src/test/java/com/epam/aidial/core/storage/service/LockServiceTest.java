@@ -15,6 +15,7 @@ import org.redisson.config.Config;
 import redis.embedded.RedisServer;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 class LockServiceTest {
@@ -85,6 +86,60 @@ class LockServiceTest {
     }
 
     @Test
+    void testTryLockBuckets() {
+        List<String> buckets = List.of("public/", "platform/");
+
+        LockService.Lock locks = service.tryLockBuckets(buckets);
+
+        Assertions.assertNotNull(locks);
+        Assertions.assertNull(service.tryLock("public/"));
+        Assertions.assertNull(service.tryLock("platform/"));
+        Assertions.assertNull(service.tryLockBuckets(buckets));
+
+        locks.close();
+
+        LockService.Lock again = service.tryLockBuckets(buckets);
+        Assertions.assertNotNull(again);
+        again.close();
+    }
+
+    @Test
+    void testClosingTryLockBucketsTwiceDoesNotReleaseLocksOfOthers() {
+        List<String> buckets = List.of("public/", "platform/");
+        LockService.Lock locks = service.tryLockBuckets(buckets);
+        Assertions.assertNotNull(locks);
+        locks.close();
+
+        LockService.Lock other = service.tryLockBuckets(buckets);
+        Assertions.assertNotNull(other);
+
+        try {
+            locks.close();
+
+            Assertions.assertNull(service.tryLock("public/"));
+            Assertions.assertNull(service.tryLock("platform/"));
+        } finally {
+            other.close();
+        }
+    }
+
+    @Test
+    void testTryLockBucketsReleasesAcquiredLocksWhenOneIsBusy() {
+        LockService.Lock busy = service.tryLock("public/");
+        Assertions.assertNotNull(busy);
+
+        try {
+            Assertions.assertNull(service.tryLockBuckets(List.of("platform/", "public/")));
+
+            LockService.Lock platform = service.tryLock("platform/");
+            Assertions.assertNotNull(platform, "platform/ must be released after the failed attempt");
+            platform.close();
+        } finally {
+            busy.close();
+        }
+    }
+
+    @Test
     void testLockRecordsWaitAndHold() {
         service.lock("metrics-key").close();
 
@@ -97,11 +152,12 @@ class LockServiceTest {
     void testLocalContentionIsRecordedAsLocalWait() throws Exception {
         LockService.Lock lock = service.lock("local-contended");
         Thread waiter = startWaiter("local-contended");
-        Assertions.assertEquals(1, localQueueSize());
+        Assertions.assertEquals(1, queueSize("local"));
+        Assertions.assertEquals(0, queueSize("redis"));
         Thread.sleep(300);
         lock.close();
         join(waiter);
-        Assertions.assertEquals(0, localQueueSize());
+        Assertions.assertEquals(0, queueSize("local"));
 
         Assertions.assertTrue(waitTimer("local").max(TimeUnit.MILLISECONDS) >= 250);
         Assertions.assertTrue(holdTimer().max(TimeUnit.MILLISECONDS) >= 250);
@@ -113,9 +169,12 @@ class LockServiceTest {
         LockService otherPod = new LockService(client, null);
         LockService.Lock lock = otherPod.lock("redis-contended");
         Thread waiter = startWaiter("redis-contended");
+        awaitQueueSize("redis", 1);
+        Assertions.assertEquals(0, queueSize("local"));
         Thread.sleep(300);
         lock.close();
         join(waiter);
+        Assertions.assertEquals(0, queueSize("redis"));
 
         Assertions.assertTrue(waitTimer("redis").max(TimeUnit.MILLISECONDS) >= 250);
     }
@@ -146,11 +205,22 @@ class LockServiceTest {
     }
 
     private Timer waitTimer(String phase) {
-        return meterRegistry.get("dial_lock_wait").tag("phase", phase).timer();
+        return meterRegistry.get("dial_lock_wait").tag("phase", phase).tag("outcome", "success").timer();
     }
 
-    private double localQueueSize() {
-        return meterRegistry.get("dial_lock_queue_size").tag("phase", "local").gauge().value();
+    private double queueSize(String phase) {
+        return meterRegistry.get("dial_lock_queue_size").tag("phase", phase).gauge().value();
+    }
+
+    /**
+     * The waiter may still be parked in its first Redis round-trip, which is not a queued wait.
+     */
+    private void awaitQueueSize(String phase, double expected) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (queueSize(phase) != expected) {
+            Assertions.assertTrue(System.nanoTime() < deadline, () -> phase + " queue size should reach " + expected);
+            Thread.sleep(1);
+        }
     }
 
     private Timer holdTimer() {

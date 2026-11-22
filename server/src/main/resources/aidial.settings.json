@@ -45,6 +45,11 @@
       "softValidation": false
     }
   },
+  "plugins": {
+    "dir": "plugins",
+    "include": ["*"],
+    "exclude": []
+  },
   "identityProviders": {
   },
   "storage": {
@@ -65,6 +70,9 @@
     "compressionMinSize": 256,
     "heartbeatPeriod": 60000
   },
+  "orgUnits": {
+    "enabled": false
+  },
   "complexResource": {
     "maxFiles": 100,
     "maxTotalBytes": 16777216,
@@ -76,6 +84,18 @@
     "activeBatches": 5,
     "gracePeriod": 3600000
   },
+  "budgetCounterSweep": {
+    "period": 300000,
+    "batch": 500
+  },
+  "adminSystemExport": {
+    "stallTimeout": 60000
+  },
+  "adminSystemImport": {
+    "stallTimeout": 60000,
+    "progressInterval": 15000,
+    "parallelism": 4
+  },
   "clientChannel": {
     "watchdog": {
       "period": 10000
@@ -85,7 +105,8 @@
     "connectTimeout": 10000
   },
   "applications": {
-    "includeCustomApps": true
+    "includeCustomApps": true,
+    "allowUserAuthoredDependencies": false
   },
   "access": {
     "admin": {
@@ -109,6 +130,9 @@
   },
   "perRequestApiKey": {
     "ttl": 1800
+  },
+  "deploymentStats": {
+    "ttlMs": 3600000
   },
   "asyncTaskExecutor": {
     "useVirtualThreads": true
@@ -142,6 +166,8 @@
     "leaseTimeoutMs": 300000,
     "maxParallelJobs": 100,
     "scanIntervalMs": 600000,
-    "schedulerTickIntervalMs": 5000
+    "schedulerTickIntervalMs": 5000,
+    "pollTimeoutMs": 300000,
+    "pollGiveUpStatusCodes": [401, 403, 404]
   }
 }

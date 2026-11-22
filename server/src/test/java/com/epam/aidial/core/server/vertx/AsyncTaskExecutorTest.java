@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
@@ -22,6 +23,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * The meters are JVM-wide and other test classes leave tasks behind, so every assertion is a delta from a value read first.
@@ -122,6 +127,18 @@ class AsyncTaskExecutorTest {
         assertInstanceOf(RejectedExecutionException.class, result.cause());
         assertEquals(queuedBefore, queuedTasks());
         assertEquals(startDelaysBefore, startDelays());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void taskThatFailsToSubmitIsNoLongerQueued() {
+        Vertx failing = mock(Vertx.class);
+        when(failing.executeBlocking(any(Callable.class), anyBoolean())).thenThrow(new IllegalStateException("closed"));
+        AsyncTaskExecutor executor = new AsyncTaskExecutor(failing, new JsonObject().put("useVirtualThreads", false));
+        double queuedBefore = queuedTasks();
+
+        assertThrows(IllegalStateException.class, () -> executor.submit(() -> "never runs"));
+        assertEquals(queuedBefore, queuedTasks());
     }
 
     private double queuedTasks() {
