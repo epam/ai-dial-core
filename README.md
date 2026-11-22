@@ -193,18 +193,18 @@ entity that does not survive validation.
 | config.reload                            |       60000        |    No    | Config reload interval in milliseconds.                                                                                                                                                                                                                                                                                           |
 | config.jsonMergeStrategy.overwriteArrays |       false        |    No    | Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.                                                                                                                                                                                             |
 | config.onInvalidEntity                   |       abort        |    No    | What an entity that fails validation does to the merged config: see **Invalid entities** below.                                |
-| config.write.softValidation              |       false        |    No    | If `true`, a Configuration API write whose entity has only cross-reference warnings (e.g. a model naming an interceptor that does not exist yet) is accepted instead of rejected with `422`. Under `skip` it is recorded as invalid at once; under `abort` it is accepted as valid and fails at request time. Invalid `overridePaths` stay fatal in both modes.                            |
+| config.write.softValidation              |       false        |    No    | If `true`, a Configuration API write whose entity has only cross-reference warnings (e.g. a model naming an interceptor that does not exist yet) is accepted instead of rejected with `422`. Under `skip` it is recorded as invalid at once; under `abort`, and under `skipOnStartup` after startup, it is accepted as valid and fails at request time. Invalid `overridePaths` stay fatal in every mode.                            |
 
 **Invalid entities**
 
-A model, application, interceptor, translator, role, route, key, toolset, router, alias, plugin or policy that violates
+A model, application, interceptor, translator, route, toolset, router, alias, plugin, policy or policy assignment that violates
 a runtime invariant — an interface that resolves to no provider url, a duplicate deployment id — is an *invalid
 entity*. A dropped budget policy leaves its cost object without a budget. `config.onInvalidEntity` decides what that costs:
 
 | Mode            | Startup (initial merge)                  | Every rebuild and Configuration API write after it                                            |
 |-----------------|------------------------------------------|-----------------------------------------------------------------------------------------------|
 | `abort`         | Core refuses to start                    | Rebuild aborts and the merged config stays at its previous state; the offending write fails   |
-| `skip`          | Entity dropped and recorded; core starts | Entity dropped and recorded                                                                    |
+| `skip`          | Entity dropped and recorded; core starts | Rebuild: entity dropped and recorded. Write: rejected with `422` (see `softValidation`)        |
 | `skipOnStartup` | Entity dropped and recorded; core starts | Same as `abort`                                                                                |
 
 A dropped entity is not lost: it is kept in the invalid-entity store, reported by
@@ -216,10 +216,11 @@ gauge and `dial_config_skip_events_total` counter. Fixing the entity clears it o
 every later full rebuild aborts and logs a warning each `config.reload`, so the pod keeps serving the config it
 booted with and misses what only a full rebuild applies: file edits, direct storage writes, `POST /v1/ops/config/reload`
 (answered `500`) and a system import, until the entity is fixed or removed. Single-entity Configuration API writes,
-on this pod or another, still apply, since they update the merged config in place.
+on this pod or another, usually still apply in place; one whose in-place apply fails (for example a policy assignment
+that reaches a pod before its policy) falls back to a full rebuild, which aborts, so it waits for the fix or a restart.
 The invalid entity is listed by the health endpoint the whole time.
 
-An entity whose blob body is not valid JSON is always skipped per-entity, in every mode. Entities defined in
+An entity whose blob body fails to parse, bind or decrypt is always skipped per-entity, in every mode. Entities defined in
 the `config.files` file itself are validated when that file is loaded, before any mode applies: a violation
 there fails the load, and at startup that fails the pod regardless of `config.onInvalidEntity`.
 
