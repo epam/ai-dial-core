@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
@@ -47,9 +48,13 @@ public class SpendCapCheck {
     /**
      * Checks the caller's limits and returns the caps to report. A request whose deployment is not subject to limits
      * (a translated one) is checked and charged by the call the translator makes back to Core, so it only reads the
-     * caps: it still rejects a cap that is already reached, and it fails open when the record is unreadable.
+     * caps: it still rejects a cap that is already reached, and it fails open when the record is unreadable. An alias
+     * pass checks nothing and reports no caps: its target pass checks the limits and writes the headers it relays.
      */
     public Future<SpendCaps> verify(Proxy proxy, ProxyContext context, boolean subjectToLimits, Answers answers) {
+        if (context.getDeployment() instanceof AliasPass) {
+            return Future.succeededFuture(SpendCaps.EMPTY);
+        }
         String deployment = context.getDeployment().getName();
         if (!subjectToLimits) {
             return proxy.getRateLimiter().readSpendCaps(context)

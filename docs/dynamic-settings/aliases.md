@@ -128,8 +128,12 @@ reachable on `localhost`. The second pass:
 * is not refused by `accessibleByPerRequestKey: false` on the target.
 
 The alias relays the target's answer, error statuses included, so an error of the target pass may name the target.
-Answers keep the target's `model` value; for a router target in decision mode, the answer names the alias where the
-router would name itself (see [Decision mode](routers.md#decision-mode)). For a router target the alias lends the
+On Messages and Responses the alias makes no limit check of its own: it reads no spend caps and checks no token,
+request or cost limit. It leaves the target's `anthropic-ratelimit-*` and `x-codex-*` headers as they are, on every
+status, so Claude Code and Codex see the caps of the deployment that serves the call, also when a router in decision
+mode chose the alias (see [Claude Code spend limits](../anthropic-spend-limits.md#which-cap-is-reported) and
+[Codex spend limits](../codex-spend-limits.md#aliases)). Answers keep the target's `model` value; for a router
+target in decision mode, the answer names the alias where the router would name itself (see [Decision mode](routers.md#decision-mode)). For a router target the alias lends the
 router only: the deployment the router chooses is checked against the caller's own rights. The caller's
 `Authorization` header is not forwarded through an alias, so a target with `forwardAuthToken` does not receive it.
 

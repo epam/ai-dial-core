@@ -15,6 +15,7 @@ import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
@@ -303,8 +304,12 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     /**
      * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
+     * An alias pass leaves the headers its target pass wrote.
      */
     private void putLimitHeaders(HttpServerResponse response, ProxyResponse proxyResponse) {
+        if (context.getDeployment() instanceof AliasPass) {
+            return;
+        }
         CodexLimitResponses.stripUpstreamCodexHeaders(response.headers());
         if (proxyResponse.statusCode() == 200 && spendCaps != null) {
             CodexLimitResponses.putSpendHeaders(response.headers(), spendCaps);
