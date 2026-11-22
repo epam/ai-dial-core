@@ -227,8 +227,8 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AdminSystemImportService adminSystemImportService;
     private final AdminSystemImportService.Settings adminSystemImportSettings;
     private final ProxyClient proxyClient;
-    // 0 or less: no limit
-    private final int maxInFlightRequests;
+    // null, 0 or less: no limit; boxed, so Mockito's @InjectMocks in ProxyTest can pass null
+    private final Integer maxInFlightRequests;
     @Getter(AccessLevel.NONE)
     private final AtomicInteger inFlightRequests = new AtomicInteger();
     private static final Runnable NOT_COUNTED = () -> { };
@@ -361,7 +361,7 @@ public class Proxy implements Handler<HttpServerRequest> {
      */
     @Nullable
     private Runnable admit(HttpServerRequest request, ApiKeyData apiKeyData) {
-        if (maxInFlightRequests <= 0 || apiKeyData.getPerRequestKey() != null) {
+        if (maxInFlightRequests == null || maxInFlightRequests <= 0 || apiKeyData.getPerRequestKey() != null) {
             return NOT_COUNTED;
         }
         if (inFlightRequests.getAndUpdate(count -> count < maxInFlightRequests ? count + 1 : count) >= maxInFlightRequests) {
