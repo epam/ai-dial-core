@@ -27,6 +27,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
@@ -363,15 +364,16 @@ public class ProxyContext {
     }
 
     /**
-     * Returns the data of the caller's per request key as the Redis master holds it, or null if the caller has another
-     * kind of key or the key is gone. The request is authenticated with a copy that may come from a replica.
+     * Returns the data of the caller's per request key as the Redis master holds it, or null if there is nothing to
+     * read: the caller has another kind of key, the key is gone, or the pass is served in process and has the key
+     * from memory. The request is authenticated with a copy that may come from a replica.
      *
      * <p>
-     *     Note. The method is blocking and shouldn't be run in the event loop thread.
+     *     The read is blocking, so on an event-loop thread the method reads nothing and returns null.
      * </p>
      */
-    public ApiKeyData masterApiKeyData() {
-        if (apiKeyData.getPerRequestKey() == null) {
+    public ApiKeyData loadMasterApiKeyData() {
+        if (apiKeyData.getPerRequestKey() == null || isChildPass() || Context.isOnEventLoopThread()) {
             return null;
         }
         Optional<ApiKeyData> data = masterApiKeyData;

@@ -62,13 +62,20 @@ class ApiKeyDataTest {
         when(contextWithoutReceiver.getDeployment()).thenReturn(null);
         when(contextWithoutReceiver.getRoute()).thenReturn(null);
         ApiKeyData withoutReceiver = new ApiKeyData();
+        // a pass served in process has the caller's key from memory
+        ProxyContext childPass = context(caller);
+        when(childPass.getDeployment().getName()).thenReturn("app");
+        when(childPass.isChildPass()).thenReturn(true);
+        ApiKeyData inChildPass = new ApiKeyData();
 
         ApiKeyData.initFromContext(fromProjectKey, projectContext);
         ApiKeyData.initFromContext(withoutReceiver, contextWithoutReceiver);
+        ApiKeyData.initFromContext(inChildPass, childPass);
 
         assertNull(fromProjectKey.getCallerKey());
         assertEquals(List.of(), fromProjectKey.getCallerReceivers());
         assertNull(withoutReceiver.getCallerKey());
+        assertNull(inChildPass.getCallerKey());
         assertEquals(List.of(), withoutReceiver.getCallerReceivers());
     }
 
@@ -79,6 +86,7 @@ class ApiKeyDataTest {
         when(context.getKey()).thenReturn(null);
         when(context.getExtractedClaims()).thenReturn(null);
         when(context.getInitialDeployment()).thenReturn(null);
+        when(context.isChildPass()).thenReturn(false);
         return context;
     }
 }

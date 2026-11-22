@@ -173,10 +173,10 @@ public class ProxyContextTest {
         apiKeyData.setPerRequestKey("per-request-key");
         ProxyContext context = new ProxyContext(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null, "trace-id", "span-id", "01");
 
-        assertSame(onMaster, context.masterApiKeyData());
-        assertSame(onMaster, context.masterApiKeyData());
+        assertSame(onMaster, context.loadMasterApiKeyData());
+        assertSame(onMaster, context.loadMasterApiKeyData());
         // a context with other key data answers from that data alone
-        assertNull(context.copyWith(apiKeyData).masterApiKeyData());
+        assertNull(context.copyWith(apiKeyData).loadMasterApiKeyData());
 
         verify(apiKeyStore).getPerRequestKeyDataOnMaster("per-request-key");
     }
@@ -188,7 +188,7 @@ public class ProxyContextTest {
         apiKeyData.setOriginalKey(new Key());
         ProxyContext context = new ProxyContext(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null, "trace-id", "span-id", "01");
 
-        assertNull(context.masterApiKeyData());
+        assertNull(context.loadMasterApiKeyData());
 
         verifyNoInteractions(proxy);
     }

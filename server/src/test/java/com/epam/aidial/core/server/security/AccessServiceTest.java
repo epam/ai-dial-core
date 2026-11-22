@@ -998,7 +998,7 @@ public class AccessServiceTest {
         ApiKeyData onMaster = new ApiKeyData();
         onMaster.getPerRequestSharedResources().put(granted.getUrl(), new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.READ))));
         onMaster.getAttachedFiles().put(attached.getUrl(), new AutoSharedData(ResourceAccessType.READ_ONLY));
-        when(context.masterApiKeyData()).thenReturn(onMaster);
+        when(context.loadMasterApiKeyData()).thenReturn(onMaster);
         AccessService accessService = accessService(mock(ApplicationSchemaService.class));
 
         assertTrue(accessService.hasReadAccess(granted, context));
@@ -1009,6 +1009,25 @@ public class AccessServiceTest {
         assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(attached), context).get(attached));
         // the initiator's reach never counts the calling key's grants, the master's copy included
         assertTrue(accessService.lookupInitiatorPermissions(Set.of(granted), context).get(granted).isEmpty());
+    }
+
+    @Test
+    public void testHasReadAccessToEverythingUnder_ReadsTheKeyOnMasterBeforeRefusing() {
+        // a public folder in a unit the caller has no role in, attached to the key a moment ago
+        ResourceDescriptor folder = new ResourceDescriptor(ResourceTypes.FILE, null, List.of("docs"), "public", "public/", true);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("prk");
+        lenient().when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(orgUnitGrants.isEnabled()).thenReturn(true);
+        AccessService accessService = accessService(mock(ApplicationSchemaService.class));
+
+        assertFalse(accessService.hasReadAccessToEverythingUnder(folder, context));
+
+        ApiKeyData onMaster = new ApiKeyData();
+        onMaster.getAttachedFolders().put(folder.getUrl(), new AutoSharedData(ResourceAccessType.READ_ONLY));
+        when(context.loadMasterApiKeyData()).thenReturn(onMaster);
+
+        assertTrue(accessService.hasReadAccessToEverythingUnder(folder, context));
     }
 
     @Test
@@ -1027,10 +1046,10 @@ public class AccessServiceTest {
         assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(attached), context).get(attached));
         // the grant gives more than the read the caller asks for
         assertTrue(accessService.hasReadAccess(granted, context));
-        verify(context, never()).masterApiKeyData();
+        verify(context, never()).loadMasterApiKeyData();
 
         // the needed access is missing
         assertFalse(accessService.hasWriteAccess(attached, context));
-        verify(context).masterApiKeyData();
+        verify(context).loadMasterApiKeyData();
     }
 }

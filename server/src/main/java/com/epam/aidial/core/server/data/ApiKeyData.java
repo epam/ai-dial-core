@@ -161,7 +161,8 @@ public class ApiKeyData {
                 sharePerRequestPermissions(proxyApiKeyData, receivers, context.getInitialDeployment());
             }
             List<String> callerReceivers = Stream.of(receiver, context.getInitialDeployment()).filter(Objects::nonNull).toList();
-            if (!callerReceivers.isEmpty()) {
+            // a pass served in process has the caller's key from memory, not from a replica
+            if (!callerReceivers.isEmpty() && !context.isChildPass()) {
                 proxyApiKeyData.setCallerKey(apiKeyData.getPerRequestKey());
                 proxyApiKeyData.setCallerReceivers(callerReceivers);
             }
@@ -198,14 +199,17 @@ public class ApiKeyData {
      * @param receivers the receivers of the caller's key as the Redis master holds them.
      */
     public void addCallerPermissions(Map<String, Map<String, PerRequestSharedData>> receivers) {
+        // as initFromContext copies them: for a resource granted to two receivers the later receiver's grant counts
+        ApiKeyData onMaster = new ApiKeyData();
         for (String receiver : callerReceivers) {
-            receivers.getOrDefault(receiver, Map.of()).forEach((url, granted) ->
-                    perRequestSharedResources.merge(url, granted, (existing, added) -> {
-                        Set<ResourceAccessType> union = new HashSet<>(existing.permissions());
-                        union.addAll(added.permissions());
-                        return new PerRequestSharedData(union);
-                    }));
+            sharePerRequestPermissions(onMaster, receivers, receiver);
         }
+        onMaster.getPerRequestSharedResources().forEach((url, granted) ->
+                perRequestSharedResources.merge(url, granted, (existing, added) -> {
+                    Set<ResourceAccessType> union = new HashSet<>(existing.permissions());
+                    union.addAll(added.permissions());
+                    return new PerRequestSharedData(union);
+                }));
     }
 
     @JsonIgnore

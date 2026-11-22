@@ -462,20 +462,24 @@ public class ApiKeyStoreTest {
         PerRequestSharedData read = new PerRequestSharedData(Set.of(ResourceAccessType.READ));
         PerRequestSharedData write = new PerRequestSharedData(Set.of(ResourceAccessType.WRITE));
         ApiKeyData caller = new ApiKeyData();
-        caller.getPerRequestReceivers().put("app", Map.of("files/bucket/granted.txt", read, "files/bucket/both.txt", read));
+        caller.getPerRequestReceivers().put("app", Map.of("files/bucket/granted.txt", read, "files/bucket/both.txt", read,
+                "files/bucket/two-receivers.txt", write));
+        caller.getPerRequestReceivers().put("initial-app", Map.of("files/bucket/two-receivers.txt", read));
         caller.getPerRequestReceivers().put("another-app", Map.of("files/bucket/another.txt", read));
         store.assignPerRequestApiKey(caller);
         // built from a copy of the caller's key that had no grant for the receiver yet
         ApiKeyData data = new ApiKeyData();
         data.setCallerKey(caller.getPerRequestKey());
-        data.setCallerReceivers(List.of("app"));
+        data.setCallerReceivers(List.of("app", "initial-app"));
         data.getPerRequestSharedResources().put("files/bucket/both.txt", write);
 
         store.assignPerRequestApiKey(data);
 
         ApiKeyData stored = store.getApiKeyData(data.getPerRequestKey(), null).result();
         assertNull(stored.getCallerKey(), "the caller's key must not be stored");
-        assertEquals(Map.of("files/bucket/granted.txt", read, "files/bucket/both.txt", new PerRequestSharedData(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE))),
+        // for a resource granted to two receivers the later one's grant counts, as when the key is built
+        assertEquals(Map.of("files/bucket/granted.txt", read, "files/bucket/two-receivers.txt", read,
+                        "files/bucket/both.txt", new PerRequestSharedData(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE))),
                 stored.getPerRequestSharedResources());
     }
 
