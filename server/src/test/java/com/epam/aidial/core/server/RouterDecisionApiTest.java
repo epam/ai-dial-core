@@ -1100,7 +1100,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         }
         // the first candidate's chain added its default to the tree; the next candidate starts from the client's body
         RecordedRequest failed = single(request -> "m-defaults".equals(request.getHeader(DEPLOYMENT_ID)));
-        assertTrue(new JsonObject(failed.getBody().readUtf8()).containsKey("temperature"));
+        assertEquals(0.5, new JsonObject(failed.getBody().readUtf8()).getDouble("temperature"));
         JsonObject served = new JsonObject(single(request -> "m2".equals(request.getHeader(DEPLOYMENT_ID))).getBody().readUtf8());
         assertEquals("m2", served.getString("model"));
         assertFalse(served.containsKey("temperature"));

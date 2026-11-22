@@ -791,7 +791,8 @@ and only then SHALL it tell the plugin the request is cancelled. A plugin's `4xx
 
 ### Requirement: Body of an embedded decide request
 With `decision.body: true`, the plugin SHALL receive the client's request bytes unchanged as the decide request's body
-(for an in-process call, the serialization "Decide request of an in-process call" states), and the parsed request as
+(for an in-process call, a body JSON equal to the call's tree, as "Decide request of an in-process call" states), and
+the parsed request as
 its body tree. The tree SHALL be the plugin's own copy: a change the plugin makes to it SHALL
 NOT reach the deployment Core then serves. Without `decision.body` the plugin SHALL receive an empty body and no body
 tree.

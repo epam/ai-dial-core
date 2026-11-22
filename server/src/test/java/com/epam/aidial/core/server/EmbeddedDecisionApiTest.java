@@ -443,7 +443,7 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
         assertEquals("hi", served.path("messages").path(0).path("content").asText());
         assertEquals("m2", served.path("model").asText());
         assertEquals("rf", TestOriginPluginProvider.REQUESTS.get(0).bodyTree().path("model").asText(),
-                "the next candidate is served from the serialization, not from the call's tree");
+                "the next candidate is served from a copy of the call's tree, not from the call's tree itself");
     }
 
     @Test

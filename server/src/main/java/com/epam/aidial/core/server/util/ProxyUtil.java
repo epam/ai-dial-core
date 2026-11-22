@@ -293,12 +293,15 @@ public class ProxyUtil {
     /**
      * Parses the request's body at a controller's parse site, and sets it as the request's body. A pass Core serves
      * in process (an origin plugin's call, or an alias pass's to its target) already has the tree: it is taken as it
-     * is, and only the body's timestamp is set, as the chain sets the body when it serialises the tree.
+     * is, and only the body's timestamp is set, as the chain sets the body when it serialises the tree. As for bytes,
+     * the timestamp is the first parse's: a router's fallback candidate parsing a copy of the tree is not a second read.
      */
     public ObjectNode parseRequestBody(ProxyContext context, Buffer body) throws IOException {
         ObjectNode tree = context.getCallTree();
         if (tree != null) {
-            context.setRequestBodyTimestamp(System.currentTimeMillis());
+            if (context.getRequestBodyTimestamp() == 0) {
+                context.setRequestBodyTimestamp(System.currentTimeMillis());
+            }
             return tree;
         }
         context.setRequestBodyWithTimestamp(body);
