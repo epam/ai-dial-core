@@ -101,4 +101,6 @@ test {
         exceptionFormat = "full"
     }
     useJUnitPlatform()
+    // diagnostic only, not for merge: the heap after each GC and a class histogram when the heap runs out
+    jvmArgs '-Xlog:gc:stdout:uptime', '-XX:+PrintClassHistogram', '-XX:OnOutOfMemoryError=kill -3 %p'
 }
