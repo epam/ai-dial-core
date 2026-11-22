@@ -193,8 +193,9 @@ Event loops:
 - A loop blocked by a single long task is reported by the Vert.x blocked thread checker in the log.
 - `dial_event_loop_task_duration` times the outermost dispatch only, so nested dispatches count in their parent.
   Netty work outside a dispatch (codecs, TLS, flushes) is not timed, and `-Dvertx.disableContextTimings=true` turns
-  the timer off. `rate(..._seconds_sum)` per `name` is the share of time a loop spends in dispatches, which shows a
-  single hot loop.
+  the timer off, together with the blocked thread checker. `rate(..._seconds_sum)` per `name` is the share of time a
+  loop spends in dispatches, which shows a single hot loop. The acceptor thread (`vert.x-acceptor-thread-0`) is timed
+  too; it has no `netty_eventexecutor_tasks_pending` series, as it is not one of the event loops.
 - Vert.x has no public hook for this: the timer hooks the package-private `VertxThread.executeEnd()`, so it works on
   the classpath only.
 

@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
  * <p>In Vert.x's package because {@link VertxThread#executeEnd()} is package-private: this works on the classpath
  * only (one runtime package), and an upgrade of Vert.x must keep {@code TimedVertxThreadTest} green.
  */
-public class TimedVertxThread extends VertxThread {
+class TimedVertxThread extends VertxThread {
 
     private final Timer timer;
 
