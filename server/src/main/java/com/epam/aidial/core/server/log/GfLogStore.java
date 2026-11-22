@@ -47,6 +47,10 @@ public class GfLogStore implements LogStore {
     private static final Log LOGGER = LogFactory.getLog("aidial.log");
     // Max allowed size is 4 mb for request/response body
     private static final int MAX_BODY_SIZE_BYTES = 4 * 1024 * 1024;
+    // the largest escape buffer kept between entries: a typical body's (650 KB escapes to about 800 KB); a larger body
+    // gets a buffer of its own, which goes with the entry
+    private static final int MAX_KEPT_ESCAPED_BYTES = 1024 * 1024;
+    private static final byte[] NO_BUFFER = new byte[0];
     // Max allowed size for a single collected request header value
     private static final int MAX_HEADER_VALUE_LENGTH = 4 * 1024;
     // Max allowed size for a single collected claim value, matching the header limit
@@ -82,9 +86,9 @@ public class GfLogStore implements LogStore {
     private final Counter bodiesSkipped;
     // the limit on pendingBodyBytes; 0 or below means no limit
     private final long maxPendingBodyBytes;
-    // the escaped body, reused across entries; only the executor thread writes bodies
+    // the escaped body, reused across entries up to MAX_KEPT_ESCAPED_BYTES; only the executor thread writes bodies
     @VisibleForTesting
-    byte[] escapedBody = new byte[0];
+    byte[] escapedBody = NO_BUFFER;
 
     public GfLogStore(AnalyticsSettings settings) {
         this(settings, Runtime.getRuntime().maxMemory());
@@ -582,9 +586,9 @@ public class GfLogStore implements LogStore {
         int length = escapeUtf8(buffer.getBytes());
         // gflog has no byte append, so the escaped body is decoded here and gflog encodes it again
         String escaped = new String(escapedBody, 0, length, StandardCharsets.UTF_8);
-        if (escapedBody.length > escapedCapacity(MAX_BODY_SIZE_BYTES)) {
-            // escapes can grow a body sixfold; keep no more than the largest body starts with between entries
-            escapedBody = new byte[0];
+        if (escapedBody.length > MAX_KEPT_ESCAPED_BYTES) {
+            // the buffer lives as long as the store: keep what a typical body needs, not what the largest one did
+            escapedBody = NO_BUFFER;
         }
         entry.append(escaped);
         if (largeBuffer) {
