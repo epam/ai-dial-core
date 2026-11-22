@@ -269,11 +269,12 @@ public final class PluginRegistry {
         }
     }
 
-    // a $schema anywhere in the schema, not only at its root: a subschema's draft applies to that subschema
+    // a $schema anywhere in the schema, not only at its root: a subschema's draft applies to that subschema. Only text is
+    // the keyword; any other value is a settings property named $schema, and the meta-schema check refuses one at the root
     @Nullable
     private static JsonNode otherDraft(JsonNode node) {
         JsonNode version = node.get("$schema");
-        if (version != null && !(version.isTextual() && DRAFT_07.contains(version.asText()))) {
+        if (version != null && version.isTextual() && !DRAFT_07.contains(version.asText())) {
             return version;
         }
         for (JsonNode child : node) {

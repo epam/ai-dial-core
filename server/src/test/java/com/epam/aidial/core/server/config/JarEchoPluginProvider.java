@@ -198,6 +198,21 @@ public class JarEchoPluginProvider implements PluginProvider {
     }
 
     /**
+     * A provider of id {@code good} whose settings have a property named {@code $schema}.
+     */
+    public static class PropertyNamedSchema extends WithSchema {
+        @Override
+        public String id() {
+            return "good";
+        }
+
+        @Override
+        String schema() {
+            return "{\"type\": \"object\", \"properties\": {\"$schema\": {\"type\": \"string\"}}}";
+        }
+    }
+
+    /**
      * A provider of id {@code good} whose schema refers to a definition of the draft-07 meta-schema.
      */
     public static class MetaSchemaPointer extends WithSchema {

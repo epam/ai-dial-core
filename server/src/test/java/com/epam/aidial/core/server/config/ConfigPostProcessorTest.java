@@ -869,6 +869,22 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
+    void testSchemaWarningFieldsNameArrayItemsAndNestedProperties() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode schema = (ObjectNode) mapper.readTree("{\"type\": \"object\", \"properties\": {"
+                + "\"items\": {\"type\": \"array\", \"items\": {\"type\": \"object\", \"required\": [\"name\"]}},"
+                + "\"a\": {\"type\": \"object\", \"required\": [\"b\"]}}}");
+        PluginRegistry registry = registryOf(schema, settings -> List.of());
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        ConfigPostProcessor.validatePlugin("p1", new Plugin("custom", (ObjectNode) mapper.readTree("{\"items\": [{}], \"a\": {}}")),
+                registry, true, warnings);
+
+        assertEquals(Set.of("settings.items[0].name", "settings.a.b"),
+                Set.copyOf(warnings.stream().map(ValidationWarning::getField).toList()), warnings::toString);
+    }
+
+    @Test
     void testFailingSchemaCheckIsOneWarningOnSettings() throws Exception {
         AtomicBoolean validated = new AtomicBoolean();
         // Refers to itself without reading the settings: it passes the load and overflows on every check
