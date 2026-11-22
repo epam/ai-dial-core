@@ -27,11 +27,13 @@ deployments-POST path, which keeps serializing the call tree for a router.
 ### Modified Capabilities
 
 - `router-deployment`: MODIFIED "Decide request of an in-process call": stated by what the decide request and the
-  fallback candidates receive, not by the serialization; a scenario for a fallback inside an alias call.
+  fallback candidates receive, not by the serialization; a scenario for a fallback inside an alias call. MODIFIED
+  "Body of an embedded decide request": an in-process call's body is named by what it equals, not as the serialization.
 
 ## Impact
 
-- Code: `server` module, `RouterDecisionFlow` and `RouterDecision`. No config, settings or API change.
+- Code: `server` module, `RouterDecisionFlow`, `RouterDecision` and `ProxyUtil.parseRequestBody` (the body timestamp).
+  No config, settings or API change.
 - Per tier request: one full-body serialization fewer when the router does not get the body; one copy of the tree's
   objects and arrays instead.
 - Motivation: a Core CPU profile of the tier routing chain under load (2026-11-21). This change covers the

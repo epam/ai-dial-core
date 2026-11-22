@@ -792,10 +792,8 @@ and only then SHALL it tell the plugin the request is cancelled. A plugin's `4xx
 ### Requirement: Body of an embedded decide request
 With `decision.body: true`, the plugin SHALL receive the client's request bytes unchanged as the decide request's body
 (for an in-process call, a body JSON equal to the call's tree, as "Decide request of an in-process call" states), and
-the parsed request as
-its body tree. The tree SHALL be the plugin's own copy: a change the plugin makes to it SHALL
-NOT reach the deployment Core then serves. Without `decision.body` the plugin SHALL receive an empty body and no body
-tree.
+the parsed request as its body tree. The tree SHALL be the plugin's own copy: a change the plugin makes to it SHALL NOT
+reach the deployment Core then serves. Without `decision.body` the plugin SHALL receive an empty body and no body tree.
 
 #### Scenario: Body and tree
 - **WHEN** the router declares `decision: {"body": true}` and the client sends
@@ -838,8 +836,8 @@ request carries no key, so calls made while answering it SHALL be answered `401`
 ### Requirement: Decide request of an in-process call
 When the request a decision router decides is served in process with a body tree and no bytes, as an origin
 plugin's call or as the target pass of an alias call (deployment-aliases), the decision SHALL use that tree as it was
-before the first candidate: with `decision.body: true` every decide request body, the re-decide included, SHALL be
-JSON equal to it, and each fallback candidate SHALL be served from it, without an earlier candidate's changes.
+before the first candidate. Each fallback candidate SHALL be served from it, without an earlier candidate's changes.
+With `decision.body: true`, every decide request body, the re-decide included, SHALL be JSON equal to it.
 
 #### Scenario: Plugin calls a decision router that wants the body
 - **WHEN** application `app` is served by plugin `p2`, a client sends a chat completion to `app` with

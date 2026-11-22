@@ -61,8 +61,9 @@ copy is too cheap to show in the samples.
 
 - Memory: the decision holds the copied objects and arrays for the life of the request, where today it held the
   serialized bytes. The copy shares the strings, so it is smaller than the bytes for a prompt-heavy body.
-- A tree that holds a mutable value node (a `POJONode`) would share it between candidates. A parsed request never
-  holds one.
+- A mutable value node (a `POJONode`, or a `BinaryNode` and its byte array) is shared between the copies. A parsed
+  request never holds one. An origin plugin's call tree is built by the plugin and may hold one, but no Core chain
+  function changes such a value in place.
 
 ## Migration Plan
 
@@ -78,7 +79,8 @@ None.
 - `RouterDecision.java` - the `clientTree` field.
 - `ProxyContext.java:getCallTree`, `ProxyContext.java:setCallTree` - the call tree is visible while no request body
   is set.
-- `ProxyUtil.java:parseRequestBody` - takes the call tree in place of parsing.
+- `ProxyUtil.java:parseRequestBody` - takes the call tree in place of parsing, and keeps the first parse's body
+  timestamp, so a fallback candidate's parse of a copy is not a second read (as for saved bytes).
 - `MessagesBaseController.java:reenterWithCandidate`, `ChatCompletionsController.java:reenterWithCandidate`,
   `ResponsesController.java:reenterWithCandidate` - unchanged; their parse takes the copy.
 - `DeploymentPostController.java:readRequestBody` - unchanged: deployments-POST still serializes the call tree for a

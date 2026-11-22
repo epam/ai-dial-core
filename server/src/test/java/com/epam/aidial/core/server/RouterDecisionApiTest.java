@@ -1103,6 +1103,8 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertEquals(0.5, new JsonObject(failed.getBody().readUtf8()).getDouble("temperature"));
         JsonObject served = new JsonObject(single(request -> "m2".equals(request.getHeader(DEPLOYMENT_ID))).getBody().readUtf8());
         assertEquals("m2", served.getString("model"));
+        assertEquals("hi", served.getJsonArray("messages").getJsonObject(0).getString("content"));
+        assertEquals(16, served.getInteger("max_tokens"));
         assertFalse(served.containsKey("temperature"));
     }
 

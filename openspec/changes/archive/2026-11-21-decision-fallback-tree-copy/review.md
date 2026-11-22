@@ -4,7 +4,8 @@
 
 Without `decision.body`, a decision router reached by an in-process call (an origin plugin's call, or the target pass
 of an alias call such as a tier alias) no longer serializes the request tree. It keeps a copy of the tree taken before
-the first candidate, and each fallback candidate starts from a fresh copy as its call tree. With `decision.body` the
+the first candidate, and each fallback candidate starts from a fresh copy as its call tree; its parse keeps the first
+parse's body timestamp, as a re-parse of saved bytes does. With `decision.body` the
 serialization stays as before. What the router, the candidates' origins and the analytics rows receive is unchanged.
 No docs change: no setting or API changed. Measured (task 1.5): `RouterDecisionFlow.prepare` 7.79 → 0.12 ms of Core
 CPU per user request through a tier alias (2,000 users, 650 KB mean body, same nodes, JFR).

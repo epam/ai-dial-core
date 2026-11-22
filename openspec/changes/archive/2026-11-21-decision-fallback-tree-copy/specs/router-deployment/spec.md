@@ -3,8 +3,8 @@
 ### Requirement: Decide request of an in-process call
 When the request a decision router decides is served in process with a body tree and no bytes, as an origin
 plugin's call or as the target pass of an alias call (deployment-aliases), the decision SHALL use that tree as it was
-before the first candidate: with `decision.body: true` every decide request body, the re-decide included, SHALL be
-JSON equal to it, and each fallback candidate SHALL be served from it, without an earlier candidate's changes.
+before the first candidate. Each fallback candidate SHALL be served from it, without an earlier candidate's changes.
+With `decision.body: true`, every decide request body, the re-decide included, SHALL be JSON equal to it.
 
 #### Scenario: Plugin calls a decision router that wants the body
 - **WHEN** application `app` is served by plugin `p2`, a client sends a chat completion to `app` with
@@ -38,3 +38,22 @@ JSON equal to it, and each fallback candidate SHALL be served from it, without a
   Messages and answers `503`, and a caller sends a Messages request to the alias
 - **THEN** `m-defaults` receives `temperature: 0.5`, and `m2` receives the caller's request with `model` set to `m2`
   and no `temperature`
+
+### Requirement: Body of an embedded decide request
+With `decision.body: true`, the plugin SHALL receive the client's request bytes unchanged as the decide request's body
+(for an in-process call, a body JSON equal to the call's tree, as "Decide request of an in-process call" states), and
+the parsed request as its body tree. The tree SHALL be the plugin's own copy: a change the plugin makes to it SHALL NOT
+reach the deployment Core then serves. Without `decision.body` the plugin SHALL receive an empty body and no body tree.
+
+#### Scenario: Body and tree
+- **WHEN** the router declares `decision: {"body": true}` and the client sends
+  `{"model":"r1","messages":[{"role":"user","content":"hi"}]}`
+- **THEN** `p1` receives that body byte for byte and a body tree whose `messages[0].content` is `hi`
+
+#### Scenario: Plugin changes its tree
+- **WHEN** `p1` removes `messages` from its body tree and answers `{"candidates": ["m1"]}`
+- **THEN** `m1` receives the client's `messages`
+
+#### Scenario: No body without the setting
+- **WHEN** the router declares no `decision.body`
+- **THEN** `p1` receives an empty body and no body tree
