@@ -74,9 +74,9 @@ public class BuildUpstreamCacheFnTest {
 
         new BuildUpstreamCacheFn(proxy, context, InterfaceType.ANTHROPIC_MESSAGES).apply(request);
 
-        verify(proxy.getUpstreamCacheService(), mode.servesCompletion() ? times(1) : never())
+        verify(proxy.getUpstreamCacheService(), mode == InterfaceMode.PASSTHROUGH ? times(1) : never())
                 .buildCacheBreakpointContext(eq(request), any(), eq(model), eq(InterfaceType.ANTHROPIC_MESSAGES), any());
-        verify(context, mode.servesCompletion() ? times(1) : never()).setCacheBreakpointContext(any());
+        verify(context, mode == InterfaceMode.PASSTHROUGH ? times(1) : never()).setCacheBreakpointContext(any());
     }
 
     @Test
