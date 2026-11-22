@@ -193,13 +193,13 @@ entity that does not survive validation.
 | config.reload                            |       60000        |    No    | Config reload interval in milliseconds.                                                                                                                                                                                                                                                                                           |
 | config.jsonMergeStrategy.overwriteArrays |       false        |    No    | Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.                                                                                                                                                                                             |
 | config.onInvalidEntity                   |       abort        |    No    | What an entity that fails validation does to the merged config: see **Invalid entities** below.                                |
-| config.write.softValidation              |       false        |    No    | If `true`, a Configuration API write whose entity has only cross-reference warnings (e.g. a model naming an interceptor that does not exist yet) is accepted instead of rejected with `422`; the entity then surfaces as invalid on the next rebuild. Invalid `overridePaths` stay fatal in both modes.                            |
+| config.write.softValidation              |       false        |    No    | If `true`, a Configuration API write whose entity has only cross-reference warnings (e.g. a model naming an interceptor that does not exist yet) is accepted instead of rejected with `422`. Under `skip` it is recorded as invalid at once; under `abort` it is accepted as valid and fails at request time. Invalid `overridePaths` stay fatal in both modes.                            |
 
 **Invalid entities**
 
-A model, application, interceptor, translator, role, route, key or toolset that violates a runtime invariant —
-an interface that resolves to no provider url, a reference to an interceptor that does not exist, a duplicate
-deployment id — is an *invalid entity*. `config.onInvalidEntity` decides what that costs:
+A model, application, interceptor, translator, role, route, key, toolset, router, alias, plugin or policy that violates
+a runtime invariant — an interface that resolves to no provider url, a duplicate deployment id — is an *invalid
+entity*. A dropped budget policy leaves its cost object without a budget. `config.onInvalidEntity` decides what that costs:
 
 | Mode            | Startup (initial merge)                  | Every rebuild and Configuration API write after it                                            |
 |-----------------|------------------------------------------|-----------------------------------------------------------------------------------------------|
@@ -213,9 +213,10 @@ validation warnings by the admin `GET` for that entity, and counted by the `dial
 gauge and `dial_config_skip_events_total` counter. Fixing the entity clears it on the next rebuild.
 
 `skipOnStartup` trades a failed start for a stalled reload: while the offending entity is still there,
-every later rebuild aborts, so the pod keeps serving the config it booted with and stops picking up config
-changes made elsewhere (the file poll, another pod's write) until the entity is fixed or removed. Writes
-made through the Configuration API on this pod still apply, since they update the merged config in place.
+every later full rebuild aborts and logs a warning each `config.reload`, so the pod keeps serving the config it
+booted with and misses what only a full rebuild applies: file edits, direct storage writes, `POST /v1/ops/config/reload`
+(answered `500`) and a system import, until the entity is fixed or removed. Single-entity Configuration API writes,
+on this pod or another, still apply, since they update the merged config in place.
 The invalid entity is listed by the health endpoint the whole time.
 
 An entity whose blob body is not valid JSON is always skipped per-entity, in every mode. Entities defined in

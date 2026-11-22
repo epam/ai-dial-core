@@ -278,6 +278,9 @@ public final class MergedConfigStore implements ConfigStore {
         if (MODE_SKIP_ON_STARTUP.equalsIgnoreCase(mode)) {
             return MODE_SKIP_ON_STARTUP;
         }
+        if (mode != null && !MODE_ABORT.equalsIgnoreCase(mode)) {
+            log.warn("Unknown config.onInvalidEntity '{}', using {}", mode, MODE_ABORT);
+        }
         return MODE_ABORT;
     }
 
