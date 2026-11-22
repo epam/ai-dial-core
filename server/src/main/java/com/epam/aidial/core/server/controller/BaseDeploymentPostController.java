@@ -574,7 +574,8 @@ public class BaseDeploymentPostController {
         if (!context.getResponse().closed()) {
             return false;
         }
-        log.info("Client closed the connection before the upstream call. Deployment: {}", context.getDeployment().getName());
+        // debug: respond() logs the 499 too, and a storm of gone clients is when log volume hurts
+        log.debug("Client closed the connection before the upstream call. Deployment: {}", context.getDeployment().getName());
         respond(HttpStatus.CLIENT_CLOSED_REQUEST);
         return true;
     }
