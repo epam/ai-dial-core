@@ -9,6 +9,8 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
+import com.epam.aidial.core.server.proxy.ProxyClient;
+import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -17,9 +19,9 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +31,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,6 +42,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -60,6 +64,7 @@ public class ChatCompletionInterceptorControllerTest {
         lenient().when(context.getConfig()).thenReturn(new Config());
         // every upstream call first checks that the client is still connected
         lenient().when(context.getResponse()).thenReturn(mock(HttpServerResponse.class));
+        lenient().when(proxy.getProxyClient()).thenAnswer(invocation -> new ProxyClient(proxy.getClient(), null, null));
     }
 
     @Test
@@ -275,7 +280,7 @@ public class ChatCompletionInterceptorControllerTest {
 
     @Test
     void handleProxyResponseError_answersBadGateway() {
-        HttpClientRequest proxyRequest = mock(HttpClientRequest.class, Answers.RETURNS_DEEP_STUBS);
+        ProxyRequest proxyRequest = mock(ProxyRequest.class, Answers.RETURNS_DEEP_STUBS);
         when(context.getProxyRequest()).thenReturn(proxyRequest);
         when(context.getProxyApiKeyData()).thenReturn(null);
         when(context.respond(eq(HttpStatus.BAD_GATEWAY), any(ErrorData.class)))
@@ -308,5 +313,29 @@ public class ChatCompletionInterceptorControllerTest {
 
         verify(context).respond(eq(HttpStatus.BAD_GATEWAY), any(ErrorData.class));
         verify(context, never()).setProxyRequest(any());
+    }
+
+    @Test
+    void handle_bodyReadFailure_respondsUnprocessableEntity() {
+        Interceptor interceptor = new Interceptor();
+        interceptor.setName("interceptor1");
+        Config config = new Config();
+        config.setInterceptors(Map.of("interceptor1", interceptor));
+
+        when(context.getConfig()).thenReturn(config);
+        when(context.getInterceptors()).thenReturn(List.of("interceptor1"));
+        when(context.getDeployment()).thenReturn(interceptor);
+        when(context.getRequest()).thenReturn(request);
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(request.headers()).thenReturn(new HeadersMultiMap());
+        when(request.body()).thenReturn(Future.failedFuture(new RuntimeException("connection reset")));
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+
+        new ChatCompletionInterceptorController(proxy, context, 0, InterfaceType.OPENAI_CHAT_COMPLETIONS).handle();
+
+        verify(request, times(1)).body();
+        verify(context).respond(HttpStatus.UNPROCESSABLE_ENTITY, "Failed to receive body");
+        verify(context, never()).setRequestBodyWithTimestamp(any());
+        verify(proxy, never()).getTaskExecutor();
     }
 }

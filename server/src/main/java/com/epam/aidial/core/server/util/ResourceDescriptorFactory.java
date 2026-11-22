@@ -69,10 +69,14 @@ public class ResourceDescriptorFactory {
         );
 
         ResourceDescriptor resource = from(type, bucketName, bucketLocation, elements, ResourceUtil.isFolder(relativePath));
-        verify(resource.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8).length <= MAX_PATH_SIZE,
-                "Resource path exceeds max allowed size: " + MAX_PATH_SIZE);
+        verifyPathSize(resource);
 
         return resource;
+    }
+
+    public static void verifyPathSize(ResourceDescriptor resource) {
+        verify(resource.getAbsoluteFilePath().getBytes(StandardCharsets.UTF_8).length <= MAX_PATH_SIZE,
+                "Resource path exceeds max allowed size: " + MAX_PATH_SIZE);
     }
 
     /**
@@ -190,8 +194,9 @@ public class ResourceDescriptorFactory {
         return new ResourceDescriptor(type, name, parentFolders, bucketName, bucketLocation, isFolder);
     }
 
-    private static boolean isValidFilename(String value) {
-        if (value == null || value.isEmpty()) {
+    public static boolean isValidFilename(String value) {
+        // a dot segment names another folder to storage than to anything that reads the path, an org unit's owner included
+        if (value == null || value.isEmpty() || value.equals(".") || value.equals("..")) {
             return false;
         }
         for (int i = 0; i < value.length(); i++) {

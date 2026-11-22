@@ -1,8 +1,12 @@
 package com.epam.aidial.core.server.data;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import lombok.Data;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -26,4 +30,14 @@ public class UserLimitStats {
     private CostItemLimitStats dayCostStats;
     private CostItemLimitStats weekCostStats;
     private CostItemLimitStats monthCostStats;
+    @JsonPropertyDescription("The cost object whose budgets the caller's model calls are charged to: only the `budgets` entries"
+            + " with this `costObject` can be charged. Absent when spending limits are off or the caller is an API key.")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String costObject;
+    /**
+     * Every budget that applies to the caller, in each cost object where they have a matching assignment, the
+     * default cost object included, by cost object and then by policy priority. Empty when spending limits are off or the caller is an API key.
+     * Only the entries of {@link #costObject} are charged for the caller's model calls.
+     */
+    private List<BudgetStats> budgets = new ArrayList<>();
 }

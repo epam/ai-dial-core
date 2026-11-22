@@ -9,7 +9,6 @@ import lombok.experimental.UtilityClass;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Pattern;
 
 @UtilityClass
@@ -20,19 +19,29 @@ public class RuleMatcher {
      * @return true if any of the provided rule matched (OR condition behaviour), otherwise - false
      */
     public boolean match(ProxyContext context, Collection<Rule> rules) {
+        ExtractedClaims claims = context.getExtractedClaims();
+        if (claims == null) {
+            return match(context.getUserRoles(), null, null, rules);
+        }
+        return match(context.getUserRoles(), claims.userEmail(), claims.userClaims(), rules);
+    }
+
+    /**
+     * Same as {@link #match(ProxyContext, Collection)}, for callers that hold the roles and claims themselves.
+     */
+    public boolean match(List<String> userRoles, String userEmail, JsonNode userClaims, Collection<Rule> rules) {
         // if no rules provided - resource is available to everybody
         if (rules.isEmpty()) {
             return true;
         }
 
-        JsonNode userClaims = Optional.ofNullable(context.getExtractedClaims())
-                .map(ExtractedClaims::userClaims).orElse(null);
-
         for (Rule rule : rules) {
             String claim = rule.getSource();
             List<String> sources;
             if (claim.equals("roles")) {
-                sources = context.getUserRoles();
+                sources = userRoles;
+            } else if (claim.equals("email")) {
+                sources = userEmail == null ? null : List.of(userEmail);
             } else {
                 sources = userClaims == null ? null : extract(userClaims, claim);
             }

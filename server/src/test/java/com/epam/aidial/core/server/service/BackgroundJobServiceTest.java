@@ -1,17 +1,23 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ResponseMapping;
+import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
+import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -51,9 +57,12 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -135,7 +144,7 @@ class BackgroundJobServiceTest {
                 .build();
         redisServer.start();
         ConfigSupport configSupport = new ConfigSupport();
-        org.redisson.config.Config redisClientConfig = configSupport.fromJSON(
+        org.redisson.config.Config redisClientConfig = configSupport.fromYAML(
                 "{\"singleServerConfig\":{\"address\":\"redis://localhost:16370\"}}",
                 org.redisson.config.Config.class);
         redissonClient = Redisson.create(redisClientConfig);
@@ -163,15 +172,22 @@ class BackgroundJobServiceTest {
         BackgroundJobService.Settings settings = buildTestSettings(10);
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
+        BackgroundOperationTracer backgroundTracer = mock(BackgroundOperationTracer.class);
+        lenient().when(backgroundTracer.traceFuture(any())).thenAnswer(inv -> {
+            Supplier<Future<?>> supplier = inv.getArgument(0);
+            return supplier.get();
+        });
         service = spy(new BackgroundJobService(vertx, redissonClient, PREFIX,
                 responseMappingService, resourceService, taskExecutor,
                 configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                httpClient, logStore, encryptionService, settings));
+                httpClient, logStore, encryptionService, settings, backgroundTracer));
         service.init();
 
         lenient().when(proxyContext.getProxyApiKeyData().getPerRequestKey()).thenReturn("test-per-request-key");
         lenient().when(proxyContext.getRequest().version()).thenReturn(HttpVersion.HTTP_1_1);
         lenient().when(proxyContext.getRequest().method()).thenReturn(HttpMethod.POST);
+        // a deep stub would answer a mock decision: these jobs are not decided
+        lenient().when(proxyContext.getDecision()).thenReturn(null);
         lenient().when(proxyContext.getRequest().uri()).thenReturn("/v1/responses");
         lenient().when(proxyContext.getRequestBody()).thenReturn(Buffer.buffer("{}"));
         // a real claims node: the deep-stub default is an ObjectNode mock, which serializes the record into broken JSON
@@ -182,14 +198,14 @@ class BackgroundJobServiceTest {
         poller = new BackgroundJobService(null, null, null,
                 null, null, null,
                 configStore, null, null, null,
-                httpClient, null, encryptionService, new BackgroundJobService.Settings());
+                httpClient, null, encryptionService, new BackgroundJobService.Settings(), backgroundTracer);
         poller.setLocalBaseUrl("http://localhost");
     }
 
     @Test
     void isJobActiveReturnsTrueWhenRecordExists(VertxTestContext ctx) throws Throwable {
         service.saveJob(JOB_ID, proxyContext)
-                .compose(ignored -> service.isJobActive(JOB_ID))
+                .map(ignored -> service.isJobActive(JOB_ID))
                 .onSuccess(active -> ctx.verify(() -> {
                     assertTrue(active);
                     ctx.completeNow();
@@ -199,26 +215,19 @@ class BackgroundJobServiceTest {
     }
 
     @Test
-    void isJobActiveReturnsFalseWhenNoRecord(VertxTestContext ctx) throws Throwable {
-        service.isJobActive(JOB_ID)
-                .onSuccess(active -> ctx.verify(() -> {
-                    assertFalse(active);
-                    ctx.completeNow();
-                }))
-                .onFailure(ctx::failNow);
-        await(ctx);
+    void isJobActiveReturnsFalseWhenNoRecord() {
+        assertFalse(service.isJobActive(JOB_ID));
     }
 
     @Test
     void deleteJobDeletesRecord(VertxTestContext ctx) throws Throwable {
         service.saveJob(JOB_ID, proxyContext)
                 .compose(ignored -> service.deleteJob(JOB_ID))
-                .compose(deleted -> service.isJobActive(JOB_ID)
-                        .onSuccess(active -> ctx.verify(() -> {
-                            assertTrue(deleted, "finishStreamingJob should return true when record existed");
-                            assertFalse(active, "job should no longer be active after cancellation");
-                            ctx.completeNow();
-                        })))
+                .onSuccess(deleted -> ctx.verify(() -> {
+                    assertTrue(deleted, "finishStreamingJob should return true when record existed");
+                    assertFalse(service.isJobActive(JOB_ID), "job should no longer be active after cancellation");
+                    ctx.completeNow();
+                }))
                 .onFailure(ctx::failNow);
         await(ctx);
     }
@@ -359,7 +368,8 @@ class BackgroundJobServiceTest {
         List<TokenStatsTracker.AggregatedCost> aggregatedCosts = List.of(
                 new TokenStatsTracker.AggregatedCost("inner-app", new BigDecimal("0.40")),
                 new TokenStatsTracker.AggregatedCost("router-app", new BigDecimal("0.40")));
-        when(tokenStatsTracker.updateDeploymentStats(eq("trace-id"), eq("span-id"), eq(DEPLOYMENT_NAME), any()))
+        // the mocked context is not an original request, so the job is a child's and its root may have ended
+        when(tokenStatsTracker.updateDeploymentStats(eq("trace-id"), eq("span-id"), eq(DEPLOYMENT_NAME), any(), eq(true)))
                 .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), List.of(), aggregatedCosts)));
         when(rateLimiter.recordAggregatedCost(any(), any(), any())).thenReturn(Future.succeededFuture());
         when(apiKeyStore.invalidatePerRequestApiKey(any()))
@@ -379,6 +389,43 @@ class BackgroundJobServiceTest {
         await(ctx);
         verify(rateLimiter).recordAggregatedCost(eq("inner-app"), eq(mapping.getInitiatorBucket()), eq(new BigDecimal("0.40")));
         verify(rateLimiter).recordAggregatedCost(eq("router-app"), eq(mapping.getInitiatorBucket()), eq(new BigDecimal("0.40")));
+    }
+
+    @Test
+    void decidedJobWithoutUsageLeavesTheSpanRollUpToTheRouterRow(VertxTestContext ctx) throws Throwable {
+        Router router = new Router();
+        router.setName("r1");
+        RouterDecision decision = new RouterDecision(router, InterfaceType.OPENAI_RESPONSES, List.of(DEPLOYMENT_NAME), 1);
+        decision.setHop(new RouterDecision.Hop("hop-span", null, null, List.of("r1")));
+        when(proxyContext.getDecision()).thenReturn(decision);
+        when(configStore.get()).thenReturn(mock(Config.class));
+        ApiKeyData key = new ApiKeyData();
+        key.setTraceId("trace-id");
+        key.setSpanId("span-id");
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.succeededFuture(key));
+        List<UsagePerModel> rollUp = List.of(new UsagePerModel(0, "gpt-4", new TokenUsage()));
+        when(tokenStatsTracker.getUsageStats("trace-id", "span-id"))
+                .thenReturn(Future.succeededFuture(new TokenStatsTracker.UsageStats(new TokenUsage(), rollUp, List.of())));
+        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(true));
+        List<AnalyticsLogContext> rows = new CopyOnWriteArrayList<>();
+        doAnswer(inv -> {
+            rows.add(inv.getArgument(0));
+            if (rows.size() == 2) {
+                ctx.completeNow();
+            }
+            return null;
+        }).when(logStore).save(any());
+
+        service.saveJob(JOB_ID, proxyContext)
+                .compose(ignored -> service.tryComplete(
+                        JOB_ID, buildMapping(), new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null)))
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        AnalyticsLogContext serving = rows.stream().filter(row -> !"r1".equals(row.getDeploymentName())).findFirst().orElseThrow();
+        AnalyticsLogContext routerRow = rows.stream().filter(row -> "r1".equals(row.getDeploymentName())).findFirst().orElseThrow();
+        assertTrue(serving.getUsagePerModel().isEmpty(), "the job reported no usage of its own");
+        assertEquals(rollUp, routerRow.getUsagePerModel());
     }
 
     @Test
@@ -626,10 +673,15 @@ class BackgroundJobServiceTest {
         BackgroundJobService.Settings settings = buildTestSettings(maxFailures);
         AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx,
                 new JsonObject().put("useVirtualThreads", false));
+        BackgroundOperationTracer backgroundTracer = mock(BackgroundOperationTracer.class);
+        lenient().when(backgroundTracer.traceFuture(any())).thenAnswer(inv -> {
+            Supplier<Future<?>> supplier = inv.getArgument(0);
+            return supplier.get();
+        });
         BackgroundJobService svc = spy(new BackgroundJobService(vertx, redissonClient, PREFIX,
                 responseMappingService, resourceService, taskExecutor,
                 configStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                httpClient, logStore, encryptionService, settings));
+                httpClient, logStore, encryptionService, settings, backgroundTracer));
         return new ServiceBundle(svc);
     }
 

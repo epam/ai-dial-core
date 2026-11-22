@@ -14,6 +14,7 @@ import redis.embedded.RedisServer;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -147,5 +148,30 @@ class ResourceTopicSubscribeAllTest {
             Thread.sleep(10);
         }
         Assertions.assertEquals(target, counter.get());
+    }
+
+    @Test
+    void complexResourceSubscriberReceivesFileEventsOfItsResourceOnly() throws InterruptedException {
+        ResourceTopic topic = new ResourceTopic(client, "resource:test:subscribe:complex-files");
+        ResourceDescriptor skill = new ResourceDescriptor(
+                ResourceTypes.SKILL, "my-skill", List.of("folder"), "bucket", "bucket/", false);
+
+        List<String> received = new CopyOnWriteArrayList<>();
+        CountDownLatch latch = new CountDownLatch(2);
+        try (ResourceTopic.Subscription ignored = topic.subscribe(List.of(skill), event -> {
+            received.add(event.getUrl());
+            latch.countDown();
+        })) {
+            for (String url : List.of(
+                    "skills/bucket/folder/other-skill/files/a.md",
+                    "skills/bucket/folder/my-skill/files/dir/files/a.md",
+                    "skills/bucket/folder/my-skill")) {
+                topic.publish(new ResourceEvent().setUrl(url).setAction(ResourceEvent.Action.UPDATE).setTimestamp(1L));
+            }
+
+            Assertions.assertTrue(latch.await(5, TimeUnit.SECONDS));
+            Assertions.assertEquals(
+                    List.of("skills/bucket/folder/my-skill/files/dir/files/a.md", "skills/bucket/folder/my-skill"), received);
+        }
     }
 }
