@@ -3920,7 +3920,11 @@ paths:
                     dial:applicationTypePlaybackSupport:
                       type: boolean
                     dial:applicationTypeBucketCopy:
-                      type: boolean
+                      type: string
+                      enum:
+                      - ENABLED
+                      - DISABLED
+                      default: DISABLED
                     dial:applicationTypeSchemaEndpoint:
                       type: string
                       description: URL to retrieve JSON schema of the application.
@@ -17590,6 +17594,7 @@ components:
       - model
       - application
       - toolset
+      - router
     AliasTarget:
       type: object
       properties:
@@ -20183,12 +20188,6 @@ components:
         with:
           type: string
     LocalizedValue:
-      type: object
-      properties:
-        localeMap:
-          $ref: "#/components/schemas/MapStringString"
-        plainValue:
-          type: string
       oneOf:
       - type: string
       - $ref: "#/components/schemas/MapStringString"
@@ -20681,7 +20680,8 @@ components:
       description: Whether to enable parallel `function` calling during the `tool` use.
       default: true
     Pattern:
-      type: object
+      type: string
+      format: regex
     PerRequestReceiver:
       type: object
       properties:
@@ -20808,28 +20808,44 @@ components:
       type: object
       properties:
         completion:
-          $ref: "#/components/schemas/PricingRate"
+          oneOf:
+          - type: string
+          - $ref: "#/components/schemas/PricingRate"
         prompt:
-          $ref: "#/components/schemas/PricingRate"
+          oneOf:
+          - type: string
+          - $ref: "#/components/schemas/PricingRate"
         unit:
           type: string
         cacheRead:
-          $ref: "#/components/schemas/PricingRate"
+          oneOf:
+          - type: string
+          - $ref: "#/components/schemas/PricingRate"
         cacheWrite:
-          $ref: "#/components/schemas/PricingRate"
+          oneOf:
+          - type: string
+          - $ref: "#/components/schemas/PricingRate"
     PricingData:
       type: object
       properties:
         completion:
-          $ref: "#/components/schemas/PricingRate"
+          oneOf:
+          - type: string
+          - $ref: "#/components/schemas/PricingRate"
         prompt:
-          $ref: "#/components/schemas/PricingRate"
+          oneOf:
+          - type: string
+          - $ref: "#/components/schemas/PricingRate"
         unit:
           type: string
         cache_read:
-          $ref: "#/components/schemas/PricingRate"
+          oneOf:
+          - type: string
+          - $ref: "#/components/schemas/PricingRate"
         cache_write:
-          $ref: "#/components/schemas/PricingRate"
+          oneOf:
+          - type: string
+          - $ref: "#/components/schemas/PricingRate"
     PricingRate:
       type: object
       properties:
@@ -21537,6 +21553,8 @@ components:
           $ref: "#/components/schemas/RouterDecision"
         mode:
           $ref: "#/components/schemas/RouterMode"
+        editorUrl:
+          type: string
     RouterData:
       type: object
       properties:

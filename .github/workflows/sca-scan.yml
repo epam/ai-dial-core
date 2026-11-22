@@ -27,10 +27,9 @@ permissions:
 
 jobs:
   sca:
-    uses: epam/ai-dial-ci/.github/workflows/sca_scheduled.yml@5.0.0
+    uses: epam/ai-dial-ci/.github/workflows/sca_scheduled.yml@5.1.0
     with:
       images: |
         ${{ github.repository }}
-      java-version: "21"
       scan-tag: ${{ inputs.scan-tag }}
       force-image-scan: ${{ inputs.force-image-scan || false }}

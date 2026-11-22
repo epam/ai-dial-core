@@ -11,28 +11,30 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Who a role assignment's subject is. Signed-in users hold roles in a unit. An application acting for a user reads
- * through that user's roles, and an API key reads through a subject on {@code roles} its configured roles match; neither
- * writes, approves or manages roles through them.
+ * Who a role assignment's subject is. Signed-in users and API keys hold roles in a unit, an API key through a subject on
+ * {@code roles} its configured roles match. An application acting for a user only reads through that user's roles.
  */
 public final class OrgUnitSubjects {
 
     private OrgUnitSubjects() {
     }
 
-    public static boolean isPerson(ProxyContext context) {
-        return context.getExtractedClaims() != null && context.getApiKeyData().getPerRequestKey() == null;
+    /**
+     * Not an application, as for {@code AccessService.hasAdminAccess}.
+     */
+    public static boolean isRoleHolder(ProxyContext context) {
+        return context.isOriginalRequest();
     }
 
     /**
-     * The role names of the assignments whose subject is the caller; none for a caller who is not a person.
+     * The role names of the assignments whose subject is the caller; none for an application.
      */
     public static Set<String> heldRoles(ProxyContext context, List<RoleAssignment> assignments) {
-        return isPerson(context) ? matching(context, assignments) : new HashSet<>();
+        return isRoleHolder(context) ? matching(context, assignments) : new HashSet<>();
     }
 
     /**
-     * The role names of the assignments whose subject is the caller, a person or not: what the caller reads through.
+     * The role names of the assignments whose subject is the caller, an application included: what the caller reads through.
      */
     public static Set<String> rolesToReadWith(ProxyContext context, List<RoleAssignment> assignments) {
         return matching(context, assignments);

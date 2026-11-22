@@ -7,8 +7,13 @@ import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.service.BackgroundJobService;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
@@ -19,12 +24,15 @@ import org.redisson.api.RedissonClient;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -66,6 +74,11 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     private static final String QUEUED = "{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"queued\",\"output\":[]}";
     private static final String COMPLETED = "{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\",\"output\":[],"
             + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
+    private static final String MESSAGES_STREAM = "event: message_start\n"
+            + "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\","
+            + "\"model\":\"claude-real\",\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"
+            + "event: message_stop\n"
+            + "data: {\"type\":\"message_stop\"}\n\n";
     private static final String DEPLOYMENT_ID = "X-DIAL-DEPLOYMENT-ID";
 
     private final List<RecordedRequest> received = new CopyOnWriteArrayList<>();
@@ -453,13 +466,8 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     @DialConfigLocation(CONFIG)
     void streamedMessagesAnswerNamesTheRouter() {
         verdict.set("{\"candidates\": [\"claude\"]}");
-        String stream = "event: message_start\n"
-                + "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\","
-                + "\"model\":\"claude-real\",\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"
-                + "event: message_stop\n"
-                + "data: {\"type\":\"message_stop\"}\n\n";
         Response response;
-        try (TestWebServer server = upstreamAnswering(stream, "text/event-stream")) {
+        try (TestWebServer server = upstreamAnswering(MESSAGES_STREAM, "text/event-stream")) {
             response = send(HttpMethod.POST, "/anthropic/v1/messages", null,
                     "{\"model\":\"r1\",\"stream\":true,\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
                     "content-type", "application/json");
@@ -562,6 +570,323 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertEquals(200, response.statusCode());
         assertTrue(response.body().contains("\"model\":\"r1\""), response.body());
         assertFalse(response.body().contains("m-int-real"), response.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void decisionThroughAnAlias() {
+        try (TestWebServer server = server()) {
+            Response response = sendChat("strong");
+            verify(response, 200);
+            assertEquals("hi", new JsonObject(response.body()).getJsonArray("choices").getJsonObject(0)
+                    .getJsonObject("message").getString("content"));
+            // the alias lends the router; the caller may not call it directly
+            verify(sendChat("r-tier"), 403);
+        }
+        assertEquals(1, received.stream().filter(this::isDecide).count());
+        assertEquals("/openai/deployments/gpt-4-real/chat/completions", single(request -> !isDecide(request)).getPath());
+    }
+
+    // router-deployment "Decide request of an in-process call", scenario "Alias over a decision router that wants the body"
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void aliasOverDecisionRouterThatWantsTheBody() {
+        verdict.set("{\"candidates\": [\"m1\"]}");
+        try (TestWebServer server = server()) {
+            verify(sendChat("body-tier"), 200);
+        }
+        RecordedRequest decide = single(this::isDecide);
+        assertEquals("/body/decide", decide.getPath());
+        assertTrue(decide.getBody().readUtf8().contains("\"messages\""));
+        single(request -> request.getPath().equals("/openai/deployments/m1/chat/completions"));
+    }
+
+    // alias-in-process-hop design D8: the client leaves before an alias candidate's target answers; the router row is
+    // still written ("Decision record"), as when the hop went over HTTP
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void clientGoneBeforeAliasCandidateAnswersKeepsTheRouterRow() {
+        verdict.set("{\"candidates\": [\"alias-m1\"]}");
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            MockResponse answer = answer(request);
+            return isDecide(request) ? answer : answer.setHeadersDelay(2, TimeUnit.SECONDS);
+        })) {
+            byte[] body = CHAT_BODY.getBytes(StandardCharsets.UTF_8);
+            try (Socket socket = new Socket("localhost", serverPort)) {
+                OutputStream out = socket.getOutputStream();
+                out.write(("POST /openai/deployments/r1/chat/completions HTTP/1.1\r\nHost: localhost\r\napi-key: proxyKey1\r\n"
+                        + "content-type: application/json\r\ncontent-length: " + body.length + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                out.write(body);
+                out.flush();
+                awaitCondition(() -> received.stream().anyMatch(request -> request.getPath().equals("/openai/deployments/m1/chat/completions")));
+            }
+            awaitCondition(() -> analyticsRows.stream().anyMatch(row -> row.getDecision() != null));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void chosenDeploymentTheCallerMayNotCallThroughAnAlias() {
+        verdict.set("{\"candidates\": [\"private-model\"]}");
+        try (TestWebServer server = server()) {
+            verify(sendChat("strong"), 403);
+        }
+        // skipped as forbidden and the router asked again until no decision is left, as on a direct call
+        assertEquals(3, received.size());
+        assertTrue(received.stream().allMatch(this::isDecide));
+        assertTrue(received.stream().skip(1)
+                .allMatch(decide -> decide.getHeader("X-DIAL-ROUTER-ATTEMPTS").contains("\"reason\":\"forbidden\"")));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void messagesThroughAnAlias() {
+        verdict.set("{\"candidates\": [\"claude\"]}");
+        try (TestWebServer server = server()) {
+            verify(sendMessages("strong"), 200);
+        }
+        RecordedRequest model = single(request -> !isDecide(request));
+        assertEquals("/anthropic/v1/messages", model.getPath());
+        assertEquals("claude", model.getHeader(DEPLOYMENT_ID));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void aliasOverRouterIsNotCandidate() {
+        verdict.set("{\"candidates\": [\"strong\"]}");
+        try (TestWebServer server = server()) {
+            verify(sendChat("r1"), 502);
+        }
+        assertTrue(received.stream().allMatch(this::isDecide));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void aliasOverRouterListedAsModel() {
+        Response models = send(HttpMethod.GET, "/openai/models", null, "");
+        verify(models, 200);
+        JsonObject strong = new JsonObject(models.body()).getJsonArray("data").stream().map(JsonObject.class::cast)
+                .filter(entry -> "strong".equals(entry.getString("id"))).findFirst().orElseThrow(() -> new AssertionError(models.body()));
+        assertEquals("model", strong.getString("object"));
+        assertFalse(models.body().contains("\"r-tier\""), models.body());
+
+        Response anthropic = send(HttpMethod.GET, "/anthropic/v1/models", null, "");
+        verify(anthropic, 200);
+        assertTrue(anthropic.body().contains("\"strong\""), anthropic.body());
+        assertFalse(anthropic.body().contains("\"r-tier\""), anthropic.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void bufferedAnswerThroughAnAliasNamesTheAlias() throws Exception {
+        Response response;
+        try (TestWebServer server = upstreamAnswering(MODEL_COMPLETION, "application/json")) {
+            response = sendChat("strong");
+            verify(response, 200);
+        }
+        assertEquals("strong", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void streamedAnswerThroughAnAliasNamesTheAlias() throws Exception {
+        String stream = "data: " + MODEL_COMPLETION.replace("chat.completion", "chat.completion.chunk") + "\n\n"
+                + "data: [DONE]\n\n";
+        HttpResponse<String> response;
+        try (TestWebServer server = upstreamAnswering(stream, "text/event-stream")) {
+            response = rawStream("strong");
+        }
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("\"model\":\"strong\""), response.body());
+        assertFalse(response.body().contains("r-tier"), response.body());
+        assertFalse(response.body().contains("gpt-4-real"), response.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void answerThroughAnAliasCalledByAnApplicationNamesTheAlias() throws Exception {
+        Response response;
+        try (TestWebServer server = upstreamAnswering(MODEL_COMPLETION, "application/json")) {
+            server.map(HttpMethod.POST, "/openai/deployments/app/chat/completions", request -> {
+                Response callback = send(HttpMethod.POST, "/openai/deployments/strong/chat/completions", null, CHAT_BODY,
+                        "api-key", request.getHeader("api-key"), "content-type", "application/json");
+                return TestWebServer.createResponse(callback.status(), callback.body(), "content-type", "application/json");
+            });
+            response = sendChat("app");
+            verify(response, 200);
+        }
+        assertEquals("strong", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void storedResponseThroughAnAliasReadBackNamesTheAlias() throws Exception {
+        String answer = "{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-4-real\",\"status\":\"completed\",\"output\":[],"
+                + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
+        Response created;
+        Response stored;
+        try (TestWebServer server = upstreamAnswering(answer, "application/json")) {
+            created = send(HttpMethod.POST, "/openai/v1/responses", null, "{\"model\":\"strong\",\"store\":true,\"input\":\"hi\"}",
+                    "content-type", "application/json");
+            verify(created, 200);
+            String id = ProxyUtil.MAPPER.readTree(created.body()).get("id").asText();
+            stored = send(HttpMethod.GET, "/openai/v1/responses/" + id, null, null);
+            verify(stored, 200);
+        }
+        assertEquals("strong", ProxyUtil.MAPPER.readTree(created.body()).get("model").asText());
+        assertEquals("strong", ProxyUtil.MAPPER.readTree(stored.body()).get("model").asText());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void streamedMessagesAnswerThroughAnAliasNamesTheAlias() {
+        verdict.set("{\"candidates\": [\"claude\"]}");
+        Response response;
+        try (TestWebServer server = upstreamAnswering(MESSAGES_STREAM, "text/event-stream")) {
+            response = send(HttpMethod.POST, "/anthropic/v1/messages", null,
+                    "{\"model\":\"strong\",\"stream\":true,\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                    "content-type", "application/json");
+            verify(response, 200);
+        }
+        assertTrue(response.body().contains("\"model\":\"strong\""), response.body());
+        assertFalse(response.body().contains("claude-real"), response.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void aliasHeaderReachesTheDecideRequest() {
+        try (TestWebServer server = server()) {
+            verify(sendChat("strong"), 200);
+        }
+        assertEquals(List.of("strong"), single(this::isDecide).getHeaders().values("X-DIAL-ROUTER-TIER"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void clientValueOfAnAliasHeaderKept() {
+        try (TestWebServer server = server()) {
+            verify(send(HttpMethod.POST, "/openai/deployments/strong/chat/completions", null, CHAT_BODY,
+                    "X-DIAL-ROUTER-TIER", "hi-end", "content-type", "application/json"), 200);
+        }
+        assertEquals(List.of("hi-end"), single(this::isDecide).getHeaders().values("X-DIAL-ROUTER-TIER"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void directCallUnaffectedByAliasHeaders() {
+        try (TestWebServer server = server()) {
+            verify(send(HttpMethod.POST, "/openai/deployments/r1/chat/completions", null, CHAT_BODY,
+                    "X-DIAL-ROUTER-TIER", "hi-end", "content-type", "application/json"), 200);
+        }
+        assertEquals(List.of("hi-end"), single(this::isDecide).getHeaders().values("X-DIAL-ROUTER-TIER"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerTypeAliasListedAsRouter() throws Exception {
+        Response routers = send(HttpMethod.GET, "/v1/routers", null, null);
+        verify(routers, 200);
+        assertEquals("router", entry(routers, "tier").getString("object"));
+        Response single = send(HttpMethod.GET, "/v1/routers/tier", null, null);
+        verify(single, 200);
+        assertEquals("tier", new JsonObject(single.body()).getString("id"));
+
+        assertEquals("router", entry(send(HttpMethod.GET, "/v1/deployments", null, null), "tier").getString("object"));
+        Response info = send(HttpMethod.GET, "/v1/deployments/tier", null, null);
+        verify(info, 200);
+        assertEquals("router", new JsonObject(info.body()).getString("object"));
+        Response names = send(HttpMethod.GET, "/v1/deployment-names", "type=router", null);
+        verify(names, 200);
+        assertTrue(ProxyUtil.MAPPER.readTree(names.body()).toString().contains("{\"id\":\"tier\",\"object\":\"router\"}"), names.body());
+
+        for (String listing : List.of("/openai/models", "/openai/deployments", "/anthropic/v1/models")) {
+            Response response = send(HttpMethod.GET, listing, null, "");
+            verify(response, 200);
+            assertFalse(response.body().contains("\"tier\""), listing + ": " + response.body());
+        }
+        // its router is missing
+        assertFalse(routers.body().contains("tier-broken"), routers.body());
+        assertFalse(send(HttpMethod.GET, "/v1/deployments", null, null).body().contains("tier-broken"));
+        assertFalse(names.body().contains("tier-broken"), names.body());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void platformAliasOfTypeRouter() throws Exception {
+        verify(send(HttpMethod.PUT, "/v1/aliases/platform/tier-v2", null,
+                "{\"userRoles\":[\"analysts\"],\"target\":{\"path\":\"routers/r-tier\"}}", "authorization", "admin"), 200);
+
+        Response single = send(HttpMethod.GET, "/v1/routers/tier-v2", null, null);
+        verify(single, 200);
+        assertEquals("router", new JsonObject(single.body()).getString("object"));
+        assertEquals("router", entry(send(HttpMethod.GET, "/v1/routers", null, null), "tier-v2").getString("object"));
+        assertFalse(send(HttpMethod.GET, "/openai/models", null, "").body().contains("\"tier-v2\""));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void messagesThroughRouterTypeAlias() throws Exception {
+        verdict.set("{\"candidates\": [\"claude\"]}");
+        Response response;
+        try (TestWebServer server = upstreamAnswering(MESSAGE.replace("\"role\":\"assistant\",", "\"role\":\"assistant\",\"model\":\"claude-real\","),
+                "application/json")) {
+            response = sendMessages("tier");
+            verify(response, 200);
+        }
+        assertEquals("tier", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+        assertEquals("claude", single(request -> !isDecide(request)).getHeader(DEPLOYMENT_ID));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerTypeAliasFilteredByInterface() {
+        assertTrue(send(HttpMethod.GET, "/v1/deployments", "interface_type=chat", null).body().contains("\"tier\""));
+        assertFalse(send(HttpMethod.GET, "/v1/deployments", "interface_type=embedding", null).body().contains("\"tier\""));
+        assertFalse(send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp", null).body().contains("\"tier\""));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void modelTypeAliasOverRouterIsNoRouterEntry() {
+        assertFalse(send(HttpMethod.GET, "/v1/routers", null, null).body().contains("\"strong\""));
+        verify(send(HttpMethod.GET, "/v1/routers/strong", null, null), 404);
+        assertFalse(send(HttpMethod.GET, "/v1/deployment-names", "type=router", null).body().contains("\"strong\""));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerTypeAliasListedByRole() {
+        assertFalse(send(HttpMethod.GET, "/v1/routers", null, null, "api-key", "plainKey1").body().contains("\"tier\""));
+        verify(send(HttpMethod.GET, "/v1/routers/tier", null, null, "api-key", "plainKey1"), 403);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void onlyConfigAliasesAnswerAsRouters() {
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.ALIAS,
+                ResourceDescriptor.PUBLIC_BUCKET, ResourceDescriptor.PUBLIC_LOCATION, "x");
+        dial.getProxy().getResourceService().putResource(descriptor,
+                "{\"presentAs\":\"model\",\"target\":{\"path\":\"models/gpt-4\"}}", EtagHeader.ANY, "test", false);
+        verify(send(HttpMethod.GET, "/v1/routers/aliases%2Fpublic%2Fx", null, null), 404);
+        // its router is missing
+        verify(send(HttpMethod.GET, "/v1/routers/tier-broken", null, null), 404);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void routerTypeAliasCalled() throws Exception {
+        Response response;
+        try (TestWebServer server = upstreamAnswering(MODEL_COMPLETION, "application/json")) {
+            response = sendChat("tier");
+            verify(response, 200);
+        }
+        assertEquals("tier", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+        assertEquals("/openai/deployments/gpt-4-real/chat/completions", single(request -> !isDecide(request)).getPath());
+        assertEquals(List.of("tier"), single(this::isDecide).getHeaders().values("X-DIAL-ROUTER-TIER"));
     }
 
     /**
@@ -685,6 +1010,27 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertEquals(List.of("m1", "m2"), decision.candidates());
         assertEquals("m2", decision.deployment());
         assertEquals(List.of(new RouterDecision.Attempt("m1", 502, "upstream")), decision.attempts());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void failedModelCandidateLeavesNoSpendingLimitsOnTheApplicationThatServes() {
+        verdict.set("{\"candidates\": [\"m1\", \"app\"]}");
+        List<AnalyticsLogContext> rows = captureRows();
+        try (TestWebServer server = server()) {
+            server.map(HttpMethod.POST, "/openai/deployments/m1/chat/completions", request -> {
+                received.add(request);
+                return TestWebServer.createResponse(503, "{\"error\":{\"message\":\"busy\"}}", "content-type", "application/json");
+            });
+            // a token caller: the limit check of m1 records that spending limits are off
+            verify(send(HttpMethod.POST, "/openai/deployments/r1/chat/completions", null, CHAT_BODY,
+                    "content-type", "application/json", "authorization", "user"), 200);
+        }
+
+        awaitRows(rows, 2);
+        // the check was m1's: the application that served after it has no spending limits in its row
+        assertNull(row(rows, "app").getBudgetCheck());
+        assertNull(routerRow(rows).getBudgetCheck());
     }
 
     @Test
@@ -1279,6 +1625,32 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(INTERCEPTOR_CONFIG)
+    void aliasOverRouterAfterGlobalInterceptor() throws Exception {
+        AtomicReference<ApiKeyData> modelKey = new AtomicReference<>();
+        Response response;
+        try (TestWebServer server = server()) {
+            server.map(HttpMethod.POST, "/openai/deployments/i1/chat/completions", request -> {
+                received.add(request);
+                Response callback = send(HttpMethod.POST, "/openai/deployments/interceptor/chat/completions", null,
+                        request.getBody().readUtf8(), "api-key", request.getHeader("api-key"), "content-type", "application/json");
+                return TestWebServer.createResponse(callback.status(), callback.body(), "content-type", "application/json");
+            });
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", request -> {
+                received.add(request);
+                modelKey.set(readKey(request.getHeader("api-key")));
+                return TestWebServer.createResponse(200, MODEL_COMPLETION, "content-type", "application/json");
+            });
+            response = sendChat("strong");
+            verify(response, 200);
+        }
+        // the decision runs behind the interceptor, whose name is last in the path; the answer still names the alias
+        assertEquals("strong", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
+        // the alias lends the router to its pass and the interceptor in front of it, not to the deployment it chose
+        assertNull(modelKey.get().getLentDeployment());
+    }
+
+    @Test
+    @DialConfigLocation(INTERCEPTOR_CONFIG)
     void routerRowAfterGlobalInterceptor() {
         List<AnalyticsLogContext> rows = captureRows();
         assertDecidedAfterTheInterceptor("/openai/deployments/r1/chat/completions", CHAT_BODY,
@@ -1395,6 +1767,16 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     private boolean isDecide(RecordedRequest request) {
         return request.getPath().endsWith("/decide");
+    }
+
+    /**
+     * The entry {@code id} of a listing: {@code {"data": [...]}}, or a bare array as {@code /v1/deployments} answers.
+     */
+    private static JsonObject entry(Response listing, String id) {
+        String body = listing.body().strip();
+        JsonArray items = body.startsWith("[") ? new JsonArray(body) : new JsonObject(body).getJsonArray("data");
+        return items.stream().map(JsonObject.class::cast)
+                .filter(item -> id.equals(item.getString("id"))).findFirst().orElseThrow(() -> new AssertionError(listing.body()));
     }
 
     private RecordedRequest single(Predicate<RecordedRequest> filter) {

@@ -66,6 +66,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("source");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, null, List.of(), "bucket", "Users/user/", true);
@@ -81,6 +82,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("source");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, null, List.of("folder"), "bucket", "Users/user/", true);
@@ -96,6 +98,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("source");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
@@ -111,6 +114,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("app");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of("appdata", "app"), "bucket", "Users/user/", false);
@@ -127,6 +131,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("app");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "app", List.of("appdata"), "bucket", "Users/user/", true);
@@ -143,6 +148,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserId()).thenReturn("user");
         when(context.getSourceDeployment()).thenReturn("test app");
         ResourceDescriptor descriptor = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of("appdata", "test app"), "bucket", "Users/user/", false);
@@ -156,6 +162,7 @@ public class AccessServiceTest {
     @Test
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesUndefined() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         AccessService service = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
@@ -172,6 +179,7 @@ public class AccessServiceTest {
     @Test
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesEmpty() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserRoles()).thenReturn(List.of("role1"));
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         AccessService service = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
@@ -190,6 +198,7 @@ public class AccessServiceTest {
     @Test
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesNotEmpty_Forbidden() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserRoles()).thenReturn(List.of("role1"));
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         AccessService service = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
@@ -208,6 +217,7 @@ public class AccessServiceTest {
     @Test
     public void testCanCreateCodeApps_WhenCreateCodeAppRolesNotEmpty_Allowed() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserRoles()).thenReturn(List.of("role1", "admin"));
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         AccessService service = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
@@ -228,6 +238,7 @@ public class AccessServiceTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         AccessService service = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
@@ -491,6 +502,7 @@ public class AccessServiceTest {
         chained.setPerRequestKey("prk");
         chained.setSourceDeployment("app1");
         lenient().when(context.getApiKeyData()).thenReturn(chained);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         lenient().when(context.getSourceDeployment()).thenReturn("app1");
         when(context.getUserId()).thenReturn("user-sub");
     }
@@ -513,6 +525,7 @@ public class AccessServiceTest {
                 "Users/alice/publications/7/", false);
         lenient().when(context.getUserRoles()).thenReturn(List.of("admin"));
         lenient().when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         lenient().when(context.getUserId()).thenReturn("admin");
 
         assertTrue(accessService(mock(ApplicationSchemaService.class)).hasReadAccess(review, context));
@@ -525,6 +538,7 @@ public class AccessServiceTest {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
@@ -548,6 +562,7 @@ public class AccessServiceTest {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
@@ -572,6 +587,7 @@ public class AccessServiceTest {
                 ProxyUtil.MAPPER.createObjectNode(), null, "userName", null);
         when(context.getExtractedClaims()).thenReturn(extractedClaims);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
@@ -593,6 +609,7 @@ public class AccessServiceTest {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("admin"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
@@ -626,6 +643,7 @@ public class AccessServiceTest {
     @Test
     public void testHasExplicitAdminAccess_ConfiguredAndMatching() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserRoles()).thenReturn(List.of("admin"));
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
@@ -642,6 +660,7 @@ public class AccessServiceTest {
     @Test
     public void testHasExplicitAdminAccess_ConfiguredAndNonMatching() {
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserRoles()).thenReturn(List.of("user"));
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
@@ -673,6 +692,7 @@ public class AccessServiceTest {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("global-reader"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
@@ -698,6 +718,7 @@ public class AccessServiceTest {
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getUserRoles()).thenReturn(List.of("regular-user"));
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
@@ -717,12 +738,14 @@ public class AccessServiceTest {
     }
 
     @Test
-    public void testGetGlobalReaderAccess_ApplicationContextExcluded() {
+    public void testGetGlobalReaderAccess_ApplicationContextExcludedFromAdminAndGlobalReader() {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setPerRequestKey("per-request-key");
         when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
+        when(context.getUserRoles()).thenReturn(List.of("admin", "global-reader"));
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,
                 applicationSchemaService,
                 new JsonObject("""
@@ -739,6 +762,12 @@ public class AccessServiceTest {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.getGlobalReaderAccess(Set.of(resource), context);
 
         assertTrue(result.isEmpty());
+        assertFalse(accessService.hasAdminAccess(context));
+        assertFalse(accessService.hasGlobalReaderAccess(context));
+
+        apiKeyData.setPerRequestKey(null);
+        assertTrue(accessService.hasAdminAccess(context), "the same roles without a per-request key");
+        assertTrue(accessService.hasGlobalReaderAccess(context));
     }
 
     @Test
@@ -804,6 +833,7 @@ public class AccessServiceTest {
         apiKeyData.getAttachedFiles().put(attachedFile.getUrl(), new AutoSharedData(ResourceAccessType.READ_ONLY));
         apiKeyData.getAttachedFolders().put("files/bucket/shared-folder/", new AutoSharedData(ResourceAccessType.READ_ONLY));
         lenient().when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserId()).thenReturn("user-sub");
         AccessService accessService = accessService(applicationSchemaService);
 
@@ -861,6 +891,7 @@ public class AccessServiceTest {
         apiKeyData.getPerRequestSharedResources().put("files/bucket/docs/out/", new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.WRITE))));
         apiKeyData.getPerRequestSharedResources().put(exactAndFolder.getUrl(), new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.WRITE))));
         lenient().when(context.getApiKeyData()).thenReturn(apiKeyData);
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         lenient().when(context.getSourceDeployment()).thenReturn("app1");
         when(context.getUserId()).thenReturn("user-sub");
         AccessService accessService = accessService(applicationSchemaService);
@@ -877,6 +908,7 @@ public class AccessServiceTest {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "file.json", List.of(), "bucket", "Users/user-sub/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         when(context.getUserId()).thenReturn("user-sub");
         AccessService accessService = accessService(applicationSchemaService);
 
@@ -892,6 +924,7 @@ public class AccessServiceTest {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "doc.json", List.of("policies"), "public", "public/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         lenient().when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         lenient().when(context.getUserId()).thenReturn("admin-sub");
         lenient().when(context.getUserRoles()).thenReturn(List.of("admin"));
         lenient().when(ruleService.getAllowedPublicResources(eq(context), any())).thenReturn(Set.of(resource));
@@ -933,6 +966,7 @@ public class AccessServiceTest {
         ResourceDescriptor resource = new ResourceDescriptor(ResourceTypes.FILE, "report.json", List.of(), "bucket", "Users/alice/", false);
         ApplicationSchemaService applicationSchemaService = mock(ApplicationSchemaService.class);
         lenient().when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        lenient().when(context.isOriginalRequest()).thenAnswer(invocation -> context.getApiKeyData().getPerRequestKey() == null);
         lenient().when(context.getUserId()).thenReturn("reader-sub");
         lenient().when(context.getUserRoles()).thenReturn(List.of("global-reader"));
         AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals, orgUnitGrants,

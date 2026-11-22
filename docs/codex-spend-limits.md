@@ -144,6 +144,17 @@ checked and charged by the call the translator makes back to Core, so the outer 
 It rejects with the spend-cap 429 once a cap is already reached. If the spend record can't be read, it sends no
 headers instead of failing closed.
 
+## Aliases
+
+A call through an [alias](dynamic-settings/aliases.md) reports the caps of the deployment that serves it, as a direct
+call of that deployment does. This is also true for an alias that a router in
+[decision mode](dynamic-settings/routers.md#decision-mode) chooses. The alias makes no limit check of its own: it reads
+no spend caps and checks no token, request or cost limit. The target checks them, and the alias passes the target's
+answer on with its `x-codex-*` headers as they are, whatever the status, so the `usage_limit_reached` 429 reaches
+Codex unchanged. A JWT user in `enforce` mode who calls a model through an alias sees the budget. In decision mode, a
+429 of the chosen alias's target makes Core try the router's next candidate, or ask the router again, while it has
+decisions left; Codex gets the last answer.
+
 ## Interceptors and applications
 
 When Codex calls a model that has an interceptor in front, Core does not limit-check Codex's own request. It hands

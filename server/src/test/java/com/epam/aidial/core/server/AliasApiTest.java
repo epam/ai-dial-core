@@ -1,12 +1,21 @@
 package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.Test;
 
+import java.io.OutputStream;
+import java.net.Socket;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -15,6 +24,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -33,6 +44,13 @@ class AliasApiTest extends ResourceBaseTest {
             + "\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
     private static final String MESSAGES_BODY = "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\","
             + "\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}";
+    private static final String STREAM_REQUEST = "{\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+    private static final String CHAT_STREAM = "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\","
+            + "\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hel\"}}]}\n\n"
+            + "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\","
+            + "\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":\"stop\"}],"
+            + "\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n\n"
+            + "data: [DONE]\n\n";
 
     @Test
     @DialConfigLocation(CONFIG)
@@ -49,6 +67,21 @@ class AliasApiTest extends ResourceBaseTest {
             Response direct = chat("gpt-4-internal", "default-key");
             assertEquals(403, direct.status(), direct.body());
         }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void aliasDefaultHeaderReachesTheTarget() {
+        AtomicReference<String> team = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", request -> {
+                team.set(request.getHeader("X-Team"));
+                return TestWebServer.createResponse(200, CHAT_RESPONSE, "Content-Type", "application/json");
+            });
+            Response response = chat("assistant", "default-key");
+            assertEquals(200, response.status(), response.body());
+        }
+        assertEquals("a", team.get());
     }
 
     @Test
@@ -460,6 +493,190 @@ class AliasApiTest extends ResourceBaseTest {
         assertTrue(one.body().contains("models/gpt-4-internal"), one.body());
 
         verify(send(HttpMethod.GET, "/v1/admin/config/file/aliases", null, null, "api-key", "default-key"), 403);
+    }
+
+    // deployment-aliases "Target pass served in process", scenario "Call chain unchanged"
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void targetRowNamesTheAliasAsItsParent() {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
+                    "Content-Type", "application/json");
+            verify(chat("assistant", "default-key"), 200);
+        }
+        List<AnalyticsLogContext> rows = awaitAnalyticsRows(2);
+        assertEquals(2, rows.size());
+        rowOf(rows, "assistant");
+        AnalyticsLogContext target = rowOf(rows, "gpt-4-internal");
+        assertEquals("assistant", target.getParentDeployment());
+        assertEquals(List.of("assistant", "gpt-4-internal"), target.getExecutionPath());
+    }
+
+    // deployment-aliases "Headers of an in-process alias call"
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void targetOriginGetsNoOverrideNameFromTheAliasPass() {
+        AtomicReference<RecordedRequest> seen = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", request -> {
+                seen.set(request);
+                return TestWebServer.createResponse(200, CHAT_RESPONSE, "Content-Type", "application/json");
+            });
+            verify(chat("assistant", "default-key"), 200);
+        }
+        assertNull(seen.get().getHeader("X-DIAL-OVERRIDE-NAME"));
+        assertEquals("gpt-4-internal", seen.get().getHeader("X-DIAL-DEPLOYMENT-ID"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void answerThroughAnAliasCarriesCorsHeaderOnce() {
+        HttpResponse<String> response;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
+                    "Content-Type", "application/json");
+            HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + serverPort + "/openai/deployments/assistant/chat/completions"))
+                    .header("api-key", "default-key").header("content-type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(CHAT_REQUEST))
+                    .build();
+            // a client that keeps every header, so a duplicate shows
+            response = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build().send(request, HttpResponse.BodyHandlers.ofString());
+        }
+        assertEquals(200, response.statusCode(), response.body());
+        assertEquals(1, response.headers().allValues("access-control-allow-origin").size(), response.headers().map().toString());
+    }
+
+    // deployment-aliases "Attachments shared on through an alias"
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void applicationCallingAnAliasMayReadTheFileTheTargetShares() {
+        AtomicReference<String> fileUrl = new AtomicReference<>();
+        AtomicInteger uploaded = new AtomicInteger();
+        AtomicInteger called = new AtomicInteger();
+        AtomicInteger read = new AtomicInteger();
+        try (TestWebServer server = new TestWebServer(4848)) {
+            // the model's origin stores a file in the bucket of the key it got, and attaches it to its answer
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", request -> {
+                String key = request.getHeader("api-key");
+                String bucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, "", "api-key", key).body()).getString("bucket");
+                String url = "files/" + bucket + "/generated.txt";
+                uploaded.set(upload(HttpMethod.PUT, "/v1/" + url, null, "generated", "api-key", key).status());
+                fileUrl.set(url);
+                return TestWebServer.createResponse(200, chatWithAttachment(url), "Content-Type", "application/json");
+            });
+            // the application calls the alias with its own key, then reads the attached file with it
+            server.map(HttpMethod.POST, "/relay/chat/completions", request -> {
+                String appKey = request.getHeader("api-key");
+                called.set(chat("assistant", appKey).status());
+                read.set(send(HttpMethod.GET, "/v1/" + fileUrl.get(), null, null, "api-key", appKey).status());
+                return TestWebServer.createResponse(200, CHAT_RESPONSE, "Content-Type", "application/json");
+            });
+            verify(chat("relay-alias", "default-key"), 200);
+        }
+        assertEquals(200, uploaded.get());
+        assertEquals(200, called.get());
+        assertEquals(200, read.get());
+    }
+
+    // analytics-log "Rows without bodies for an alias pass"
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void messagesThroughAnAliasLogBodiesInTheTargetRowOnly() {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/anthropic/v1/messages", 200, MESSAGES_BODY, "Content-Type", "application/json");
+            verify(send(HttpMethod.POST, "/anthropic/v1/messages", null,
+                    "{\"model\":\"multi-alias\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+                    "api-key", "default-key", "Content-Type", "application/json"), 200);
+        }
+        List<AnalyticsLogContext> rows = awaitAnalyticsRows(2);
+        AnalyticsLogContext alias = rowOf(rows, "multi-alias");
+        assertNull(alias.getRequestBody());
+        assertNull(alias.getResponseBody());
+        assertNull(alias.getAssembledStreamingResponse());
+        assertTrue(alias.isBodiesOmitted());
+        assertNotNull(alias.getTraceId());
+        AnalyticsLogContext target = rowOf(rows, "multi-model");
+        assertEquals("multi-model", new JsonObject(target.getRequestBody().toString()).getString("model"));
+        assertTrue(target.getResponseBody().toString().contains("msg_1"), String.valueOf(target.getResponseBody()));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void streamedChatThroughAnAliasAssemblesInTheTargetRowOnly() {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_STREAM,
+                    "Content-Type", "text/event-stream");
+            verify(send(HttpMethod.POST, "/openai/deployments/assistant/chat/completions", null, STREAM_REQUEST,
+                    "api-key", "default-key", "Content-Type", "application/json"), 200);
+        }
+        List<AnalyticsLogContext> rows = awaitAnalyticsRows(2);
+        assertNull(rowOf(rows, "assistant").getAssembledStreamingResponse());
+        assertNotNull(rowOf(rows, "gpt-4-internal").getAssembledStreamingResponse());
+    }
+
+    // Messages count_tokens through an alias keeps going over HTTP to Core's own address
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void countTokensThroughAnAlias() {
+        AtomicReference<String> path = new AtomicReference<>();
+        Response response;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/anthropic/v1/messages/count_tokens", request -> {
+                path.set(request.getPath());
+                return TestWebServer.createResponse(200, "{\"input_tokens\":3}", "Content-Type", "application/json");
+            });
+            response = send(HttpMethod.POST, "/anthropic/v1/messages/count_tokens", null,
+                    "{\"model\":\"multi-alias\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}",
+                    "api-key", "default-key", "Content-Type", "application/json");
+        }
+        verify(response, 200);
+        assertEquals("/anthropic/v1/messages/count_tokens", path.get());
+    }
+
+    // deployment-origin "Client gone during the relay", through an alias whose target pass runs in process
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void clientGoneMidStreamThroughAnAliasStillChargesTheTarget() {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions",
+                    TestWebServer.createResponse(200, CHAT_STREAM, "Content-Type", "text/event-stream")
+                            .throttleBody(16, 100, TimeUnit.MILLISECONDS));
+            byte[] body = STREAM_REQUEST.getBytes(StandardCharsets.UTF_8);
+            try (Socket socket = new Socket("localhost", serverPort)) {
+                OutputStream out = socket.getOutputStream();
+                out.write(("POST /openai/deployments/assistant/chat/completions HTTP/1.1\r\nHost: localhost\r\n"
+                        + "api-key: default-key\r\ncontent-type: application/json\r\ncontent-length: " + body.length + "\r\n\r\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.write(body);
+                out.flush();
+                // the answer has started; the client leaves before it ends
+                assertTrue(socket.getInputStream().read() >= 0);
+            }
+            // the model's stream is read to its end and charged, as on a direct call
+            awaitCondition(() -> analyticsRows.stream().anyMatch(row -> "gpt-4-internal".equals(row.getDeploymentName())
+                    && row.getTokenUsage() != null && row.getTokenUsage().getTotalTokens() == 2));
+        }
+    }
+
+    private static String chatWithAttachment(String url) {
+        return "{\"id\":\"cmpl_2\",\"object\":\"chat.completion\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\","
+                + "\"message\":{\"role\":\"assistant\",\"content\":\"made\",\"custom_content\":{\"attachments\":"
+                + "[{\"type\":\"text/plain\",\"url\":\"" + url + "\"}]}}}],"
+                + "\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}";
+    }
+
+    private static AnalyticsLogContext rowOf(List<AnalyticsLogContext> rows, String deployment) {
+        return rows.stream().filter(row -> deployment.equals(row.getDeploymentName())).findFirst()
+                .orElseThrow(() -> new AssertionError("no row of " + deployment + ": "
+                        + rows.stream().map(AnalyticsLogContext::getDeploymentName).toList()));
     }
 
     private static String signIn(String url, String apiKey) {

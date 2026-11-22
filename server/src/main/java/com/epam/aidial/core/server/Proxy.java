@@ -103,6 +103,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
+    public static final String OPENAPI_PATH = "/openapi.yaml";
     public static final String HEADER_DIAL_TRACE_ID = "X-DIAL-TRACE-ID";
     public static final String HEADER_DIAL_SPAN_ID = "X-DIAL-SPAN-ID";
     /**
@@ -313,6 +314,18 @@ public class Proxy implements Handler<HttpServerRequest> {
             return;
         }
 
+        if (request.method() == HttpMethod.GET && path.equals(OPENAPI_PATH)) {
+            String spec = OpenApiSpec.get();
+            if (spec == null) {
+                respond(request, HttpStatus.NOT_FOUND, "OpenAPI specification is not available");
+            } else {
+                respond(request, HttpStatus.OK, spec, Map.of(
+                        HttpHeaders.CONTENT_TYPE.toString(), "application/yaml; charset=utf-8",
+                        HttpHeaders.CACHE_CONTROL.toString(), "public, max-age=300"));
+            }
+            return;
+        }
+
         if (request.method() == HttpMethod.GET && isMcpResourceMetadataPath(request.path())) {
             resourceMetadataController.handle(request);
             return;
@@ -331,6 +344,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     /**
      * The method authorizes HTTP request by user access token or (and) API key.
+     *
      * <p>
      * There are four possible use cases:
      *     <ol>
@@ -494,7 +508,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     /**
      * Serves an authenticated pass: the controller of the request's method and path handles it. A child pass of an
-     * origin plugin's in-process call starts here too.
+     * origin plugin's in-process call, or the in-process target pass of an alias call, starts here too.
      */
     @SneakyThrows
     public Future<?> dispatch(ProxyContext context) {

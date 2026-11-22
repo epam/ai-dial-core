@@ -15,7 +15,7 @@ public class ResponseMapping {
     String upstreamKey;
     String deploymentName;
     String initiatorBucket;
-    // the router whose decision chose the deployment, so a stored answer read back names it in its model
+    // the name a stored answer read back carries in its model: the router whose decision chose the deployment, or the alias it was called through
     @JsonInclude(JsonInclude.Include.NON_NULL)
     String router;
 }

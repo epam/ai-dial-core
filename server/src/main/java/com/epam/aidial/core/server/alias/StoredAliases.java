@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.alias;
 
 import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.server.config.ValidationWarning;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -9,6 +10,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.experimental.UtilityClass;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -21,22 +24,24 @@ import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_
 
 /**
  * The body of an alias stored under {@code aliases/public/<name>} or {@code aliases/platform/<name>}:
- * {@code presentAs}, {@code target}, {@code userRoles} and the display fields, nothing else. {@code userRoles}
- * decides who may call it, as for an alias of the config file (none means the target's); pricing, features and
- * interfaces come from the target, so it has none of those.
+ * {@code presentAs}, {@code target}, {@code userRoles}, {@code defaultHeaders} and the display fields, nothing else.
+ * {@code userRoles} decides who may call it and {@code defaultHeaders} what its calls send, as for an alias of the
+ * config file (no {@code userRoles} means the target's); pricing, features and interfaces come from the target, so it
+ * has none of those.
  */
 @UtilityClass
 public class StoredAliases {
 
     // the fields a stored alias keeps, by the name it is written under
-    private static final List<String> FIELDS = List.of("presentAs", "target", "userRoles", "displayName", "displayVersion",
-            "iconUrl", "description", "intro", "descriptionKeywords");
+    private static final List<String> FIELDS = List.of("presentAs", "target", "userRoles", "defaultHeaders", "displayName",
+            "displayVersion", "iconUrl", "description", "intro", "descriptionKeywords");
 
     // the other spellings Alias accepts for the same fields
     private static final Map<String, String> SPELLINGS = Map.of(
             "present_as", "presentAs",
             "user_roles", "userRoles",
             "dial:userRoles", "userRoles",
+            "default_headers", "defaultHeaders",
             "display_name", "displayName",
             "display_version", "displayVersion",
             "icon_url", "iconUrl",
@@ -52,7 +57,8 @@ public class StoredAliases {
     /**
      * The alias a {@code PUT} body describes for the alias {@code name}. Throws {@link IllegalArgumentException} for a
      * body that is not an object, whose {@code name} is not {@code name}, that has a field a stored alias does not
-     * keep, or whose fields do not parse.
+     * keep, whose fields do not parse, or that sets {@code defaultHeaders} on an alias of type {@code toolset}, whose
+     * calls never send them.
      */
     public Alias fromRequest(JsonNode body, String name) {
         if (!body.isObject()) {
@@ -76,9 +82,33 @@ public class StoredAliases {
         }
         if (!unsupported.isEmpty()) {
             throw new IllegalArgumentException("Fields not supported for a stored alias: " + String.join(", ", unsupported)
-                    + ". An alias keeps presentAs, target, userRoles and the display fields; the rest comes from its target.");
+                    + ". An alias keeps presentAs, target, userRoles, defaultHeaders and the display fields; the rest comes from its target.");
         }
-        return ConfigEntityCodec.treeToEntity(kept, Alias.class);
+        Alias alias = ConfigEntityCodec.treeToEntity(kept, Alias.class);
+        if (!alias.getDefaultHeaders().isEmpty() && alias.getEffectivePresentation() == AliasPresentation.TOOLSET) {
+            throw new IllegalArgumentException("defaultHeaders are not supported for an alias of type toolset");
+        }
+        encodeResourceTarget(alias);
+        return alias;
+    }
+
+    /**
+     * A resource target is stored path-encoded. A path written with the raw name of the resource, such as
+     * {@code applications/public/my app}, is not a valid url, so it is encoded here; a path that already is one is kept.
+     */
+    private static void encodeResourceTarget(Alias alias) {
+        if (alias.getTarget() == null) {
+            return;
+        }
+        String path = alias.getTarget().getPath();
+        if (path == null || !AliasTargets.isResourcePath(path)) {
+            return;
+        }
+        try {
+            new URI(path);
+        } catch (URISyntaxException e) {
+            alias.getTarget().setPath(UrlUtil.encodePath(path));
+        }
     }
 
     /**
@@ -90,6 +120,10 @@ public class StoredAliases {
         putIfSet(node, "presentAs", alias.getPresentAs());
         putIfSet(node, "target", alias.getTarget());
         putIfSet(node, "userRoles", alias.getUserRoles());
+        // a toolset pass sends no headers: GET, the blob and the platform reload drop those of a blob written around the API
+        if (!alias.getDefaultHeaders().isEmpty() && alias.getEffectivePresentation() != AliasPresentation.TOOLSET) {
+            node.set("defaultHeaders", BLOB_MAPPER.valueToTree(alias.getDefaultHeaders()));
+        }
         putIfSet(node, "displayName", alias.getDisplayName());
         putIfSet(node, "displayVersion", alias.getDisplayVersion());
         putIfSet(node, "iconUrl", alias.getIconUrl());
@@ -109,10 +143,10 @@ public class StoredAliases {
     }
 
     /**
-     * Reads a stored blob as calls and listings use it: an alias whose fields {@link #validateFields} accepts, or none
-     * with the reasons.
+     * Reads a stored blob as calls and listings use it: an alias whose fields {@link #validateFields} accepts (for a
+     * blob of the public bucket, {@link #validatePublicFields}), or none with the reasons.
      */
-    public Stored parse(String body) {
+    public Stored parse(String body, boolean publicBucket) {
         JsonNode node;
         try {
             node = BLOB_MAPPER.readTree(body);
@@ -125,7 +159,7 @@ public class StoredAliases {
         } catch (Exception e) {
             return new Stored(null, List.of(new ValidationWarning("body", e.getMessage())), node);
         }
-        List<ValidationWarning> warnings = validateFields(alias);
+        List<ValidationWarning> warnings = publicBucket ? validatePublicFields(alias) : validateFields(alias);
         return new Stored(warnings.isEmpty() ? alias : null, warnings, node);
     }
 
@@ -134,6 +168,15 @@ public class StoredAliases {
      * platform bucket. A stored alias is open to the callers of its {@code userRoles}, so it must not point to a
      * resource in a user's bucket, whose owner could change it at any time.
      */
+    public List<ValidationWarning> validatePublicFields(Alias alias) {
+        List<ValidationWarning> warnings = validateFields(alias);
+        if (warnings.isEmpty() && AliasTargets.isRouterPath(alias.getTarget().getPath())) {
+            // a platform alias joins the config and may; a public one, called by its url, is not served over a router
+            warnings.add(new ValidationWarning("target.path", "A public alias cannot point to a router: " + alias.getTarget().getPath()));
+        }
+        return warnings;
+    }
+
     public List<ValidationWarning> validateFields(Alias alias) {
         List<ValidationWarning> warnings = AliasTargets.validateFields(alias);
         if (warnings.isEmpty()) {
