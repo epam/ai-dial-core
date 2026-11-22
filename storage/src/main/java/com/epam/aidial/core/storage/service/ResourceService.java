@@ -1001,14 +1001,10 @@ public class ResourceService implements AutoCloseable {
     }
 
     /**
-     * Like {@link #computeResource}, without the resource lock: writers on this pod take turns, the value is read,
-     * {@code fn} runs, and the result is written only if the record still has the etag it was read with. Otherwise
-     * {@code fn} runs again on the newer value. Only for {@link ResourceTypes#LIMIT} records that no other method
-     * writes, such as rate-limit counters: a locked write does not check the etag and could overwrite a concurrent
-     * write made here.
-     *
-     * <p>{@code fn} may run several times, so it must not depend on running once, and it must not delete the
-     * record. A value larger than {@code maxSizeToCache} is rejected, since it would go straight to blob storage.
+     * Like {@link #computeResource}, without the resource lock: the result is written only if the record still has the
+     * etag it was read with, else {@code fn} runs again on the newer value. Only for {@link ResourceTypes#LIMIT} records
+     * no other method writes. {@code fn} may run several times and must not delete the record; a value over
+     * {@code maxSizeToCache} is rejected.
      */
     public void computeResourceWithoutLock(ResourceDescriptor descriptor, Function<String, String> fn) {
         if (descriptor.getType() != ResourceTypes.LIMIT) {
@@ -1087,8 +1083,8 @@ public class ResourceService implements AutoCloseable {
                 boolean created = !current.exists();
                 return () -> {
                     // after the write, so a sync that dropped the entry meanwhile cannot leave the write unqueued.
-                    // Redisson resends it after a timeout (adding twice is harmless); if it still fails or the pod
-                    // crashes first, the record stays persisted and its next write queues it
+                    // Redisson resends it after a timeout (adding twice is harmless); if it still fails, the caller
+                    // fails though the write counted, and the record stays persisted until its next write queues it
                     queueIfAbsent(redisKey);
                     if (created) {
                         // only the writer that created the record writes the stub, after its write as a locked write does
@@ -1128,12 +1124,7 @@ public class ResourceService implements AutoCloseable {
         return args.toArray();
     }
 
-    /**
-     * The record's fields, read on the master (Redisson reads replicas by default), so they include the last write.
-     * Empty if Redis has no record.
-     *
-     * @param unsyncedOnly also empty for a synced record, so its body is not transferred
-     */
+    // read on the master, so they include the last write; empty if there is no record or, with unsyncedOnly, if it is synced
     private Map<String, byte[]> readFieldsOnMaster(String redisKey, boolean unsyncedOnly) {
         return readFields(RScript.Mode.READ_WRITE, redisKey, unsyncedOnly);
     }
@@ -1402,11 +1393,7 @@ public class ResourceService implements AutoCloseable {
         return map;
     }
 
-    /**
-     * Sets the expiration of a synced record that has none.
-     *
-     * @return false if the record is not synced
-     */
+    // sets the expiration of a synced record that has none; false if the record is not synced
     @VisibleForTesting
     boolean expireIfSynced(String redisKey) {
         return evalBoolean(EXPIRE_IF_SYNCED_SCRIPT, redisKey,
