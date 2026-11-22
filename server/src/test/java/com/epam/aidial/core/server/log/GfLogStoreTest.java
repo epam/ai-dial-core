@@ -213,6 +213,16 @@ public class GfLogStoreTest {
         }
     }
 
+    @Test
+    public void testAppendBodyKeepsOnlyTypicalBuffer() {
+        // a typical body leaves its buffer for the next entry; a larger one's does not stay on the heap with the store
+        GfLogStore store = new GfLogStore(settings(false));
+        appendBody(store, Buffer.buffer("a".repeat(650 * 1024)));
+        assertTrue(store.escapedBody.length >= 650 * 1024);
+        appendBody(store, Buffer.buffer("a".repeat(2 * 1024 * 1024)));
+        assertEquals(0, store.escapedBody.length);
+    }
+
     private static String assertAppendBodyMatchesAppend(String body) {
         return assertAppendBodyMatchesAppend(Buffer.buffer(body));
     }
