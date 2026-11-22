@@ -615,8 +615,8 @@ public class GfLogStore implements LogStore {
                 continue;
             }
             int remaining = bytes.length - i;
-            if (escaped.length - j < 6 + remaining) {
-                // room for this escape and for every remaining byte, so plain bytes need no check
+            if (escaped.length - j < 5 + remaining) {
+                // room for this escape (up to 6 bytes) and for every byte after it, so plain bytes need no check
                 // doubling, but never past what escaping every remaining byte could need
                 int capacity = Math.min(Math.max(escaped.length * 2, j + 6 + remaining), j + 6 * remaining);
                 escaped = escapedBody = Arrays.copyOf(escaped, capacity);
