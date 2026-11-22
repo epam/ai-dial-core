@@ -990,7 +990,8 @@ public class AccessServiceTest {
 
     @Test
     public void testLookupPermissions_ReadsTheKeyOnMasterBeforeRefusing() {
-        // the request is authenticated with a copy of the key from a replica, which is behind a grant and an attachment
+        // the request is authenticated with a copy of the key from a replica, which is behind an attachment; the grant
+        // only in the master's copy cannot happen (a key's grants are fixed when it is built) and checks that both maps count
         ResourceDescriptor granted = new ResourceDescriptor(ResourceTypes.FILE, "granted.json", List.of(), "bucket", "Users/other-user/", false);
         ResourceDescriptor attached = new ResourceDescriptor(ResourceTypes.FILE, "attached.json", List.of(), "bucket", "Users/other-user/", false);
         ResourceDescriptor other = new ResourceDescriptor(ResourceTypes.FILE, "other.json", List.of(), "bucket", "Users/other-user/", false);

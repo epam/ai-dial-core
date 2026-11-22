@@ -321,8 +321,8 @@ public class AccessService {
 
     /**
      * What the caller's per request key grants as the Redis master holds it. The request is authenticated with a copy of
-     * the key that may come from a replica, which may be behind a grant or an attachment added a moment ago, so what the
-     * rules did not grant is looked up in the master's copy before it is refused.
+     * the key that may come from a replica, which may be behind an attachment shared a moment ago (the key's own grants
+     * are fixed when it is built), so what the rules did not grant is looked up in the master's copy before it is refused.
      */
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getKeyAccessOnMaster(Set<ResourceDescriptor> resources, ProxyContext context) {
         ApiKeyData apiKeyData = context.loadMasterApiKeyData();

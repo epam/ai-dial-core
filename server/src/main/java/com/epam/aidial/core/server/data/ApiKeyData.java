@@ -199,7 +199,9 @@ public class ApiKeyData {
      * @param receivers the receivers of the caller's key as the Redis master holds them.
      */
     public void addCallerPermissions(Map<String, Map<String, PerRequestSharedData>> receivers) {
-        // as initFromContext copies them: for a resource granted to two receivers the later receiver's grant counts
+        // built as initFromContext builds them, where for a resource granted to two receivers the later receiver's grant
+        // counts, then added to what the key holds: the copied grants share the map with those that dependencies add
+        // (ResolveResourceDependenciesFn), so the union keeps them, and with them a grant revoked within the replica lag
         ApiKeyData onMaster = new ApiKeyData();
         for (String receiver : callerReceivers) {
             sharePerRequestPermissions(onMaster, receivers, receiver);

@@ -92,7 +92,7 @@ public class ApiKeyStore {
     public void assignPerRequestApiKey(ApiKeyData data, Duration customTtl) {
         blockingCallTracer.trace("auth.api_key.assign", () -> {
             if (data.getCallerKey() != null) {
-                ApiKeyData caller = readDataOnMaster(data.getCallerKey());
+                ApiKeyData caller = getPerRequestKeyDataOnMaster(data.getCallerKey());
                 if (caller != null) {
                     data.addCallerPermissions(caller.getPerRequestReceivers());
                 }
@@ -148,7 +148,7 @@ public class ApiKeyStore {
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
             String json = bucket.get();
             if (json == null && isGeneratedKey(key)) {
-                json = readOnMaster(redisKey);
+                json = blockingCallTracer.trace("auth.api_key.lookup_master", () -> readOnMaster(redisKey));
             }
             return ProxyUtil.convertToObject(json, ApiKeyData.class);
         })).compose(result -> {
