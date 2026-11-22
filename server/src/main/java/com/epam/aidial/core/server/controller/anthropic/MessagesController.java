@@ -12,6 +12,7 @@ import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.controller.ResponsesController;
 import com.epam.aidial.core.server.controller.SpendCapCheck;
 import com.epam.aidial.core.server.data.AnthropicErrorData;
@@ -185,8 +186,12 @@ public class MessagesController extends MessagesBaseController {
 
     /**
      * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
+     * An alias pass leaves the headers its target pass wrote.
      */
     private void putLimitHeaders(HttpServerResponse response, ProxyResponse proxyResponse) {
+        if (context.getDeployment() instanceof AliasPass) {
+            return;
+        }
         AnthropicLimitResponses.stripUpstreamRateLimitHeaders(response.headers());
         if (proxyResponse.statusCode() == 200 && spendCaps != null && spendCaps.reported() != null) {
             AnthropicLimitResponses.putSpendHeaders(response.headers(), spendCaps.reported());

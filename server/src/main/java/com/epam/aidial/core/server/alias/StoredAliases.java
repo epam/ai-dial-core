@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.experimental.UtilityClass;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -86,7 +88,27 @@ public class StoredAliases {
         if (!alias.getDefaultHeaders().isEmpty() && alias.getEffectivePresentation() == AliasPresentation.TOOLSET) {
             throw new IllegalArgumentException("defaultHeaders are not supported for an alias of type toolset");
         }
+        encodeResourceTarget(alias);
         return alias;
+    }
+
+    /**
+     * A resource target is stored path-encoded. A path written with the raw name of the resource, such as
+     * {@code applications/public/my app}, is not a valid url, so it is encoded here; a path that already is one is kept.
+     */
+    private static void encodeResourceTarget(Alias alias) {
+        if (alias.getTarget() == null) {
+            return;
+        }
+        String path = alias.getTarget().getPath();
+        if (path == null || !AliasTargets.isResourcePath(path)) {
+            return;
+        }
+        try {
+            new URI(path);
+        } catch (URISyntaxException e) {
+            alias.getTarget().setPath(UrlUtil.encodePath(path));
+        }
     }
 
     /**

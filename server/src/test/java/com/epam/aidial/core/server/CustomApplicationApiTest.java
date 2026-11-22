@@ -1624,8 +1624,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                         "weight" : 1,
                         "tier" : 0,
                         "authType" : {
-                          "type" : "API_KEY",
-                          "headerName" : null
+                          "type" : "API_KEY"
                         }
                       } ],
                       "maxRetryAttempts" : 1,

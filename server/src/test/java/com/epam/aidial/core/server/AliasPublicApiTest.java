@@ -464,6 +464,23 @@ class AliasPublicApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void targetWithSpaceInItsNameIsAcceptedRawOrEncoded() {
+        verify(send(HttpMethod.PUT, "/v1/applications/public/alias%20test", null,
+                "{\"endpoint\": \"http://localhost:4848/res-app/chat/completions\"}", "authorization", "admin"), 200);
+
+        assertEquals(200, putAlias("raw-v1", "{\"target\":{\"path\":\"applications/public/alias test\"}}").status());
+        assertEquals(200, putAlias("encoded-v1", "{\"target\":{\"path\":\"applications/public/alias%20test\"}}").status());
+
+        for (String name : List.of("raw-v1", "encoded-v1")) {
+            Response alias = admin(HttpMethod.GET, ALIAS_URL + name, null);
+            assertEquals(200, alias.status(), alias.body());
+            assertEquals("applications/public/alias%20test", new JsonObject(alias.body()).getJsonObject("target").getString("path"));
+            assertEquals("valid", new JsonObject(alias.body()).getString("status"), alias.body());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void otherBucketsAndFoldersHoldNoAlias() {
         assertEquals(200, putAlias("pub-v1", MODEL_ALIAS).status());
         AtomicInteger calls = new AtomicInteger();
