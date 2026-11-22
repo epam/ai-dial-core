@@ -53,8 +53,6 @@ import javax.annotation.Nullable;
 @Slf4j
 public final class PluginRegistry {
 
-    public static final PluginRegistry EMPTY = new PluginRegistry(List.of());
-
     private static final String SERVICES_ENTRY = "META-INF/services/" + PluginProvider.class.getName();
     // * or <group>/<plugin>, where either part may be *. A name refuses whitespace, brackets, quotes and commas, so a
     // list written as [a/b] or with a stray space stops the start instead of matching nothing
@@ -71,6 +69,9 @@ public final class PluginRegistry {
     private static final JsonSchemaFactory SCHEMA_FACTORY = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7,
             builder -> builder.schemaLoaders(loaders -> loaders.add(new AllowSchemaLoader(iri -> iri.toString().equals(META_SCHEMA)))));
     private static final JsonSchema DRAFT_07_META_SCHEMA = SCHEMA_FACTORY.getSchema(SchemaLocation.of(META_SCHEMA));
+
+    // after the schema statics: a registry built in a static initializer compiles schemas with them
+    public static final PluginRegistry EMPTY = new PluginRegistry(List.of());
 
     private final Map<String, Entry> entries;
     private final List<PluginProviderItem> listed;

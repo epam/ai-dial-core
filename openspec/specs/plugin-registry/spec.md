@@ -18,7 +18,7 @@ SHALL make the body not bind to the entity type, except `type` (Deprecated plugi
 - **THEN** Core answers `200` `{"name": "p1"}` with an `ETag`, and `GET /v1/plugins/platform/p1` answers
   `pluginId: "jar-echo"`, `settings: {}`, `name: "p1"` and `status: "valid"`
 
-#### Scenario: Missing type
+#### Scenario: Missing pluginId
 - **WHEN** an admin sends `PUT /v1/plugins/platform/p1` with `{"settings": {}}`
 - **THEN** Core answers `400` and writes nothing
 
@@ -60,7 +60,7 @@ Core SHALL fail to start when a jar in a plugin directory cannot be loaded, two 
 the same provider class, two providers declare the same id, a loaded plugin directory registers no provider, or a
 jar lies directly in `plugins.dir` or directly in a group directory.
 
-#### Scenario: Duplicate provider type
+#### Scenario: Duplicate provider id
 - **WHEN** `<plugins.dir>/builtin/echo/` and `<plugins.dir>/custom/echo/` each hold a jar whose provider declares
   id `jar-echo`
 - **THEN** Core does not start, with a message naming the id and both plugin directories
@@ -96,7 +96,7 @@ it only under `config.onInvalidEntity: skip`, where the entity is dropped and re
 - **THEN** Core answers `200`, and `GET /v1/plugins/platform/p1` answers `status: "invalid"` with warning
   field `pluginId`
 
-#### Scenario: Unknown type in a soft batch
+#### Scenario: Unknown pluginId in a soft batch
 - **WHEN** `config.write.softValidation` is on and an admin sends `POST /v1/admin/apply` with one `Plugin`
   manifest `plugins/platform/p1` of plugin id `missing`
 - **THEN** Core answers `200` with that result `APPLIED_INVALID`

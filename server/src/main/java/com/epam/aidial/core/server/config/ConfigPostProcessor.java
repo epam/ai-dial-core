@@ -192,17 +192,17 @@ public final class ConfigPostProcessor {
 
     /**
      * Checks a {@code plugins} entry against the provider its {@code pluginId} names. Settings the provider rejects are
-     * a defect of the entry itself, reported under {@code settings.<path>} whatever {@code checkType}. An id no loaded
-     * provider declares is a dangling reference, reported under {@code pluginId} only when {@code checkType}; without a
+     * a defect of the entry itself, reported under {@code settings.<path>} whatever {@code checkPluginId}. An id no loaded
+     * provider declares is a dangling reference, reported under {@code pluginId} only when {@code checkPluginId}; without a
      * provider the settings cannot be checked. A provider that fails while checking rejects the settings, so one provider's defect
      * drops or fails only its own entries. Shared by every write surface (full load, partial update, Configuration API,
      * admin apply and validate).
      */
     public static void validatePlugin(@Nullable String name, Plugin plugin, PluginRegistry pluginRegistry,
-                                      boolean checkType, List<ValidationWarning> warnings) {
+                                      boolean checkPluginId, List<ValidationWarning> warnings) {
         PluginProvider provider = pluginRegistry.get(plugin.getPluginId());
         if (provider == null) {
-            if (checkType) {
+            if (checkPluginId) {
                 warnings.add(new ValidationWarning("pluginId", messageWithEntityPrefix("Plugin", name,
                         "No plugin provider of id '" + plugin.getPluginId() + "' is loaded")));
             }
@@ -224,7 +224,12 @@ public final class ConfigPostProcessor {
         } catch (RuntimeException | LinkageError | StackOverflowError e) {
             // plugin code: a jar missing a class throws NoClassDefFoundError on first use. A schema that refers to
             // itself without reading the settings passes the start and overflows the stack on every check
-            log.warn("Plugin provider of id '{}' failed to check plugin '{}'", plugin.getPluginId(), name, e);
+            if (e instanceof StackOverflowError) {
+                // the same overflow on every check: a trace of a thousand frames each time would flood the log
+                log.warn("Plugin provider of id '{}' overflowed the stack checking plugin '{}'", plugin.getPluginId(), name);
+            } else {
+                log.warn("Plugin provider of id '{}' failed to check plugin '{}'", plugin.getPluginId(), name, e);
+            }
             warnings.add(new ValidationWarning("settings", messageWithEntityPrefix("Plugin", name,
                     "The plugin provider of id '" + plugin.getPluginId() + "' failed to check the settings")));
             return;
