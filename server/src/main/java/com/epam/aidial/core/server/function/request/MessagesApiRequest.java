@@ -103,11 +103,7 @@ public class MessagesApiRequest implements RequestObject {
             if (!message.isObject()) {
                 continue;
             }
-            CacheKeyBuilder.sortedProperties(message).forEach((name, value) -> {
-                if (!name.equals(CONTENT_NODE)) {
-                    builder.update(value);
-                }
-            });
+            builder.updateProperties(message, (name, value) -> name.equals(CONTENT_NODE) ? null : value);
             List<JsonNode> blocks = CacheKeyBuilder.elements(message.get(CONTENT_NODE));
             for (int contentIndex = 0; contentIndex < blocks.size(); contentIndex++) {
                 JsonNode block = asBlock(blocks.get(contentIndex));
@@ -129,11 +125,7 @@ public class MessagesApiRequest implements RequestObject {
             builder.update(block);
             return;
         }
-        CacheKeyBuilder.sortedProperties(block).forEach((name, value) -> {
-            if (!name.equals(CACHE_CONTROL_NODE)) {
-                builder.update(value);
-            }
-        });
+        builder.updateProperties(block, (name, value) -> name.equals(CACHE_CONTROL_NODE) ? null : value);
     }
 
     /**

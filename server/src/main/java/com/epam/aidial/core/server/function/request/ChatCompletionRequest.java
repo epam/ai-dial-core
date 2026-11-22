@@ -92,22 +92,19 @@ public class ChatCompletionRequest implements RequestObject {
             boolean hasBreakpoint = element.path(CUSTOM_FIELDS_NODE).has(CACHE_BREAKPOINT_NODE);
             if (!element.isObject()) {
                 builder.update(element);
-            }
-            // sorted, so the digest does not depend on how the client ordered the object's fields
-            CacheKeyBuilder.sortedProperties(element).forEach((name, value) -> {
-                if (name.equals(CUSTOM_FIELDS_NODE)) {
-                    return;
-                }
-                if (name.equals("custom_content")) {
-                    // include attachments only
-                    JsonNode attachments = value.get("attachments");
-                    if (attachments != null && !attachments.isEmpty()) {
-                        builder.update(attachments);
+            } else {
+                builder.updateProperties(element, (name, value) -> {
+                    if (name.equals(CUSTOM_FIELDS_NODE)) {
+                        return null;
                     }
-                } else {
-                    builder.update(value);
-                }
-            });
+                    if (name.equals("custom_content")) {
+                        // include attachments only
+                        JsonNode attachments = value.get("attachments");
+                        return attachments != null && !attachments.isEmpty() ? attachments : null;
+                    }
+                    return value;
+                });
+            }
             result.add(builder.buildKey(CachePrefixPath.node(node, index), hasBreakpoint));
         }
     }

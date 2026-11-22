@@ -19,7 +19,7 @@ import java.util.TreeMap;
  * digest at that point without terminating it.
  *
  * <p>The digest is MD5, hex-encoded. The key only pins requests that share a prefix to one upstream, so it has to be
- * stable, not secure: a collision sends a request to another upstream and loses affinity, nothing else.
+ * stable, not secure: a collision sends a request to another prefix's upstream and its cache metadata.
  */
 public class CacheKeyBuilder {
 
@@ -35,8 +35,8 @@ public class CacheKeyBuilder {
 
     @SneakyThrows
     public CacheKeyBuilder() {
-        // not a security boundary: a collision costs affinity only. MD5 because HotSpot intrinsifies it on every x86-64
-        // and aarch64 CPU, while SHA-1 and SHA-256 run far slower over the whole prompt without the CPU SHA extensions
+        // MD5 because HotSpot intrinsifies it on every x86-64 and aarch64 CPU, while SHA-1 and SHA-256 run far slower over
+        // the whole prompt without the CPU SHA extensions
         this.digest = MessageDigest.getInstance("MD5");
     }
 
@@ -72,6 +72,23 @@ public class CacheKeyBuilder {
                 text(node.asText());
             }
         }
+    }
+
+    /**
+     * Feeds the object's properties that {@code feed} chooses, in name order, each as its name and then what
+     * {@code feed} returns for its value (null skips the property): the same canonical form as {@link #update}, so
+     * the names and the object's bounds stay in the digest when a caller leaves some properties out.
+     */
+    void updateProperties(JsonNode object, java.util.function.BiFunction<String, JsonNode, JsonNode> feed) {
+        digest.update(OBJECT_START);
+        sortedProperties(object).forEach((name, value) -> {
+            JsonNode fed = feed.apply(name, value);
+            if (fed != null) {
+                text(name);
+                update(fed);
+            }
+        });
+        digest.update(OBJECT_END);
     }
 
     private void text(String value) {
@@ -115,7 +132,7 @@ public class CacheKeyBuilder {
      * The object's own properties sorted by name, for a caller that skips some of them. The values are not copied:
      * {@link #update} sorts their nested properties as it feeds them.
      */
-    public static Map<String, JsonNode> sortedProperties(JsonNode object) {
+    static Map<String, JsonNode> sortedProperties(JsonNode object) {
         Map<String, JsonNode> propertiesByName = new TreeMap<>();
         object.properties().forEach(property -> propertiesByName.put(property.getKey(), property.getValue()));
         return propertiesByName;

@@ -387,11 +387,11 @@ class ChatCompletionRequestTest {
         List<CacheKey> keys = request.buildCacheKeys(List.of("prefix.body.messages"));
 
         assertEquals(List.of("prefix.body.messages[0]", "prefix.body.messages[1]"), keys.stream().map(CacheKey::path).toList());
-        // the string message feeds the digest as it is, then the object message its values
+        // the string message feeds the digest as it is, then the object message as a whole, its property names included
         CacheKeyBuilder expected = new CacheKeyBuilder();
         expected.update(TextNode.valueOf("x"));
         assertEquals(expected.buildKey("p", false).hash(), keys.get(0).hash());
-        expected.update(TextNode.valueOf("user"));
+        expected.update(ProxyUtil.MAPPER.readTree("{\"role\": \"user\"}"));
         assertEquals(expected.buildKey("p", false).hash(), keys.get(1).hash());
     }
 
