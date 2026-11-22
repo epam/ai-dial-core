@@ -198,6 +198,22 @@ public class FileConfigStoreTest {
     }
 
     @Test
+    public void testLoad_EmptyFileRejected(@TempDir Path dir) throws Exception {
+        Path file = Files.writeString(dir.resolve("aidial.config.json"), "");
+
+        assertThrows(Exception.class, () -> new FileConfigStore(vertx, fileSettings(file), apiKeyStore, PluginRegistry.EMPTY, List.of()));
+    }
+
+    @Test
+    public void testLoad_SectionRepeatedInOneFileMerges(@TempDir Path dir) throws Exception {
+        Path file = Files.writeString(dir.resolve("aidial.config.json"), "{\"roles\": {\"r1\": {}}, \"roles\": {\"r2\": {}}}");
+
+        Config config = new FileConfigStore(vertx, fileSettings(file), apiKeyStore, PluginRegistry.EMPTY, List.of()).get();
+
+        assertTrue(config.getRoles().keySet().containsAll(Set.of("r1", "r2")), config.getRoles().keySet().toString());
+    }
+
+    @Test
     public void testOverlayPluginIdReplacesBaseType(@TempDir Path dir) throws Exception {
         Path base = Files.writeString(dir.resolve("base.json"),
                 "{\"plugins\": {\"p1\": {\"type\": \"test-echo\", \"settings\": {\"greeting\": \"hi\"}}}}");

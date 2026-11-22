@@ -137,6 +137,13 @@ public class JarEchoPluginProvider implements PluginProvider {
         }
     }
 
+    public static class NestedOtherDraft extends WithSchema {
+        @Override
+        String schema() {
+            return "{\"type\": \"object\", \"properties\": {\"a\": {\"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"type\": \"array\"}}}";
+        }
+    }
+
     /**
      * A schema whose root is a {@code $ref} to {@link #url}, which a test sets before the load.
      */

@@ -133,7 +133,7 @@ DIAL Core does not start when:
 * a jar of a loaded plugin directory cannot be opened, or its plugin code cannot be created;
 * two jars of one plugin directory register the same plugin class (an old jar left beside its new version);
 * a loaded plugin directory registers no plugin code (often a volume mounted one level off);
-* two plugin classes declare the same id, in one plugin directory or in two, or one declares no id.
+* two plugin classes declare the same id, in one plugin directory or in two, or one declares no id;
 * a plugin class declares a settings schema DIAL Core refuses (see [Settings schema](#settings-schema)), declares no targets, or fails while DIAL Core reads what it declares; the message names the class and the plugin directory.
 
 At start DIAL Core logs each plugin directory, `Loaded plugin directory custom/translator: ids [...]` or `Excluded plugin directory builtin/echo`. New plugin code needs a restart of DIAL Core; the `plugins` entries and their settings reload with the rest of the config.

@@ -197,6 +197,15 @@ class PluginRegistryTest {
     }
 
     @Test
+    void testSubschemaOfAnotherDraftFailsTheLoad() throws IOException {
+        writeJar("custom/bad/bad.jar", JarEchoPluginProvider.NestedOtherDraft.class.getName());
+
+        String message = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings())).getMessage();
+
+        assertTrue(message.contains("'bad'") && message.contains("custom/bad") && message.contains("$schema"), message);
+    }
+
+    @Test
     void testDraft07NamedByItsHttpsAddressLoads() throws IOException {
         writeJar("custom/good/good.jar", JarEchoPluginProvider.HttpsDraft.class.getName());
 

@@ -90,7 +90,8 @@ public final class FileConfigStore implements ConfigStore {
         for (String path : paths) {
             JsonNode file;
             try (InputStream stream = openStream(path)) {
-                file = jsonMapper.readTree(stream);
+                // as an update, the way files were read before: an empty file fails, a section repeated in a file merges
+                file = jsonMapper.readerForUpdating(jsonMapper.createObjectNode()).readTree(stream);
             }
             renamePluginTypeAlias(file);
             tree = jsonMapper.readerForUpdating(tree).readValue(file);

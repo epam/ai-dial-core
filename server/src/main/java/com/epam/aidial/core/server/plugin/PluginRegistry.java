@@ -243,8 +243,8 @@ public final class PluginRegistry {
      * anything.
      */
     private static JsonSchema compile(ObjectNode schema, String provided) {
-        JsonNode version = schema.get("$schema");
-        if (version != null && !(version.isTextual() && DRAFT_07.contains(version.asText()))) {
+        JsonNode version = otherDraft(schema);
+        if (version != null) {
             throw new IllegalStateException("%s declares a settings schema whose $schema is %s: only draft-07 is supported".formatted(provided, version));
         }
         // Every $ref, also one no keyword reaches (under definitions nothing uses, under an unknown keyword): loading
@@ -266,6 +266,22 @@ public final class PluginRegistry {
         } catch (RuntimeException e) {
             throw new IllegalStateException("%s declares a settings schema that cannot be compiled: %s".formatted(provided, e.getMessage()), e);
         }
+    }
+
+    // a $schema anywhere in the schema, not only at its root: a subschema's draft applies to that subschema
+    @Nullable
+    private static JsonNode otherDraft(JsonNode node) {
+        JsonNode version = node.get("$schema");
+        if (version != null && !(version.isTextual() && DRAFT_07.contains(version.asText()))) {
+            return version;
+        }
+        for (JsonNode child : node) {
+            JsonNode found = otherDraft(child);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
     }
 
     @Nullable
