@@ -64,6 +64,8 @@ class TimedVertxThreadTest {
         Thread.sleep(100);
         assertEquals(1, timer(loop).count());
         assertTrue(timer(loop).max(TimeUnit.MILLISECONDS) >= 100, "the nested dispatch counts in its parent");
+        // read before super.executeEnd() resets it: after, the start would be 0 and the record hours long
+        assertTrue(timer(loop).max(TimeUnit.MILLISECONDS) < 5_000, "the dispatch is timed from its own start");
     }
 
     @Test
