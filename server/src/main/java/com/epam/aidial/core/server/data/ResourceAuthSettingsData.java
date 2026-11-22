@@ -24,6 +24,7 @@ public class ResourceAuthSettingsData {
     private String codeChallenge;
     private String codeChallengeMethod;
     private String authorizationEndpoint;
+    private String resource;
     private String apiKeyHeader;
     private ResourceAuthStatus globalAuthStatus;
     private ResourceAuthStatus appLevelAuthStatus;
@@ -37,6 +38,7 @@ public class ResourceAuthSettingsData {
             .authenticationType(toolsetAuthSettings.getAuthenticationType())
             .clientId(toolsetAuthSettings.getClientId())
             .authorizationEndpoint(toolsetAuthSettings.getAuthorizationEndpoint())
+            .resource(toolsetAuthSettings.getResource())
             .redirectUri(toolsetAuthSettings.getRedirectUri())
             .codeChallenge(toolsetAuthSettings.getCodeChallenge())
             .codeChallengeMethod(toolsetAuthSettings.getCodeChallengeMethod())

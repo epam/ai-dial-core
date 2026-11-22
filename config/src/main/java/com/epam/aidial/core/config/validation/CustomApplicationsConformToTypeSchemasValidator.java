@@ -2,6 +2,7 @@ package com.epam.aidial.core.config.validation;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Router;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.networknt.schema.JsonMetaSchema;
@@ -43,31 +44,49 @@ public class CustomApplicationsConformToTypeSchemasValidator implements Constrai
         ObjectMapper mapper = new ObjectMapper();
         for (Map.Entry<String, Application> entry : value.getApplications().entrySet()) {
             Application application = entry.getValue();
-            URI schemaId = application.getApplicationTypeSchemaId();
-            if (schemaId == null) {
-                continue;
+            if (!conforms(schemaFactory, mapper, "Application", entry.getKey(), application.getApplicationTypeSchemaId(),
+                    application.getApplicationProperties())) {
+                return violation(context, "applications", entry.getKey());
             }
-
-            JsonSchema schema = schemaFactory.getSchema(schemaId);
-            if (application.getApplicationProperties() == null) {
-                continue;
-            }
-            JsonNode applicationNode = mapper.valueToTree(application.getApplicationProperties());
-            Set<ValidationMessage> validationResults = schema.validate(applicationNode);
-            if (!validationResults.isEmpty()) {
-                String logMessage = validationResults.stream()
-                        .map(ValidationMessage::getMessage)
-                        .reduce((a, b) -> a + ", " + b)
-                        .orElse("Unknown validation error");
-                log.warn("Application {} does not conform to schema {}: {}", entry.getKey(), schemaId, logMessage);
-                context.disableDefaultConstraintViolation();
-                context.buildConstraintViolationWithTemplate(context.getDefaultConstraintMessageTemplate())
-                        .addPropertyNode("applications")
-                        .addContainerElementNode(entry.getKey(), Map.class, 0)
-                        .addConstraintViolation();
-                return false;
+        }
+        for (Map.Entry<String, Router> entry : value.getRouters().entrySet()) {
+            Router router = entry.getValue();
+            if (!conforms(schemaFactory, mapper, "Router", entry.getKey(), router.getApplicationTypeSchemaId(),
+                    router.getApplicationProperties())) {
+                return violation(context, "routers", entry.getKey());
             }
         }
         return true;
+    }
+
+    private static boolean conforms(JsonSchemaFactory schemaFactory, ObjectMapper mapper, String kind, String name,
+                                    URI schemaId, Map<String, Object> properties) {
+        if (schemaId == null) {
+            return true;
+        }
+        JsonSchema schema = schemaFactory.getSchema(schemaId);
+        if (properties == null) {
+            return true;
+        }
+        JsonNode node = mapper.valueToTree(properties);
+        Set<ValidationMessage> validationResults = schema.validate(node);
+        if (validationResults.isEmpty()) {
+            return true;
+        }
+        String logMessage = validationResults.stream()
+                .map(ValidationMessage::getMessage)
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("Unknown validation error");
+        log.warn("{} {} does not conform to schema {}: {}", kind, name, schemaId, logMessage);
+        return false;
+    }
+
+    private static boolean violation(ConstraintValidatorContext context, String map, String name) {
+        context.disableDefaultConstraintViolation();
+        context.buildConstraintViolationWithTemplate(context.getDefaultConstraintMessageTemplate())
+                .addPropertyNode(map)
+                .addContainerElementNode(name, Map.class, 0)
+                .addConstraintViolation();
+        return false;
     }
 }

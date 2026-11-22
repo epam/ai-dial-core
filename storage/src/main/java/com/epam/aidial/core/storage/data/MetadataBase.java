@@ -23,13 +23,11 @@ import java.util.Set;
         discriminatorProperty = "nodeType",
         value = {
             @ApiSubType(
-                discriminatorValue = "FOLDER",
-                type = ResourceFolderMetadata.class
-                ),
+                    discriminatorValue = "FOLDER",
+                    type = ResourceFolderMetadata.class),
             @ApiSubType(
-                discriminatorValue = "ITEM",
-                type = ResourceItemMetadata.class
-                )
+                    discriminatorValue = "ITEM",
+                    type = ResourceItemMetadata.class)
         }
 )
 public abstract class MetadataBase {

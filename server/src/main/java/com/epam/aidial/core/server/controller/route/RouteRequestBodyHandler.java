@@ -8,6 +8,8 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.http.HttpProxyRequest;
+import com.epam.aidial.core.server.proxy.http.HttpProxyResponse;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -67,8 +69,7 @@ class RouteRequestBodyHandler {
         log.info("Received body from client. Deployment: {}. Length: {}",
                 deployment == null ? "N/A" : deployment.getName(), requestBody.length());
 
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
-        context.setRequestBody(requestBody);
+        context.setRequestBodyWithTimestamp(requestBody);
 
         ApiKeyData apiKeyData = controller.setupProxyApiKeyData();
 
@@ -142,10 +143,10 @@ class RouteRequestBodyHandler {
         log.info("Connected to origin: {}", proxyRequest.connection().remoteAddress());
 
         HttpServerRequest request = context.getRequest();
-        context.setProxyRequest(proxyRequest);
+        context.setProxyRequest(new HttpProxyRequest(proxyRequest));
 
         controller.copyHeaders(request.headers(), proxyRequest.headers());
-        ProxyUtil.setOverrideNameHeader(proxyRequest, context.getDeployment());
+        ProxyUtil.setOverrideNameHeader(proxyRequest.headers(), context.getDeployment());
 
         Buffer proxyRequestBody = context.getRequestBody();
         proxyRequest.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(proxyRequestBody.length()));
@@ -167,7 +168,7 @@ class RouteRequestBodyHandler {
 
         if (responseStatusCode == HttpStatus.TOO_MANY_REQUESTS.getCode()) {
             UpstreamRoute upstreamRoute = context.getUpstreamRoute();
-            upstreamRoute.fail(proxyResponse);
+            upstreamRoute.fail(new HttpProxyResponse(proxyResponse));
             // get next upstream
             if (controller.canRetry(upstreamRoute)) {
                 sendRequest(); // try next
@@ -186,13 +187,14 @@ class RouteRequestBodyHandler {
                     .onFailure(error -> log.warn("Failed to increase limit", error));
         }
 
+        HttpProxyResponse wrappedResponse = new HttpProxyResponse(proxyResponse);
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024));
+                ProxyUtil.contentLength(wrappedResponse, 1024));
 
-        context.setProxyResponse(proxyResponse);
+        context.setProxyResponse(wrappedResponse);
 
         HttpServerResponse response = context.getResponse();
-        ProxyUtil.handleChunkedResponse(response, proxyResponse);
+        ProxyUtil.handleChunkedResponse(response, wrappedResponse);
 
         proxyResponseStream.pipe()
                 .endOnFailure(false)

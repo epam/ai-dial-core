@@ -28,7 +28,7 @@ import com.epam.aidial.core.credentials.util.TimeProvider;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.credentials.validation.AuthorizationServerMetadataValidator;
 import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataValidator;
-import com.epam.aidial.core.server.config.ConfigStore;
+import com.epam.aidial.core.server.alias.AliasService;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
@@ -40,17 +40,25 @@ import com.epam.aidial.core.server.controller.WellKnownResourceMetadataControlle
 import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.limiter.budget.BudgetCounterSweepService;
 import com.epam.aidial.core.server.log.AnalyticsSettings;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpAuthorizationChallengeProvider;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
+import com.epam.aidial.core.server.plugin.PluginManager;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
+import com.epam.aidial.core.server.proxy.ProxyClient;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.AdminConsentService;
+import com.epam.aidial.core.server.service.AdminSystemExportService;
+import com.epam.aidial.core.server.service.AdminSystemImportService;
+import com.epam.aidial.core.server.service.AdminSystemImportValidationService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -63,6 +71,11 @@ import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.InvitationService;
 import com.epam.aidial.core.server.service.NotificationService;
+import com.epam.aidial.core.server.service.OrgUnitApprovals;
+import com.epam.aidial.core.server.service.OrgUnitGrants;
+import com.epam.aidial.core.server.service.OrgUnitLookup;
+import com.epam.aidial.core.server.service.OrgUnitService;
+import com.epam.aidial.core.server.service.OrgUnitSettings;
 import com.epam.aidial.core.server.service.PerRequestPermissionService;
 import com.epam.aidial.core.server.service.PublicationService;
 import com.epam.aidial.core.server.service.PublicationUtil;
@@ -85,10 +98,12 @@ import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceSweepService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
+import com.epam.aidial.core.server.util.CoreVersion;
 import com.epam.aidial.core.server.util.ProxySettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -99,6 +114,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.service.TempFolderCleaner;
 import com.epam.aidial.core.storage.service.TimerService;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -112,14 +128,15 @@ import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
-import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.vertx.config.spi.utils.JsonObjectHelper;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
-import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.WebSocketClient;
 import io.vertx.core.http.WebSocketClientOptions;
@@ -151,6 +168,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -163,9 +181,12 @@ public class AiDial {
     private static final Set<String> NON_PRINTABLE_SETTINGS = Set.of("secret", "password", "key", "credential", "identity");
     private JsonObject settings;
     private Vertx vertx;
-    private HttpServer server;
+    private String serverDeploymentId;
+    // written by every instance from its own event loop (the same value: the port is fixed or shared), read after open() returns
+    private volatile int serverPort;
     private HttpClient client;
     private WebSocketClient webSocketClient;
+    private PluginManager pluginManager;
 
     private RedissonClient redis;
     private Proxy proxy;
@@ -178,6 +199,8 @@ public class AiDial {
     private BlobStorage storage;
     private ResourceService resourceService;
     private ComplexResourceSweepService complexResourceSweepService;
+    private BudgetCounterSweepService budgetCounterSweepService;
+    private TimerService.Timer systemImportStagingCleanupTimer;
     private McpHttpClientBuilder mcpHttpClientBuilder;
     private McpHttpClientBuilder discoveryMcpHttpClientBuilder;
     private EncryptionService encryptionService;
@@ -191,12 +214,26 @@ public class AiDial {
         try {
             settings = (settings == null) ? settings() : settings;
             printSettings(settings);
+            JsonObject serverSettings = settings("server");
+            int serverInstances = serverSettings.getInteger("instances", 1);
+            if (serverInstances < 1) {
+                throw new IllegalArgumentException("server.instances must be positive, but got: " + serverInstances);
+            }
+            if (serverInstances > 1 && serverSettings.getInteger("port", HttpServerOptions.DEFAULT_PORT) == 0) {
+                throw new IllegalArgumentException("server.port 0 gives each of the " + serverInstances
+                        + " server instances its own random port; use a fixed port, or -1 for one random port shared by all instances");
+            }
             ProxyUtil.init(ProxySettings.from(settings("proxy")));
             VertxOptions vertxOptions = new VertxOptions(settings("vertx"));
+            if (serverInstances > vertxOptions.getEventLoopPoolSize()) {
+                log.warn("server.instances {} exceeds vertx.eventLoopPoolSize {}: instances share event loops",
+                        serverInstances, vertxOptions.getEventLoopPoolSize());
+            }
             setupMetrics(vertxOptions);
             BlockingCallTracer blockingCallTracer = new BlockingCallTracer(setupTracing(vertxOptions));
 
             vertx = Vertx.vertx(vertxOptions);
+            BackgroundOperationTracer backgroundTracer = new BackgroundOperationTracer(vertx);
             // bound to the registries, not the global composite: it would keep the gauges of the first vertx after a restart
             NettyEventExecutorMetrics eventLoopMetrics = new NettyEventExecutorMetrics(vertx.nettyEventLoopGroup());
             if (prometheusRegistry != null) {
@@ -215,7 +252,7 @@ public class AiDial {
 
             AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
-            LogStore logStore = new GfLogStore(AnalyticsSettings.from(settings("analytics")));
+            LogStore logStore = createLogStore(AnalyticsSettings.from(settings("analytics")));
 
             if (accessTokenValidator == null) {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");
@@ -238,7 +275,10 @@ public class AiDial {
                     timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId, blockingCallTracer);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"), blockingCallTracer);
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(blockingCallTracer);
+            KmsSettings kmsSettings = readKmsSettings();
+            KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, blockingCallTracer);
+            ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(keyManagementService, kmsSettings);
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(contentEncryptionKeyService);
             SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
                     credentialEncryptionService,
                     new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
@@ -268,15 +308,17 @@ public class AiDial {
             ExternalServiceService externalServiceService = new ExternalServiceService(
                     resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor);
 
+            // Before the config stores: they validate every plugins entry against the provider of its type
+            PluginRegistry pluginRegistry = PluginRegistry.load(settings("plugins"));
             String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
                     .getBoolean("softValidation", false);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
                     vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId,
-                    externalServiceService, resourceAuthSettingsEncryptionService);
+                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId, pluginRegistry,
+                    externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
             FileConfigStore fileConfigStore = new FileConfigStore(
-                    vertx, settings("config"), null,
+                    vertx, settings("config"), null, pluginRegistry,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
             mergedConfigStore.init(fileConfigStore);
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
@@ -287,8 +329,13 @@ public class AiDial {
             // lockService are already available above, so hoisting this construction earlier is safe.
             ComplexResourceService.Settings complexResourceSettings = Json.decodeValue(
                     settings("complexResource").toBuffer(), ComplexResourceService.Settings.class);
+            RuleService ruleService = new RuleService(resourceService);
+            OrgUnitLookup orgUnitLookup = new OrgUnitLookup(resourceService, OrgUnitSettings.from(settings("orgUnits")));
+            orgUnitLookup.checkOnStartup();
             ComplexResourceService complexResourceService = new ComplexResourceService(
-                    resourceService, lockService, storage, complexResourceSettings);
+                    resourceService, lockService, storage, complexResourceSettings, orgUnitLookup::requireNoUnitFolder);
+            OrgUnitService orgUnitService = new OrgUnitService(orgUnitLookup, resourceService, complexResourceService,
+                    ruleService, lockService, generator, clock);
 
             ApplicationSchemaService applicationSchemaService = new ApplicationSchemaService(
                     resourceService, mergedConfigStore, complexResourceService, encryptionService, httpProxySelector);
@@ -313,23 +360,33 @@ public class AiDial {
                     secretFieldProcessor, externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));
             ShareService shareService = new ShareService(resourceService, invitationService, encryptionService, applicationService,
-                    lockService, applicationSchemaService, clock, resourceCredentialsService);
-            RuleService ruleService = new RuleService(resourceService);
-            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, applicationSchemaService, settings("access"));
+                    lockService, applicationSchemaService, clock, resourceCredentialsService, complexResourceService);
+            OrgUnitApprovals orgUnitApprovals = new OrgUnitApprovals(orgUnitService, encryptionService, resourceService);
+            AccessService accessService = new AccessService(encryptionService, shareService, ruleService, orgUnitApprovals,
+                    new OrgUnitGrants(orgUnitService), applicationSchemaService, settings("access"));
             NotificationService notificationService = new NotificationService(resourceService, encryptionService);
             RateLimiter rateLimiter = new RateLimiter(taskExecutor, resourceService, mergedConfigStore, blockingCallTracer);
             CodeInterpreterService codeInterpreterService = new CodeInterpreterService(vertx, taskExecutor, redis, resourceService,
-                    accessService, encryptionService, operatorService, generator, settings("codeInterpreter"));
+                    accessService, encryptionService, operatorService, backgroundTracer, generator, settings("codeInterpreter"));
 
             ConfigAuthorizationService configAuthService = new AdminRoleAuthorizationService(accessService);
 
             ConfigApplyService configApplyService = new ConfigApplyService(
                     mergedConfigStore, resourceService, secretFieldProcessor, mergedConfigStore.isSoftValidation(),
-                    apiKeyStore, applicationService, toolSetService, catalogSchemaService);
+                    apiKeyStore, applicationService, toolSetService, catalogSchemaService, applicationSchemaService);
             ConfigValidationService configValidationService = new ConfigValidationService(
-                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
+                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService, pluginRegistry, applicationSchemaService);
 
-            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, resourceService);
+            Settings backgroundJobSettings =
+                    Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
+            long deploymentStatsTtlMs = settings("deploymentStats").getLong("ttlMs", TimeUnit.HOURS.toMillis(1));
+            if (deploymentStatsTtlMs <= 0) {
+                throw new IllegalArgumentException("deploymentStats.ttlMs must be positive, but got: " + deploymentStatsTtlMs);
+            }
+            // a background job's record lives until the job ends or the scheduler expires it, and never shorter than any other record
+            long backgroundDeploymentStatsTtlMs = Math.max(deploymentStatsTtlMs, backgroundJobSettings.getJobTtlMs() + backgroundJobSettings.getScanIntervalMs());
+            TokenStatsTracker tokenStatsTracker = new TokenStatsTracker(taskExecutor, redis, lockService, storage.getPrefix(), blockingCallTracer,
+                    Duration.ofMillis(deploymentStatsTtlMs), Duration.ofMillis(backgroundDeploymentStatsTtlMs));
 
             HeartbeatService heartbeatService = new HeartbeatService(
                     vertx, taskExecutor, settings("resources").getLong("heartbeatPeriod"));
@@ -341,19 +398,22 @@ public class AiDial {
                     toolSetService, resourceService, invitationService, shareService, lockService, complexResourceService);
             PublicationService publicationService = new PublicationService(encryptionService, resourceService, accessService,
                     ruleService, notificationService, applicationService, toolSetService, resourceOperationService,
-                    complexResourceService, generator, clock);
+                    complexResourceService, orgUnitService, orgUnitApprovals, generator, clock);
 
+            AliasService aliasService = new AliasService(applicationService, toolSetService, applicationSchemaService,
+                    encryptionService, resourceService, accessService);
             DeploymentService deploymentService = new DeploymentService(encryptionService, applicationService, accessService,
-                    toolSetService, resourceService, applicationSchemaService);
+                    toolSetService, resourceService, applicationSchemaService, aliasService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
+            AdminConsentService adminConsentService = new AdminConsentService(deploymentService, resourceService, clock);
+            applicationService.setAdminConsentService(adminConsentService);
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
             WellKnownResourceMetadataService wellKnownResourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
-
             ApiKeyValidation apiKeyValidation = Json.decodeValue(settings("apiKeyValidation").toBuffer(), ApiKeyValidation.class);
             boolean printAuthorizationHeader = settings.getBoolean("printAuthorizationHeader", false);
 
@@ -369,35 +429,77 @@ public class AiDial {
             ComplexResourceSweepService.Settings complexResourceSweepSettings = Json.decodeValue(
                     settings("complexResourceSweep").toBuffer(), ComplexResourceSweepService.Settings.class);
             complexResourceSweepService = new ComplexResourceSweepService(timerService, storage, redis, lockService,
-                    complexResourceService, encryptionService, complexResourceSweepSettings);
+                    complexResourceService, encryptionService, complexResourceSweepSettings, backgroundTracer);
 
-            ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
-            Settings backgroundJobSettings =
-                    Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
+            BudgetCounterSweepService.Settings budgetCounterSweepSettings = Json.decodeValue(
+                    settings("budgetCounterSweep").toBuffer(), BudgetCounterSweepService.Settings.class);
+            budgetCounterSweepService = new BudgetCounterSweepService(timerService, resourceService, lockService, redis,
+                    mergedConfigStore, budgetCounterSweepSettings, backgroundTracer);
+
+            pluginManager = new PluginManager(pluginRegistry, vertx, taskExecutor);
+            ProxyClient proxyClient = new ProxyClient(client, vertx, pluginManager);
+            ResponsesApiClient responsesApiClient = new ResponsesApiClient(proxyClient, clientOptions);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
-                    upstreamRouteProvider, responsesApiClient, logStore, credentialEncryptionService, backgroundJobSettings);
-            backgroundJobService.init();
+                    client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
+
+            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), kmsSettings.isEnabled(),
+                    readEncryptionSettings().getKeySize() / Byte.SIZE);
+            AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
+            adminSystemExportSettings.validate();
+
+            AdminSystemImportService.Settings adminSystemImportSettings = Json.decodeValue(
+                    settings("adminSystemImport").toBuffer(), AdminSystemImportService.Settings.class);
+            adminSystemImportSettings.validate();
+            AdminSystemImportValidationService adminSystemImportValidationService = new AdminSystemImportValidationService(
+                    CoreVersion.parse(version()), kmsSettings.isEnabled(), keyManagementService);
+            AdminSystemImportService adminSystemImportService = new AdminSystemImportService(storage, lockService, resourceService,
+                    mergedConfigStore, adminSystemImportValidationService, contentEncryptionKeyService, command -> taskExecutor.submit(() -> {
+                        command.run();
+                        return null;
+                    }), adminSystemImportSettings, clock, generator);
+            TempFolderCleaner systemImportStagingCleaner = new TempFolderCleaner(
+                    storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24));
+            long systemImportStagingCleanupPeriodMs = Duration.ofHours(24).toMillis();
+            systemImportStagingCleanupTimer = timerService.scheduleWithFixedDelay(
+                    systemImportStagingCleanupPeriodMs, systemImportStagingCleanupPeriodMs, systemImportStagingCleaner::cleanup);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, externalServiceService, userExternalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
+                    consentService, adminConsentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, securedResourceService, mcpHttpClientBuilder, toolSetRepairService, applicationSchemaService,
                     catalogSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
-                    perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
+                    perRequestPermissionService, resourceAuthSettingsEncryptionService,
+                    authSettingsResolver, clientChannelService, taskExecutor, version(),
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
-                    TracingSettings.from(settings("tracing")), blockingCallTracer);
+                    TracingSettings.from(settings("tracing")), blockingCallTracer,
+                    adminSystemExportService, adminSystemExportSettings, orgUnitService,
+                    adminSystemImportService, adminSystemImportSettings, proxyClient);
 
-            server = vertx.createHttpServer(new HttpServerOptions(settings("server"))).requestHandler(proxy);
-            open(server, HttpServer::listen);
-            log.info("Proxy started on {}", server.actualPort());
+            HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
+            // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
+            serverDeploymentId = open(vertx, v -> v.deployVerticle(() -> new AbstractVerticle() {
+                @Override
+                public void start(Promise<Void> startPromise) {
+                    vertx.createHttpServer(serverOptions).requestHandler(proxy).listen()
+                            .onSuccess(server -> serverPort = server.actualPort())
+                            .<Void>mapEmpty()
+                            .onComplete(startPromise);
+                }
+            }, new DeploymentOptions().setInstances(serverInstances)));
+            String localBaseUrl = backgroundJobSettings.getLocalBaseUrl();
+            String resolvedLocalBaseUrl = localBaseUrl != null ? localBaseUrl : "http://localhost:" + serverPort;
+            backgroundJobService.setLocalBaseUrl(resolvedLocalBaseUrl);
+            deploymentService.getAliasService().setLocalBaseUrl(resolvedLocalBaseUrl);
+            backgroundJobService.init();
+            log.info("Proxy started on {} with {} server instance(s)", serverPort, serverInstances);
         } catch (Throwable e) {
             log.error("Proxy failed to start:", e);
             stop();
@@ -438,22 +540,25 @@ public class AiDial {
         return new ResourceRegistrationService(authorizationServerMetadataService, resourceAuthorizationClient, protectedResourceMetadataService, allowedRedirectUris);
     }
 
-    private CredentialEncryptionService getCredentialEncryptionService(BlockingCallTracer blockingCallTracer) {
+    private KmsSettings readKmsSettings() {
         JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
-        KmsSettings kmsSettings = Json.decodeValue(toolsetSecurity
-                .getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
-        EncryptionSettings encryptionSettings = Json.decodeValue(toolsetSecurity
-                .getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
-        ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
-        KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, blockingCallTracer);
-        ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
-                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
-        ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(contentEncryptionKeyManager);
-        DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
+        return Json.decodeValue(toolsetSecurity.getJsonObject("kms", new JsonObject()).toBuffer(), KmsSettings.class);
+    }
+
+    private EncryptionSettings readEncryptionSettings() {
+        JsonObject toolsetSecurity = settings("toolsets").getJsonObject("security", new JsonObject());
+        return Json.decodeValue(toolsetSecurity.getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
+    }
+
+    private CredentialEncryptionService getCredentialEncryptionService(ContentEncryptionKeyService contentEncryptionKeyService) {
+        DataEncryptionService dataEncryptionService = new DataEncryptionService(readEncryptionSettings(), new SecureRandom());
         return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);
     }
 
-    private ContentEncryptionKeyService getContentEncryptionKeyService(ContentEncryptionKeyManager contentEncryptionKeyManager) {
+    private ContentEncryptionKeyService getContentEncryptionKeyService(KeyManagementService keyManagementService, KmsSettings kmsSettings) {
+        ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(readEncryptionSettings());
+        ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
+                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
         Function<BucketInfo, BucketInfo> rootBucketExtractor = bucketInfo -> {
             String rootLocation = PublicationUtil.getRootLocation(bucketInfo.location());
             if (bucketInfo.location().equals(rootLocation)) {
@@ -485,10 +590,22 @@ public class AiDial {
     @VisibleForTesting
     void stop() throws Exception {
         try {
-            close(server, HttpServer::close);
+            if (serverDeploymentId != null) {
+                // closes the server of every instance
+                close(vertx, v -> v.undeploy(serverDeploymentId));
+            }
             close(client, HttpClient::close);
+            // no request arrives now, and the plugins close their own Vert.x clients before Vert.x closes
+            try {
+                close(pluginManager, PluginManager::close);
+            } catch (TimeoutException e) {
+                // plugin code: one that hangs in close() does not keep the rest from closing
+                log.warn("Plugins did not close in time");
+            }
             close(resourceService);
             close(complexResourceSweepService);
+            close(budgetCounterSweepService);
+            close(systemImportStagingCleanupTimer);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
             // Unhook from the global composite before vertx.close() so its shutdown metrics
@@ -549,6 +666,13 @@ public class AiDial {
         }
     }
 
+    /**
+     * The store analytics rows are written to. Integration tests override it to read the rows.
+     */
+    protected LogStore createLogStore(AnalyticsSettings settings) {
+        return new GfLogStore(settings);
+    }
+
     private static String version() {
         String filename = "version";
         String version = "undefined";
@@ -598,10 +722,10 @@ public class AiDial {
         return JsonObjectHelper.from(properties, false, true);
     }
 
-    private static <R> void open(R resource, AsyncOpener<R> opener) throws Exception {
-        CompletableFuture<R> startup = new CompletableFuture<>();
+    private static <R, T> T open(R resource, AsyncOpener<R, T> opener) throws Exception {
+        CompletableFuture<T> startup = new CompletableFuture<>();
         opener.open(resource).onSuccess(startup::complete).onFailure(startup::completeExceptionally);
-        startup.get(15, TimeUnit.SECONDS);
+        return startup.get(15, TimeUnit.SECONDS);
     }
 
     private static <R> void close(R resource, AsyncCloser<R> closer) throws Exception {
@@ -624,8 +748,8 @@ public class AiDial {
         }
     }
 
-    private interface AsyncOpener<R> {
-        Future<R> open(R resource);
+    private interface AsyncOpener<R, T> {
+        Future<T> open(R resource);
     }
 
     private interface AsyncCloser<R> {
@@ -693,9 +817,11 @@ public class AiDial {
             System.setProperty("otel.traces.exporter", "none");
         }
 
+        // added to the provider rather than around the exporter's processor: without an exporter there is none, and from
+        // OpenTelemetry 1.67 a provider without a processor hands out no-op tracers, so no request would get a trace id
         OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder()
-                .addSpanProcessorCustomizer(((spanProcessor, configProperties) ->
-                        SpanProcessor.composite(new PathNormalizerSpanProcessor(), spanProcessor)))
+                .addTracerProviderCustomizer((tracerProvider, configProperties) ->
+                        tracerProvider.addSpanProcessor(new PathNormalizerSpanProcessor()))
                 .build()
                 .getOpenTelemetrySdk();
 

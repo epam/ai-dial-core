@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Publications;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -21,6 +23,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -93,6 +96,33 @@ class PublicationApiTest extends ResourceBaseTest {
             assertTrue(tokenBody.get().contains("client_secret=" + plaintextSecret),
                     "published app's external-service secret must decrypt to plaintext, got: " + tokenBody.get());
         }
+    }
+
+    @Test
+    void testPublishingToolsetCredentialsNeedsWriteAccess() {
+        String owner = "4X25dj1mja51jykqxsXnCH";
+        for (String name : List.of("read-toolset", "write-toolset")) {
+            verify(send(HttpMethod.PUT, "/v1/toolsets/%s/%s".formatted(owner, name), null, TOOLSET_CREATE_REQEUST_BODY,
+                    "authorization", "admin"), 200);
+        }
+        shareWithUser("toolsets/%s/read-toolset".formatted(owner), "[\"READ\"]");
+        shareWithUser("toolsets/%s/write-toolset".formatted(owner), "[\"READ\", \"WRITE\"]");
+
+        assertEquals(403, publishToolset(owner, "read-toolset", true).status());
+        verify(publishToolset(owner, "read-toolset", false), 200);
+        verify(publishToolset(owner, "write-toolset", true), 200);
+    }
+
+    private Response publishToolset(String owner, String name, boolean publishCredentials) {
+        return send(HttpMethod.POST, "/v1/ops/publication/create", null, """
+                {
+                    "name": "%s",
+                    "targetFolder": "public/%s/",
+                    "resources": [{"action": "ADD", "sourceUrl": "toolsets/%s/%s", "targetUrl": "toolsets/public/%s/%s",
+                                   "publishCredentials": %s}]
+                }
+                """.formatted(name, name + "-" + publishCredentials, owner, name, name + "-" + publishCredentials, name, publishCredentials),
+                "authorization", "user");
     }
 
     @Test
@@ -1492,6 +1522,25 @@ class PublicationApiTest extends ResourceBaseTest {
         response = operationRequest("/v1/ops/publication/rule/list", """
                 {"url": "public/folder/"}
                 """);
+        verify(response, 403);
+    }
+
+    @Test
+    void testRulesHiddenFromAppWithAttachedFolder() {
+        Response response = resourceRequest(HttpMethod.PUT, "/my/folder/conversation", CONVERSATION_BODY_1);
+        verify(response, 200);
+        response = operationRequest("/v1/ops/publication/create", PUBLICATION_REQUEST.formatted(bucket));
+        verify(response, 200);
+        response = operationRequest("/v1/ops/publication/approve", PUBLICATION_URL, "authorization", "admin");
+        verify(response, 200);
+
+        ApiKeyData apiKeyData = createAppKey("guest", Map.of());
+        apiKeyData.setAttachedFolders(Map.of("files/public/folder/", new AutoSharedData(ResourceAccessType.READ_ONLY)));
+        apiKeyStore.assignPerRequestApiKey(apiKeyData);
+
+        response = operationRequest("/v1/ops/publication/rule/list", """
+                {"url": "public/folder/"}
+                """, "api-key", apiKeyData.getPerRequestKey());
         verify(response, 403);
     }
 

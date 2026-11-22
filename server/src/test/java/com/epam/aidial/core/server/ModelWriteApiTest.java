@@ -1,9 +1,16 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -139,6 +146,30 @@ public class ModelWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testPutKeepsProviderAndLifecycleDates() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "provider": "AWS",
+                  "deprecationDate": "2027-01-15",
+                  "endOfService": "2027-07-01"
+                }
+                """;
+        verify(send(HttpMethod.PUT, "/v1/models/platform/test-model-lifecycle", null, body,
+                "authorization", "admin"), 200);
+
+        Response get = send(HttpMethod.GET, "/v1/models/platform/test-model-lifecycle", null, "",
+                "authorization", "admin");
+        verify(get, 200);
+        assertTrue(get.body().contains("\"provider\":\"AWS\""), () -> "Expected provider: " + get.body());
+        assertTrue(get.body().contains("\"deprecationDate\":\"2027-01-15\""),
+                () -> "Expected deprecationDate: " + get.body());
+        assertTrue(get.body().contains("\"endOfService\":\"2027-07-01\""),
+                () -> "Expected endOfService: " + get.body());
+    }
+
+    @Test
     void testPut200HappyPathUpdate() {
         verify(send(HttpMethod.PUT, "/v1/models/platform/test-model-update", null, MODEL_BODY_NO_SECRET,
                 "authorization", "admin", "If-None-Match", "*"), 200);
@@ -192,6 +223,45 @@ public class ModelWriteApiTest extends ResourceBaseTest {
                 () -> "Plaintext secret must not appear on GET: " + get.body());
         assertFalse(get.body().contains("\"key\""),
                 () -> "Upstream key must be absent on GET: " + get.body());
+    }
+
+    @Test
+    @SneakyThrows
+    void testPutThatWouldKeepAnUnreadableUpstreamKeyIsRefused() {
+        String body = """
+                {
+                  "type": "chat",
+                  "endpoint": "http://localhost:7001/openai/deployments/test-model/chat/completions",
+                  "displayName": "%s",
+                  "upstreams": [
+                    {"endpoint": "http://localhost:7001"%s},
+                    {"endpoint": "http://localhost:7002"%s}
+                  ]
+                }
+                """;
+        String path = "/v1/models/platform/test-model-unreadable-key";
+        verify(send(HttpMethod.PUT, path, null, body.formatted("Original", ", \"key\": \"first-secret\"", ", \"key\": \"second-secret\""),
+                "authorization", "admin", "If-None-Match", "*"), 200);
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("models/platform/test-model-unreadable-key", encryptionService);
+        corruptStoredEnvelope(descriptor, "/upstreams/0", "key");
+        String storedBefore = readStoredBlob("models/platform/test-model-unreadable-key");
+
+        Response refused = send(HttpMethod.PUT, path, null, body.formatted("Changed", "", ""), "authorization", "admin");
+        verify(refused, 400);
+        assertTrue(refused.body().contains("upstreams[0].key") && !refused.body().contains("upstreams[1]"), refused::body);
+        assertFalse(refused.body().contains(CORRUPTED_CIPHERTEXT), refused::body);
+        assertEquals(storedBefore, readStoredBlob("models/platform/test-model-unreadable-key"));
+        assertTrue(send(HttpMethod.GET, path, null, "", "authorization", "admin").body().contains("\"displayName\":\"Original\""));
+
+        // A new key for the unreadable upstream is enough: the other one keeps its stored key.
+        verify(send(HttpMethod.PUT, path, null, body.formatted("Changed", ", \"key\": \"first-new-secret\"", ""),
+                "authorization", "admin"), 200);
+        JsonNode stored = ProxyUtil.MAPPER.readTree(readStoredBlob("models/platform/test-model-unreadable-key"));
+        assertEquals(ProxyUtil.MAPPER.readTree(storedBefore).at("/upstreams/1/key"), stored.at("/upstreams/1/key"));
+        assertNotEquals(ProxyUtil.MAPPER.readTree(storedBefore).at("/upstreams/0/key"), stored.at("/upstreams/0/key"));
+        // A rebuild decrypts every key; one that no longer decrypted would leave the model invalid.
+        assertEquals(200, operationRequest("/v1/ops/config/reload", null, "Authorization", "admin").status());
+        assertTrue(send(HttpMethod.GET, path, null, "", "authorization", "admin").body().contains("\"status\":\"valid\""));
     }
 
     @Test

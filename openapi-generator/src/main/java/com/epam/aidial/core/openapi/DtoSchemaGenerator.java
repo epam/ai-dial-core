@@ -82,6 +82,10 @@ public class DtoSchemaGenerator {
             if (definition != null) {
                 return definition;
             }
+            definition = createRegexPatternDefinition(javaType, context);
+            if (definition != null) {
+                return definition;
+            }
             definition = createExplicitOneOfDefinition(javaType, context);
             if (definition != null) {
                 return definition;
@@ -191,6 +195,22 @@ public class DtoSchemaGenerator {
         ObjectNode schema = context.getGeneratorConfig().createObjectNode();
         schema.put("type", "object");
         schema.set("additionalProperties", context.createDefinitionReference(params.get(1)));
+
+        return new CustomDefinition(schema);
+    }
+
+    /**
+     * A {@link Pattern} is written to and read from JSON as its regex string, but reflecting the class would
+     * describe its (empty) bean shape as an object.
+     */
+    private CustomDefinition createRegexPatternDefinition(ResolvedType javaType, SchemaGenerationContext context) {
+        if (!Pattern.class.equals(javaType.getErasedType())) {
+            return null;
+        }
+
+        ObjectNode schema = context.getGeneratorConfig().createObjectNode();
+        schema.put("type", "string");
+        schema.put("format", "regex");
 
         return new CustomDefinition(schema);
     }

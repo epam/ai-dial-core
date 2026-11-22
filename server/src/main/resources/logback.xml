@@ -18,6 +18,7 @@
     <logger name="io.vertx.tracing" level="DEBUG"/>
     <logger name="io.opentelemetry" level="DEBUG"/>
     <logger name="org.redisson" level="WARN"/>
+    <logger name="org.redisson.connection" level="INFO"/>
 
     <!-- Root logger -->
     <root level="${AIDIAL_LOG_LEVEL}">
