@@ -26,8 +26,8 @@ but it opens existing aliases over `applications/platform/...` too; an easy foll
 
 ### D2. No migration code and no start-up warning
 
-The operator gives `userRoles` to the aliases that relied on the target's before upgrading; the release note and
-`aliases.md` say so, as earlier breaking config changes did.
+The operator gives `userRoles` to the aliases that relied on the target's before upgrading; the release note says
+so, as earlier breaking config changes did, and `aliases.md` states the current rule.
 
 **Rejected: a warning at config load for each alias without `userRoles` over a target with them** - it would also
 fire for every alias that is open on purpose, which is the point of the change.

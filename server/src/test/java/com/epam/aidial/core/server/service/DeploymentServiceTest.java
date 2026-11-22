@@ -9,7 +9,6 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.alias.AliasService;
-import com.epam.aidial.core.server.alias.AliasTargets;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -126,18 +125,9 @@ public class DeploymentServiceTest {
         assertEquals(application, deployment);
     }
 
-    /**
-     * The access {@link AliasService#hasConfigAccess} answers: by the alias's {@code userRoles}; without them, true over
-     * a config target and null, decided by the target, over a resource.
-     */
+    // the real rule of AliasService#hasConfigAccess, which reads no state of the service
     private void stubConfigAccess() {
-        when(aliasService.hasConfigAccess(eq(context), any())).thenAnswer(call -> {
-            Alias alias = call.getArgument(1);
-            if (alias.getUserRoles() != null) {
-                return alias.hasAccess(context.getUserRoles());
-            }
-            return AliasTargets.isResourcePath(alias.getTarget().getPath()) ? null : true;
-        });
+        when(aliasService.hasConfigAccess(eq(context), any())).thenCallRealMethod();
     }
 
     @Test

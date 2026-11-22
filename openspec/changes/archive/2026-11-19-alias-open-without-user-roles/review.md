@@ -5,8 +5,8 @@
 - An alias without `userRoles` over a config deployment (config file, platform, public stored) is open to every
   caller for calls, listings, single-item endpoints, toolset sign-in and consent. `[]`, explicit roles and resource
   targets (read access; a `platform` resource's `userRoles`) are unchanged. Code: `AliasService` only.
-- `docs/dynamic-settings/aliases.md`: the `userRoles` rule, a "Changed behaviour" note with the step before upgrade,
-  Listings and the Access of stored aliases. The release note text is in the PR description.
+- `docs/dynamic-settings/aliases.md`: the `userRoles` rule, Listings and the Access of stored aliases. The release
+  note, with the earlier behaviour and the step before upgrade, is in the PR description.
 
 ## Verification
 

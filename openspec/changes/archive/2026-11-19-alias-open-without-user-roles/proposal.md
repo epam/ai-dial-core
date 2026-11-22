@@ -15,8 +15,8 @@ anyone. So an alias cannot be open to everyone while the deployment below it sta
   chooses the alias as a candidate (today such a candidate is skipped as `forbidden`). The target pass checks limits
   under the target's name by the caller's own roles, then by the `default` role; with neither, there is no limit.
 - Before upgrading, an operator copies the target's `userRoles` (`[]` included) onto every alias without `userRoles`
-  whose config target has them. Copied roles no longer follow later changes of the target. The release note and
-  `docs/dynamic-settings/aliases.md` say so.
+  whose config target has them. Copied roles no longer follow later changes of the target. The release note says so;
+  `docs/dynamic-settings/aliases.md` states the current rule.
 - Unchanged: `userRoles: []` admits no caller; explicit roles decide as today; a resource target keeps today's rule
   (design.md D1); a router target is lent alone, and the deployment it chooses is checked against the caller's rights.
 

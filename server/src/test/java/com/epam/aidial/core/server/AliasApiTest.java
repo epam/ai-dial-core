@@ -106,6 +106,8 @@ class AliasApiTest extends ResourceBaseTest {
             assertEquals(403, chat("gpt-4-internal", "default-key").status());
             assertEquals(403, chat("open-resource-alias", "default-key").status());
         }
+        // proxyKey1 reads res-app, so it may use the alias over it
+        assertTrue(ids(send(HttpMethod.GET, "/openai/applications", null, "", "api-key", "proxyKey1")).contains("open-resource-alias"));
 
         assertTrue(ids(send(HttpMethod.GET, "/openai/models", null, "", "api-key", "default-key")).contains("open-alias"));
         assertEquals(200, send(HttpMethod.GET, "/openai/models/open-alias", null, "", "api-key", "default-key").status());
