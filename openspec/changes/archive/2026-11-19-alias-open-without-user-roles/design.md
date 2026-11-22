@@ -65,4 +65,6 @@ reads the same config.
   served by `DeploymentPostController.java:handleDeployment` through `DeploymentService.java:findCallableDeployment`.
 - The lend, unchanged: `ApiKeyData.java:initFromContext` (`lentDeployment`, the resource attached `READ_ONLY`),
   `DeploymentService.java:isLent`, `toResourceDescriptor`; `RateLimiter.java:getLimitByUser` (all the caller's roles).
-- Tests: `AliasApiTest`, `AliasPublicApiTest`, `AliasPlatformApiTest`, `AliasServiceTest`, `dial-config/aliases.json`.
+- `RoleBasedEntity.java:hasAccess` - Javadoc only: `[]` admits no role.
+- Tests: `AliasApiTest`, `AliasPublicApiTest`, `AliasPlatformApiTest`, `AliasServiceTest`, `DeploymentServiceTest`,
+  `dial-config/aliases.json`.

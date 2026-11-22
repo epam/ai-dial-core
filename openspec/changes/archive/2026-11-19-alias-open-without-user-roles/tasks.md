@@ -12,8 +12,9 @@
       `platformAliasWithoutUserRolesIsOpenToAnyone`; `AliasServiceTest.aliasWithoutUserRolesTakesTheConfigTargetRoles`
       becomes `aliasWithoutUserRolesIsOpenOverConfigTarget`
 - [x] 1.2 `AliasService`: `hasConfigAccess` and `hasAccess` admit every caller for a config target, `toView` no longer
-      copies the target's `userRoles`; the Javadoc there and in `DeploymentService`, `StoredAliases` and
-      `ResourceCredentialsController` says the same. 1.1 passes
+      copies the target's `userRoles` and decides a resource target by the `hasAccess` a call uses; the Javadoc there
+      and in `DeploymentService`, `StoredAliases`, `ResourceCredentialsController` and `RoleBasedEntity` (`[]` admits
+      no role) says the same. 1.1 passes
 - [x] 1.3 `docs/dynamic-settings/aliases.md`: the `userRoles` bullet (open to anyone, `[]` nobody, the resource rule),
       Listings, and the Access of stored aliases; the earlier behaviour and the step before upgrade are in 1.4
 - [x] 1.4 Release note: the BREAKING line and the step before upgrade, in the PR description

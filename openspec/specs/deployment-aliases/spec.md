@@ -116,6 +116,11 @@ resource's `userRoles`. Listings and single-item endpoints SHALL apply the same 
   `/v1/deployment-names`, and gets `200` from `/openai/models/<alias>`; the same caller gets `403` from
   `gpt-4-internal` directly, `403` from the second alias, and does not see the second alias in `/openai/applications`
 
+#### Scenario: Alias without userRoles over a platform resource
+- **WHEN** an alias without `userRoles` targets `applications/platform/plt-app`, which has `userRoles: ["default-user"]`
+- **THEN** a caller with `default-user` calls the alias with `200` and sees it in `/openai/applications`; a caller with
+  only `power-user` gets `403` and does not see it
+
 ### Requirement: Endpoints of an alias
 An alias SHALL be called by its name. An alias of type `model`, `application` or `router` SHALL be callable through
 the deployments-POST endpoints, `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages`,

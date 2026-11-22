@@ -13,6 +13,11 @@ resource's `userRoles`. Listings and single-item endpoints SHALL apply the same 
   `/v1/deployment-names`, and gets `200` from `/openai/models/<alias>`; the same caller gets `403` from
   `gpt-4-internal` directly, `403` from the second alias, and does not see the second alias in `/openai/applications`
 
+#### Scenario: Alias without userRoles over a platform resource
+- **WHEN** an alias without `userRoles` targets `applications/platform/plt-app`, which has `userRoles: ["default-user"]`
+- **THEN** a caller with `default-user` calls the alias with `200` and sees it in `/openai/applications`; a caller with
+  only `power-user` gets `403` and does not see it
+
 ### Requirement: Who may call a stored alias
 Core SHALL let a caller use a stored alias when one of the caller's roles is in the alias's `userRoles`, or, when the
 alias has none, as "Who may use an alias" says for an alias without `userRoles`, exactly as for an alias of the config
