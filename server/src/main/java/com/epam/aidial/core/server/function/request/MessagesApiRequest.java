@@ -58,6 +58,7 @@ public class MessagesApiRequest implements RequestObject {
     @Override
     public List<CacheKey> buildCacheKeys(List<String> nodeOrder) {
         CacheKeyBuilder builder = new CacheKeyBuilder();
+        builder.section("messages");
         List<CacheKey> result = new ArrayList<>();
         for (String designator : nodeOrder) {
             String node = CachePrefixPath.parseNode(designator);
@@ -80,6 +81,7 @@ public class MessagesApiRequest implements RequestObject {
      * one-element array (e.g. {@code system:"x"} -> {@code system[0]}).
      */
     private void appendItemCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
+        builder.section(node);
         List<JsonNode> elements = CacheKeyBuilder.elements(tree.get(node));
         for (int index = 0; index < elements.size(); index++) {
             JsonNode element = asBlock(elements.get(index));
@@ -94,6 +96,7 @@ public class MessagesApiRequest implements RequestObject {
      * every later hash. String content is scalar-normalized to {@code content[0]}.
      */
     private void appendMessageCacheKeys(CacheKeyBuilder builder, List<CacheKey> result) {
+        builder.section("messages");
         JsonNode messages = tree.get("messages");
         if (messages == null || !messages.isArray()) {
             return;

@@ -10,6 +10,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.BiFunction;
 
 /**
  * Shared rolling-hash builder for upstream cache keys, used by all {@link RequestObject} implementations.
@@ -79,7 +80,7 @@ public class CacheKeyBuilder {
      * {@code feed} returns for its value (null skips the property): the same canonical form as {@link #update}, so
      * the names and the object's bounds stay in the digest when a caller leaves some properties out.
      */
-    void updateProperties(JsonNode object, java.util.function.BiFunction<String, JsonNode, JsonNode> feed) {
+    void updateProperties(JsonNode object, BiFunction<String, JsonNode, JsonNode> feed) {
         digest.update(OBJECT_START);
         sortedProperties(object).forEach((name, value) -> {
             JsonNode fed = feed.apply(name, value);
@@ -89,6 +90,15 @@ public class CacheKeyBuilder {
             }
         });
         digest.update(OBJECT_END);
+    }
+
+    /**
+     * Feeds a name with no tag before it, so it cannot read as a value: the API at the start of a traversal and the
+     * request section before its elements. Pins of every API share one Redis key space, and a chat message and a
+     * Responses input item of the same JSON would otherwise give the same key.
+     */
+    void section(String name) {
+        text(name);
     }
 
     private void text(String value) {
@@ -128,11 +138,8 @@ public class CacheKeyBuilder {
         return List.of(node);
     }
 
-    /**
-     * The object's own properties sorted by name, for a caller that skips some of them. The values are not copied:
-     * {@link #update} sorts their nested properties as it feeds them.
-     */
-    static Map<String, JsonNode> sortedProperties(JsonNode object) {
+    // the object's own properties sorted by name; the values are not copied
+    private static Map<String, JsonNode> sortedProperties(JsonNode object) {
         Map<String, JsonNode> propertiesByName = new TreeMap<>();
         object.properties().forEach(property -> propertiesByName.put(property.getKey(), property.getValue()));
         return propertiesByName;

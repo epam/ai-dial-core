@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ChatCompletionRequestTest {
@@ -389,10 +390,26 @@ class ChatCompletionRequestTest {
         assertEquals(List.of("prefix.body.messages[0]", "prefix.body.messages[1]"), keys.stream().map(CacheKey::path).toList());
         // the string message feeds the digest as it is, then the object message as a whole, its property names included
         CacheKeyBuilder expected = new CacheKeyBuilder();
+        expected.section("chat");
+        expected.section("messages");
         expected.update(TextNode.valueOf("x"));
         assertEquals(expected.buildKey("p", false).hash(), keys.get(0).hash());
         expected.update(ProxyUtil.MAPPER.readTree("{\"role\": \"user\"}"));
         assertEquals(expected.buildKey("p", false).hash(), keys.get(1).hash());
+    }
+
+    @Test
+    void testBuildCacheKeys_hashesOnlyTheAttachmentsOfCustomContent() throws Exception {
+        String body = "{\"messages\": [{\"role\": \"user\", \"content\": \"hi\", \"custom_fields\": {\"cache_breakpoint\": {\"expire_at\": %s}},"
+                + " \"custom_content\": {\"state\": %s, \"attachments\": [{\"url\": \"%s\"}]}}]}";
+        String first = hash(body.formatted("1", "1", "a"));
+
+        assertEquals(first, hash(body.formatted("2", "2", "a")), "custom_fields and custom_content.state are not hashed");
+        assertNotEquals(first, hash(body.formatted("1", "1", "b")), "the attachments are");
+    }
+
+    private static String hash(String body) throws JsonProcessingException {
+        return request(body).buildCacheKeys(List.of("prefix.body.messages")).get(0).hash();
     }
 
     private static ChatCompletionRequest request(String body) throws JsonProcessingException {

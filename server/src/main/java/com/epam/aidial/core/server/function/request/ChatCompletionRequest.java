@@ -69,6 +69,7 @@ public class ChatCompletionRequest implements RequestObject {
     @Override
     public List<CacheKey> buildCacheKeys(List<String> nodeOrder) {
         CacheKeyBuilder builder = new CacheKeyBuilder();
+        builder.section("chat");
         List<CacheKey> result = new ArrayList<>();
         for (String designator : nodeOrder) {
             String node = CachePrefixPath.parseNode(designator);
@@ -82,6 +83,7 @@ public class ChatCompletionRequest implements RequestObject {
     }
 
     private void appendCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
+        builder.section(node);
         JsonNode array = tree.get(node);
         if (array == null || !array.isArray()) {
             // embedding request is not supported yet
