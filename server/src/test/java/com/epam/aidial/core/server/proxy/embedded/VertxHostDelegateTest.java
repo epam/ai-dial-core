@@ -6,6 +6,7 @@ import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
@@ -30,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -127,6 +129,30 @@ class VertxHostDelegateTest {
         assertEquals(16, child.getSpanId().length());
         assertNotEquals(dispatched.get(1).getSpanId(), child.getSpanId());
         assertEquals("/openai/deployments/m/chat/completions", child.getRequest().path());
+    }
+
+    // deployment-origin "Body sent to the origin": the target pass of an alias hop takes the alias pass's body whole
+    // only for the very tree the alias pass handed on, and once; any other call's tree is serialized
+
+    @Test
+    void testAliasHopHandsOnTheAliasPassBodyForItsTreeOnly() throws Exception {
+        ReceivedBody aliasBody = ReceivedBody.parse(Buffer.buffer("{\"model\": \"m\"}"));
+        VertxHostDelegate aliasHost = VertxHostDelegate.forAliasHop(proxy, parent, pluginContext, aliasBody);
+
+        for (int i = 0; i < 2; i++) {
+            on(pluginContext, () -> aliasHost.call(new Call("/openai/v1/chat/completions", MultiMap.caseInsensitiveMultiMap(), aliasBody.tree())));
+        }
+        ObjectNode other = body();
+        call("/openai/v1/chat/completions", other);
+
+        awaitCondition(() -> dispatched.size() == 3);
+        assertSame(aliasBody, dispatched.get(0).getCallBody());
+        // taken once: a second call may carry what the first call's pass changed
+        assertSame(aliasBody.tree(), dispatched.get(1).getCallBody().tree());
+        assertEquals("ReceivedBody[bytes=none]", dispatched.get(1).getCallBody().toString());
+        // a plugin's call: its tree, which the plugin may have changed, without bytes
+        assertSame(other, dispatched.get(2).getCallBody().tree());
+        assertEquals("ReceivedBody[bytes=none]", dispatched.get(2).getCallBody().toString());
     }
 
     @Test

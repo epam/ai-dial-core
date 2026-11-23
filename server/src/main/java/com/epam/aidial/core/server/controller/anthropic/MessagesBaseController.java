@@ -78,7 +78,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                     String model = request.getModel();
                     return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> setupDeployment(model)))
                             .compose(ignore -> decisions.decideIfRouter(InterfaceType.ANTHROPIC_MESSAGES,
-                                    Future.succeededFuture(context.getOriginalRequestBody()), request.getTree(), this::reenterWithCandidate))
+                                    Future.succeededFuture(context.getOriginalRequestBody()), request.getBody().tree(), this::reenterWithCandidate))
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request))
                             .otherwise(error -> handleRequestError(model, error));
                 })
@@ -187,7 +187,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         // Enhancement functions update the api key, and it should be saved after that
         proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
 
-        setProcessedRequestBody(request, true, InterfaceType.ANTHROPIC_MESSAGES);
+        setProcessedRequestBody(request, InterfaceType.ANTHROPIC_MESSAGES);
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);

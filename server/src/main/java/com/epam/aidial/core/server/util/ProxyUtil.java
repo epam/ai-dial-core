@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -292,17 +293,17 @@ public class ProxyUtil {
 
     /**
      * Parses the request's body at a controller's parse site, and sets it as the request's body. A pass Core serves
-     * in process (an origin plugin's call, or an alias pass's to its target) already has the tree: it is taken as it
-     * is, and only the body's timestamp is set, as the chain sets the body when it serialises the tree.
+     * in process (an origin plugin's call, or an alias pass's to its target) already has the body: it is taken as it
+     * is, and only the body's timestamp is set, as the chain sets the body when it serialises it.
      */
-    public ObjectNode parseRequestBody(ProxyContext context, Buffer body) throws IOException {
-        ObjectNode tree = context.getCallTree();
-        if (tree != null) {
+    public ReceivedBody parseRequestBody(ProxyContext context, Buffer body) throws IOException {
+        ReceivedBody call = context.getCallBody();
+        if (call != null) {
             context.setRequestBodyTimestamp(System.currentTimeMillis());
-            return tree;
+            return call;
         }
         context.setRequestBodyWithTimestamp(body);
-        return parseObject(body);
+        return ReceivedBody.parse(body);
     }
 
     public ObjectNode parseObject(Buffer buffer) throws IOException {

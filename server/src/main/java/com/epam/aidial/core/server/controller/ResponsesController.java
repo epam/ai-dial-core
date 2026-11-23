@@ -33,6 +33,7 @@ import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSettingsFn;
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
@@ -216,7 +217,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                         return handleInterceptor(0);
                     }
                     return decisions.decideIfRouter(InterfaceType.OPENAI_RESPONSES, Future.succeededFuture(context.getOriginalRequestBody()),
-                                    request.getTree(), this::reenterWithCandidate)
+                                    request.getBody().tree(), this::reenterWithCandidate)
                             .compose(decided -> decided ? serveCandidate(request) : proceedToDeployment(request, deploymentName));
                 })
                 .otherwise(error -> handleRequestError(deploymentName, error));
@@ -320,7 +321,8 @@ public class ResponsesController extends BaseDeploymentPostController {
         log.info("Received body from client. Length: {}", body.length());
         try {
             context.setOriginalRequestBody(body);
-            ObjectNode tree = ProxyUtil.parseRequestBody(context, body);
+            ReceivedBody received = ProxyUtil.parseRequestBody(context, body);
+            ObjectNode tree = received.tree();
             if (tree.has("previous_response_id")) {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "previous_response_id is not supported");
             }
@@ -328,7 +330,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                 throw new HttpException(HttpStatus.BAD_REQUEST, "conversation is not supported");
             }
             GenAiTraceAttributes.setRequestAttributes(context, InterfaceType.OPENAI_RESPONSES, tree);
-            return new ResponsesApiRequest(tree);
+            return new ResponsesApiRequest(received);
         } catch (IOException e) {
             throw new HttpException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
@@ -373,7 +375,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             proxy.getApiKeyStore().assignPerRequestApiKey(proxyApiKeyData);
         }
 
-        setProcessedRequestBody(request, true, InterfaceType.OPENAI_RESPONSES);
+        setProcessedRequestBody(request, InterfaceType.OPENAI_RESPONSES);
 
         Deployment deployment = context.getDeployment();
         String upstreamId = context.getRequest().headers().get(Proxy.HEADER_UPSTREAM_ID);

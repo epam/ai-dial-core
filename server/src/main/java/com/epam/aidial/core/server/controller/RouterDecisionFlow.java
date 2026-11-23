@@ -310,7 +310,7 @@ public class RouterDecisionFlow {
         RouterDecision decision = context.getDecision();
         decision.setResolving(false);
         decision.close();
-        context.setRequestBody(Buffer.buffer(request.serialize()));
+        context.setRequestBody(request.serialize());
         context.setInitialDeployment(candidate);
     }
 

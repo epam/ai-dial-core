@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -28,7 +29,6 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -283,9 +283,9 @@ public class DeploymentPostController extends BaseChatCompletionController {
         if (requestBodyFuture == null) {
             requestBodyFuture = context.getRequest().body()
                     .compose(body -> body.length() == 0 && context.isChildPass() && context.getDeployment() instanceof Router
-                            // an in-process call has a tree and no bytes: its serialization, made before any candidate
-                            // changes the tree, stands in for the client's bytes
-                            ? proxy.getTaskExecutor().submit(() -> Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(context.getCallTree())))
+                            // an in-process call to a router has no bytes of its own: the tree's serialization, made
+                            // before any candidate changes the tree, stands in for the client's bytes
+                            ? proxy.getTaskExecutor().submit(() -> Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(context.getCallBody().tree())))
                             : Future.succeededFuture(body))
                     .onSuccess(body -> {
                         if (context.getDecision() != null || context.getDeployment() instanceof Router) {
@@ -334,10 +334,10 @@ public class DeploymentPostController extends BaseChatCompletionController {
                 deployment.getName(), requestBody.length());
 
         try {
-            ObjectNode requestTree = ProxyUtil.parseRequestBody(context, requestBody);
-            RequestObject request = new ChatCompletionRequest(requestTree);
-            GenAiTraceAttributes.setRequestAttributes(context, requestedInterface(), requestTree);
-            processChatCompletionsRequestBody(request, false);
+            ReceivedBody received = ProxyUtil.parseRequestBody(context, requestBody);
+            RequestObject request = new ChatCompletionRequest(received);
+            GenAiTraceAttributes.setRequestAttributes(context, requestedInterface(), received.tree());
+            processChatCompletionsRequestBody(request);
         } catch (Throwable e) {
             if (e instanceof HttpException httpException) {
                 respond(httpException.getStatus(), httpException.getMessage());
