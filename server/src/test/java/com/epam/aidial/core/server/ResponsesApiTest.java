@@ -237,8 +237,18 @@ public class ResponsesApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testConflictingEncryptedContentAffinityRejected() throws IOException {
-        try (CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
+    public void testReasoningFromAnotherUpstreamDropped() throws IOException {
+        AtomicReference<String> upstreamKey = new AtomicReference<>();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
+            server.map(HttpMethod.POST, "/openai/v1/responses", request -> {
+                upstreamKey.set(request.getHeader("X-UPSTREAM-KEY"));
+                requestBody.set(request.getBody().readUtf8());
+                return TestWebServer.createResponse(200,
+                        "{\"id\":\"resp_1\",\"object\":\"response\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+                        "Content-Type", "application/json");
+            });
+
             ObjectNode itemA = ProxyUtil.MAPPER.createObjectNode();
             itemA.put("type", "reasoning");
             itemA.put("id", "rs_1");
@@ -251,13 +261,18 @@ public class ResponsesApiTest extends ResourceBaseTest {
             itemB.put("encrypted_content", "cipher-2");
             EncryptedContentAffinityUtil.wrapOutputItem(itemB, "up-b", "responses-cache");
 
-            String requestBody = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
-                    + "\"input\":[" + itemA + "," + itemB + "]}";
-            Response response = post(client, requestBody);
+            String body = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
+                    + "\"input\":[" + itemA + "," + itemB + ",{\"role\":\"user\",\"content\":\"Continue\"}]}";
+            Response response = post(client, body);
+            assertEquals(200, response.status());
 
-            assertEquals(400, response.status());
-            JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals("conflicting_encrypted_content_affinity", body.path("error").path("code").asText());
+            // routed to the upstream of the first reasoning item; the item from the other upstream is dropped
+            assertEquals("keyA", upstreamKey.get());
+            JsonNode forwardedInput = ProxyUtil.MAPPER.readTree(requestBody.get()).path("input");
+            assertEquals(2, forwardedInput.size());
+            assertEquals("rs_1", forwardedInput.get(0).path("id").asText());
+            assertEquals("cipher-1", forwardedInput.get(0).path("encrypted_content").asText());
+            assertEquals("Continue", forwardedInput.get(1).path("content").asText());
         }
     }
 

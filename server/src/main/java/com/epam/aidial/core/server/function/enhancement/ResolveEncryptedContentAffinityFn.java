@@ -48,11 +48,8 @@ public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<Reque
                 continue;
             }
 
-            if (resolvedUpstreamId == null) {
-                resolvedUpstreamId = result.upstreamId();
-            } else if (!resolvedUpstreamId.equals(result.upstreamId())) {
-                throw EncryptedContentAffinityUtil.conflictingAffinityException();
-            }
+            // resolveAndUnwrap has already dropped items from any other upstream, so all ids agree
+            resolvedUpstreamId = result.upstreamId();
 
             if (result.deploymentName() != null && !result.deploymentName().equals(currentDeploymentName)) {
                 log.warn("Deployment mismatch: encrypted content was produced by '{}' but current deployment is '{}'",

@@ -124,7 +124,7 @@ public class EncryptedContentAffinityUtilTest {
     }
 
     @Test
-    void conflictingUpstreamIdsAcrossItemsReturnsBothAffinities() {
+    void reasoningItemFromAnotherUpstreamIsDropped() {
         ObjectNode itemA = ProxyUtil.MAPPER.createObjectNode();
         itemA.put("type", "reasoning");
         itemA.put("id", "rs_a");
@@ -137,14 +137,21 @@ public class EncryptedContentAffinityUtilTest {
         itemB.put("encrypted_content", "cipher-b");
         EncryptedContentAffinityUtil.wrapOutputItem(itemB, "upstream-b", "deploy-x");
 
+        ObjectNode message = ProxyUtil.MAPPER.createObjectNode();
+        message.put("role", "user");
+        message.put("content", "Continue");
+
         ArrayNode input = ProxyUtil.MAPPER.createArrayNode();
         input.add(itemA);
         input.add(itemB);
+        input.add(message);
 
         List<EncryptedContentAffinityUtil.ResolvedAffinity> resolved = EncryptedContentAffinityUtil.resolveAndUnwrap(input);
-        assertEquals(2, resolved.size());
-        assertEquals("upstream-a", resolved.get(0).upstreamId());
-        assertEquals("upstream-b", resolved.get(1).upstreamId());
+        assertEquals(List.of(new EncryptedContentAffinityUtil.ResolvedAffinity("upstream-a", "deploy-x")), resolved);
+        assertEquals(2, input.size());
+        assertEquals("rs_a", input.get(0).path("id").asText());
+        assertEquals("cipher-a", input.get(0).path("encrypted_content").asText());
+        assertEquals("Continue", input.get(1).path("content").asText());
     }
 
     @Test

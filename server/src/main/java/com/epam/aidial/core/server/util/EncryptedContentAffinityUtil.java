@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Base64;
 import java.util.LinkedHashSet;
@@ -24,8 +25,9 @@ import javax.annotation.Nullable;
  * {@link Model#getUpstreams()} entry's {@link com.epam.aidial.core.config.Upstream#getId()} ("upstream config
  * id" below - not to be confused with the provider's own response id string); incoming items are decoded back
  * to that id to force routing, then restored to their original, provider-native shape before forwarding
- * upstream.
+ * upstream. Reasoning items from a different upstream than the first one in the request are dropped.
  */
+@Slf4j
 @UtilityClass
 public class EncryptedContentAffinityUtil {
 
@@ -91,20 +93,47 @@ public class EncryptedContentAffinityUtil {
     /**
      * Unwraps every wrapped {@code id}/{@code encrypted_content} field found in {@code input}, mutating it in
      * place back to the provider-native shape, and returns the unique resolved affinities (deduplicated by full
-     * record equality) found across all items.
+     * record equality) found across the kept items.
      *
-     * @return unique resolved affinities; empty if nothing wrapped was found
+     * <p>The first upstream config id found in {@code input} wins. A later reasoning item stamped with a different
+     * upstream config id cannot be decrypted by the winning upstream, so it is removed from {@code input} and a
+     * warning is logged. This happens when a client drops reasoning items from a turn, so that turn is routed to an
+     * arbitrary upstream whose reasoning is then echoed together with the earlier turns' reasoning.
+     *
+     * @return unique resolved affinities of the kept items; empty if nothing wrapped was found
      */
     public List<ResolvedAffinity> resolveAndUnwrap(ArrayNode input) {
         LinkedHashSet<ResolvedAffinity> resolved = new LinkedHashSet<>();
-        for (JsonNode item : input) {
-            if (!(item instanceof ObjectNode object) || !isReasoningItem(object)) {
+        String winningUpstreamId = null;
+        for (int i = 0; i < input.size(); i++) {
+            if (!(input.get(i) instanceof ObjectNode object) || !isReasoningItem(object)) {
                 continue;
             }
-            resolved.add(unwrapId(object));
-            resolved.add(unwrapContent(object));
+            ResolvedAffinity byId = unwrapId(object);
+            ResolvedAffinity byContent = unwrapContent(object);
+            if (winningUpstreamId == null) {
+                winningUpstreamId = byId.upstreamId() != null ? byId.upstreamId() : byContent.upstreamId();
+            }
+            String conflictingUpstreamId = conflictingUpstreamId(byId, winningUpstreamId);
+            if (conflictingUpstreamId == null) {
+                conflictingUpstreamId = conflictingUpstreamId(byContent, winningUpstreamId);
+            }
+            if (conflictingUpstreamId != null) {
+                log.warn("Dropping reasoning item produced by upstream '{}': the request is routed to upstream '{}', which cannot decrypt it",
+                        conflictingUpstreamId, winningUpstreamId);
+                input.remove(i--);
+                continue;
+            }
+            resolved.add(byId);
+            resolved.add(byContent);
         }
         return List.copyOf(resolved);
+    }
+
+    @Nullable
+    private String conflictingUpstreamId(ResolvedAffinity affinity, @Nullable String winningUpstreamId) {
+        String upstreamId = affinity.upstreamId();
+        return upstreamId != null && !upstreamId.equals(winningUpstreamId) ? upstreamId : null;
     }
 
     private ResolvedAffinity unwrapId(ObjectNode object) {
@@ -173,17 +202,6 @@ public class EncryptedContentAffinityUtil {
         return CONTENT_WRAP_PREFIX
                 + ENCODER.encodeToString(ProxyUtil.MAPPER.writeValueAsBytes(payload))
                 + ";" + originalContent;
-    }
-
-    @SneakyThrows
-    public HttpException conflictingAffinityException() {
-        ErrorData response = new ErrorData();
-        String message = "Conflicting encrypted content affinity across input items.";
-        response.getError().setMessage(message);
-        response.getError().setDisplayMessage(message);
-        response.getError().setCode("conflicting_encrypted_content_affinity");
-        response.getError().setType("invalid_request_error");
-        return new HttpException(HttpStatus.BAD_REQUEST, ProxyUtil.MAPPER.writeValueAsString(response));
     }
 
     @SneakyThrows
