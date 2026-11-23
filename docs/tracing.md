@@ -159,6 +159,7 @@ stays at 0 unless `analytics.maxPendingBodyHeapPercent` is set.
 | `dial_lock_queue_size{phase="redis"}` | gauge | Threads of this pod spinning in `lock()` until another holder releases the Redis key                           |
 | `dial_lock_wait{phase="local_only"}`  | timer | Time `LockService.lockLocally()` (rate-limit counter updates) waits for other threads of this pod on the key   |
 | `dial_lock_queue_size{phase="local_only"}` | gauge | Threads of this pod blocked in `lockLocally()` until another thread of this pod releases the key       |
+| `dial_resource_compute_give_ups_total` | counter | Rate-limit counter updates that failed because other pods changed the counter on each of the 32 attempts  |
 | `dial_lock_hold`                      | timer | Time a lock taken with `lock()` is held                                                                        |
 | `dial_async_tasks_queued`             | gauge | `AsyncTaskExecutor` tasks submitted and not started yet                                                        |
 | `dial_async_task_start_delay`         | timer | Time from `AsyncTaskExecutor.submit()` until the task starts running                                           |

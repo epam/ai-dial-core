@@ -90,6 +90,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -1716,13 +1717,26 @@ public class RateLimiterTest {
      */
     @Test
     public void testIncreaseWritesTheDeploymentCost_WhenTheCallerWideCostUpdateGivesUp() {
+        assertDeploymentCostWritten_WhenTheCallerWideCostUpdateFails(new IllegalStateException("Resource changed concurrently on every attempt"));
+    }
+
+    /**
+     * Nor does a failed blob read of the caller-wide record, which surfaces as a checked exception.
+     */
+    @Test
+    public void testIncreaseWritesTheDeploymentCost_WhenTheCallerWideCostBlobReadFails() {
+        assertDeploymentCostWritten_WhenTheCallerWideCostUpdateFails(new IOException("blob storage"));
+    }
+
+    private void assertDeploymentCostWritten_WhenTheCallerWideCostUpdateFails(Exception failure) {
         stubInlineExecutorReturningFailures();
         Model model = budgetConfig(SpendingLimitMode.OFF).getModels().get("model");
         String bucket = BucketBuilder.USER_BUCKET_PATTERN.formatted("busy-hash");
         ResourceDescriptor callerCosts = ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "costs");
         ResourceService resourceSpy = spy(resourceService);
-        doThrow(new IllegalStateException("Resource changed concurrently on every attempt"))
-                .when(resourceSpy).computeResourceWithoutLock(eq(callerCosts), any());
+        doAnswer(invocation -> {
+            throw failure;
+        }).when(resourceSpy).computeResourceWithoutLock(eq(callerCosts), any());
         ConfigStore configStore = mock(ConfigStore.class);
         when(configStore.get()).thenReturn(new Config());
         RateLimiter limiter = new RateLimiter(taskExecutor, resourceSpy, configStore, BlockingCallTracer.NOOP);

@@ -3,11 +3,14 @@ package com.epam.aidial.core.storage.service;
 import com.epam.aidial.core.storage.FileUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
+import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jclouds.blobstore.domain.Blob;
 import org.junit.jupiter.api.AfterEach;
@@ -32,10 +35,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -191,20 +196,47 @@ class ResourceServiceComputeWithoutLockTest {
     }
 
     @Test
+    void testRetriesOnTheRecord_WhenTheBlobReadReturnsTheStubOfNewRecord() {
+        ResourceDescriptor descriptor = limit("requests");
+        // this pod finds no record in Redis, and another pod creates the record and its stub before the blob is loaded
+        BlobStorage loadingStorage = Mockito.spy(storage);
+        AtomicBoolean created = new AtomicBoolean();
+        Mockito.doAnswer(invocation -> {
+            if (created.compareAndSet(false, true)) {
+                service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+            }
+            return invocation.callRealMethod();
+        }).when(loadingStorage).load(descriptor.getAbsoluteFilePath());
+        ResourceService pod = new ResourceService(Mockito.mock(TimerService.class), client, loadingStorage,
+                new LockService(client, null), settings, null);
+
+        pod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+
+        assertEquals("2", service.getResource(descriptor), "a value computed from the empty stub must not replace the record");
+    }
+
+    @Test
     void testGivesUp_WhenAnotherWriteLandsFirstOnEveryAttempt() {
         ResourceDescriptor descriptor = limit("requests");
         ResourceService otherPod = newPod(Mockito.mock(TimerService.class));
         AtomicInteger calls = new AtomicInteger();
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        Metrics.addRegistry(meterRegistry);
 
-        assertThrows(IllegalStateException.class, () -> service.computeResourceWithoutLock(descriptor, value -> {
-            calls.incrementAndGet();
-            otherPod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
-            return increment(value);
-        }));
+        try {
+            assertThrows(IllegalStateException.class, () -> service.computeResourceWithoutLock(descriptor, value -> {
+                calls.incrementAndGet();
+                otherPod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+                return increment(value);
+            }));
 
-        // only the other pod's writes landed
-        assertEquals(32, calls.get());
-        assertEquals("32", service.getResource(descriptor));
+            // only the other pod's writes landed
+            assertEquals(32, calls.get());
+            assertEquals("32", service.getResource(descriptor));
+            assertEquals(1, meterRegistry.get("dial_resource_compute_give_ups_total").counter().count());
+        } finally {
+            Metrics.removeRegistry(meterRegistry);
+        }
     }
 
     @Test
@@ -309,9 +341,21 @@ class ResourceServiceComputeWithoutLockTest {
     }
 
     @Test
-    void testRejectsRecordsOtherThanLimits() {
-        ResourceDescriptor file = new ResourceDescriptor(ResourceTypes.FILE, "a", List.of(), "bucket", "bucket/", false);
-        assertThrows(IllegalArgumentException.class, () -> service.computeResourceWithoutLock(file, ResourceServiceComputeWithoutLockTest::increment));
+    void testComputesRecordOfAnotherTypeAndPublishesItsEvents() throws InterruptedException {
+        ResourceDescriptor prompt = new ResourceDescriptor(ResourceTypes.PROMPT, "a", List.of(), "bucket", "bucket/", false);
+        List<ResourceEvent.Action> actions = new CopyOnWriteArrayList<>();
+        CountDownLatch received = new CountDownLatch(2);
+        try (ResourceTopic.Subscription ignored = service.subscribeResources(List.of(prompt), event -> {
+            actions.add(event.getAction());
+            received.countDown();
+        })) {
+            service.computeResourceWithoutLock(prompt, ResourceServiceComputeWithoutLockTest::increment);
+            service.computeResourceWithoutLock(prompt, ResourceServiceComputeWithoutLockTest::increment);
+
+            assertEquals("2", service.getResource(prompt));
+            assertTrue(received.await(5, TimeUnit.SECONDS), "a write of an event type publishes its event");
+            assertEquals(List.of(ResourceEvent.Action.CREATE, ResourceEvent.Action.UPDATE), actions);
+        }
     }
 
     @Test
@@ -431,6 +475,28 @@ class ResourceServiceComputeWithoutLockTest {
         failingPod.sync();
 
         assertTrue(queue().contains(redisKey), "a record that was not checked after the removal must stay queued");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testSyncKeepsTheEntryQueued_WhenTheRemovalFails() {
+        ResourceDescriptor descriptor = limit("requests");
+        String redisKey = RedisUtil.redisKey(descriptor, null);
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+
+        // the removal is applied and its reply is lost, as on a Redis timeout
+        RedissonClient failingClient = Mockito.spy(client);
+        Mockito.doAnswer(invocation -> {
+            RScoredSortedSet<String> failingQueue = Mockito.spy((RScoredSortedSet<String>) invocation.callRealMethod());
+            Mockito.doAnswer(removal -> {
+                removal.callRealMethod();
+                throw new IllegalStateException("timeout");
+            }).when(failingQueue).remove(redisKey);
+            return failingQueue;
+        }).when(failingClient).getScoredSortedSet(QUEUE, StringCodec.INSTANCE);
+        new ResourceService(Mockito.mock(TimerService.class), failingClient, storage, new LockService(client, null), settings, null).sync();
+
+        assertTrue(queue().contains(redisKey), "a write that found the entry queued before the removal would be left unqueued");
     }
 
     @Test

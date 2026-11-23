@@ -21,6 +21,8 @@ import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Metrics;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -142,6 +144,9 @@ public class ResourceService implements AutoCloseable {
     // waits a random 0 to 2^n - 1 ms, at most 63 ms, so the pods that collided spread out
     private static final int MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS = 32;
     private static final int MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT = 6;
+    private static final Counter COMPUTE_GIVE_UPS = Counter.builder("dial_resource_compute_give_ups_total")
+            .description("Updates made without the resource lock that gave up: another writer changed the record on every attempt")
+            .register(Metrics.globalRegistry);
     // in a fixed order, for HMGET
     private static final List<String> REDIS_FIELD_LIST = List.copyOf(REDIS_FIELDS);
     // ARGV[1]: the synced flag of a record to skip ('' to skip none); ARGV[2..]: the field names. Run as a write
@@ -152,8 +157,8 @@ public class ResourceService implements AutoCloseable {
             end
             return redis.call('hmget', KEYS[1], unpack(ARGV, 2))
             """.formatted(SYNCED_ATTRIBUTE);
-    private static final Object[] READ_FIELDS_ARGS = readFieldsArgs(RedisUtil.EMPTY_ARRAY);
-    private static final Object[] READ_UNSYNCED_FIELDS_ARGS = readFieldsArgs(RedisUtil.BOOLEAN_TRUE_ARRAY);
+    private static final Object[] READ_FIELDS_ARGS = buildReadFieldsArgs(RedisUtil.EMPTY_ARRAY);
+    private static final Object[] READ_UNSYNCED_FIELDS_ARGS = buildReadFieldsArgs(RedisUtil.BOOLEAN_TRUE_ARRAY);
     // ARGV[1]: the etag the value was read with ('' for none); ARGV[2]: 'true' if the value came from blob storage, so
     // the record is created when Redis has none; ARGV[3..]: field, value pairs.
     // Redisson resends a command after a response timeout. A resend of a write that was applied sees a conflict, and
@@ -691,14 +696,10 @@ public class ResourceService implements AutoCloseable {
                         cacheHit = false;
                         String blobKey = blobKey(descriptor);
                         result = blobGet(blobKey, true);
-                        if (descriptor.getType() == ResourceTypes.LIMIT) {
-                            // limit records can be written without the lock (computeResourceWithoutLock, the rate-limit
-                            // counters), so a write since the miss is newer than the blob and the blob copy must not
-                            // replace it; returning the blob copy is fine, a counter read may be a few updates behind
-                            putIfAbsent(redisKey, result);
-                        } else {
-                            redisPut(redisKey, result);
-                        }
+                        // only if Redis still has no record: a write since the miss (one made without the lock, or any
+                        // write when this read holds no lock) is newer than the blob copy. The read returns its own
+                        // copy either way, which may be a few updates behind
+                        putIfAbsent(redisKey, result);
                     }
                 }
             }
@@ -1002,14 +1003,11 @@ public class ResourceService implements AutoCloseable {
 
     /**
      * Like {@link #computeResource}, without the resource lock: the result is written only if the record still has the
-     * etag it was read with, else {@code fn} runs again on the newer value. Only for {@link ResourceTypes#LIMIT} records
-     * no other method writes. {@code fn} may run several times and must not delete the record; a value over
-     * {@code maxSizeToCache} is rejected.
+     * etag it was read with, else {@code fn} runs again on the newer value. Only for records that no other method
+     * writes: a locked write does not check the etag, so it would replace a write made here. {@code fn} may run
+     * several times and must not delete the record; a value over {@code maxSizeToCache} is rejected.
      */
     public void computeResourceWithoutLock(ResourceDescriptor descriptor, Function<String, String> fn) {
-        if (descriptor.getType() != ResourceTypes.LIMIT) {
-            throw new IllegalArgumentException("Only limit records are computed without a lock: " + descriptor.getUrl());
-        }
         trace("resource.compute", descriptor, () -> computeResourceWithoutLockTraced(descriptor, fn));
     }
 
@@ -1018,120 +1016,151 @@ public class ResourceService implements AutoCloseable {
         Runnable afterWrite;
         // writers of this pod take turns, so only one writer per pod races in the compare-and-set
         try (var ignore = lockService.lockLocally(redisKey)) {
-            afterWrite = computeResourceWithoutLockAttempts(descriptor, redisKey, fn);
+            afterWrite = computeResourceWithRetries(descriptor, redisKey, fn);
         }
         // after the turn, so the next writer of this pod does not wait for the queue entry or the stub
         afterWrite.run();
         return null;
     }
 
-    private Runnable computeResourceWithoutLockAttempts(ResourceDescriptor descriptor, String redisKey, Function<String, String> fn) {
+    private Runnable computeResourceWithRetries(ResourceDescriptor descriptor, String redisKey, Function<String, String> fn) {
         for (int attempt = 1; attempt <= MAX_COMPUTE_WITHOUT_LOCK_ATTEMPTS; attempt++) {
             if (attempt > 1) {
                 long backoffMillis = ThreadLocalRandom.current().nextLong(1L << Math.min(attempt - 1, MAX_COMPUTE_WITHOUT_LOCK_BACKOFF_SHIFT));
                 LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(backoffMillis));
             }
             BlockingCallTracer.currentSpan().setAttribute("dial.resource.attempts", attempt);
-            // the first read may go to a replica (Redisson's read mode): a value older than the last write fails the
-            // compare-and-set, and the next attempts read the master
-            Map<String, byte[]> fields = readFields(attempt == 1 ? RScript.Mode.READ_ONLY : RScript.Mode.READ_WRITE, redisKey, false);
-            if (attempt == 1 && fields.isEmpty()) {
-                // a replica may not have a new record yet, and blob storage is read only if the master has none
-                fields = readFieldsOnMaster(redisKey, false);
-            }
-            // with no record in Redis the value comes from blob storage, and the compare-and-set creates the record
-            boolean fromBlob = fields.isEmpty();
-            Result current = fromBlob ? blobGet(blobKey(descriptor), true) : toResult(fields, redisKey);
-
-            String oldValue = current.exists() ? new String(current.body, StandardCharsets.UTF_8) : null;
-            String newValue = fn.apply(oldValue);
-            if (Objects.equals(oldValue, newValue)) {
-                if (fromBlob && current.exists()) {
-                    // nothing to write, so cache the blob copy as a read would, and the next writer finds it in Redis
-                    putIfAbsent(redisKey, current);
-                }
-                return () -> {};
-            }
-
-            byte[] body = Objects.requireNonNull(newValue, "computeResourceWithoutLock cannot delete").getBytes(StandardCharsets.UTF_8);
-            if (body.length > maxSizeToCache) {
-                throw new IllegalArgumentException("Resource is too large to compute without a lock: " + body.length);
-            }
-
-            // boxed, so a record with no creation time (a blob written before created_at was kept) keeps none
-            Long updatedAt = time();
-            Result next = new Result(body, EtagBuilder.generateEtag(body), current.exists() ? current.createdAt : updatedAt,
-                    updatedAt, "application/json", descriptor.getType().requireCompression(), (long) body.length,
-                    descriptor.getType().name(), current.author, false);
-            byte[] expectedEtag = fromBlob
-                    ? RedisUtil.stringToRedis(Objects.requireNonNullElse(current.etag, ""))
-                    : fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
-            boolean written;
-            try {
-                written = compareAndSet(redisKey, expectedEtag, fromBlob, next);
-            } catch (RuntimeException e) {
-                // the write may have been applied (a reply lost to a timeout), and nothing else would queue it. An
-                // entry for a record that was not written is harmless: the sync drops it
-                try {
-                    queueIfAbsent(redisKey);
-                } catch (RuntimeException queueError) {
-                    e.addSuppressed(queueError);
-                }
-                throw e;
-            }
-            if (written) {
-                boolean created = !current.exists();
-                return () -> {
-                    // after the write, so a sync that dropped the entry meanwhile cannot leave the write unqueued.
-                    // Redisson resends it after a timeout (adding twice is harmless); if it still fails, the caller
-                    // fails though the write counted, and the record stays persisted until its next write queues it
-                    queueIfAbsent(redisKey);
-                    if (created) {
-                        // only the writer that created the record writes the stub, after its write as a locked write does
-                        putStubUnlessSynced(descriptor, redisKey, next);
-                    }
-                    // no resource event: limit records are not in ResourceTypes.EVENT_TYPES
-                };
+            // the first read may come from a replica: a value older than the last write fails the compare-and-set,
+            // and the next attempts read the master
+            Map<String, byte[]> fields = (attempt == 1) ? readFieldsReplicaFirst(redisKey) : readFieldsOnMaster(redisKey, false);
+            Runnable afterWrite = tryComputeResource(descriptor, redisKey, fields, fn);
+            if (afterWrite != null) {
+                return afterWrite;
             }
         }
+        COMPUTE_GIVE_UPS.increment();
         throw new IllegalStateException("Resource changed concurrently on every attempt: " + redisKey);
     }
 
-    // the first unsynced write sets the deadline, so a counter written more often than syncDelay is still synced
+    /**
+     * One round of {@link #computeResourceWithoutLock}: runs {@code fn} on the record that was read and writes the
+     * result if the record did not change meanwhile.
+     *
+     * @param fields the record as read from Redis, empty if Redis has none
+     * @return what is left to do after the pod's turn, or null if the record changed since it was read
+     */
+    @Nullable
+    private Runnable tryComputeResource(ResourceDescriptor descriptor, String redisKey, Map<String, byte[]> fields, Function<String, String> fn) {
+        // with no record in Redis the value comes from blob storage, and the compare-and-set creates the record
+        boolean fromBlob = fields.isEmpty();
+        Result current = fromBlob ? blobGet(blobKey(descriptor), true) : toResult(fields, redisKey);
+
+        String oldValue = current.exists() ? new String(current.body, StandardCharsets.UTF_8) : null;
+        String newValue = fn.apply(oldValue);
+        if (Objects.equals(oldValue, newValue)) {
+            if (fromBlob && current.exists()) {
+                // nothing to write, so cache the blob copy as a read would, and the next writer finds it in Redis
+                putIfAbsent(redisKey, current);
+            }
+            return () -> {};
+        }
+
+        Result next = buildComputedResult(descriptor, current, newValue);
+        byte[] expectedEtag = fromBlob
+                ? RedisUtil.stringToRedis(Objects.requireNonNullElse(current.etag, ""))
+                : fields.getOrDefault(ETAG_ATTRIBUTE, RedisUtil.EMPTY_ARRAY);
+        if (!writeIfUnchanged(redisKey, expectedEtag, fromBlob, next)) {
+            return null;
+        }
+        boolean created = !current.exists();
+        return () -> finishWrite(descriptor, redisKey, next, created);
+    }
+
+    private Result buildComputedResult(ResourceDescriptor descriptor, Result current, String value) {
+        byte[] body = Objects.requireNonNull(value, "computeResourceWithoutLock cannot delete").getBytes(StandardCharsets.UTF_8);
+        if (body.length > maxSizeToCache) {
+            throw new IllegalArgumentException("Resource is too large to compute without a lock: " + body.length);
+        }
+
+        // boxed, so a record with no creation time (a blob written before created_at was kept) keeps none
+        Long updatedAt = time();
+        return new Result(body, EtagBuilder.generateEtag(body), current.exists() ? current.createdAt : updatedAt,
+                updatedAt, "application/json", descriptor.getType().requireCompression(), (long) body.length,
+                descriptor.getType().name(), current.author, false);
+    }
+
+    // false if the record changed since it was read
+    private boolean writeIfUnchanged(String redisKey, byte[] expectedEtag, boolean createIfAbsent, Result next) {
+        try {
+            return compareAndSet(redisKey, expectedEtag, createIfAbsent, next);
+        } catch (RuntimeException e) {
+            // the write may have been applied (a reply lost to a timeout), and nothing else would queue it. An
+            // entry for a record that was not written is harmless: the sync drops it
+            try {
+                queueIfAbsent(redisKey);
+            } catch (RuntimeException queueError) {
+                e.addSuppressed(queueError);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * What a write without the lock leaves for after the pod's turn. The queue entry comes after the write, so a sync
+     * that dropped the entry meanwhile cannot leave the write unqueued. Redisson resends it after a timeout (adding
+     * twice is harmless); if it still fails, the caller fails though the write counted, and the record stays persisted
+     * until its next write queues it.
+     */
+    private void finishWrite(ResourceDescriptor descriptor, String redisKey, Result written, boolean created) {
+        queueIfAbsent(redisKey);
+        if (created) {
+            // only the writer that created the record writes the stub, after its write as a locked write does
+            putStubIfAbsent(descriptor, redisKey, written);
+        }
+        publishEvent(descriptor, created ? ResourceEvent.Action.CREATE : ResourceEvent.Action.UPDATE, written.updatedAt, written.etag);
+    }
+
+    // the first unsynced write sets the deadline, so a record written more often than syncDelay is still synced
     private void queueIfAbsent(String redisKey) {
         redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE).addIfAbsent(time() + syncDelay, redisKey);
     }
 
     /**
-     * Creates the empty object that makes a new record listable before its first sync: under the lock a sync takes,
-     * while the record is unsynced and no object exists yet, so the stub never lands on top of the record a sync
-     * uploaded, also when another write made the record unsynced again since. With the lock busy a sync is at the
-     * record: its upload, or the next sync's if it read the key before the record was created, makes it listable. The
-     * existence check is one blob request per record created.
+     * Creates the empty object that makes a new record listable before its first sync: under the lock a sync takes and
+     * only while no object exists, so the stub never replaces a body a sync uploaded. With the lock busy a sync is at
+     * the record: its upload, or the next sync's if it read the key before the record was created, makes it listable.
+     * The stub has no etag: with the record's etag, a writer that loaded the stub from blob storage would pass the
+     * compare-and-set against the record with a value computed from an empty body.
      */
-    private void putStubUnlessSynced(ResourceDescriptor descriptor, String redisKey, Result result) {
+    private void putStubIfAbsent(ResourceDescriptor descriptor, String redisKey, Result result) {
         try (var lock = lockService.tryLock(redisKey)) {
             String blobKey = blobKey(descriptor);
-            if (lock != null && !readFieldsOnMaster(redisKey, true).isEmpty() && !blobExists(blobKey)) {
-                blobPut(blobKey, result.toStub());
+            if (lock != null && !blobExists(blobKey)) {
+                blobPut(blobKey, result.toStub().toBuilder().etag(null).build());
             }
         }
     }
 
-    private static Object[] readFieldsArgs(byte[] skippedSyncedFlag) {
+    private static Object[] buildReadFieldsArgs(byte[] skippedSyncedFlag) {
         List<Object> args = new ArrayList<>();
         args.add(skippedSyncedFlag);
         REDIS_FIELD_LIST.forEach(name -> args.add(name.getBytes(StandardCharsets.UTF_8)));
         return args.toArray();
     }
 
-    // read on the master, so they include the last write; empty if there is no record or, with unsyncedOnly, if it is synced
-    private Map<String, byte[]> readFieldsOnMaster(String redisKey, boolean unsyncedOnly) {
-        return readFields(RScript.Mode.READ_WRITE, redisKey, unsyncedOnly);
+    // a plain HMGET, which goes where the client's read mode sends it (Redisson reads replicas by default), so an update
+    // with no conflict costs the master only the compare-and-set and the queue entry
+    private Map<String, byte[]> readFieldsReplicaFirst(String redisKey) {
+        RMap<String, byte[]> map = redis.getMap(redisKey, REDIS_MAP_CODEC);
+        Map<String, byte[]> fields = map.getAll(REDIS_FIELDS);
+        // a replica may not have a new record yet, and blob storage is read only if the master has none
+        return fields.isEmpty() ? readFieldsOnMaster(redisKey, false) : fields;
     }
 
-    private Map<String, byte[]> readFields(RScript.Mode mode, String redisKey, boolean unsyncedOnly) {
-        List<Object> values = redis.getScript(ByteArrayCodec.INSTANCE).eval(mode, READ_FIELDS_SCRIPT,
+    // a script run as a write, so it reads the master and the fields include the last write; empty if there is no record
+    // or, with unsyncedOnly, if it is synced
+    private Map<String, byte[]> readFieldsOnMaster(String redisKey, boolean unsyncedOnly) {
+        List<Object> values = redis.getScript(ByteArrayCodec.INSTANCE).eval(RScript.Mode.READ_WRITE, READ_FIELDS_SCRIPT,
                 RScript.ReturnType.LIST, List.of(redisKey), unsyncedOnly ? READ_UNSYNCED_FIELDS_ARGS : READ_FIELDS_ARGS);
         Map<String, byte[]> fields = new HashMap<>();
         for (int i = 0; i < values.size(); i++) {
@@ -1377,12 +1406,13 @@ public class ResourceService implements AutoCloseable {
         RScoredSortedSet<String> queue = redis.getScoredSortedSet(resourceQueue, StringCodec.INSTANCE);
         // a record that is not synced (a write landed since the read, or the mark failed) keeps its entry for the next sync
         if ((uploadedEtag == null) ? expireIfSynced(redisKey) : markSynced(redisKey, uploadedEtag)) {
-            queue.remove(redisKey);
             boolean synced = false;
             try {
+                queue.remove(redisKey);
                 synced = expireIfSynced(redisKey);
             } finally {
-                // also when the check fails: a write that landed before the removal found the entry and queued nothing
+                // also when the removal or the check fails (the removal may have been applied): a write that landed
+                // before the removal found the entry and queued nothing
                 if (!synced) {
                     queue.addIfAbsent(time() + syncDelay, redisKey);
                 }
@@ -1771,7 +1801,7 @@ public class ResourceService implements AutoCloseable {
         return Duration.ofMillis(ttl);
     }
 
-    @Builder
+    @Builder(toBuilder = true)
     @VisibleForTesting
     record Result(
             byte[] body,

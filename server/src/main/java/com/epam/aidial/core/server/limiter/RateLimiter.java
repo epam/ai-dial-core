@@ -791,16 +791,17 @@ public class RateLimiter {
                 getResourceDescription(bucket, getPathToDeploymentCosts(roleBasedEntity.getName()));
         // the enforcing document is written first, since the deployment-scoped one only reports
         return taskExecutor.submit(() -> {
-            RuntimeException failure = null;
+            // Exception, not RuntimeException: a failed blob read surfaces as a checked IOException
+            Exception failure = null;
             try {
                 updateCostLimit(userCostDescriptor, cost, schedule);
-            } catch (RuntimeException e) {
+            } catch (Exception e) {
                 failure = e;
             }
             try {
                 // also when the busier caller-wide update gave up, so that failure does not drop this one too
                 updateCostLimit(deploymentCostDescriptor, cost, schedule);
-            } catch (RuntimeException e) {
+            } catch (Exception e) {
                 if (failure == null) {
                     throw e;
                 }
