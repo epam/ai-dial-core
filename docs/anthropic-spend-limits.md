@@ -55,6 +55,15 @@ for such a model are enforced only by the inner call. When the inner call reject
 per-minute cost limit, or a cap crossed after the outer read), the client gets whatever error the translator
 returns, without `anthropic-ratelimit-unified-*` headers.
 
+A call through an [alias](dynamic-settings/aliases.md) reports the caps of the deployment that serves it, as a direct
+call of that deployment does. This is also true for an alias that a router in
+[decision mode](dynamic-settings/routers.md#decision-mode) chooses. The alias makes no limit check of its own: it reads
+no spend caps and checks no token, request or cost limit. The target checks them, and the alias passes the target's
+answer on with its `anthropic-ratelimit-*` headers as they are, on every status, so the spend-cap 429 below reaches
+the client unchanged. A JWT user in `enforce` mode who calls a model through an alias sees the budget. In decision
+mode, a 429 of the chosen alias's target makes Core try the router's next candidate, or ask the router again, while it
+has decisions left; the client gets the last answer.
+
 ## Budgets (`enforce` mode)
 
 When `spendingLimits.mode` is `enforce`, a user signed in with a JWT is limited by budgets on calls to models,
