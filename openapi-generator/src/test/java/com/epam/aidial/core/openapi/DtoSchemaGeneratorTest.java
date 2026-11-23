@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Operator;
 import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.PricingRate;
 import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
@@ -154,6 +155,22 @@ class DtoSchemaGeneratorTest {
                 assertEquals("#/components/schemas/PricingRate", oneOf.get(1).get("$ref").asText());
             }
             assertEquals(4, rates, "prompt, completion, cacheRead and cacheWrite should all be unions");
+        }
+    }
+
+    @Test
+    void pricingRateBranchesAreFlatStringOrPricingRateTree() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(Pricing.class);
+
+        ObjectNode pricingRate = generator.getSchemas().get(generator.resolveTypeName(PricingRate.class));
+        assertNotNull(pricingRate, "PricingRate schema should be generated");
+        for (String branch : List.of("ifTrue", "ifFalse")) {
+            ArrayNode oneOf = (ArrayNode) pricingRate.get("properties").get(branch).get("oneOf");
+            assertNotNull(oneOf, "PricingRate." + branch + " should be a oneOf");
+            assertEquals(2, oneOf.size());
+            assertEquals("string", oneOf.get(0).get("type").asText());
+            assertEquals("#/components/schemas/PricingRate", oneOf.get(1).get("$ref").asText());
         }
     }
 

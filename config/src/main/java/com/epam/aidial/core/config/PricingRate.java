@@ -2,6 +2,8 @@ package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.config.databind.PricingRateDeserializer;
 import com.epam.aidial.core.config.databind.PricingRateSerializer;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import lombok.Data;
@@ -14,9 +16,10 @@ import lombok.Data;
  *
  * <p>Deliberately carries no class-level {@code @ApiSchema}: the string-or-tree union is declared
  * at each field that uses this type (see {@code Pricing.prompt}/{@code completion}/
- * {@code cacheRead}/{@code cacheWrite}), so this class's own bean shape (including the recursive
- * {@code ifTrue}/{@code ifFalse} fields) still reflects normally wherever it's referenced as the
- * object alternative of that union.
+ * {@code cacheRead}/{@code cacheWrite}), so this class's own bean shape still reflects normally wherever
+ * it's referenced as the object alternative of that union. The recursive {@code ifTrue}/{@code ifFalse}
+ * branches declare the same union, because {@link PricingRateSerializer} writes a leaf branch as a plain
+ * rate string too.
  */
 @Data
 @JsonDeserialize(using = PricingRateDeserializer.class)
@@ -28,7 +31,9 @@ public class PricingRate {
 
     // node shape; ifTrue/ifFalse omitted -> falls back to promptRate
     private Condition test;
+    @ApiSchema(oneOf = {String.class}, oneOfTypes = {@ApiSchemaType(implementation = PricingRate.class)})
     private PricingRate ifTrue;
+    @ApiSchema(oneOf = {String.class}, oneOfTypes = {@ApiSchemaType(implementation = PricingRate.class)})
     private PricingRate ifFalse;
 
     public boolean isLeaf() {

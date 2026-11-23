@@ -33,6 +33,13 @@ public final class SpecMerger {
             "description", "summary", "example", "examples", "externalDocs", "x-codegen-request-body-name", "title"
     );
 
+    /**
+     * Keywords that make a generated schema node describe a shape of its own rather than only documentation.
+     */
+    private static final Set<String> STRUCTURAL_FIELDS = Set.of(
+            "type", "properties", "items", "allOf", "oneOf", "anyOf", "enum"
+    );
+
     private static final Set<String> SKELETON_PREFERRED_FIELDS = Set.of(
             "tags", "type", "properties", "required", "schema", "items", "allOf", "oneOf", "anyOf", "operationId", "discriminator"
     );
@@ -133,13 +140,10 @@ public final class SpecMerger {
                     } else {
                         if (skelVal.isObject() && manVal.isObject()) {
                             if (skelVal.has("$ref") && !manVal.has("$ref")) {
-                                ObjectNode mergedRef = (ObjectNode) skelVal.deepCopy();
-                                for (String docField : MANUAL_PREFERRED_FIELDS) {
-                                    if (manVal.has(docField)) {
-                                        mergedRef.set(docField, manVal.get(docField).deepCopy());
-                                    }
-                                }
-                                result.set(field, mergedRef);
+                                result.set(field, withManualDocs((ObjectNode) skelVal, (ObjectNode) manVal));
+                            } else if (manVal.has("$ref") && !skelVal.has("$ref") && hasStructure(skelVal)) {
+                                // A stale manual $ref next to the generated structure would also constrain the value.
+                                result.set(field, withManualDocs((ObjectNode) skelVal, (ObjectNode) manVal));
                             } else {
                                 result.set(field, mergeNodes((ObjectNode) skelVal, (ObjectNode) manVal, childPath));
                             }
@@ -157,6 +161,25 @@ public final class SpecMerger {
             }
         }
         return result;
+    }
+
+    private ObjectNode withManualDocs(ObjectNode skeleton, ObjectNode manual) {
+        ObjectNode merged = skeleton.deepCopy();
+        for (String docField : MANUAL_PREFERRED_FIELDS) {
+            if (manual.has(docField)) {
+                merged.set(docField, manual.get(docField).deepCopy());
+            }
+        }
+        return merged;
+    }
+
+    private static boolean hasStructure(JsonNode node) {
+        for (String field : STRUCTURAL_FIELDS) {
+            if (node.has(field)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private FieldPrecedence resolvePrecedence(String fieldName) {
