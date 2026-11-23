@@ -32,7 +32,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 import static com.epam.aidial.core.server.security.ApiKeyGenerator.generateKey;
-import static com.epam.aidial.core.server.security.ApiKeyGenerator.isGeneratedKey;
 import static com.epam.aidial.core.storage.resource.ResourceDescriptor.PATH_SEPARATOR;
 
 /**
@@ -147,7 +146,7 @@ public class ApiKeyStore {
         return taskExecutor.submit(() -> blockingCallTracer.trace("auth.api_key.lookup", () -> {
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
             String json = bucket.get();
-            if (json == null && isGeneratedKey(key)) {
+            if (json == null) {
                 json = blockingCallTracer.trace("auth.api_key.lookup_master", () -> readOnMaster(redisKey));
             }
             return ProxyUtil.convertToObject(json, ApiKeyData.class);

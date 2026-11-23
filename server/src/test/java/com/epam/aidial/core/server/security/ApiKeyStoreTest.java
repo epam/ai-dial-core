@@ -52,8 +52,6 @@ import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -381,22 +379,6 @@ public class ApiKeyStoreTest {
         Future<ApiKeyData> unknown = laggingStore.getApiKeyData(ApiKeyGenerator.generateKey(), null);
         assertTrue(unknown.failed());
         assertEquals(HttpStatus.UNAUTHORIZED, ((HttpException) unknown.cause()).getStatus());
-    }
-
-    @Test
-    public void testGetApiKeyDataSkipsMasterForKeyOfAnotherShape() {
-        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
-            Callable callable = invocation.getArgument(0);
-            return Future.succeededFuture(callable.call());
-        });
-        RedissonClient laggingRedis = mock(RedissonClient.class);
-        when(laggingRedis.getBucket(any(), any())).thenReturn(mock(RBucket.class));
-        ApiKeyStore laggingStore = new ApiKeyStore(taskExecutor, laggingRedis, null, new JsonObject(), BlockingCallTracer.NOOP);
-
-        assertTrue(laggingStore.getApiKeyData("unknown-key", null).failed());
-        // the length of a generated key, with a symbol the generator never uses
-        assertTrue(laggingStore.getApiKeyData("a".repeat(31) + "+", null).failed());
-        verify(laggingRedis, never()).getScript(StringCodec.INSTANCE);
     }
 
     @Test
