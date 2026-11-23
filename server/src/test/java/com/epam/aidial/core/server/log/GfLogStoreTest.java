@@ -4,7 +4,13 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.config.SpendingLimitMode;
+import com.epam.aidial.core.config.policy.BudgetInstance;
+import com.epam.aidial.core.config.policy.Policy;
+import com.epam.aidial.core.config.policy.PolicyAssignment;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
+import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
@@ -907,6 +913,86 @@ public class GfLogStoreTest {
         BackgroundJobRecord record = ProxyUtil.convertToObject("{\"requestBody\":\"{}\"}", BackgroundJobRecord.class);
 
         assertNull(record.sessionId());
+    }
+
+    @Test
+    public void testSpendingLimitsAreWrittenRightAfterProject() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getProject()).thenReturn("projA");
+        when(context.getBudgetCheck()).thenReturn(paid("pro\"j\\A\n", "pol\"icy", "pro\"j\\A\n/a1", new PolicyAssignment()));
+
+        JsonNode log = logOf(context);
+
+        JsonNode limits = log.get("spending_limits");
+        assertEquals("shadow", limits.get("mode").asText());
+        assertEquals("pro\"j\\A\n", limits.get("cost_object").asText());
+        assertEquals("paid", limits.get("outcome").asText());
+        assertEquals("pol\"icy", limits.get("policy").asText());
+        assertEquals("pro\"j\\A\n/a1", limits.get("assignment").asText());
+        assertEquals(5, limits.size());
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(fields.indexOf("project") + 1, fields.indexOf("spending_limits"));
+    }
+
+    @Test
+    public void testSpendingLimitsOfSelfApplyingPolicyHaveNoAssignment() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(paid("ORG", "ORG/personal", "ORG/personal", null));
+
+        JsonNode limits = logOf(context).get("spending_limits");
+
+        assertEquals("ORG/personal", limits.get("policy").asText());
+        assertFalse(limits.has("assignment"));
+    }
+
+    @Test
+    public void testSpendingLimitsWithoutPayer() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(new BudgetCheck(SpendingLimitMode.ENFORCE, "ORG", BudgetCheck.Outcome.NO_BUDGET, null));
+
+        JsonNode limits = logOf(context).get("spending_limits");
+
+        assertEquals("{\"mode\":\"enforce\",\"cost_object\":\"ORG\",\"outcome\":\"no_budget\"}", limits.toString());
+    }
+
+    @Test
+    public void testSpendingLimitsOffHaveTheModeOnly() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(BudgetCheck.OFF);
+
+        assertEquals("{\"mode\":\"off\"}", logOf(context).get("spending_limits").toString());
+    }
+
+    @Test
+    public void testSpendingLimitsWithoutOutcomeWhenTheCounterWasNotRead() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getBudgetCheck()).thenReturn(new BudgetCheck(SpendingLimitMode.SHADOW, "projA", null, null));
+
+        assertEquals("{\"mode\":\"shadow\",\"cost_object\":\"projA\"}", logOf(context).get("spending_limits").toString());
+    }
+
+    @Test
+    public void testSpendingLimitsAreOmittedWithoutCheck() {
+        assertFalse(logOf(mock(AnalyticsLogContext.class)).has("spending_limits"));
+    }
+
+    @Test
+    public void testBackgroundJobRowHasNoSpendingLimits() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .deploymentName("gpt-4")
+                .requestBody("{}")
+                .build();
+
+        AnalyticsLogContext context = AnalyticsLogContext.from(record, null, null);
+
+        assertNull(context.getBudgetCheck());
+        assertFalse(logOf(context).has("spending_limits"));
+    }
+
+    private static BudgetCheck paid(String costObject, String policyPath, String id, PolicyAssignment assignment) {
+        BudgetPayer payer = new BudgetPayer(costObject, new BudgetInstance(id, policyPath, new Policy(), assignment, List.of()), "user");
+        return new BudgetCheck(SpendingLimitMode.SHADOW, costObject, BudgetCheck.Outcome.PAID, payer);
     }
 
     @SneakyThrows
