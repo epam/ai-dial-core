@@ -385,4 +385,21 @@ public class ConfigManifestSupport {
         }
         return sb.toString();
     }
+
+    /**
+     * Reads the {@code softValidation} query parameter of a config write: absent is {@code false}, {@code true} and
+     * {@code false} in any case are themselves, and any other value, an empty one included, is rejected.
+     */
+    public static boolean parseSoftValidation(String value) {
+        if (value == null) {
+            return false;
+        }
+        if ("true".equalsIgnoreCase(value)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(value)) {
+            return false;
+        }
+        throw new IllegalArgumentException("Invalid softValidation: expected true or false");
+    }
 }

@@ -11,7 +11,8 @@ import java.util.List;
  * exception per the {@code config.reload.onInvalidEntity} setting: under
  * {@code abort} it propagates and the rebuild is rolled back; under {@code skip}
  * the offender is recorded in the invalid-entity sibling store and dropped from
- * the merged {@code Config} (design 02 §4.1).
+ * the merged {@code Config} (design 02 §4.1). A model's dangling interceptor reference is
+ * recorded in either mode.
  *
  * <p>{@code mapKey} is the entry's key as iterated — the canonical ID for blob
  * entries ({@code models/platform/gpt-4}) and the simple name for file-defined

@@ -15,18 +15,17 @@ import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
-import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,7 +52,11 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -64,6 +67,7 @@ public class MergedConfigStorePartialUpdateTest {
     private static final String INTERCEPTOR_ID = "interceptors/platform/chain-a";
     private static final String ROLE_ID = "roles/platform/admin";
     private static final String KEY_ID = "keys/platform/proj-a";
+    private static final PluginRegistry PLUGINS = PluginRegistry.load(new JsonObject().put("dir", "no-plugins-dir"));
 
     @Mock
     private Vertx vertx;
@@ -109,7 +113,7 @@ public class MergedConfigStorePartialUpdateTest {
         Config seeded = newConfig();
         seeded.setModels(mutable(MODEL_ID, model));
         seeded.setInterceptors(mutable(INTERCEPTOR_ID, interceptor));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_SKIP);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.SKIP);
 
         Config result = store.applyEntityDelete(ResourceTypes.INTERCEPTOR, INTERCEPTOR_ID);
 
@@ -118,6 +122,34 @@ public class MergedConfigStorePartialUpdateTest {
         Map<String, InvalidEntityRecord> invalidModels = store.getInvalidEntities().get(ResourceTypes.MODEL);
         assertEquals(1, invalidModels.size(), "model recorded in invalidEntities sibling store");
         assertTrue(invalidModels.containsKey(MODEL_ID));
+    }
+
+    @Test
+    public void interceptorDeleteCascadesUnderAbort() {
+        Model model = new Model();
+        model.setInterceptors(List.of(INTERCEPTOR_ID));
+        Config seeded = newConfig();
+        seeded.setModels(mutable(MODEL_ID, model));
+        seeded.setInterceptors(mutable(INTERCEPTOR_ID, new Interceptor()));
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
+
+        Config result = store.applyEntityDelete(ResourceTypes.INTERCEPTOR, INTERCEPTOR_ID);
+
+        assertFalse(result.getModels().containsKey(MODEL_ID), "model cascade-removed from Config");
+        assertTrue(store.getInvalidEntities().get(ResourceTypes.MODEL).containsKey(MODEL_ID));
+    }
+
+    @Test
+    public void modelWriteWithDanglingReferenceIsRecordedUnderAbort() {
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
+        Model model = new Model();
+        model.setInterceptors(List.of(INTERCEPTOR_ID));
+
+        Config result = store.applyEntityWrite(ResourceTypes.MODEL, MODEL_ID, model);
+
+        assertFalse(result.getModels().containsKey(MODEL_ID), "model with a dangling reference is not a deployment");
+        InvalidEntityRecord record = store.getInvalidEntities().get(ResourceTypes.MODEL).get(MODEL_ID);
+        assertEquals("interceptors[0]", record.getValidationWarnings().getFirst().getField());
     }
 
     @Test
@@ -136,7 +168,7 @@ public class MergedConfigStorePartialUpdateTest {
         models.put("gpt-4-second", secondModel);
         seeded.setModels(models);
         seeded.setInterceptors(mutable(INTERCEPTOR_ID, new Interceptor()));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_SKIP);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.SKIP);
 
         store.applyEntityDelete(ResourceTypes.INTERCEPTOR, INTERCEPTOR_ID);
 
@@ -155,63 +187,24 @@ public class MergedConfigStorePartialUpdateTest {
     }
 
     @Test
-    public void interceptorWriteResurrectsPreviouslySkippedModel() {
-        // Seed: a model that references a missing interceptor sits in invalidEntities (validation skipped).
-        JsonNode modelPayload = JsonNodeFactory.instance.objectNode()
-                .set("interceptors", JsonNodeFactory.instance.arrayNode().add(INTERCEPTOR_ID));
-        InvalidEntityRecord record = new InvalidEntityRecord(
-                "gpt-4", MODEL_ID, "missing interceptor",
-                List.of(new ValidationWarning("interceptors[0]", "missing")),
-                "api", modelPayload);
-        Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalidSeed = new HashMap<>();
-        Map<String, InvalidEntityRecord> modelInvalid = new HashMap<>();
-        modelInvalid.put(MODEL_ID, record);
-        invalidSeed.put(ResourceTypes.MODEL, modelInvalid);
+    public void interceptorWriteRequestsRebuildWhenModelRecordsExist() {
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
+        Model model = new Model();
+        model.setInterceptors(List.of(INTERCEPTOR_ID));
+        store.applyEntityWrite(ResourceTypes.MODEL, MODEL_ID, model);
 
-        Config seeded = newConfig();
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_SKIP);
-        seedInvalidEntities(store, invalidSeed);
+        store.applyEntityWrite(ResourceTypes.INTERCEPTOR, INTERCEPTOR_ID, new Interceptor());
 
-        // Decryption is a no-op for this test — model has no @EncryptedField values set.
-        Config result = store.applyEntityWrite(ResourceTypes.INTERCEPTOR, INTERCEPTOR_ID, new Interceptor());
-
-        assertTrue(result.getInterceptors().containsKey(INTERCEPTOR_ID), "interceptor present");
-        assertTrue(result.getModels().containsKey(MODEL_ID), "model resurrected to Config.models");
-        assertNull(store.getInvalidEntities().get(ResourceTypes.MODEL),
-                "invalidEntities cleared for MODEL after successful resurrection");
+        verify(vertx).setTimer(eq(500L), any());
     }
 
     @Test
-    public void interceptorWriteResurrectsModelWithNamedTranslator() {
-        // resurrection rebuilds the model from its stored payload; its named translator reference resolves
-        // against the live registry when asked, so nothing has to be relinked on the rebuilt model
-        ObjectNode modelPayload = JsonNodeFactory.instance.objectNode();
-        modelPayload.set("interceptors", JsonNodeFactory.instance.arrayNode().add(INTERCEPTOR_ID));
-        modelPayload.put("endpoint", "http://legacy/chat/completions");
-        ObjectNode anthropic = modelPayload.putObject("interfaces").putObject("anthropicMessages");
-        anthropic.put("mode", "translator");
-        anthropic.put("translator", "anthropicMessagesToOpenaiChatCompletions");
-        InvalidEntityRecord record = new InvalidEntityRecord(
-                "gpt-4", MODEL_ID, "missing interceptor",
-                List.of(new ValidationWarning("interceptors[0]", "missing")),
-                "api", modelPayload);
-        Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalidSeed = new HashMap<>();
-        Map<String, InvalidEntityRecord> modelInvalid = new HashMap<>();
-        modelInvalid.put(MODEL_ID, record);
-        invalidSeed.put(ResourceTypes.MODEL, modelInvalid);
+    public void interceptorWriteDoesNotRebuildWithoutModelRecords() {
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
 
-        Config seeded = newConfig();
-        seeded.setTranslators(Map.of("anthropicMessagesToOpenaiChatCompletions",
-                new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://localhost:5002/to-chat-completions")));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_SKIP);
-        seedInvalidEntities(store, invalidSeed);
+        store.applyEntityWrite(ResourceTypes.INTERCEPTOR, INTERCEPTOR_ID, new Interceptor());
 
-        Config result = store.applyEntityWrite(ResourceTypes.INTERCEPTOR, INTERCEPTOR_ID, new Interceptor());
-
-        Model resurrected = result.getModels().get(MODEL_ID);
-        assertNotNull(resurrected, "model resurrected to Config.models");
-        assertEquals("http://localhost:5002/to-chat-completions",
-                DeploymentEndpointUtil.resolveServingEndpoint(resurrected, InterfaceType.ANTHROPIC_MESSAGES, result.getTranslators()));
+        verify(vertx, never()).setTimer(anyLong(), any());
     }
 
     @Test
@@ -230,7 +223,7 @@ public class MergedConfigStorePartialUpdateTest {
         Config seeded = newConfig();
         seeded.setModels(mutable(MODEL_ID, model));
 
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_SKIP);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.SKIP);
 
         // Before the translator exists, the reference resolves to nothing.
         assertNull(anthropic.getTranslator().resolve(store.get().getTranslators()));
@@ -248,7 +241,7 @@ public class MergedConfigStorePartialUpdateTest {
     @Test
     public void translatorWriteWithoutInThrowsAndRollsBack() {
         Config seeded = newConfig();
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
 
         Translator bad = new Translator(null, OPENAI_CHAT_COMPLETIONS, "http://localhost:5003/to-chat-completions");
 
@@ -263,7 +256,7 @@ public class MergedConfigStorePartialUpdateTest {
         Config seeded = newConfig();
         seeded.setTranslators(mutable("anthropicMessagesToOpenaiChatCompletions",
                 new Translator(ANTHROPIC_MESSAGES, OPENAI_CHAT_COMPLETIONS, "http://localhost:5003/to-chat-completions")));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
 
         Config result = store.applyEntityDelete(ResourceTypes.TRANSLATOR, "anthropicMessagesToOpenaiChatCompletions");
 
@@ -273,11 +266,11 @@ public class MergedConfigStorePartialUpdateTest {
     @Test
     public void pluginWriteKeepsTheOtherPlugins() {
         Config seeded = newConfig();
-        seeded.setPlugins(mutable("a", new Plugin("test-echo", null)));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        seeded.setPlugins(mutable("a", echoPlugin()));
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT, PLUGINS);
         Config before = store.get();
 
-        Config result = store.applyEntityWrite(ResourceTypes.PLUGIN, "b", new Plugin("test-echo", null));
+        Config result = store.applyEntityWrite(ResourceTypes.PLUGIN, "b", echoPlugin());
 
         assertEquals(Set.of("a", "b"), result.getPlugins().keySet());
         assertEquals(Set.of("a"), before.getPlugins().keySet(), "the previous Config keeps its own map");
@@ -286,10 +279,10 @@ public class MergedConfigStorePartialUpdateTest {
     @Test
     public void pluginDeleteKeepsTheOtherPlugins() {
         Config seeded = newConfig();
-        Map<String, Plugin> plugins = mutable("a", new Plugin("test-echo", null));
-        plugins.put("b", new Plugin("test-echo", null));
+        Map<String, Plugin> plugins = mutable("a", echoPlugin());
+        plugins.put("b", echoPlugin());
         seeded.setPlugins(plugins);
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT, PLUGINS);
 
         Config result = store.applyEntityDelete(ResourceTypes.PLUGIN, "a");
 
@@ -299,7 +292,7 @@ public class MergedConfigStorePartialUpdateTest {
     @Test
     public void projectKeyWriteDoesNotTouchApiKeyStore() {
         Config seeded = newConfig();
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
         // init() already calls addProjectKeys via processSemantic — reset so the assertion below
         // covers only what applyEntityWrite triggers post-init.
         org.mockito.Mockito.reset(apiKeyStore);
@@ -324,7 +317,7 @@ public class MergedConfigStorePartialUpdateTest {
         routes.put("routes/platform/second", second);
         routes.put("routes/platform/first", first);
         seeded.setRoutes(routes);
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
 
         Route inserted = new Route();
         inserted.setOrder(5);
@@ -338,7 +331,7 @@ public class MergedConfigStorePartialUpdateTest {
     @Test
     public void applyBatchAccumulatesFailures() {
         Config seeded = newConfig();
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
 
         // Second entry has a type/entity mismatch (Role passed under MODEL type) — putEntity ClassCast.
         List<EntityChange> changes = List.of(
@@ -358,7 +351,7 @@ public class MergedConfigStorePartialUpdateTest {
         seeded.setGlobalInterceptors(List.of("file-default"));
         seeded.setRetriableErrorCodes(Set.of(500));
         when(fileConfigStore.get()).thenReturn(seeded);
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
 
         GlobalSettings overlay = new GlobalSettings();
         overlay.setGlobalInterceptors(List.of("api-overlay"));
@@ -377,7 +370,7 @@ public class MergedConfigStorePartialUpdateTest {
     @Test
     public void applyEntityWriteSwapsConfigReference() {
         Config seeded = newConfig();
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
         Config before = store.get();
 
         store.applyEntityWrite(ResourceTypes.ROLE, ROLE_ID, new Role());
@@ -394,7 +387,7 @@ public class MergedConfigStorePartialUpdateTest {
         router.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
         Config seeded = newConfig();
         seeded.setRouters(mutable("r1", router));
-        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(seeded, OnInvalidEntity.ABORT);
         assertSame(router, store.get().getRouters().get("r1"), "rebuild copies the file routers");
 
         Model model = new Model();
@@ -407,7 +400,7 @@ public class MergedConfigStorePartialUpdateTest {
 
     @Test
     public void routerWriteIsVisibleAndDeleteRemovesIt() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Router router = router();
         router.setInterceptors(null);
 
@@ -423,7 +416,7 @@ public class MergedConfigStorePartialUpdateTest {
 
     @Test
     public void invalidRouterWriteUnderSkipIsRecordedAsInvalid() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_SKIP);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.SKIP);
         Router router = router();
         router.setInterceptors(List.of("i1"));
 
@@ -437,7 +430,7 @@ public class MergedConfigStorePartialUpdateTest {
 
     @Test
     public void invalidRouterWriteUnderAbortThrows() {
-        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        MergedConfigStore store = initStore(newConfig(), OnInvalidEntity.ABORT);
         Router router = router();
         router.setEndpoint("http://router/chat");
 
@@ -452,14 +445,22 @@ public class MergedConfigStorePartialUpdateTest {
         return router;
     }
 
-    private MergedConfigStore initStore(Config seeded, String onInvalidEntity) {
+    private MergedConfigStore initStore(Config seeded, OnInvalidEntity onInvalidEntity) {
+        return initStore(seeded, onInvalidEntity, PluginRegistry.EMPTY);
+    }
+
+    private MergedConfigStore initStore(Config seeded, OnInvalidEntity onInvalidEntity, PluginRegistry pluginRegistry) {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, onInvalidEntity,
+                secretFieldProcessor, lockService, onInvalidEntity, "", pluginRegistry,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
         return store;
+    }
+
+    private static Plugin echoPlugin() {
+        return new Plugin(TestEchoPluginProvider.TYPE, JsonNodeFactory.instance.objectNode().put("greeting", "hi"));
     }
 
     private static Config newConfig() {
@@ -479,20 +480,5 @@ public class MergedConfigStorePartialUpdateTest {
         Map<String, V> map = new LinkedHashMap<>();
         map.put(key, value);
         return map;
-    }
-
-    /**
-     * Reflective seed of {@code invalidEntities} — the field is otherwise written only inside
-     * {@code rebuild()} which we bypass here to test the partial-update resurrection path in isolation.
-     */
-    private static void seedInvalidEntities(MergedConfigStore store,
-                                            Map<ResourceTypes, Map<String, InvalidEntityRecord>> seed) {
-        try {
-            java.lang.reflect.Field field = MergedConfigStore.class.getDeclaredField("invalidEntities");
-            field.setAccessible(true);
-            field.set(store, seed);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to seed invalidEntities for test", e);
-        }
     }
 }

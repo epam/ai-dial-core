@@ -31,6 +31,7 @@ import com.epam.aidial.core.credentials.validation.ProtectedResourceMetadataVali
 import com.epam.aidial.core.server.alias.AliasService;
 import com.epam.aidial.core.server.config.FileConfigStore;
 import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.config.OnInvalidEntity;
 import com.epam.aidial.core.server.config.PathNormalizerSpanProcessor;
 import com.epam.aidial.core.server.config.PlatformEntityLocationStrategy;
 import com.epam.aidial.core.server.config.RouteNormalizingMeterFilter;
@@ -312,12 +313,13 @@ public class AiDial {
 
             // Before the config stores: they validate every plugins entry against the provider of its type
             PluginRegistry pluginRegistry = PluginRegistry.load(settings("plugins"));
-            String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
-            boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
-                    .getBoolean("softValidation", false);
+            OnInvalidEntity onInvalidEntity = OnInvalidEntity.fromSetting(settings("config").getString("onInvalidEntity"));
+            if (settings("config").getJsonObject("write", new JsonObject()).containsKey("softValidation")) {
+                log.warn("config.write.softValidation is no longer read; send the query parameter softValidation=true on a config write instead");
+            }
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
                     vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId, pluginRegistry,
+                    secretFieldProcessor, lockService, onInvalidEntity, podId, pluginRegistry,
                     externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
             FileConfigStore fileConfigStore = new FileConfigStore(
                     vertx, settings("config"), null, pluginRegistry,
@@ -372,10 +374,10 @@ public class AiDial {
             ConfigAuthorizationService configAuthService = new AdminRoleAuthorizationService(accessService);
 
             ConfigApplyService configApplyService = new ConfigApplyService(
-                    mergedConfigStore, resourceService, secretFieldProcessor, mergedConfigStore.isSoftValidation(),
+                    mergedConfigStore, resourceService, secretFieldProcessor,
                     apiKeyStore, applicationService, toolSetService, catalogSchemaService, applicationSchemaService);
             ConfigValidationService configValidationService = new ConfigValidationService(
-                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService, pluginRegistry, applicationSchemaService);
+                    resourceService, catalogSchemaService, pluginRegistry, applicationSchemaService);
 
             Settings backgroundJobSettings =
                     Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);

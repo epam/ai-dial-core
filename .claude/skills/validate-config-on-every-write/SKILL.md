@@ -19,7 +19,8 @@ says `APPLIED`), the blob stays, and under `onInvalidEntity: abort` the pod will
 ## Steps
 
 1. Find the entity's rebuild rules (`processSemantic`, `validateSingle<Entity>`). A rule that reads only the entity is an
-   invariant: hard at every gate. A rule that reads another entity (interceptor names) follows `softValidation`.
+   invariant: hard at every gate. A rule that reads another entity (interceptor names) is soft: a write answers `422`
+   unless the request carries `softValidation=true`, and the rebuild records the entity as invalid in either mode.
 2. Put the invariants in one `validate<Entity>Invariants(entity, ..., warnings)` and call it from the rebuild too, so the
    gate cannot drift (see `validateModelInvariants`, `validateRouteInvariants`).
 3. Call it before the write on every path. An empty `-> { }` arm or a missing `instanceof` branch is the gap.

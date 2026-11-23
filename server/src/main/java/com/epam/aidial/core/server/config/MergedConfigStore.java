@@ -101,9 +101,6 @@ public final class MergedConfigStore implements ConfigStore {
     private static final String REASON_VALIDATION = "validation_error";
     public static final String REASON_DECRYPTION = "decryption_error";
 
-    public static final String MODE_ABORT = "abort";
-    public static final String MODE_SKIP = "skip";
-
     private static final List<ResourceTypes> MANAGED_TYPES = List.of(
             ResourceTypes.MODEL,
             ResourceTypes.APP_TYPE_SCHEMA,
@@ -162,8 +159,7 @@ public final class MergedConfigStore implements ConfigStore {
     private final ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService;
     private final LockService lockService;
     private final BackgroundOperationTracer backgroundTracer;
-    private final String onInvalidEntity;
-    private final boolean softValidation;
+    private final OnInvalidEntity onInvalidEntity;
     private final String thisPodId;
     private final PluginRegistry pluginRegistry;
 
@@ -189,33 +185,19 @@ public final class MergedConfigStore implements ConfigStore {
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
                              LockService lockService,
-                             String onInvalidEntity,
+                             OnInvalidEntity onInvalidEntity,
                              ExternalServiceService externalServiceService,
                              ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
                              BackgroundOperationTracer backgroundTracer) {
         this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                lockService, onInvalidEntity, false, "", PluginRegistry.EMPTY, externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
+                lockService, onInvalidEntity, "", PluginRegistry.EMPTY, externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
     }
 
     public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
                              ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
                              SecretFieldProcessor secretFieldProcessor,
                              LockService lockService,
-                             String onInvalidEntity,
-                             boolean softValidation,
-                             ExternalServiceService externalServiceService,
-                             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService,
-                             BackgroundOperationTracer backgroundTracer) {
-        this(vertx, taskExecutor, resourceService, apiKeyStore, locationStrategy, secretFieldProcessor,
-                lockService, onInvalidEntity, softValidation, "", PluginRegistry.EMPTY, externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
-    }
-
-    public MergedConfigStore(Vertx vertx, AsyncTaskExecutor taskExecutor, ResourceService resourceService,
-                             ApiKeyStore apiKeyStore, EntityLocationStrategy locationStrategy,
-                             SecretFieldProcessor secretFieldProcessor,
-                             LockService lockService,
-                             String onInvalidEntity,
-                             boolean softValidation,
+                             OnInvalidEntity onInvalidEntity,
                              String thisPodId,
                              PluginRegistry pluginRegistry,
                              ExternalServiceService externalServiceService,
@@ -234,8 +216,7 @@ public final class MergedConfigStore implements ConfigStore {
         this.externalServiceService = externalServiceService;
         this.resourceAuthSettingsEncryptionService = resourceAuthSettingsEncryptionService;
         this.lockService = lockService;
-        this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
-        this.softValidation = softValidation;
+        this.onInvalidEntity = Objects.requireNonNull(onInvalidEntity, "onInvalidEntity must not be null");
         this.thisPodId = thisPodId == null ? "" : thisPodId;
         this.pluginRegistry = Objects.requireNonNull(pluginRegistry, "pluginRegistry must not be null");
 
@@ -583,8 +564,8 @@ public final class MergedConfigStore implements ConfigStore {
         return invalidEntities;
     }
 
-    /** Currently-effective failure mode: {@link #MODE_ABORT} or {@link #MODE_SKIP}. */
-    public String getOnInvalidEntity() {
+    /** Currently-effective failure mode. */
+    public OnInvalidEntity getOnInvalidEntity() {
         return onInvalidEntity;
     }
 
@@ -598,17 +579,6 @@ public final class MergedConfigStore implements ConfigStore {
      */
     public boolean isSettingsFromApi() {
         return settingsFromApi;
-    }
-
-    /**
-     * Soft-validation mode for write controllers (slice 2S.13). When {@code true},
-     * cross-reference violations on POST/PUT log a warning and proceed with the write;
-     * the next merged-config rebuild's skip path records the entity in
-     * {@link #getInvalidEntities()}. When {@code false} (strict mode), violations
-     * abort the write with HTTP 422.
-     */
-    public boolean isSoftValidation() {
-        return softValidation;
     }
 
     /**
@@ -725,8 +695,8 @@ public final class MergedConfigStore implements ConfigStore {
      * (or the JSON-string body for {@code APP_TYPE_SCHEMA}) — the controller has already validated
      * cross-references in strict mode and called {@code apiKeyStore.addOrUpdateKey} for keys.
      *
-     * <p>For {@code INTERCEPTOR} writes the previously-broken models in {@code invalidEntities} are
-     * resurrected when the new interceptor satisfies their references. For other types no transitive
+     * <p>An {@code INTERCEPTOR} write requests a rebuild when {@code invalidEntities} holds a model, so a model
+     * that was invalid for a missing interceptor is revived by the rebuild. For other types no transitive
      * effect runs.
      */
     public Config applyEntityWrite(ResourceTypes type, String mapKey, Object decryptedEntity) {
@@ -777,17 +747,16 @@ public final class MergedConfigStore implements ConfigStore {
             for (ResourceTypes type : touched) {
                 cloneTypeMap(next, type);
             }
-            // INTERCEPTOR writes resurrect previously-invalid models (mutate next.models);
-            // INTERCEPTOR deletes cascade to model invalidation (also mutate next.models).
+            // INTERCEPTOR deletes cascade to model invalidation (mutate next.models).
             // Clone the models map upfront when INTERCEPTOR is in the batch but MODEL isn't.
             if (touched.contains(ResourceTypes.INTERCEPTOR) && !touched.contains(ResourceTypes.MODEL)) {
                 next.setModels(new LinkedHashMap<>(next.getModels()));
             }
 
-            BiConsumer<ResourceTypes, InvalidEntityException> onSkip = skipRouter(nextInvalid);
+            BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid = recorderOfInvalidFor(nextInvalid);
             for (EntityChange change : changes) {
                 try {
-                    applyChangeInPlace(next, nextInvalid, change, onSkip);
+                    applyChangeInPlace(next, nextInvalid, change, recorderOfInvalid);
                 } catch (Exception error) {
                     failures.put(change.mapKey(), error.getMessage());
                 }
@@ -806,13 +775,13 @@ public final class MergedConfigStore implements ConfigStore {
      * In-place per-entry apply for {@link #applyBatch}. Snapshots the entity slot at
      * {@code (type, mapKey)} and the matching invalid-entity record so a validation/coercion
      * throw rolls back the per-entry mutation, leaving prior-entry effects intact in {@code next}.
-     * Cross-type mutations (resurrection / cascade) cannot partial-fail — the validate helper
+     * Cross-type mutations (cascade) cannot partial-fail — the validate helper
      * throws before the cross-type step runs.
      */
     private void applyChangeInPlace(Config next,
                                     Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid,
                                     EntityChange change,
-                                    BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+                                    BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid) {
         ResourceTypes type = change.type();
         String mapKey = change.mapKey();
         Object decryptedEntity = change.decryptedEntity();
@@ -826,34 +795,37 @@ public final class MergedConfigStore implements ConfigStore {
             if (decryptedEntity == null) {
                 removeEntityInPlace(next, type, mapKey);
                 if (type == ResourceTypes.INTERCEPTOR) {
-                    ConfigPostProcessor.cascadeInterceptorDelete(next, onSkip);
+                    ConfigPostProcessor.cascadeInterceptorDelete(next, recorderOfInvalid);
                 }
                 return;
             }
             putEntityInPlace(next, type, mapKey, decryptedEntity);
             switch (type) {
-                case MODEL -> ConfigPostProcessor.validateSingleModel(next, mapKey, onSkip);
+                case MODEL -> ConfigPostProcessor.validateSingleModel(next, mapKey, onInvalidEntity, recorderOfInvalid);
                 case INTERCEPTOR -> {
-                    ConfigPostProcessor.validateSingleInterceptor(next, mapKey, onSkip);
-                    resurrectInvalidModels(next, nextInvalid);
+                    ConfigPostProcessor.validateSingleInterceptor(next, mapKey, onInvalidEntity, recorderOfInvalid);
+                    Map<String, InvalidEntityRecord> invalidModels = nextInvalid.get(ResourceTypes.MODEL);
+                    if (invalidModels != null && !invalidModels.isEmpty()) {
+                        requestRebuild();
+                    }
                 }
-                case ROUTER -> ConfigPostProcessor.validateSingleRouter(next, mapKey, onSkip);
-                case TRANSLATOR -> ConfigPostProcessor.validateSingleTranslator(next, mapKey, onSkip);
-                case PLUGIN -> ConfigPostProcessor.validateSinglePlugin(next, pluginRegistry, mapKey, onSkip);
+                case ROUTER -> ConfigPostProcessor.validateSingleRouter(next, mapKey, onInvalidEntity, recorderOfInvalid);
+                case TRANSLATOR -> ConfigPostProcessor.validateSingleTranslator(next, mapKey, onInvalidEntity, recorderOfInvalid);
+                case PLUGIN -> ConfigPostProcessor.validateSinglePlugin(next, pluginRegistry, mapKey, onInvalidEntity, recorderOfInvalid);
                 case ROLE -> ConfigPostProcessor.setRoleNameAsMapKey(next.getRoles(), mapKey);
-                case APPLICATION -> ConfigPostProcessor.validateSingleApplication(next, mapKey, onSkip);
+                case APPLICATION -> ConfigPostProcessor.validateSingleApplication(next, mapKey, onInvalidEntity, recorderOfInvalid);
                 case TOOL_SET -> ConfigPostProcessor.setNameAsMapKey(next.getToolsets(), mapKey);
                 case PROJECT_KEY, APP_TYPE_SCHEMA, CATALOG_SCHEMA -> { /* no post-processing */ }
                 case ROUTE -> {
                     ConfigPostProcessor.sortRoutesInPlace(next);
-                    ConfigPostProcessor.validateSingleRoute(next, mapKey, onSkip);
+                    ConfigPostProcessor.validateSingleRoute(next, mapKey, onInvalidEntity, recorderOfInvalid);
                 }
-                case POLICY -> ConfigPostProcessor.validateSinglePolicy(next, mapKey, onSkip);
+                case POLICY -> ConfigPostProcessor.validateSinglePolicy(next, mapKey, onInvalidEntity, recorderOfInvalid);
                 // A missing policy here is most likely a replica event that overtook the one of its policy.
-                // Passing no onSkip makes it throw whatever the mode, so that the caller falls back to a full
+                // Aborting whatever the mode makes it throw, so that the caller falls back to a full
                 // rebuild, which sees both records and applies onInvalidEntity.
-                case POLICY_ASSIGNMENT -> ConfigPostProcessor.validateSingleAssignment(next, mapKey, null);
-                case ALIAS -> ConfigPostProcessor.validateSingleAlias(next, mapKey, onSkip);
+                case POLICY_ASSIGNMENT -> ConfigPostProcessor.validateSingleAssignment(next, mapKey, OnInvalidEntity.ABORT, recorderOfInvalid);
+                case ALIAS -> ConfigPostProcessor.validateSingleAlias(next, mapKey, onInvalidEntity, recorderOfInvalid);
                 default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
             }
         } catch (RuntimeException error) {
@@ -921,16 +893,16 @@ public final class MergedConfigStore implements ConfigStore {
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid = cloneInvalidDeep(this.invalidEntities);
 
         // Clone the touched type-map once so the previous Config (still visible to readers via
-        // volatile config) keeps its reference-shared map instance intact. INTERCEPTOR also
-        // mutates next.models via resurrection, so clone that too.
+        // volatile config) keeps its reference-shared map instance intact. An INTERCEPTOR delete also
+        // mutates next.models via the cascade, so clone that too.
         cloneTypeMap(next, type);
         if (type == ResourceTypes.INTERCEPTOR) {
             next.setModels(new LinkedHashMap<>(next.getModels()));
         }
 
-        BiConsumer<ResourceTypes, InvalidEntityException> onSkip = skipRouter(nextInvalid);
+        BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid = recorderOfInvalidFor(nextInvalid);
         EntityChange change = new EntityChange(type, mapKey, decryptedEntity);
-        applyChangeInPlace(next, nextInvalid, change, onSkip);
+        applyChangeInPlace(next, nextInvalid, change, recorderOfInvalid);
         refreshCostObjectIndex(next, EnumSet.of(type));
 
         this.config = next;
@@ -948,9 +920,9 @@ public final class MergedConfigStore implements ConfigStore {
             next.setModels(new LinkedHashMap<>(next.getModels()));
         }
 
-        BiConsumer<ResourceTypes, InvalidEntityException> onSkip = skipRouter(nextInvalid);
+        BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid = recorderOfInvalidFor(nextInvalid);
         EntityChange change = new EntityChange(type, mapKey, null);
-        applyChangeInPlace(next, nextInvalid, change, onSkip);
+        applyChangeInPlace(next, nextInvalid, change, recorderOfInvalid);
         refreshCostObjectIndex(next, EnumSet.of(type));
 
         this.config = next;
@@ -991,17 +963,14 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
-    private BiConsumer<ResourceTypes, InvalidEntityException> skipRouter(
+    private BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalidFor(
             Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid) {
-        if (!MODE_SKIP.equals(onInvalidEntity)) {
-            return null;
-        }
         // Partial-update writes are always API-sourced — this path never touches file config.
-        return (skippedType, error) -> recordSkippedByMapKey(nextInvalid, skippedType, error, id -> null, true);
+        return (type, error) -> recordSkippedByMapKey(nextInvalid, type, error, id -> null, true);
     }
 
     /**
-     * Records a {@link InvalidEntityException} routed via {@code onSkip}. The map key's shape still
+     * Records a {@link InvalidEntityException} passed to a recorder of invalid entities. The map key's shape still
      * tells us the canonical id and display name: a key carrying a {@code '/'} already is the
      * canonical id, while a bare key is a short name we expand via {@code type/platform/name}. That
      * derivation is independent of source, but the {@code source} label itself needs an explicit
@@ -1019,43 +988,6 @@ public final class MergedConfigStore implements ConfigStore {
         String simpleName = lastSegment(mapKey);
         recordInvalid(nextInvalid, type, canonicalId, simpleName, error.getMessage(), error.getWarnings(),
                 payloadByCanonicalId.apply(canonicalId), REASON_VALIDATION, fromApi ? "api" : "file");
-    }
-
-    private void resurrectInvalidModels(Config next, Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid) {
-        Map<String, InvalidEntityRecord> invalidModels = nextInvalid.get(ResourceTypes.MODEL);
-        if (invalidModels == null || invalidModels.isEmpty()) {
-            return;
-        }
-        // Iterate a snapshot to allow modification of the live map below.
-        for (Map.Entry<String, InvalidEntityRecord> entry : new ArrayList<>(invalidModels.entrySet())) {
-            String canonicalId = entry.getKey();
-            InvalidEntityRecord record = entry.getValue();
-            JsonNode payload = record.getPayload();
-            if (payload == null) {
-                continue; // parse-error case — body unavailable for resurrection
-            }
-            try {
-                Model candidate = BLOB_MAPPER.treeToValue(payload, Model.class);
-                ResourceDescriptor descriptor = descriptorFromCanonicalId(ResourceTypes.MODEL, canonicalId);
-                secretFieldProcessor.decryptFields(candidate, descriptor);
-                List<ValidationWarning> warnings = new ArrayList<>();
-                next.getModels().put(canonicalId, candidate);
-                ConfigPostProcessor.validateCrossReferences(candidate, next, warnings);
-                if (warnings.isEmpty()) {
-                    invalidModels.remove(canonicalId);
-                } else {
-                    // Still broken — roll back the speculative insert.
-                    next.getModels().remove(canonicalId);
-                }
-            } catch (Exception resurrectError) {
-                log.debug("Model '{}' could not be resurrected on interceptor write: {}",
-                        canonicalId, resurrectError.getMessage());
-                // Leave in invalidEntities for the next full rebuild to retry.
-            }
-        }
-        if (invalidModels.isEmpty()) {
-            nextInvalid.remove(ResourceTypes.MODEL);
-        }
     }
 
     private static Config shallowClone(Config base) {
@@ -1250,18 +1182,6 @@ public final class MergedConfigStore implements ConfigStore {
         return entity == null ? null : entity.toString();
     }
 
-    private static ResourceDescriptor descriptorFromCanonicalId(ResourceTypes type, String canonicalId) {
-        // Canonical IDs are the resource URL form; ResourceDescriptorFactory.fromAnyUrl handles the
-        // platform/public bucket-location convention. The {@code type} parameter is retained for the
-        // callsite's type-safety contract (assert the resolved descriptor type matches).
-        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(canonicalId, null);
-        if (descriptor.getType() != type) {
-            throw new IllegalArgumentException("Canonical ID type mismatch: expected "
-                    + type + " got " + descriptor.getType() + " from " + canonicalId);
-        }
-        return descriptor;
-    }
-
     private Config rebuild() {
         return rebuildTimer.record(this::rebuildMergedConfig);
     }
@@ -1325,7 +1245,7 @@ public final class MergedConfigStore implements ConfigStore {
         // name) is indistinguishable in shape from a file entry's — both are bare, slash-free names.
         // Track which (type, mapKey) pairs came from a blob this rebuild so the semantic pass can
         // classify a skipped entity as "api" vs "file" correctly. Only models, applications,
-        // interceptors, translators, and toolsets actually trigger onSkip (roles, schemas, keys,
+        // interceptors, translators, and toolsets actually reach the recorder (roles, schemas, keys,
         // routes do not), but we track all short-name-keyed types for completeness.
         Map<ResourceTypes, Set<String>> apiSourcedKeys = new EnumMap<>(ResourceTypes.class);
 
@@ -1406,35 +1326,35 @@ public final class MergedConfigStore implements ConfigStore {
             }
         }
 
-        // Semantic pass — under MODE_SKIP, route per-entity violations to invalidEntities and
-        // continue; under MODE_ABORT, the post-processor throws and the rebuild aborts (this.config
-        // stays at the previous value because we only swap below).
-        BiConsumer<ResourceTypes, InvalidEntityException> onSkip = MODE_SKIP.equals(onInvalidEntity)
-                ? (type, error) -> {
-                    // Skips surface through the invalidEntities sibling store only for MANAGED_TYPES
-                    // (design 02 §4.3 layered model). APPLICATION/TOOL_SET have no cross-reference
-                    // validation in processSemantic (they're validated lazily by ApplicationService/
-                    // ToolSetService on write), but processApplications/processToolSets can still route a
-                    // duplicate deployment-id skip here via skipOnDuplicate — and since they're now in
-                    // MANAGED_TYPES that skip is recorded by recordSkippedByMapKey below, not just logged.
-                    if (!MANAGED_TYPES.contains(type)) {
-                        log.warn("Skipped {} '{}' from merged Config: {}", type.urlSegment(),
-                                error.getMapKey(), error.getMessage());
-                        return;
-                    }
-                    // For the short-name-keyed types, key shape no longer tells file from blob
-                    // (see apiSourcedKeys above); everything else still resolves via shape alone.
-                    boolean fromApi = error.getMapKey().contains("/")
-                            || apiSourcedKeys.getOrDefault(type, Set.of()).contains(error.getMapKey());
-                    recordSkippedByMapKey(pendingInvalid, type, error, blobBodies::get, fromApi);
-                }
-                : null;
+        // Semantic pass — hard violations follow onInvalidEntity: under SKIP the post-processor routes
+        // them to invalidEntities and continues; under ABORT it throws and the rebuild aborts (this.config
+        // stays at the previous value because we only swap below). A dangling model interceptor reference is
+        // always routed to invalidEntities, in either mode.
+        BiConsumer<ResourceTypes, InvalidEntityException> recorderOfInvalid = (type, error) -> {
+            // Skips surface through the invalidEntities sibling store only for MANAGED_TYPES
+            // (design 02 §4.3 layered model). APPLICATION/TOOL_SET have no cross-reference
+            // validation in processSemantic (they're validated lazily by ApplicationService/
+            // ToolSetService on write), but processApplications/processToolSets can still route a
+            // duplicate deployment-id skip here via skipOnDuplicate — and since they're now in
+            // MANAGED_TYPES that skip is recorded by recordSkippedByMapKey below, not just logged.
+            if (!MANAGED_TYPES.contains(type)) {
+                log.warn("Skipped {} '{}' from merged Config: {}", type.urlSegment(),
+                        error.getMapKey(), error.getMessage());
+                return;
+            }
+            // For the short-name-keyed types, key shape no longer tells file from blob
+            // (see apiSourcedKeys above); everything else still resolves via shape alone.
+            boolean fromApi = error.getMapKey().contains("/")
+                    || apiSourcedKeys.getOrDefault(type, Set.of()).contains(error.getMapKey());
+            recordSkippedByMapKey(pendingInvalid, type, error, blobBodies::get, fromApi);
+        };
         // File partition = base file keys (keyed by secret); API partition = PROJECT_KEY blob entries
         // collected above (keyed by canonical id). The merged Config.getKeys() folds both for config
         // consumers, but the ApiKeyStore feed stays explicitly source-classified (FINDING #7).
-        ConfigPostProcessor.processPlugins(merged, pluginRegistry, onSkip);
-        ConfigPostProcessor.processSemantic(merged, apiKeyStore, base.getKeys(), apiKeysByCanonicalId, onSkip);
-        ConfigPostProcessor.processPolicies(merged, onSkip);
+        ConfigPostProcessor.processPlugins(merged, pluginRegistry, onInvalidEntity, recorderOfInvalid);
+        ConfigPostProcessor.processSemantic(merged, apiKeyStore, base.getKeys(), apiKeysByCanonicalId,
+                onInvalidEntity, recorderOfInvalid);
+        ConfigPostProcessor.processPolicies(merged, onInvalidEntity, recorderOfInvalid);
         merged.setCostObjectIndex(CostObjectIndex.build(policies, policyAssignments));
 
         // ConfigPostProcessor sets entity.name = mapKey. For models/interceptors/roles/

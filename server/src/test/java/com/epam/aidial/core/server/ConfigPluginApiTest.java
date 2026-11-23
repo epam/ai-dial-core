@@ -27,10 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The {@code plugins} config entity over HTTP, with the default strict write and {@code abort} rebuild. The test
- * config declares {@code file-plugin}, {@code valid-plugin} and {@code bad/plugin}, all of type {@code test-echo}
+ * The {@code plugins} config entity over HTTP, with the default {@code abort} rebuild; a write is strict unless it
+ * carries {@code softValidation=true}. The test config declares {@code file-plugin}, {@code valid-plugin} and {@code bad/plugin}, all of type {@code test-echo}
  * (on the test classpath, needs a string {@code settings.greeting}); the plugin directory {@code custom/echo} holds a
- * jar registering {@code jar-echo} (accepts any settings). {@link SkipMode} runs the soft write and the {@code skip}
+ * jar registering {@code jar-echo} (accepts any settings). {@link SkipMode} runs the same under the {@code skip}
  * rebuild, {@link ExcludedPlugin} a plugin directory {@code plugins.exclude} names.
  */
 public class ConfigPluginApiTest extends ResourceBaseTest {
@@ -89,14 +89,72 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
 
     @Test
     @SneakyThrows
-    void testRebuildUnderAbortKeepsTheEntity() {
+    void testSoftWrite() {
+        verify(send(HttpMethod.PUT, "/v1/plugins/platform/p1", "softValidation=true", "{\"type\": \"missing\"}",
+                "authorization", "admin"), 200);
+
+        JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p1").body());
+        assertEquals("invalid", body.get("status").asText(), body::toString);
+        assertEquals("type", body.get("validationWarnings").get(0).get("field").asText(), body::toString);
+    }
+
+    @Test
+    @SneakyThrows
+    void testUnknownTypeValidatedSoftly() {
+        String manifests = "{\"manifests\": [{\"kind\": \"Plugin\", \"name\": \"plugins/platform/p1\", \"spec\": {\"type\": \"missing\"}}]}";
+
+        Response validate = send(HttpMethod.POST, "/v1/admin/validate", "softValidation=true", manifests, "authorization", "admin");
+
+        verify(validate, 200);
+        assertEquals("VALID", ProxyUtil.MAPPER.readTree(validate.body()).get("results").get(0).get("status").asText(), validate::body);
+        verify(adminGet(this, "/v1/plugins/platform/p1"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testUnknownTypeInStrictBatch() {
+        String body = "{\"precheck\": false, \"manifests\": [{\"kind\": \"Plugin\", \"name\": \"plugins/platform/p1\", "
+                + "\"spec\": {\"type\": \"missing\"}}]}";
+
+        Response apply = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+
+        verify(apply, 200);
+        assertEquals("FAILED", ProxyUtil.MAPPER.readTree(apply.body()).get("results").get(0).get("status").asText(), apply::body);
+        verify(adminGet(this, "/v1/plugins/platform/p1"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testRebuildUnderAbortRecordsTheEntity() {
         putBlob(this, "p1", "{\"type\": \"missing\"}");
         reload(this);
 
-        JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p1").body());
-        assertEquals("valid", body.get("status").asText(), body::toString);
         JsonNode health = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/admin/health/config").body());
-        assertEquals("ok", health.get("status").asText(), health::toString);
+        assertEquals("degraded", health.get("status").asText(), health::toString);
+        assertTrue(skippedIds(health).contains("plugins/platform/p1"), health::toString);
+        JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p1").body());
+        assertEquals("invalid", body.get("status").asText(), body::toString);
+        assertEquals("type", body.get("validationWarnings").get(0).get("field").asText(), body::toString);
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/plugin-unknown-type.json")
+    void testFilePluginUnderAbort() {
+        assertFilePluginIsSkipped(this);
+    }
+
+    @Test
+    @SneakyThrows
+    void testDeploymentNamingInvalidPlugin() {
+        putBlob(this, "p1", "{\"type\": \"missing\"}");
+        reload(this);
+
+        verify(adminPut(this, "/v1/models/platform/plugin-user", """
+                {"type": "chat", "baseUrl": "dial-plugin://p1", "interfaces": {"openaiChatCompletions": {}}}
+                """), 200);
+
+        JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/models/platform/plugin-user").body());
+        assertEquals("valid", body.get("status").asText(), body::toString);
     }
 
     /**
@@ -167,15 +225,14 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
         @Override
         protected JsonObject additionalSettingsOverrides() {
             return new JsonObject()
-                    .put("config", new JsonObject()
-                            .put("write", new JsonObject().put("softValidation", true))
-                            .put("onInvalidEntity", "skip"));
+                    .put("config", new JsonObject().put("onInvalidEntity", "skip"));
         }
 
         @Test
         @SneakyThrows
         void testSoftWriteUnderSkip() {
-            verify(adminPut(this, "/v1/plugins/platform/p1", "{\"type\": \"missing\"}"), 200);
+            verify(send(HttpMethod.PUT, "/v1/plugins/platform/p1", "softValidation=true", "{\"type\": \"missing\"}",
+                    "authorization", "admin"), 200);
 
             JsonNode body = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/plugins/platform/p1").body());
             assertEquals("invalid", body.get("status").asText(), body::toString);
@@ -207,6 +264,12 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
             assertTrue(body.get("validationWarnings").get(0).get("field").asText().startsWith("settings"), body::toString);
             JsonNode health = ProxyUtil.MAPPER.readTree(adminGet(this, "/v1/admin/health/config").body());
             assertTrue(skippedIds(health).contains("plugins/platform/p2"), health::toString);
+        }
+
+        @Test
+        @DialConfigLocation("dial-config/plugin-unknown-type.json")
+        void testFilePluginUnderSkip() {
+            assertFilePluginIsSkipped(this);
         }
     }
 
@@ -251,6 +314,14 @@ public class ConfigPluginApiTest extends ResourceBaseTest {
         List<String> names = new ArrayList<>();
         items.forEach(item -> names.add(item.get("name").asText()));
         return names;
+    }
+
+    @SneakyThrows
+    private static void assertFilePluginIsSkipped(ResourceBaseTest test) {
+        Response response = test.send(HttpMethod.GET, "/v1/admin/health/config", null, "", "api-key", "adminKey1");
+        verify(response, 200);
+        JsonNode health = ProxyUtil.MAPPER.readTree(response.body());
+        assertTrue(skippedIds(health).contains("plugins/platform/file-plugin"), health::toString);
     }
 
     private static List<String> skippedIds(JsonNode health) {

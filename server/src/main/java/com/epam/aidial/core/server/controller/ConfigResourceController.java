@@ -50,6 +50,7 @@ import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
+import com.epam.aidial.core.server.service.config.ConfigManifestSupport;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
@@ -107,7 +108,6 @@ public class ConfigResourceController implements Controller {
     private final ResourceService resourceService;
     private final AsyncTaskExecutor taskExecutor;
     private final SecretFieldProcessor secretFieldProcessor;
-    private final boolean softValidation;
     private final ApiKeyStore apiKeyStore;
     private final LockService lockService;
     private final ApplicationService applicationService;
@@ -130,7 +130,6 @@ public class ConfigResourceController implements Controller {
         this.resourceService = proxy.getResourceService();
         this.taskExecutor = proxy.getTaskExecutor();
         this.secretFieldProcessor = mergedConfigStore.getSecretFieldProcessor();
-        this.softValidation = mergedConfigStore.isSoftValidation();
         this.apiKeyStore = proxy.getApiKeyStore();
         this.lockService = proxy.getLockService();
         this.applicationService = proxy.getApplicationService();
@@ -182,7 +181,8 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Model name"),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
-                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH),
+                            @ApiParameter(name = "softValidation", in = ParameterIn.QUERY, schema = Boolean.class, description = OpenApiDescriptions.SOFT_VALIDATION)
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
@@ -490,7 +490,8 @@ public class ConfigResourceController implements Controller {
                             @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
                             @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Plugin name"),
                             @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
-                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH),
+                            @ApiParameter(name = "softValidation", in = ParameterIn.QUERY, schema = Boolean.class, description = OpenApiDescriptions.SOFT_VALIDATION)
                     },
                     responses = {
                             @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
@@ -1244,6 +1245,15 @@ public class ConfigResourceController implements Controller {
                     "Invalid entity name segment: must match " + ConfigPostProcessor.ENTITY_NAME_PATTERN.pattern());
             return Future.succeededFuture();
         }
+        boolean softValidation = false;
+        if (method == HttpMethod.PUT) {
+            try {
+                softValidation = ConfigManifestSupport.parseSoftValidation(context.getRequest().getParam("softValidation"));
+            } catch (IllegalArgumentException e) {
+                context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
+                return Future.succeededFuture();
+            }
+        }
         // TOOL_SET names are further constrained than ENTITY_NAME_PATTERN: the merged-config rebuild
         // validates them with ConfigPostProcessor.isValidToolSetKey (processToolSets) and silently
         // drops non-conforming ones. Reject such names up front on both PUT and DELETE — same as the
@@ -1290,7 +1300,7 @@ public class ConfigResourceController implements Controller {
             return respondMethodNotAllowed();
         }
         if (method == HttpMethod.PUT) {
-            return handlePut();
+            return handlePut(softValidation);
         }
         if (method == HttpMethod.DELETE) {
             return handleDelete();
@@ -1919,7 +1929,7 @@ public class ConfigResourceController implements Controller {
      * {@code If-Match: <etag>} (412 on mismatch) via {@link EtagHeader#validate(String)}. Both
      * arms call {@link MergedConfigStore#applyEntityWrite} uniformly (partial-update fast path).
      */
-    private Future<?> handlePut() {
+    private Future<?> handlePut(boolean softValidation) {
         WriteSpec spec = prepareWrite();
         if (spec == null) {
             return Future.succeededFuture();
@@ -2005,7 +2015,7 @@ public class ConfigResourceController implements Controller {
                         rejectUnreadableSecrets(entity, descriptor);
                     }
                     if (entity instanceof Model m) {
-                        checkModel(m);
+                        checkModel(m, softValidation);
                     } else if (entity instanceof Interceptor interceptor) {
                         checkInterfaces(interceptor);
                     } else if (entity instanceof Router router) {
@@ -2013,7 +2023,7 @@ public class ConfigResourceController implements Controller {
                     } else if (entity instanceof Translator t) {
                         checkTranslator(t);
                     } else if (entity instanceof Plugin plugin) {
-                        checkPlugin(plugin);
+                        checkPlugin(plugin, softValidation);
                     } else if (entity instanceof Route route) {
                         checkRoute(route);
                     }
@@ -2316,7 +2326,7 @@ public class ConfigResourceController implements Controller {
      *
      * @see ConfigPostProcessor#validateModelInvariants
      */
-    private void checkModel(Model entity) {
+    private void checkModel(Model entity, boolean softValidation) {
         Config snapshot = mergedConfigStore.get();
         Map<String, Translator> translators = snapshot != null ? snapshot.getTranslators() : Map.of();
         List<ValidationWarning> warnings = new ArrayList<>();
@@ -2352,17 +2362,22 @@ public class ConfigResourceController implements Controller {
 
     /**
      * Check for plugin writes against the provider of the plugin type, the one the rebuild makes
-     * ({@link ConfigPostProcessor#validatePlugin}). Settings the provider rejects are refused whatever the mode; an
-     * unknown type only in strict mode, the allowance {@link #checkModel} makes for a dangling interceptor, so a
-     * declaration can be written before the jar of its type is rolled out.
+     * ({@link ConfigPostProcessor#validatePluginSettings}, {@link ConfigPostProcessor#validatePluginType}). Settings the
+     * provider rejects are refused whatever the request; an unknown type unless it carries {@code softValidation=true},
+     * the allowance {@link #checkModel} makes for a dangling interceptor, so a declaration can be written before the jar
+     * of its type is rolled out.
      */
-    private void checkPlugin(Plugin entity) {
+    private void checkPlugin(Plugin entity, boolean softValidation) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validatePlugin(path, entity, mergedConfigStore.getPluginRegistry(), !softValidation, warnings);
-        if (warnings.isEmpty()) {
-            return;
+        ConfigPostProcessor.validatePluginSettings(path, entity, mergedConfigStore.getPluginRegistry(), warnings);
+        boolean hardFailure = !warnings.isEmpty();
+        boolean softFailure = !ConfigPostProcessor.validatePluginType(path, entity, mergedConfigStore.getPluginRegistry(), warnings);
+        if (hardFailure || (softFailure && !softValidation)) {
+            rejectWithValidationWarnings(warnings);
         }
-        rejectWithValidationWarnings(warnings);
+        if (softFailure) {
+            log.warn("Soft-mode type warning for plugin '{}': {}", path, warnings);
+        }
     }
 
     /**

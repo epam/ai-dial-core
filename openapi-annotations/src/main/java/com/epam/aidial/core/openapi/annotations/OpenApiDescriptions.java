@@ -24,6 +24,9 @@ public final class OpenApiDescriptions {
 
     public static final String IF_MATCH = "ETag precondition.";
     public static final String IF_NONE_MATCH = "Conditional creation precondition.";
+    public static final String SOFT_VALIDATION = "false (the default) rejects an entity with an unresolved reference, "
+            + "a model's interceptor or a plugin's type; true accepts it, and a write records it as invalid until the "
+            + "reference resolves. Any other value answers 400.";
     public static final String APPLICATION_NAME = "The name of the Application.";
     public static final String MODEL_NAME = "The name of the model.";
     public static final String TOOLSET_NAME = "The name of the toolset.";

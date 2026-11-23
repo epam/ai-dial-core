@@ -3,6 +3,7 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * PUT-upsert wire shape. The Model write controller's interceptor cross-ref check rejects unknown
  * references at write time with HTTP 422 and a {@code {"validationWarnings": [...]}} body. The
  * underlying merged-config rebuild keeps soft-mode skip behavior; these tests exercise only the
- * strict pre-commit path (default {@code softValidation=false}).
+ * strict pre-commit path (no {@code softValidation} parameter, or {@code softValidation=false}).
  */
 public class ModelCrossRefValidationApiTest extends ResourceBaseTest {
 
@@ -56,6 +57,22 @@ public class ModelCrossRefValidationApiTest extends ResourceBaseTest {
               "interceptors": []
             }
             """;
+
+    @Test
+    void testStrictWrite() {
+        for (String query : new String[] {null, "softValidation=false"}) {
+            verify(send(HttpMethod.PUT, "/v1/models/platform/cr-strict", query,
+                    MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin"), 422);
+            verify(send(HttpMethod.GET, "/v1/models/platform/cr-strict", null, "", "authorization", "admin"), 404);
+        }
+    }
+
+    @Test
+    void testNonBooleanValueAnswers400() {
+        verify(send(HttpMethod.PUT, "/v1/models/platform/cr-non-boolean", "softValidation=yes",
+                MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin"), 400);
+        verify(send(HttpMethod.GET, "/v1/models/platform/cr-non-boolean", null, "", "authorization", "admin"), 404);
+    }
 
     @Test
     void testPutCreateKnownInterceptor() {
@@ -133,5 +150,20 @@ public class ModelCrossRefValidationApiTest extends ResourceBaseTest {
         Response put = send(HttpMethod.PUT, "/v1/models/platform/cr-put-good", null,
                 MODEL_BODY_KNOWN_INTERCEPTOR, "authorization", "admin");
         verify(put, 200);
+    }
+
+    /** The removed setting is not read: a write without the parameter is still strict. */
+    public static class LegacySetting extends ResourceBaseTest {
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject().put("config", new JsonObject().put("write", new JsonObject().put("softValidation", true)));
+        }
+
+        @Test
+        void testRemovedSettingHasNoEffect() {
+            verify(send(HttpMethod.PUT, "/v1/models/platform/cr-legacy", null,
+                    MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin"), 422);
+        }
     }
 }

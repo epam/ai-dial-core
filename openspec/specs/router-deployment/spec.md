@@ -376,7 +376,7 @@ message containing `A router declares applicationTypeSchemaId and applicationPro
 Core SHALL validate a typed router's `applicationProperties` against its schema on the file load (against the
 file's schemas, as for an application) and on every Configuration API write (against the merged config plus a
 batch's earlier `Schema` entries), and SHALL reject the file, or answer `422` or fail the manifest entry and write
-nothing, when the schema is unknown or the properties do not validate, whatever the soft-validation mode.
+nothing, when the schema is unknown or the properties do not validate, whatever the `softValidation` parameter.
 
 #### Scenario: Unknown schema
 - **WHEN** an admin sends `PUT /v1/routers/platform/r-bad` with `applicationTypeSchemaId: "https://dial.test/none"`

@@ -51,15 +51,13 @@ import java.util.List;
 public class ConfigValidationService {
 
     private final ResourceService resourceService;
-    private final boolean softValidation;
     private final CatalogSchemaService catalogSchemaService;
     private final PluginRegistry pluginRegistry;
     private final ApplicationSchemaService applicationSchemaService;
 
-    public ConfigValidationService(ResourceService resourceService, boolean softValidation,
+    public ConfigValidationService(ResourceService resourceService,
                                    CatalogSchemaService catalogSchemaService, PluginRegistry pluginRegistry, ApplicationSchemaService applicationSchemaService) {
         this.resourceService = resourceService;
-        this.softValidation = softValidation;
         this.catalogSchemaService = catalogSchemaService;
         this.pluginRegistry = pluginRegistry;
         this.applicationSchemaService = applicationSchemaService;
@@ -69,14 +67,15 @@ public class ConfigValidationService {
         return new PolicyAssignmentPrecheck(resourceService);
     }
 
-    public ValidationResult validateOnly(AdminManifest entry, Config scratch) {
-        return validateOnly(entry, scratch, newPolicyPrecheck());
+    public ValidationResult validateOnly(AdminManifest entry, Config scratch, boolean softValidation) {
+        return validateOnly(entry, scratch, newPolicyPrecheck(), softValidation);
     }
 
     /**
      * @param policyPrecheck shared by the entries of one batch, so that a policy record sees the valid ones before it
      */
-    public ValidationResult validateOnly(AdminManifest entry, Config scratch, PolicyAssignmentPrecheck policyPrecheck) {
+    public ValidationResult validateOnly(AdminManifest entry, Config scratch, PolicyAssignmentPrecheck policyPrecheck,
+                                         boolean softValidation) {
         String id = entry.name();
         ConfigManifestSupport.ParsedManifest parsed;
         try {
@@ -142,8 +141,10 @@ public class ConfigValidationService {
                 }
                 case AdminPluginManifest pluginManifest -> {
                     List<ValidationWarning> warnings = new ArrayList<>();
-                    ConfigPostProcessor.validatePlugin(id, pluginManifest.spec(), pluginRegistry, !softValidation, warnings);
-                    if (!warnings.isEmpty()) {
+                    ConfigPostProcessor.validatePluginSettings(id, pluginManifest.spec(), pluginRegistry, warnings);
+                    boolean hardFailure = !warnings.isEmpty();
+                    boolean softFailure = !ConfigPostProcessor.validatePluginType(id, pluginManifest.spec(), pluginRegistry, warnings);
+                    if (hardFailure || (softFailure && !softValidation)) {
                         return new ValidationResult(id, ValidationStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
                     }
                 }

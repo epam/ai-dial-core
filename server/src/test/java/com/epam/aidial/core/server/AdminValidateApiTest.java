@@ -3,7 +3,6 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
-import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
@@ -1362,94 +1361,84 @@ public class AdminValidateApiTest extends ResourceBaseTest {
         return results.get(0);
     }
 
-    public static class SoftValidation extends ResourceBaseTest {
-        @Override
-        protected JsonObject additionalSettingsOverrides() {
-            return new JsonObject()
-                    .put("config", new JsonObject()
-                            .put("write", new JsonObject().put("softValidation", true))
-                            .put("onInvalidEntity", "skip"));
-        }
+    @Test
+    @DialConfigLocation("dial-config/routers-typed.json")
+    void testSoftValidationStillRejectsTypedRouterProperties() {
+        verify(send(HttpMethod.PUT, "/v1/routers/platform/r-soft", "softValidation=true", ConfigRouterTest.TYPED_ROUTER.formatted("{\"tier\": 5}"),
+                "authorization", "admin"), 422);
+        verify(send(HttpMethod.GET, "/v1/routers/platform/r-soft", null, "", "authorization", "admin"), 404);
+    }
 
-        @Test
-        @DialConfigLocation("dial-config/routers-typed.json")
-        void testSoftValidationStillRejectsTypedRouterProperties() {
-            verify(send(HttpMethod.PUT, "/v1/routers/platform/r-soft", null, ConfigRouterTest.TYPED_ROUTER.formatted("{\"tier\": 5}"),
-                    "authorization", "admin"), 422);
-            verify(send(HttpMethod.GET, "/v1/routers/platform/r-soft", null, "", "authorization", "admin"), 404);
-        }
-
-        @Test
-        @SneakyThrows
-        void testV17SoftValidationModePerEntityValid() {
-            // Under softValidation=true, validateOnly admits dangling cross-refs as "valid"
-            // (they would be persisted with status="invalid" by apply, not rejected).
-            // Validate mirrors apply's per-entity admission decision.
-            String body = """
+    @Test
+    @SneakyThrows
+    void testV17SoftValidationModePerEntityValid() {
+        // Under softValidation=true, validateOnly admits dangling cross-refs as "valid"
+        // (they would be persisted with status="invalid" by apply, not rejected).
+        // Validate mirrors apply's per-entity admission decision.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
                     {
-                      "precheck": false,
-                      "manifests": [
-                        {
-                          "kind": "Model",
-                          "name": "models/platform/validate-soft-mode",
-                          "spec": {
-                            "type": "chat",
-                            "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
-                            "interceptors": ["does-not-exist"]
-                          }
-                        }
-                      ]
+                      "kind": "Model",
+                      "name": "models/platform/validate-soft-mode",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "interceptors": ["does-not-exist"]
+                      }
                     }
-                    """;
-            Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body,
-                    "authorization", "admin");
-            verify(response, 200);
-            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
-            assertEquals(0, parsed.get("failed").asInt());
-            assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
-            verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-mode", null, "",
-                    "authorization", "admin"), 404);
-        }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", "softValidation=true", body,
+                "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(0, parsed.get("failed").asInt());
+        assertEquals("VALID", parsed.get("results").get(0).get("status").asText());
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-mode", null, "",
+                "authorization", "admin"), 404);
+    }
 
-        @Test
-        @SneakyThrows
-        void testV19SoftValidationStillRejectsCacheRateWithoutTokenUnit() {
-            // Contrast with testV17SoftValidationModePerEntityValid. Soft mode admits only what the
-            // rebuild itself tolerates — cross-references, which a later write repairs. Pricing is a
-            // rebuild invariant (processModels validates it unconditionally in both abort and skip
-            // mode), so admitting it here would greenlight a blob the next reload discards, and under
-            // onInvalidEntity=abort would stop the pod from starting.
-            String body = """
+    @Test
+    @SneakyThrows
+    void testV19SoftValidationStillRejectsCacheRateWithoutTokenUnit() {
+        // Contrast with testV17SoftValidationModePerEntityValid. Soft mode admits only what the
+        // rebuild itself tolerates — cross-references, which a later write repairs. Pricing is a
+        // rebuild invariant (processModels validates it unconditionally in both abort and skip
+        // mode), so admitting it here would greenlight a blob the next reload discards, and under
+        // onInvalidEntity=abort would stop the pod from starting.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
                     {
-                      "precheck": false,
-                      "manifests": [
-                        {
-                          "kind": "Model",
-                          "name": "models/platform/validate-soft-cache-pricing",
-                          "spec": {
-                            "type": "chat",
-                            "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
-                            "pricing": {
-                              "unit": "char_without_whitespace",
-                              "prompt": "0.1",
-                              "completion": "0.5",
-                              "cacheRead": "0.01"
-                            }
-                          }
+                      "kind": "Model",
+                      "name": "models/platform/validate-soft-cache-pricing",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "pricing": {
+                          "unit": "char_without_whitespace",
+                          "prompt": "0.1",
+                          "completion": "0.5",
+                          "cacheRead": "0.01"
                         }
-                      ]
+                      }
                     }
-                    """;
-            Response response = send(HttpMethod.POST, "/v1/admin/validate", null, body,
-                    "authorization", "admin");
-            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
-            assertEquals(1, parsed.get("failed").asInt());
-            assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
-            verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-cache-pricing", null, "",
-                    "authorization", "admin"), 404);
-        }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/validate", "softValidation=true", body,
+                "authorization", "admin");
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(0, parsed.get("valid").asInt(), () -> "Body: " + response.body());
+        assertEquals(1, parsed.get("failed").asInt());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText());
+        verify(send(HttpMethod.GET, "/v1/models/platform/validate-soft-cache-pricing", null, "",
+                "authorization", "admin"), 404);
     }
 
     // deployment-interfaces-config "Plugin url in responsesEndpoint refused by validate and apply"
