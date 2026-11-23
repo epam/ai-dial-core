@@ -2,6 +2,7 @@ package com.epam.aidial.core.server;
 
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -9,6 +10,10 @@ import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.security.IdpNotFoundException;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -42,9 +47,12 @@ import org.mockito.Mockito;
 import redis.embedded.RedisServer;
 
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -322,12 +330,89 @@ public class ResourceBaseTest {
         return "0" + id++;
     }
 
+    // Structurally valid Base64 that no key decrypts, standing in for a secret whose key is lost.
+    protected static final String CORRUPTED_CIPHERTEXT = Base64.getEncoder().encodeToString(new byte[64]);
+
+    protected String userApplicationUrl(String role, String appName) throws Exception {
+        Response bucket = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", role);
+        assertEquals(200, bucket.status());
+        return "applications/" + ProxyUtil.MAPPER.readTree(bucket.body()).get("bucket").asText() + "/" + appName;
+    }
+
+    protected String createPlainDynamicApp(String role, String appName) throws Exception {
+        String appUrl = userApplicationUrl(role, appName);
+        Response create = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {"endpoint": "http://localhost:7001/v1/x", "display_name": "Mgmt App"}
+                """, "authorization", role);
+        assertEquals(200, create.status(), create::body);
+        return appUrl;
+    }
+
+    /** The PKCE S256 challenge of {@code verifier}. */
+    protected static String s256(String verifier) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+    }
+
+    protected static Map<String, String> parseForm(String body) {
+        Map<String, String> form = new HashMap<>();
+        for (String pair : body.split("&")) {
+            String[] parts = pair.split("=", 2);
+            form.put(URLDecoder.decode(parts[0], StandardCharsets.UTF_8),
+                    parts.length > 1 ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8) : "");
+        }
+        return form;
+    }
+
+    protected String readStoredBlob(String url) {
+        return dial.getProxy().getResourceService().getResource(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService));
+    }
+
+    // Overwrites a stored toolset's secrets, bypassing the API's encrypt path, as a lost key or a copied blob would.
+    protected void corruptStoredToolSetSecrets(String url) {
+        corruptStoredAuthSettings(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService), "/auth_settings");
+    }
+
+    // Replaces an encrypted field of a stored config entity (model, key, route) with an envelope no key decrypts.
+    @SneakyThrows
+    protected void corruptStoredEnvelope(ResourceDescriptor descriptor, String parentPointer, String fieldName) {
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        JsonNode blob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ((ObjectNode) blob.at(parentPointer)).put(fieldName, "ENC[" + CORRUPTED_CIPHERTEXT + "]");
+        resourceService.putResource(descriptor, blob.toString(), EtagHeader.ANY, null, false);
+    }
+
+    // The same for the auth_settings object found at authSettingsPointer (a JSON pointer) in the stored blob.
+    @SneakyThrows
+    protected void corruptStoredAuthSettings(ResourceDescriptor descriptor, String authSettingsPointer) {
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        JsonNode blob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ObjectNode authSettings = (ObjectNode) blob.at(authSettingsPointer);
+        authSettings.put("client_secret", CORRUPTED_CIPHERTEXT);
+        if (authSettings.has("code_verifier")) {
+            authSettings.put("code_verifier", CORRUPTED_CIPHERTEXT);
+        }
+        resourceService.putResource(descriptor, blob.toString(), EtagHeader.ANY, null, false);
+    }
+
     /**
      * Override in subclasses to inject additional settings overrides before {@code dial.start()}.
      * Default returns an empty JsonObject. Merged into the runtime settings via {@code mergeIn(true)}.
      */
     protected JsonObject additionalSettingsOverrides() {
         return new JsonObject();
+    }
+
+    /**
+     * Shares {@code url}, which "admin" owns, with "user" through an accepted invitation link.
+     */
+    protected void shareWithUser(String url, String permissions) {
+        Response response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                {"invitationType": "link", "resources": [{"url": "%s", "permissions": %s}]}
+                """.formatted(url, permissions), "authorization", "admin");
+        verify(response, 200);
+        InvitationLink link = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        verify(send(HttpMethod.GET, link.invitationLink(), "accept=true", null, "authorization", "user"), 200);
     }
 
     static void verify(Response response, int status) {

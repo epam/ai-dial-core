@@ -55,9 +55,12 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 @Slf4j
 public class ApplicationService {
+
+    public static final String ONLY_ADMINS_SET_INTERCEPTORS = "Only admins are allowed to set interceptors";
 
     private static final String DEPLOYMENTS_NAME = "deployments";
 
@@ -236,6 +239,7 @@ public class ApplicationService {
             prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
             if (inheritForwardAuthToken) {
                 application.setForwardAuthToken(existing != null && existing.isForwardAuthToken());
+                requireSameInterceptors(application, existing);
             }
             List<String> externalServices = externalServiceService.processOnWrite(resource, application, existing, externalServicesWriteMode);
             purgeableExternalServices.setValue(externalServices);
@@ -248,6 +252,22 @@ public class ApplicationService {
         externalServiceService.purgeApplicationCredentials(resource, purgeableExternalServices.get());
 
         return Pair.of(meta, toStore.getValue());
+    }
+
+    /**
+     * The application's own interceptors, none when it has no application or the body sent none.
+     */
+    public static List<String> interceptorsOf(@Nullable Application application) {
+        return application == null || application.getInterceptors() == null ? List.of() : application.getInterceptors();
+    }
+
+    /**
+     * Only DIAL admins set interceptors: anyone else writes an application with exactly the ones it has.
+     */
+    public static void requireSameInterceptors(Application application, @Nullable Application existing) {
+        if (!interceptorsOf(existing).equals(interceptorsOf(application))) {
+            throw new PermissionDeniedException(ONLY_ADMINS_SET_INTERCEPTORS);
+        }
     }
 
     // app_identity and allow_user_external_services are admin-managed: a field the mode does not honor is

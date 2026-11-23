@@ -20,17 +20,17 @@ import javax.annotation.Nullable;
 
 /**
  * The roles that can be assigned at an org unit. Every unit has the same ones: the built-in {@code admin},
- * {@code editor}, {@code viewer} and {@code member}, as overridden or extended by the dynamic config's
+ * {@code editor} and {@code viewer}, as overridden or extended by the dynamic config's
  * {@code orgUnitRoles}. A role grants only in the unit it is assigned at; a resource belongs to the nearest unit above
  * it, so child units are not covered. {@code read} on {@code org-units} shows the unit and the names of its child units,
- * never their content.
+ * never their content; no built-in role holds it, so only a config role shows child units. A role anywhere also shows its
+ * holder the units above it by name, each with only the child unit on the way down.
  */
 public final class OrgUnitRoles {
 
     public static final String ADMIN = "admin";
     public static final String EDITOR = "editor";
     public static final String VIEWER = "viewer";
-    public static final String MEMBER = "member";
 
     public static final String READ = "read";
     public static final String WRITE = "write";
@@ -71,8 +71,6 @@ public final class OrgUnitRoles {
                 + " and manages its role assignments", permissions(readWrite, List.of(PUBLICATIONS, ROLE_ASSIGNMENTS))));
         defaults.put(EDITOR, new OrgUnitRole("Reads and changes everything in the unit", permissions(readWrite, List.of())));
         defaults.put(VIEWER, new OrgUnitRole("Reads everything in the unit", permissions(read, List.of())));
-        defaults.put(MEMBER, new OrgUnitRole("Sees the unit and its child units, not their content",
-                List.of(new OrgUnitPermission(read, ORG_UNITS + ANY_BELOW))));
         DEFAULTS = Collections.unmodifiableMap(defaults);
     }
 
@@ -182,8 +180,19 @@ public final class OrgUnitRoles {
     }
 
     /**
-     * The actions on every content namespace and the extra ones, then {@code read} on {@code org-units}: whoever holds a
-     * built-in role at a unit sees its child units.
+     * The roles that {@code admin} can't give or remove, as they grant something it doesn't, in name order; none when
+     * {@code admin} doesn't manage role assignments at all.
+     */
+    public List<String> beyondAdmin() {
+        if (!allows(List.of(ADMIN), WRITE, ROLE_ASSIGNMENTS)) {
+            return List.of();
+        }
+        return roles.keySet().stream().filter(name -> !covers(List.of(ADMIN), name)).sorted().toList();
+    }
+
+    /**
+     * The actions on every content namespace and the extra ones; no {@code org-units}, so a built-in role doesn't show
+     * the units below.
      */
     private static List<OrgUnitPermission> permissions(List<String> actions, List<String> extraNamespaces) {
         List<OrgUnitPermission> permissions = new ArrayList<>();
@@ -193,7 +202,6 @@ public final class OrgUnitRoles {
         for (String namespace : extraNamespaces) {
             permissions.add(new OrgUnitPermission(actions, namespace + ANY_BELOW));
         }
-        permissions.add(new OrgUnitPermission(List.of(READ), ORG_UNITS + ANY_BELOW));
         return List.copyOf(permissions);
     }
 

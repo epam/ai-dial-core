@@ -21,7 +21,8 @@ public class NoneAuthSettingsValidator extends BaseAuthSettingsValidator {
                         ResourceAuthSettingsField.CODE_CHALLENGE_METHOD,
                         ResourceAuthSettingsField.SCOPES_SUPPORTED,
                         ResourceAuthSettingsField.API_KEY_HEADER,
-                        ResourceAuthSettingsField.RESOURCE
+                        ResourceAuthSettingsField.RESOURCE,
+                        ResourceAuthSettingsField.DISCOVERY_URL
                 )
         );
     }

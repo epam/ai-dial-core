@@ -45,8 +45,8 @@ public class OrgUnitSkillListingApiTest extends ResourceBaseTest {
         assertEquals(200, send(HttpMethod.POST, "/v1/org-units/public/Acme", null, "{\"name\": \"Risk\"}", "authorization", "admin").status());
         assertEquals(200, uploadSkill("public/Acme/acme-skill").status());
         assertEquals(200, uploadSkill("public/Acme/Risk/risk-skill").status());
-        Response assigned = send(HttpMethod.POST, "/v1/org-units/public/Acme/role-assignments", null,
-                "{\"roleName\": \"member\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"bob\"]}}",
+        Response assigned = send(HttpMethod.POST, "/v1/org-units/public/Acme/Risk/role-assignments", null,
+                "{\"roleName\": \"viewer\", \"subject\": {\"type\": \"claimsPredicate\", \"source\": \"azp\", \"function\": \"EQUAL\", \"targets\": [\"bob\"]}}",
                 "authorization", "admin");
         assertEquals(200, assigned.status(), assigned.body());
     }
@@ -54,7 +54,7 @@ public class OrgUnitSkillListingApiTest extends ResourceBaseTest {
     @Test
     void testGroupingLevelWithoutSlashIsFilteredAsItsFolder() {
         for (String path : List.of("public/Acme", "public/Acme/")) {
-            assertEquals(List.of("skills/public/Acme/Risk/"), urls(path, "azp:bob"), path);
+            assertEquals(List.of("skills/public/Acme/Risk/", "skills/public/Acme/Risk/risk-skill/"), urls(path, "azp:bob"), path);
             assertEquals(List.of(), urls(path, "azp:nobody"), path);
         }
     }
