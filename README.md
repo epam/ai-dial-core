@@ -135,8 +135,7 @@ Priority order:
 
 | Setting                                  |      Default       | Required | Description                                                                                                                                                                                                                                                                                                     |
 |------------------------------------------|:------------------:|:--------:|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| config.files                             | aidial.config.json |    No    | List of paths to dynamic settings. Refer to [example](sample/aidial.config.json) of the file with [dynamic settings](#dynamic-settings).                                                                                                                                                                        |
-| config.reload                            |       60000        |    No    | Config reload interval in milliseconds.                                                                                                                                                                                                                                                                         |
+| config.*                                 |         -          |    No    | Dynamic-config loading and validation settings. See the **Config Loading Configurations** block below.                                                                                                                                                                                                     |
 | plugins.dir                              |      plugins       |    No    | Preview. Directory Core loads plugin code from at start, relative to the working directory: each plugin in a plugin directory `<group>/<plugin>` of its own, with its own class loader. A jar directly in this directory or in a group directory stops the start. A missing directory loads none. Refer to [Plugins](/docs/dynamic-settings/plugins.md#plugin-code). |
 | plugins.include                          |       ["*"]        |    No    | Preview. Patterns of the plugin directories Core loads: `*` or `<group>/<plugin>`, where either part may be `*`. A JSON array or one comma-separated string. Env: `aidial.plugins.include`. Refer to [Plugins](/docs/dynamic-settings/plugins.md#including-and-excluding-plugins). |
 | plugins.exclude                          |         []         |    No    | Preview. Patterns of the plugin directories Core does not load or open, even when `plugins.include` names them; same form as `plugins.include`. Env: `aidial.plugins.exclude`, e.g. `builtin/echo,custom/old`. Refer to [Plugins](/docs/dynamic-settings/plugins.md#including-and-excluding-plugins). |
@@ -152,7 +151,6 @@ Priority order:
 | perRequestApiKey.ttl                     |        1800        |    No    | The TTL in seconds of per request API key                                                                                                                                                                                                                                                                       |
 | deploymentStats.ttlMs                    |      3600000       |    No    | The TTL in milliseconds (must be positive) of the per-trace usage record kept in Redis, refreshed on each write. A trace whose root is a background Responses job keeps it for at least `backgroundJob.jobTtlMs` + `backgroundJob.scanIntervalMs`                                                               |
 | asyncTaskExecutor.useVirtualThreads      |        true        |    No    | The flag determines if virtual threads are used to run blocking tasks or platform threads.                                                                                                                                                                                                                      |
-| config.jsonMergeStrategy.overwriteArrays |       false        |    No    | Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.                                                                                                                                                                          |
 | apiKeyValidation.proxyCount              |         0          | No | The count of trusted proxies between the client and DIAL Core server. See [selecting an IP address in HTTP header X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For#selecting_an_ip_address) for more details. The default value means there are no proxies. |
 | printAuthorizationHeader                 |       false       | No | If `true`, logs the raw `Authorization` header value at `DEBUG` level for each request. Intended for debugging JWT/identity provider setup only. **Note**: the header may contain sensitive tokens; do not enable in production. |
 | mcpHttpClient.connectTimeout             |        10000        |    No    | Connect timeout in milliseconds for the shared `java.net.http.HttpClient` used when the server calls out to MCP servers (toolset tool listing/execution, API key sign-in validation).                                                                                                                          |
@@ -182,6 +180,51 @@ Prefer the hashed user id where you can: when `identityProviders.*.loggingKey` p
 `identityProviders.*.obfuscateUserEmail` is left enabled, `user.id` already identifies the same user as a salted hash,
 without putting the raw address in the log.
 
+
+<details> 
+<summary><b>Config Loading Configurations</b></summary>
+
+How the [dynamic settings](#dynamic-settings) file is read, merged and validated, and what happens to an
+entity that does not survive validation.
+
+| Setting                                  |      Default       | Required | Description                                                                                                                                                                                                                                                                                                                       |
+|------------------------------------------|:------------------:|:--------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| config.files                             | aidial.config.json |    No    | List of paths to dynamic settings. Refer to [example](sample/aidial.config.json) of the file with [dynamic settings](#dynamic-settings).                                                                                                                                                                                          |
+| config.reload                            |       60000        |    No    | Config reload interval in milliseconds.                                                                                                                                                                                                                                                                                           |
+| config.jsonMergeStrategy.overwriteArrays |       false        |    No    | Specifies a merging strategy for JSON arrays. If it's set to `true`, arrays will be overwritten. Otherwise, they will be concatenated.                                                                                                                                                                                             |
+| config.onInvalidEntity                   |       abort        |    No    | What an entity that fails validation does to the merged config: see **Invalid entities** below.                                |
+| config.write.softValidation              |       false        |    No    | If `true`, a Configuration API write whose entity has only cross-reference warnings (e.g. a model naming an interceptor that does not exist yet) is accepted instead of rejected with `422`. Under `skip` it is recorded as invalid at once; under `abort`, and under `skipOnStartup` after startup, it is accepted as valid and fails at request time. Invalid `overridePaths` stay fatal in every mode.                            |
+
+**Invalid entities**
+
+A model, application, interceptor, translator, route, toolset, router, alias, plugin, policy or policy assignment that violates
+a runtime invariant — an interface that resolves to no provider url, a duplicate deployment id — is an *invalid
+entity*. A dropped budget policy leaves its cost object without a budget. `config.onInvalidEntity` decides what that costs:
+
+| Mode            | Startup (initial merge)                  | Every rebuild and Configuration API write after it                                            |
+|-----------------|------------------------------------------|-----------------------------------------------------------------------------------------------|
+| `abort`         | Core refuses to start                    | Rebuild aborts and the merged config stays at its previous state; the offending write fails   |
+| `skip`          | Entity dropped and recorded; core starts | Rebuild: entity dropped and recorded. Write: rejected with `422` (see `softValidation`)        |
+| `skipOnStartup` | Entity dropped and recorded; core starts | Same as `abort`                                                                                |
+
+A dropped entity is not lost: it is kept in the invalid-entity store, reported by
+`GET /v1/admin/health/config` as `skipped[]` with a reason, returned with `"status": "invalid"` and its
+validation warnings by the admin `GET` for that entity, and counted by the `dial_config_skipped_entities`
+gauge and `dial_config_skip_events_total` counter. Fixing the entity clears it on the next rebuild.
+
+`skipOnStartup` trades a failed start for a stalled reload: while the offending entity is still there,
+every later full rebuild aborts and logs a warning each `config.reload`, so the pod keeps serving the config it
+booted with and misses what only a full rebuild applies: file edits, direct storage writes, `POST /v1/ops/config/reload`
+(answered `500`) and a system import, until the entity is fixed or removed. Single-entity Configuration API writes,
+on this pod or another, usually still apply in place; one whose in-place apply fails (for example a policy assignment
+that reaches a pod before its policy) falls back to a full rebuild, which aborts, so it waits for the fix or a restart.
+The invalid entity is listed by the health endpoint the whole time.
+
+An entity whose blob body fails to parse, bind or decrypt is always skipped per-entity, in every mode. Entities defined in
+the `config.files` file itself are validated when that file is loaded, before any mode applies: a violation
+there fails the load, and at startup that fails the pod regardless of `config.onInvalidEntity`.
+
+</details>
 
 <details> 
 <summary><b>Identity Providers Configurations</b></summary>

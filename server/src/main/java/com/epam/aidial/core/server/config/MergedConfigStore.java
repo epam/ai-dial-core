@@ -76,8 +76,9 @@ import static com.epam.aidial.core.server.service.config.ConfigEntityCodec.BLOB_
  * coexist in the same {@code Config} maps.
  *
  * <p>Slice 2S.9 adds the invalid-entity sibling store. Per-entity failures route
- * through {@code onInvalidEntity} (default {@code abort}; opt-in {@code skip}).
- * Under {@code skip} the offender is removed from the merged {@code Config} and
+ * through {@code onInvalidEntity} (default {@code abort}; opt-in {@code skip} and
+ * {@code skipOnStartup}, which skips during the initial {@link #init} rebuild only).
+ * Where skipping applies the offender is removed from the merged {@code Config} and
  * recorded in {@link #getInvalidEntities()} for the listing/health/metrics
  * visibility channels (design 02 §4.1, §4.3).
  *
@@ -103,6 +104,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     public static final String MODE_ABORT = "abort";
     public static final String MODE_SKIP = "skip";
+    public static final String MODE_SKIP_ON_STARTUP = "skipOnStartup";
 
     private static final List<ResourceTypes> MANAGED_TYPES = List.of(
             ResourceTypes.MODEL,
@@ -234,7 +236,7 @@ public final class MergedConfigStore implements ConfigStore {
         this.externalServiceService = externalServiceService;
         this.resourceAuthSettingsEncryptionService = resourceAuthSettingsEncryptionService;
         this.lockService = lockService;
-        this.onInvalidEntity = MODE_SKIP.equalsIgnoreCase(onInvalidEntity) ? MODE_SKIP : MODE_ABORT;
+        this.onInvalidEntity = normalizeMode(onInvalidEntity);
         this.softValidation = softValidation;
         this.thisPodId = thisPodId == null ? "" : thisPodId;
         this.pluginRegistry = Objects.requireNonNull(pluginRegistry, "pluginRegistry must not be null");
@@ -269,6 +271,25 @@ public final class MergedConfigStore implements ConfigStore {
         }
     }
 
+    private static String normalizeMode(@Nullable String mode) {
+        if (MODE_SKIP.equalsIgnoreCase(mode)) {
+            return MODE_SKIP;
+        }
+        if (MODE_SKIP_ON_STARTUP.equalsIgnoreCase(mode)) {
+            return MODE_SKIP_ON_STARTUP;
+        }
+        if (mode != null && !MODE_ABORT.equalsIgnoreCase(mode)) {
+            log.warn("Unknown config.onInvalidEntity '{}', using {}", mode, MODE_ABORT);
+        }
+        return MODE_ABORT;
+    }
+
+    /** Skip-and-record instead of abort: always under skip, initial rebuild only under skipOnStartup. */
+    private boolean isSkipEnabled() {
+        return MODE_SKIP.equals(onInvalidEntity)
+                || (MODE_SKIP_ON_STARTUP.equals(onInvalidEntity) && !initialized);
+    }
+
     /**
      * Returns the file-sourced {@link Config} as last loaded by {@link FileConfigStore},
      * with no API-managed overlay applied. Used by the {@code /v1/admin/config/file/*}
@@ -289,6 +310,7 @@ public final class MergedConfigStore implements ConfigStore {
     public void init(FileConfigStore fileConfigStore) {
         rebuildLock.lock();
         try {
+            log.info("Building merged config with onInvalidEntity={}", onInvalidEntity);
             this.fileConfigStore = fileConfigStore;
             rebuild();
             initialized = true;
@@ -583,7 +605,10 @@ public final class MergedConfigStore implements ConfigStore {
         return invalidEntities;
     }
 
-    /** Currently-effective failure mode: {@link #MODE_ABORT} or {@link #MODE_SKIP}. */
+    /**
+     * Configured failure mode: {@link #MODE_ABORT}, {@link #MODE_SKIP} or
+     * {@link #MODE_SKIP_ON_STARTUP}. Unrecognized values normalize to {@link #MODE_ABORT}.
+     */
     public String getOnInvalidEntity() {
         return onInvalidEntity;
     }
@@ -993,7 +1018,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     private BiConsumer<ResourceTypes, InvalidEntityException> skipRouter(
             Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid) {
-        if (!MODE_SKIP.equals(onInvalidEntity)) {
+        if (!isSkipEnabled()) {
             return null;
         }
         // Partial-update writes are always API-sourced — this path never touches file config.
@@ -1406,10 +1431,10 @@ public final class MergedConfigStore implements ConfigStore {
             }
         }
 
-        // Semantic pass — under MODE_SKIP, route per-entity violations to invalidEntities and
-        // continue; under MODE_ABORT, the post-processor throws and the rebuild aborts (this.config
-        // stays at the previous value because we only swap below).
-        BiConsumer<ResourceTypes, InvalidEntityException> onSkip = MODE_SKIP.equals(onInvalidEntity)
+        // Semantic pass — when skipping is in effect (see isSkipEnabled), route per-entity
+        // violations to invalidEntities and continue; otherwise the post-processor throws and the
+        // rebuild aborts (this.config stays at the previous value because we only swap below).
+        BiConsumer<ResourceTypes, InvalidEntityException> onSkip = isSkipEnabled()
                 ? (type, error) -> {
                     // Skips surface through the invalidEntities sibling store only for MANAGED_TYPES
                     // (design 02 §4.3 layered model). APPLICATION/TOOL_SET have no cross-reference
