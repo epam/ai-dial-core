@@ -140,6 +140,7 @@
   "tracing": {
     "genAiSpanAttributes": true,
     "responseTraceHeaders": true,
+    "errorRequestId": true,
     "conversationIdHeaders": [
       "x-claude-code-session-id",
       "thread-id",

@@ -74,10 +74,11 @@ public class MessagesCountTokensController extends MessagesBaseController {
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
-        response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
+        Buffer sent = appendRequestId(proxyResponse, body);
+        response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(sent.length()));
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
         // count_tokens must NOT charge limits or collect token usage — just log and finalize.
-        return response.end(body)
+        return response.end(sent)
                 .transform(result -> {
                     proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
                     finalizeRequest();

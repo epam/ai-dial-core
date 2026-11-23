@@ -1,5 +1,8 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
@@ -14,6 +17,7 @@ import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.security.IdpNotFoundException;
 import com.epam.aidial.core.server.service.WellKnownResourceMetadataService;
+import com.epam.aidial.core.server.tracing.ErrorRequestId;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
@@ -25,6 +29,7 @@ import io.opentelemetry.api.trace.TraceFlags;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpConnection;
 import io.vertx.core.http.HttpHeaders;
@@ -39,12 +44,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,6 +71,9 @@ import static com.epam.aidial.core.storage.http.HttpStatus.METHOD_NOT_ALLOWED;
 import static com.epam.aidial.core.storage.http.HttpStatus.OK;
 import static com.epam.aidial.core.storage.http.HttpStatus.REQUEST_ENTITY_TOO_LARGE;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNAUTHORIZED;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -77,6 +88,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 public class ProxyTest {
+
+    private static final String ERROR_TRACE_ID = "11111111111111111111111111111111";
+    private static final String NO_CREDENTIALS = "At least API-KEY or Authorization header must be provided";
 
     @Mock
     private Vertx vertx;
@@ -921,5 +935,120 @@ public class ProxyTest {
 
         // Verify
         verify(response).setStatusCode(500);
+    }
+
+    @Test
+    public void testHandle_ErrorRequestIdOnBodySizeLimit() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Long.toString(DEFAULT_MAX_UPLOADED_FILE_SIZE_BYTES + 1));
+        MultiMap responseHeaders = enableErrorRequestId();
+        ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(Proxy.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try (var ignored = mockSpan(ERROR_TRACE_ID)) {
+            proxy.handle(request);
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        String body = "Request body is too large (DIAL request id: " + ERROR_TRACE_ID + ")";
+        assertEquals(body, capturedBody());
+        assertEquals(ERROR_TRACE_ID, responseHeaders.get(ErrorRequestId.HEADER_REQUEST_ID));
+        String line = "Responding with error. Status: 413. trace_id=" + ERROR_TRACE_ID + ". Body: " + body;
+        assertTrue(appender.list.stream().anyMatch(event -> event.getLevel() == Level.INFO && event.getFormattedMessage().equals(line)),
+                appender.list::toString);
+    }
+
+    @Test
+    public void testHandle_ErrorRequestIdHeaderOnEmptyBody() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.MERGE);
+        MultiMap responseHeaders = enableErrorRequestId();
+
+        try (var ignored = mockSpan(ERROR_TRACE_ID)) {
+            proxy.handle(request);
+        }
+
+        assertEquals("", capturedBody());
+        assertEquals(ERROR_TRACE_ID, responseHeaders.get(ErrorRequestId.HEADER_REQUEST_ID));
+    }
+
+    @Test
+    public void testHandle_ErrorRequestIdBeforeAuthentication() {
+        MultiMap responseHeaders = enableErrorRequestId();
+
+        try (var ignored = mockSpan(ERROR_TRACE_ID)) {
+            handleWithoutCredentials();
+        }
+
+        assertEquals(NO_CREDENTIALS + " (DIAL request id: " + ERROR_TRACE_ID + ")", capturedBody());
+        assertEquals(ERROR_TRACE_ID, responseHeaders.get(ErrorRequestId.HEADER_REQUEST_ID));
+    }
+
+    @Test
+    public void testHandle_ErrorRequestIdUsesTheContextTraceId() {
+        String contextTraceId = "33333333333333333333333333333333";
+        enableErrorRequestId();
+        ProxyContext context = mock(ProxyContext.class);
+        when(context.getTraceId()).thenReturn(contextTraceId);
+
+        try (var ignored = mockSpan(ERROR_TRACE_ID); var contexts = mockStatic(ContextManager.class)) {
+            contexts.when(ContextManager::getProxyContext).thenReturn(context);
+            handleWithoutCredentials();
+        }
+
+        assertEquals(NO_CREDENTIALS + " (DIAL request id: " + contextTraceId + ")", capturedBody());
+    }
+
+    @Test
+    public void testHandle_NoErrorRequestIdWhenDisabled() {
+        MultiMap responseHeaders = MultiMap.caseInsensitiveMultiMap();
+        when(response.headers()).thenReturn(responseHeaders);
+
+        try (var ignored = mockSpan(ERROR_TRACE_ID)) {
+            handleWithoutCredentials();
+        }
+
+        verify(response).end(NO_CREDENTIALS);
+        assertNull(responseHeaders.get(ErrorRequestId.HEADER_REQUEST_ID));
+    }
+
+    private void handleWithoutCredentials() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        when(request.headers()).thenReturn(mock(MultiMap.class));
+        when(request.path()).thenReturn("/foo");
+        proxy.handle(request);
+    }
+
+    private MultiMap enableErrorRequestId() {
+        when(tracingSettings.errorRequestId()).thenReturn(true);
+        MultiMap responseHeaders = MultiMap.caseInsensitiveMultiMap();
+        when(response.headers()).thenReturn(responseHeaders);
+        return responseHeaders;
+    }
+
+    private static MockedStatic<Span> mockSpan(String traceId) {
+        MockedStatic<Span> spans = mockStatic(Span.class);
+        Span span = mock(Span.class);
+        SpanContext spanContext = mock(SpanContext.class);
+        when(span.getSpanContext()).thenReturn(spanContext);
+        when(spanContext.isValid()).thenReturn(true);
+        when(spanContext.getTraceId()).thenReturn(traceId);
+        when(spanContext.getSpanId()).thenReturn("2222222222222222");
+        when(spanContext.getTraceFlags()).thenReturn(TraceFlags.getSampled());
+        spans.when(Span::current).thenReturn(span);
+        return spans;
+    }
+
+    private String capturedBody() {
+        ArgumentCaptor<Buffer> body = ArgumentCaptor.forClass(Buffer.class);
+        verify(response).end(body.capture());
+        return body.getValue().toString();
     }
 }

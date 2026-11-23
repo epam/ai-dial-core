@@ -200,7 +200,7 @@ public class MessagesController extends MessagesBaseController {
 
     @Override
     protected void processResponse(ProxyResponse proxyResponse) {
-        if (!context.isStreamingRequest()) {
+        if (isReadWhole(proxyResponse)) {
             proxyResponse.body()
                     .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                     .compose(body -> handleNonStreamingResponse(proxyResponse, body))
@@ -233,14 +233,15 @@ public class MessagesController extends MessagesBaseController {
         HttpServerResponse response = context.getResponse();
         ProxyUtil.copyResponse(response, proxyResponse);
         putLimitHeaders(response, proxyResponse);
-        response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
+        Buffer sent = appendRequestId(proxyResponse, body);
+        response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(sent.length()));
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
         return collectTokenUsage(body)
                 .transform(result -> {
                     if (result.failed()) {
                         log.warn("Failed to collect token usage", result.cause());
                     }
-                    completeProxyResponse(() -> response.end(body));
+                    completeProxyResponse(() -> response.end(sent));
                     return Future.<Void>succeededFuture();
                 });
     }

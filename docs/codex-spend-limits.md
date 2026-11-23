@@ -101,6 +101,10 @@ Errors returned by the upstream carry no `x-codex-*` headers.
 
 ## 429 responses
 
+With `tracing.errorRequestId` on, as the bundled settings have it, every error message quoted on this page ends with
+` (DIAL request id: <trace id>)`, and the answer carries `X-Request-ID`. See
+[Request id in error answers](tracing.md#request-id-in-error-answers).
+
 ### Spend cap reached
 
 The request is rejected before it goes upstream. The body keeps DIAL's `code`, `message` and `display_message` (the

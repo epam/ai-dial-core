@@ -20,6 +20,7 @@ class TracingSettingsTest {
 
         assertFalse(settings.genAiSpanAttributes());
         assertFalse(settings.responseTraceHeaders());
+        assertFalse(settings.errorRequestId());
         assertEquals(List.of(), settings.conversationIdHeaders());
     }
 
@@ -28,6 +29,7 @@ class TracingSettingsTest {
         TracingSettings settings = TracingSettings.from(new JsonObject()
                 .put("genAiSpanAttributes", true)
                 .put("responseTraceHeaders", true)
+                .put("errorRequestId", true)
                 .put("conversationIdHeaders", new JsonArray()
                         .add("x-claude-code-session-id")
                         .add("thread-id")
@@ -37,6 +39,7 @@ class TracingSettingsTest {
 
         assertTrue(settings.genAiSpanAttributes());
         assertTrue(settings.responseTraceHeaders());
+        assertTrue(settings.errorRequestId());
         assertEquals(List.of(
                 "x-claude-code-session-id",
                 "thread-id",

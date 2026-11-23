@@ -27,6 +27,7 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.TokenUsageParser;
 import com.epam.aidial.core.server.token.UsagePerModel;
+import com.epam.aidial.core.server.tracing.ErrorRequestId;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -87,6 +88,21 @@ public class BaseDeploymentPostController {
             eventListener = listenerSupplier.get();
         }
         return new BufferingReadStream(proxyResponse, ProxyUtil.contentLength(proxyResponse, 1024), eventListener);
+    }
+
+    /**
+     * Whether the answer is read whole: always for a non-streaming request, and for a streaming one when it is an error
+     * answer that is not an event stream and the request id applies, so that the id can go at the end of its message.
+     */
+    protected boolean isReadWhole(ProxyResponse proxyResponse) {
+        return !context.isStreamingRequest()
+                || (proxyResponse.statusCode() >= 400 && !isEventStreamResponse(proxyResponse)
+                && ErrorRequestId.isEnabled(context.getTracingSettings(), context.getTraceId()));
+    }
+
+    protected Buffer appendRequestId(ProxyResponse proxyResponse, Buffer body) {
+        return ErrorRequestId.append(context.getTracingSettings(), context.getTraceId(), proxyResponse.statusCode(),
+                context.getResponse(), body);
     }
 
     protected boolean isEventStreamResponse(ProxyResponse proxyResponse) {

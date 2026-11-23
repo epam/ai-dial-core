@@ -1,5 +1,10 @@
 ## HTTP error codes with descriptions 
 
+With `tracing.errorRequestId` on (the bundled default), the message of an error answer ends with
+` (DIAL request id: <trace id>)`, and the answer carries `X-Request-ID` with the same id unless the origin sent its
+own. Give that id to an admin: it is the `trace_id` in Core's logs. See
+[Request id in error answers](tracing.md#request-id-in-error-answers).
+
 #### 400 BAD REQUEST
 
 DIAL Core server cannot or will not process the request due to something that is perceived to be a client error e.g.:

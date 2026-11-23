@@ -1003,7 +1003,7 @@ public class DeploymentPostControllerTest {
     private Map<String, Object> getTracingAttributes() {
         Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
         AtomicLong responseBodyTimestamp = new AtomicLong();
-        when(context.getTracingSettings()).thenReturn(new TracingSettings(true, false, List.of()));
+        when(context.getTracingSettings()).thenReturn(new TracingSettings(true, false, false, List.of()));
         when(context.getTracingAttributes()).thenReturn(tracingAttributes);
         when(context.getRequestTimestamp()).thenReturn(1000L);
         when(context.getRequestBodyTimestamp()).thenReturn(1010L);

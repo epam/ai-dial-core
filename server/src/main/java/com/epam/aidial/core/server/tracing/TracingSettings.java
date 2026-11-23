@@ -12,11 +12,12 @@ import java.util.Set;
 /**
  * Opt-in OpenTelemetry enrichment, from the static {@code tracing} settings.
  *
+ * @param errorRequestId        whether an error answer carries the trace id in its message and in {@code X-Request-ID}.
  * @param conversationIdHeaders request headers, in priority order, that may carry a conversation or session id;
  *                              never null, empty means no correlation is published.
  */
 @Slf4j
-public record TracingSettings(boolean genAiSpanAttributes, boolean responseTraceHeaders,
+public record TracingSettings(boolean genAiSpanAttributes, boolean responseTraceHeaders, boolean errorRequestId,
                               List<String> conversationIdHeaders) {
 
     /**
@@ -42,6 +43,7 @@ public record TracingSettings(boolean genAiSpanAttributes, boolean responseTrace
         return new TracingSettings(
                 settings.getBoolean("genAiSpanAttributes", false),
                 settings.getBoolean("responseTraceHeaders", false),
+                settings.getBoolean("errorRequestId", false),
                 // default is defined in the bundled aidial.settings.json and always merged in
                 parseConversationIdHeaders(settings.getJsonArray("conversationIdHeaders")));
     }

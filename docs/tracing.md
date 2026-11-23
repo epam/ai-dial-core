@@ -23,6 +23,9 @@ These are static settings, so they are read once at startup: changing them needs
   consumers. All three are listed in `Access-Control-Expose-Headers`, so a browser client can read
   them. Nothing is emitted when Core has no valid span context — with no OpenTelemetry SDK attached
   the ids are all zeros, and a `traceparent` built from those is malformed.
+* `errorRequestId`: Defaults to `true`. When `true`, an error answer ends its message with
+  ` (DIAL request id: <trace id>)` and carries `X-Request-ID`, so that a user of a coding client
+  can give an admin the id. See [Request id in error answers](#request-id-in-error-answers).
 * `conversationIdHeaders`: Request headers, in priority order, that may carry a conversation or
   session id. The first usable one present is published as `gen_ai.conversation.id`. The same value
   is written to each analytics log entry as `"session":{"id":"..."}`, right after `chat`, regardless
@@ -50,6 +53,7 @@ needs its own session header listed explicitly.
 "tracing": {
   "genAiSpanAttributes": true,
   "responseTraceHeaders": true,
+  "errorRequestId": true,
   "conversationIdHeaders": [
     "x-claude-code-session-id",
     "thread-id",
@@ -59,6 +63,50 @@ needs its own session header listed explicitly.
   ]
 }
 ```
+
+## Request id in error answers
+
+Claude Code and Codex CLI show the message of an error answer, and Codex also shows `X-Request-ID`.
+Neither shows `X-DIAL-TRACE-ID` or `traceparent`. With `errorRequestId` on, Core puts the request's
+trace id where they look, on an answer of status 400 or above:
+
+* It ends the message with ` (DIAL request id: <trace id>)`. The message is `error.message` of a
+  JSON body (`application/json`, a `+json` type, or no `Content-Type` and a body starting with `{`),
+  or the whole body of a `text/plain` answer or of an answer with no `Content-Type` and any other
+  body (as Core's own text errors are), with its trailing whitespace dropped. Only text is
+  added at the end, so a client that matches the wording of an error still matches it.
+  `display_message` is not changed. `Content-Length` matches the new body.
+* It sets `X-Request-ID` to the trace id, unless the answer already has one. An `X-Request-ID` the
+  origin sent, as Azure OpenAI does, is kept.
+
+The format is fixed: ` (DIAL request id: `, 32 hex digits, and `)` at the end of the message, so a
+client that does not want to show it can strip it.
+
+Covered answers: Core's own error answers, including the ones before authentication; a router's 4xx
+answer; an MCP error answer with a JSON body; and the error answers Core relays from the origin of
+`/chat/completions`, Anthropic Messages, Messages `count_tokens` and the Responses create routes. An
+error answer that is not an event stream, to a streaming Messages or Responses request, is read
+whole and sent with `Content-Length`. Other relayed error answers (`/completions`, `/embeddings`,
+the deployment features, config routes, Responses item operations, interceptor passes) are sent as
+the origin sent them. The empty error answers of `GET /health` and of the MCP resource metadata, and
+a route's configured `response`, get no id either.
+
+The body is left as it is, with only `X-Request-ID` added, when it is empty, has another media type
+(such as `text/html`), still has a `Content-Encoding` after Core's HTTP client decoded gzip and
+deflate, is over 64 KiB, is JSON without a string `error.message`, or already carries the same
+id. An answer below 400 and an event stream are never changed. Nothing is added when Core has no
+valid trace id, as when no OpenTelemetry SDK is attached. Errors inside a `200` event stream
+and failures in front of Core (a gateway's 502, Core down) never carry the id.
+
+A DIAL request id is the `trace_id` of Core's console log lines, analytics rows and audit logs. For
+a client's own request it is also the value of `X-DIAL-TRACE-ID`. Core answers some errors before a
+request context exists: a request without credentials (401), a method or HTTP version Core does not
+serve (405, 505), a body over the size limit (413). Core logs each of them at INFO as
+`Responding with error. Status: <status>. trace_id=<id>. Body: <body>`. The JSON `traceId` field of
+that line is empty, so search the message text for `trace_id=<id>` to find them.
+
+Set `errorRequestId` to `false` to send error bodies exactly as before, for example when a client
+compares error messages exactly.
 
 ## Attributes
 

@@ -190,15 +190,18 @@ None. The setting is on by default. An operator who wants today's error text set
 - `server/src/main/java/com/epam/aidial/core/server/controller/BaseChatCompletionController.java:handleNonStreamingChatCompletionResponse`:
   call `append` on the body that `maybeInjectUsagePerModel` returns, before `Content-Length`. `handleProxyResponse`
   already sends every answer that is not an event stream here.
+- `server/src/main/java/com/epam/aidial/core/server/controller/BaseDeploymentPostController.java`: `isReadWhole`, the
+  condition Messages and Responses share (a non-streaming request, or a streaming one answered with status 400 or above,
+  a `Content-Type` that is not `text/event-stream`, and `ErrorRequestId.isEnabled`), and `appendRequestId`, which the
+  four relay paths call with the context's setting and trace id.
 - `server/src/main/java/com/epam/aidial/core/server/controller/anthropic/MessagesController.java:processResponse`:
-  also take the non-streaming path for an answer of status 400 or above whose `Content-Type` is not
-  `text/event-stream`, when `ErrorRequestId.isEnabled`. In `handleNonStreamingResponse`, call `append` after
+  take the non-streaming path when `isReadWhole` holds. In `handleNonStreamingResponse`, call `append` after
   `putLimitHeaders`, and set `Content-Length` from and send the returned body. `context.setResponseBody` keeps the
   origin's body.
 - `server/src/main/java/com/epam/aidial/core/server/controller/anthropic/MessagesCountTokensController.java:forwardResponse`:
   call `append` after `copyResponse`, before `Content-Length`.
 - `server/src/main/java/com/epam/aidial/core/server/controller/ResponsesController.java:handleProxyResponse`: the
-  same change to the condition as in Messages. In `handleNonStreamingResponse`, call `append` on `rewritten` after
+  same change to the condition as in Messages (`isReadWhole`). In `handleNonStreamingResponse`, call `append` on `rewritten` after
   `putLimitHeaders` and before `Content-Length`, and send that body. Skip `collectResponseAttachments` when the status
   is 400 or above and the request is streaming, which is only the new path (D6).
 - `server/src/main/java/com/epam/aidial/core/server/util/ProxyUtil.java:copyResponse`: copies the origin's

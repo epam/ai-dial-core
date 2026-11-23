@@ -238,7 +238,7 @@ public class BaseChatCompletionController extends BaseDeploymentPostController {
                     if (result.failed()) {
                         log.warn("Failed to collect attachments from response", result.cause());
                     }
-                    Buffer rewritten = maybeInjectUsagePerModel(body);
+                    Buffer rewritten = appendRequestId(proxyResponse, maybeInjectUsagePerModel(body));
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
                     response.end(rewritten);
                     finishAndLog(null);

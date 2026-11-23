@@ -445,8 +445,8 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
 
-        if (!context.isStreamingRequest()) {
-            // Read the entire response to replace the response ID with the DIAL ID
+        if (isReadWhole(proxyResponse)) {
+            // Read the entire response to replace the response ID with the DIAL ID, or to add the request id to an error
             proxyResponse.body()
                     .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                     .compose(body -> handleNonStreamingResponse(proxyResponse, body))
@@ -485,8 +485,9 @@ public class ResponsesController extends BaseDeploymentPostController {
                     HttpServerResponse response = context.getResponse();
                     ProxyUtil.copyResponse(response, proxyResponse);
                     putLimitHeaders(response, proxyResponse);
+                    Buffer sent = appendRequestId(proxyResponse, rewritten);
                     response.setChunked(false);
-                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
+                    response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(sent.length()));
                     putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
                     if (context.isBackgroundJob() && dialId != null) {
@@ -495,7 +496,7 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     if (result.failed()) {
                                         log.warn("Failed to save background job record", result.cause());
                                     }
-                                    response.end(rewritten);
+                                    response.end(sent);
                                 });
                     } else {
                         return collectTokenUsage(rewritten, dialId)
@@ -503,13 +504,15 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     if (result.failed()) {
                                         log.warn("Failed to collect token usage", result.cause());
                                     }
-                                    return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
+                                    // an error answer to a streaming request has no output items
+                                    return context.isStreamingRequest() ? Future.<Void>succeededFuture()
+                                            : collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
                                 })
                                 .onComplete(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect attachments from response", result.cause());
                                     }
-                                    response.end(rewritten);
+                                    response.end(sent);
                                     completeProxyResponse(null);
                                 });
                     }

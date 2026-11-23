@@ -120,6 +120,10 @@ Errors returned by the upstream carry no spend headers. `count_tokens` is unchan
 
 ## 429 responses
 
+With `tracing.errorRequestId` on, as the bundled settings have it, every error message quoted on this page ends with
+` (DIAL request id: <trace id>)`, and the answer carries `X-Request-ID`. See
+[Request id in error answers](tracing.md#request-id-in-error-answers).
+
 ### Spend cap reached
 
 Rejected before the request goes upstream:

@@ -1,0 +1,37 @@
+{
+  "models": {
+    "chat": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/chat/chat/completions"
+    },
+    "closed": {
+      "type": "chat",
+      "endpoint": "http://localhost:1/openai/deployments/closed/chat/completions"
+    },
+    "embed": {
+      "type": "embedding",
+      "endpoint": "http://localhost:4848/openai/deployments/embed/embeddings"
+    },
+    "multi": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {
+        "openaiResponses": {},
+        "anthropicMessages": {}
+      }
+    }
+  },
+  "aliases": {
+    "a": {
+      "presentAs": "model",
+      "userRoles": ["default"],
+      "target": {"path": "models/chat"}
+    }
+  },
+  "roles": {
+    "default": {"limits": {}}
+  },
+  "keys": {
+    "proxyKey1": {"project": "test", "role": "default"}
+  }
+}

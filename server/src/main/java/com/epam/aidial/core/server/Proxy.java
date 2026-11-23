@@ -57,6 +57,7 @@ import com.epam.aidial.core.server.service.config.ConfigApplyService;
 import com.epam.aidial.core.server.service.config.ConfigValidationService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
+import com.epam.aidial.core.server.tracing.ErrorRequestId;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
@@ -74,6 +75,7 @@ import io.opentelemetry.api.trace.SpanContext;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpHeaders;
@@ -524,7 +526,22 @@ public class Proxy implements Handler<HttpServerRequest> {
     }
 
     private void respond(HttpServerRequest request, HttpStatus status, String body) {
-        request.response().setStatusCode(status.getCode()).end(body == null ? "" : body);
+        HttpServerResponse response = request.response();
+        String text = body == null ? "" : body;
+        String traceId = null;
+        if (status.getCode() >= 400) {
+            // the context's trace id first: a pass called back with a per-request key is logged under its call tree's
+            ProxyContext context = ContextManager.getProxyContext();
+            traceId = context != null ? context.getTraceId() : Span.current().getSpanContext().getTraceId();
+        }
+        if (!ErrorRequestId.isEnabled(tracingSettings, traceId)) {
+            response.setStatusCode(status.getCode()).end(text);
+            return;
+        }
+        Buffer buffer = ErrorRequestId.append(tracingSettings, traceId, status.getCode(), response, Buffer.buffer(text));
+        // most of these answers have no request context, so nothing else logs them or their id
+        log.info("Responding with error. Status: {}. trace_id={}. Body: {}", status.getCode(), traceId, buffer);
+        response.setStatusCode(status.getCode()).end(buffer);
     }
 
     private void respond(HttpServerRequest request, HttpStatus status, String body, Map<String, String> headers) {

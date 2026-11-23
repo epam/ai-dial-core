@@ -7,12 +7,17 @@ import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.tracing.ErrorRequestId;
+import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
@@ -22,10 +27,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class ProxyContextTest {
+
+    private static final String TRACE_ID = "0af7651916cd43dd8448eb211c80319c";
 
     @Test
     public void testOperationDuration() {
@@ -155,6 +165,48 @@ public class ProxyContextTest {
         assertEquals("m", ProxyUtil.parseRequestBody(context, body).path("model").asText());
         assertSame(body, context.getRequestBody());
         assertFalse(context.isChildPass());
+    }
+
+    @Test
+    public void testRespondAddsErrorRequestId() {
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        HttpServerResponse response = response(headers);
+
+        contextWithResponse(response).respond(HttpStatus.BAD_REQUEST.getCode(), Buffer.buffer("{\"error\":{\"message\":\"bad\"}}"));
+
+        ArgumentCaptor<Buffer> body = ArgumentCaptor.forClass(Buffer.class);
+        verify(response).end(body.capture());
+        assertEquals("{\"error\":{\"message\":\"bad (DIAL request id: " + TRACE_ID + ")\"}}", body.getValue().toString());
+        assertEquals(TRACE_ID, headers.get(ErrorRequestId.HEADER_REQUEST_ID));
+    }
+
+    @Test
+    public void testRespondLeavesSuccessUnchanged() {
+        MultiMap headers = MultiMap.caseInsensitiveMultiMap();
+        HttpServerResponse response = response(headers);
+        Buffer ok = Buffer.buffer("{\"error\":{\"message\":\"bad\"}}");
+
+        contextWithResponse(response).respond(HttpStatus.OK.getCode(), ok);
+
+        verify(response).end(ok);
+        assertNull(headers.get(ErrorRequestId.HEADER_REQUEST_ID));
+    }
+
+    private static HttpServerResponse response(MultiMap headers) {
+        HttpServerResponse response = mock(HttpServerResponse.class);
+        when(response.headers()).thenReturn(headers);
+        when(response.setStatusCode(anyInt())).thenReturn(response);
+        return response;
+    }
+
+    private static ProxyContext contextWithResponse(HttpServerResponse response) {
+        Proxy proxy = mock(Proxy.class);
+        when(proxy.getTracingSettings()).thenReturn(new TracingSettings(false, false, true, List.of()));
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(new Key());
+        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
+        when(request.response()).thenReturn(response);
+        return new ProxyContext(proxy, request, apiKeyData, null, TRACE_ID, "span-id", "01");
     }
 
     private static ProxyContext context(ExtractedClaims claims) {

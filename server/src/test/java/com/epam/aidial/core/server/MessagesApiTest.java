@@ -48,6 +48,35 @@ public class MessagesApiTest extends ResourceBaseTest {
     }
 
     @Test
+    public void testUnknownModelWithoutRequestId() throws IOException {
+        try (CloseableHttpClient client = newClient()) {
+            Response response = post(client, MESSAGES_PATH, requestBody("missing", false), "api-key", "proxyKey1");
+
+            assertEquals(404, response.status());
+            assertEquals("Unknown deployment: missing", response.body());
+            assertTrue(response.headers().keySet().stream().noneMatch("X-Request-ID"::equalsIgnoreCase), response.headers()::toString);
+        }
+    }
+
+    @Test
+    public void testStreamingErrorPipedWithoutRequestId() throws IOException {
+        String error = "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad\"}}";
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, 400, error, "Content-Type", "application/json");
+
+            Response response = post(client, MESSAGES_PATH, requestBody("claude-stream", true),
+                    "api-key", "proxyKey1", "Accept-Encoding", "identity");
+
+            assertEquals(400, response.status());
+            assertEquals(error, response.body());
+            assertTrue(response.headers().entrySet().stream()
+                    .anyMatch(header -> header.getKey().equalsIgnoreCase("Transfer-Encoding") && header.getValue().equals("chunked")),
+                    response.headers()::toString);
+            assertTrue(response.headers().keySet().stream().noneMatch("X-Request-ID"::equalsIgnoreCase), response.headers()::toString);
+        }
+    }
+
+    @Test
     public void testNonStreamingRoundTripAndUsage() throws IOException, InterruptedException {
         AtomicReference<RecordedRequest> captured = new AtomicReference<>();
         try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {

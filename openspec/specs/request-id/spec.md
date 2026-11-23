@@ -1,12 +1,11 @@
-# Spec Delta
+# request-id Specification
 
 ## Purpose
-
 The id Core gives a client on an error answer: the request id at the end of the error message and the
 `X-Request-ID` header, so that a user can give an admin the id and the admin can find the request in Core's logs and
 traces.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Request id in an error message
 The request id applies to an error answer (status 400 or above) that "Error answers covered" lists, when
@@ -34,7 +33,7 @@ body. The trace id is the one Core logs the request under. In the scenarios, `<t
 Core SHALL add the request id to its own error answers to a client, to a router's 4xx answer that it relays, to an
 MCP error answer with a JSON body, and to the error answers that it relays from the origin of `/chat/completions`,
 Anthropic Messages, Messages count tokens and the Responses create routes. The empty answers of `GET /health` and of
-the well-known MCP resource metadata are not covered. Other origins' error answers SHALL be relayed as today.
+the well-known MCP resource metadata, and a route's configured `response`, are not covered. Other origins' error answers SHALL be relayed as today.
 
 #### Scenario: Router's 4xx answer
 - **WHEN** a client sends a chat completion to a router in decision mode, and the router answers the decide request

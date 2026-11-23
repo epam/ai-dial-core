@@ -2,11 +2,11 @@
 
 ## 1. Setting and helper
 
-- [ ] 1.1 In `TracingSettingsTest`, test that `errorRequestId` is `false` when `tracing` omits it and `true` when it is
+- [x] 1.1 In `TracingSettingsTest`, test that `errorRequestId` is `false` when `tracing` omits it and `true` when it is
   set. Then add the component to `TracingSettings`, add `"errorRequestId": true` to the bundled
   `server/src/main/resources/aidial.settings.json`, and pass the new argument in `DeploymentPostControllerTest`.
   Verify that the test passes and that the server tests compile.
-- [ ] 1.2 Write `ErrorRequestIdTest` (unit, server module) before the helper exists. It covers:
+- [x] 1.2 Write `ErrorRequestIdTest` (unit, server module) before the helper exists. It covers:
   - a JSON `error.message`, with the other members kept;
   - `application/json; charset=utf-8` and `application/problem+json`;
   - plain text with a trailing newline, and `text/plain; charset=utf-8`;
@@ -22,9 +22,9 @@
   - `testInvalidTraceIdUntouched`, which covers the spec scenario "No trace id" with an all-zeros trace id. It is a
     unit test because the test stack always installs an OpenTelemetry SDK, so an integration test never sees an
     invalid id.
-- [ ] 1.3 Implement `server/src/main/java/com/epam/aidial/core/server/tracing/ErrorRequestId.java` as design.md D8 to
+- [x] 1.3 Implement `server/src/main/java/com/epam/aidial/core/server/tracing/ErrorRequestId.java` as design.md D8 to
   D10 say (`isEnabled`, `append`), and verify that `ErrorRequestIdTest` passes.
-- [ ] 1.4 Document the setting:
+- [x] 1.4 Document the setting:
   - In `docs/tracing.md` and in the `README.md` settings table, describe `errorRequestId`: what it adds, which answers
     it covers, the bodies it leaves alone, that a DIAL request id is the `trace_id` in Core's logs and analytics rows,
     the fixed suffix format a client can strip, and that an origin's `X-Request-ID` is kept. Say that an error
@@ -34,16 +34,16 @@
   - In `docs/error_codes.md`, note the suffix and `X-Request-ID`.
   - In `docs/anthropic-spend-limits.md` and `docs/codex-spend-limits.md`, say that the quoted error messages end with
     the DIAL request id when the setting is on.
-- [ ] 1.5 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
+- [x] 1.5 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.tracing.*" --tests "com.epam.aidial.core.server.controller.DeploymentPostControllerTest"`,
   and verify that both pass.
 
 ## 2. Core's own errors
 
-- [ ] 2.1 In `ProxyContextTest`, test that `respond(400, <a JSON error string with no Content-Type>)` sends the suffix
+- [x] 2.1 In `ProxyContextTest`, test that `respond(400, <a JSON error string with no Content-Type>)` sends the suffix
   in `error.message` with `X-Request-ID`, and that `respond(200, …)` sends the body unchanged. Then call the helper in
   `ProxyContext.respond(int, Buffer)`, and verify that the test passes.
-- [ ] 2.2 In `ProxyTest`, with mocked span ids as in `testHandle_ResponseTraceHeadersAreReturnedWhenEnabled`, test
+- [x] 2.2 In `ProxyTest`, with mocked span ids as in `testHandle_ResponseTraceHeadersAreReturnedWhenEnabled`, test
   these cases:
   - a too-large body answers `413` with `Request body is too large (DIAL request id: <id>)`;
   - `405` answers an empty body with `X-Request-ID`;
@@ -53,7 +53,7 @@
 
   Then call the helper and add the D11 INFO line in `Proxy.respond(HttpServerRequest, HttpStatus, String)`, with the
   trace id that design.md D1 gives, and verify that the test passes.
-- [ ] 2.3 Add `ErrorRequestIdApiTest`. It extends `ResourceBaseTest` and turns on `tracing.errorRequestId` and
+- [x] 2.3 Add `ErrorRequestIdApiTest`. It extends `ResourceBaseTest` and turns on `tracing.errorRequestId` and
   `tracing.responseTraceHeaders` in `additionalSettingsOverrides`. Every request sends `Accept-Encoding: identity`, and
   every test reads `<trace id>` from the answer's `X-DIAL-TRACE-ID`. Cover these spec scenarios:
   - "Core's own plain-text error" (`testOwnPlainTextError`);
@@ -63,16 +63,17 @@
   - "Body size limit" (`testBodySizeLimit`);
   - "Core's own error" (`testOwnErrorRequestIdHeader`).
 
-  In `MessagesApiTest`, which runs with the code default, cover "Setting off" (`testUnknownModelWithoutRequestId`).
+  In `MessagesApiTest`, which runs with the code default, cover "Setting off" (`testUnknownModelWithoutRequestId`), and
+  that an error answer to a streaming request is then still piped as it arrives (`testStreamingErrorPipedWithoutRequestId`).
   Verify that the tests pass.
-- [ ] 2.4 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
+- [x] 2.4 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.ProxyTest" --tests "com.epam.aidial.core.server.ProxyContextTest" --tests
   "com.epam.aidial.core.server.ErrorRequestIdApiTest" --tests "com.epam.aidial.core.server.MessagesApiTest"`, and
   verify that they pass.
 
 ## 3. Relayed errors
 
-- [ ] 3.1 In `ErrorRequestIdApiTest`, first cover the `/chat/completions` and embeddings scenarios:
+- [x] 3.1 In `ErrorRequestIdApiTest`, first cover the `/chat/completions` and embeddings scenarios:
   - "Plain text from the origin" (`testRelayedPlainText`);
   - "Other JSON members kept" (`testRelayedJsonMembersKept`);
   - "HTML error page" (`testHtmlUnchanged`);
@@ -86,19 +87,19 @@
 
   Then call the helper in `BaseChatCompletionController.handleNonStreamingChatCompletionResponse`, and verify that the
   tests pass.
-- [ ] 3.2 In `ErrorRequestIdApiTest`, cover these scenarios:
+- [x] 3.2 In `ErrorRequestIdApiTest`, cover these scenarios:
   - "Error answer to a streaming Messages request" (`testStreamingMessagesError`);
   - "Success answer untouched" (`testSuccessUntouched`);
   - "Error answer of count tokens" (`testCountTokensError`).
 
   Then change `MessagesController.processResponse`, `MessagesController.handleNonStreamingResponse` and
   `MessagesCountTokensController.forwardResponse` as the Code map says, and verify that the tests pass.
-- [ ] 3.3 In `ErrorRequestIdApiTest`, cover "Error answer to a non-streaming Responses request"
+- [x] 3.3 In `ErrorRequestIdApiTest`, cover "Error answer to a non-streaming Responses request"
   (`testResponsesNonStreamingError`) and "Error answer to a streaming Responses request"
   (`testResponsesStreamingError`). Then change `ResponsesController.handleProxyResponse` and
   `ResponsesController.handleNonStreamingResponse`, including skipping the attachment collection for an error answer
   to a streaming request (design.md D6). Verify that the tests pass.
-- [ ] 3.4 In `ErrorRequestIdApiTest`, cover "Router's 4xx answer" (`testRouterErrorAnswer`, a decision-mode router
+- [x] 3.4 In `ErrorRequestIdApiTest`, cover "Router's 4xx answer" (`testRouterErrorAnswer`, a decision-mode router
   set up as in `RouterDecisionApiTest`) and "MCP error answer" (`testMcpErrorAnswer`, a toolset MCP server set up as
   in `ToolSetApiTest`). Both reach the helper through `ProxyContext.respond`, which group 2 changed, so they need no
   new code. Verify that the tests pass.
@@ -108,8 +109,8 @@
   change.
 - [ ] 3.6 (deferred: needs Claude Code pointed at that Core with `ANTHROPIC_BASE_URL`) Trigger a 400, 403 and 429, and
   check that `(DIAL request id: …)` shows in Claude Code's error line.
-- [ ] 3.7 Run `npx -y @fission-ai/openspec@1.14.3 validate --all --strict` and verify that it passes.
-- [ ] 3.8 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
+- [x] 3.7 Run `npx -y @fission-ai/openspec@1.14.3 validate --all --strict` and verify that it passes.
+- [x] 3.8 Run `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.ErrorRequestIdApiTest" --tests "com.epam.aidial.core.server.MessagesApiTest" --tests
   "com.epam.aidial.core.server.ResponsesApiTest" --tests "com.epam.aidial.core.server.ChatCompletionApiTest" --tests
   "com.epam.aidial.core.server.DeploymentPostApiTest" --tests "com.epam.aidial.core.server.AliasInProcessApiTest"
