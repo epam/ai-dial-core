@@ -70,6 +70,10 @@ public final class PluginRegistry {
     private static final JsonSchemaFactory SCHEMA_FACTORY = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7,
             builder -> builder.schemaLoaders(loaders -> loaders.add(new AllowSchemaLoader(iri -> iri.toString().equals(META_SCHEMA)))));
     private static final JsonSchema DRAFT_07_META_SCHEMA = SCHEMA_FACTORY.getSchema(SchemaLocation.of(META_SCHEMA));
+    // Their values are data, not schemas: a $ref or $schema in a default is a value
+    private static final Set<String> DATA_KEYWORDS = Set.of("default", "const", "enum", "examples");
+    // They map names to schemas: a property named default or enum is a schema, not a keyword
+    private static final Set<String> NAME_MAPS = Set.of("properties", "patternProperties", "definitions", "dependencies");
 
     // after the schema statics: a registry built in a static initializer compiles schemas with them
     public static final PluginRegistry EMPTY = new PluginRegistry(List.of());
@@ -244,16 +248,23 @@ public final class PluginRegistry {
      * anything.
      */
     private static JsonSchema compile(ObjectNode schema, String provided) {
-        JsonNode version = otherDraft(schema);
-        if (version != null) {
-            throw new IllegalStateException("%s declares a settings schema whose $schema is %s: only draft-07 is supported".formatted(provided, version));
+        List<JsonNode> subschemas = new ArrayList<>();
+        addSubschemas(schema, subschemas);
+        // a subschema's draft applies to that subschema, so not only the root's. Only text is the keyword
+        for (JsonNode subschema : subschemas) {
+            JsonNode version = subschema.get("$schema");
+            if (version != null && version.isTextual() && !DRAFT_07.contains(version.asText())) {
+                throw new IllegalStateException("%s declares a settings schema whose $schema is %s: only draft-07 is supported".formatted(provided, version));
+            }
         }
         // Every $ref, also one no keyword reaches (under definitions nothing uses, under an unknown keyword): loading
         // follows only the refs it reaches, and the console reads the whole schema
-        String outside = outsideRef(schema);
-        if (outside != null) {
-            throw new IllegalStateException("%s declares a settings schema with a $ref to %s: a settings schema may refer only to itself and to the draft-07 meta-schema"
-                    .formatted(provided, outside));
+        for (JsonNode subschema : subschemas) {
+            JsonNode ref = subschema.get("$ref");
+            if (ref != null && ref.isTextual() && !ref.asText().startsWith("#") && !DRAFT_07.contains(StringUtils.substringBefore(ref.asText(), "#"))) {
+                throw new IllegalStateException("%s declares a settings schema with a $ref to %s: a settings schema may refer only to itself and to the draft-07 meta-schema"
+                        .formatted(provided, ref.asText()));
+            }
         }
         Set<ValidationMessage> problems = DRAFT_07_META_SCHEMA.validate(schema);
         if (!problems.isEmpty()) {
@@ -269,39 +280,29 @@ public final class PluginRegistry {
         }
     }
 
-    // a $schema anywhere in the schema, not only at its root: a subschema's draft applies to that subschema. Only text is
-    // the keyword; any other value is a settings property named $schema, and the meta-schema check refuses one at the root
-    @Nullable
-    private static JsonNode otherDraft(JsonNode node) {
-        JsonNode version = node.get("$schema");
-        if (version != null && version.isTextual() && !DRAFT_07.contains(version.asText())) {
-            return version;
+    /**
+     * Adds {@code node} and every schema under it, skipping the values of {@link #DATA_KEYWORDS}. The value of an
+     * unknown keyword is walked as a schema: Core cannot tell what it holds.
+     */
+    private static void addSubschemas(JsonNode node, List<JsonNode> subschemas) {
+        if (node.isArray()) {
+            node.forEach(item -> addSubschemas(item, subschemas));
+            return;
         }
-        for (JsonNode child : node) {
-            JsonNode found = otherDraft(child);
-            if (found != null) {
-                return found;
-            }
+        if (!node.isObject()) {
+            return;
         }
-        return null;
-    }
-
-    @Nullable
-    private static String outsideRef(JsonNode node) {
+        subschemas.add(node);
         for (Map.Entry<String, JsonNode> field : node.properties()) {
-            JsonNode value = field.getValue();
-            if (field.getKey().equals("$ref") && value.isTextual() && !value.asText().startsWith("#")
-                    && !DRAFT_07.contains(StringUtils.substringBefore(value.asText(), "#"))) {
-                return value.asText();
+            if (DATA_KEYWORDS.contains(field.getKey())) {
+                continue;
+            }
+            if (NAME_MAPS.contains(field.getKey()) && field.getValue().isObject()) {
+                field.getValue().forEach(named -> addSubschemas(named, subschemas));
+            } else {
+                addSubschemas(field.getValue(), subschemas);
             }
         }
-        for (JsonNode child : node) {
-            String outside = outsideRef(child);
-            if (outside != null) {
-                return outside;
-            }
-        }
-        return null;
     }
 
     private static String origin(@Nullable String directory) {

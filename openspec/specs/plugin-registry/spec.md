@@ -345,9 +345,9 @@ check that fails SHALL be one warning on `settings`. The outcomes are those of S
 
 ### Requirement: Plugin metadata errors stop the start
 Core SHALL fail to start, naming the provider and its plugin directory, when a loaded provider declares a settings
-schema that is not valid JSON Schema draft-07, names another draft in `$schema`, or has a `$ref` anywhere to a schema
-outside itself other than the draft-07 meta-schema; when it declares no targets; or when reading its metadata throws.
-Core SHALL load nothing a settings schema refers to from a url.
+schema that is not valid JSON Schema draft-07, names another draft in `$schema`, or has a `$ref` in any subschema to a
+schema outside itself other than the draft-07 meta-schema; when it declares no targets; or when reading its metadata
+throws. Core SHALL load nothing a settings schema refers to from a url.
 
 #### Scenario: Invalid settings schema
 - **WHEN** `<plugins.dir>/custom/bad/` holds a jar whose provider declares id `bad` and the settings schema
@@ -374,6 +374,11 @@ Core SHALL load nothing a settings schema refers to from a url.
 - **WHEN** the provider `bad` declares the settings schema `{"type": "object", "definitions": {"x": {"$ref":
   "<url>"}}}`, where nothing refers to `#/definitions/x`
 - **THEN** Core does not start, with a message naming `bad`, `custom/bad` and `<url>`
+
+#### Scenario: Reference and draft in a value
+- **WHEN** the provider `good` declares a settings schema whose `default` is `{"$schema": "https://example.com/my-settings"}`
+  and one of whose properties has `examples` `[{"$ref": "https://example.com/order.json"}]`
+- **THEN** Core starts: a value of `default`, `const`, `enum` or `examples` is data, not a subschema
 
 #### Scenario: Metadata that throws
 - **WHEN** reading the settings schema of the provider `bad` throws

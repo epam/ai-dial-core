@@ -168,6 +168,42 @@ public class JarEchoPluginProvider implements PluginProvider {
     }
 
     /**
+     * A schema with a {@code $ref} to {@link RemoteRef#url} in a property named {@code default} of a definition nothing
+     * refers to: a keyword name in {@code properties} is a property, so the walk must read it.
+     */
+    public static class PropertyNamedDefault extends WithSchema {
+        @Override
+        String schema() {
+            return "{\"type\": \"object\", \"definitions\": {\"x\": {\"properties\": {\"default\": {\"$ref\": \"" + RemoteRef.url + "\"}}}}}";
+        }
+    }
+
+    /**
+     * A provider of id {@code good} whose schema holds a remote {@code $ref} and other drafts' {@code $schema} only as
+     * data: in a {@code default}, {@code examples}, a {@code const} and an {@code enum}.
+     */
+    public static class DataLiterals extends WithSchema {
+        @Override
+        public String id() {
+            return "good";
+        }
+
+        @Override
+        String schema() {
+            return """
+                    {"type": "object",
+                     "properties": {
+                       "$schema": {"type": "string"},
+                       "argumentsSchema": {"type": "object",
+                         "examples": [{"$schema": "https://json-schema.org/draft/2020-12/schema", "$ref": "https://example.com/order.json"}]},
+                       "mode": {"const": {"$ref": "http://example.com/mode.json"}},
+                       "kind": {"enum": [{"$schema": "http://example.com/other"}]}},
+                     "default": {"$schema": "https://example.com/my-settings"}}
+                    """;
+        }
+    }
+
+    /**
      * A provider whose settings schema throws.
      */
     public static class ThrowingSchema extends WithSchema {

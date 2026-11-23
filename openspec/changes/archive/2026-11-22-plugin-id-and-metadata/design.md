@@ -90,10 +90,13 @@ the id and the plugin directory:
    `#`; the validator maps both forms to its bundled meta-schema). Neither the meta-schema nor the V7 factory refuses
    another draft by itself: the meta-schema only asks for a URI, and the factory compiles a schema by the draft its
    `$schema` names.
-2. Every `$ref` anywhere in the node is a place in the document (`#...`) or the draft-07 meta-schema IRI. Loading
+2. Every `$ref` in a subschema is a place in the document (`#...`) or the draft-07 meta-schema IRI. Loading
    only follows the refs a validation keyword reaches, so without this walk a remote `$ref` under `definitions` that
-   nothing uses, or under an unknown keyword, would pass and reach the console through the listing. The walk also
-   refuses a `$ref` inside a `const`, `enum` or `default` value, which no settings schema needs.
+   nothing uses, or under an unknown keyword, would pass and reach the console through the listing. Steps 1 and 2
+   walk the subschemas: they skip the values of `default`, `const`, `enum` and `examples`, which are data (a settings
+   default may hold a `$schema` property), read the values of `properties`, `patternProperties`, `definitions` and
+   `dependencies` by name, so a property named `default` is still walked, and walk an unknown keyword's value as a
+   schema.
 3. The schema is valid against the draft-07 meta-schema bundled in the `networknt` jar.
 4. The schema compiles with a V7 factory whose schema loaders start with an `AllowSchemaLoader` that allows only
    `classpath:draft-07/schema`. The factory maps the json-schema.org IRIs to `classpath:` before it asks a loader,

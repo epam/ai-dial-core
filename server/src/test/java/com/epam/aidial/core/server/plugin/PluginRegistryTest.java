@@ -286,6 +286,25 @@ class PluginRegistryTest {
     }
 
     @Test
+    void testRemoteReferenceInPropertyNamedDefaultFailsTheLoad() throws IOException {
+        JarEchoPluginProvider.RemoteRef.url = "http://localhost:1/unused.json";
+        writeJar("custom/bad/bad.jar", JarEchoPluginProvider.PropertyNamedDefault.class.getName());
+
+        String message = assertThrows(IllegalStateException.class, () -> PluginRegistry.load(settings())).getMessage();
+
+        assertTrue(message.contains("'bad'") && message.contains("custom/bad") && message.contains("http://localhost:1/unused.json"), message);
+    }
+
+    @Test
+    void testRefAndSchemaAsDataLoad() throws IOException {
+        writeJar("custom/good/good.jar", JarEchoPluginProvider.DataLiterals.class.getName());
+
+        PluginRegistry registry = PluginRegistry.load(settings());
+
+        assertNotNull(registry.settingsSchema("good"));
+    }
+
+    @Test
     void testThrowingMetadataFailsTheLoad() throws IOException {
         writeJar("custom/bad/bad.jar", JarEchoPluginProvider.ThrowingSchema.class.getName());
 
