@@ -9,6 +9,7 @@ import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.data.credentials.CredentialsLocator;
 import com.epam.aidial.core.credentials.data.credentials.ResourceCredentials;
 import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
+import com.epam.aidial.core.credentials.service.registration.RegistrationPolicy;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
 import com.epam.aidial.core.credentials.service.token.OauthTokenRefreshStrategy;
 import com.epam.aidial.core.credentials.service.token.TokenRefreshStrategyFactory;
@@ -184,7 +185,7 @@ class ResourceAuthSettingsServiceTest {
         ClientRegistration mockRegistration = createClientRegistration();
 
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
-        when(resourceRegistrationService.register(eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(), eq(true)))
+        when(resourceRegistrationService.register(eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(), eq(true), eq(RegistrationPolicy.TOOLSET)))
                 .thenReturn(mockRegistration);
 
         // When
@@ -194,7 +195,7 @@ class ResourceAuthSettingsServiceTest {
         verify(oauthAuthSettingsValidator, times(1)).validate(
                 any(ResourceAuthSettings.class), eq(ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT));
         verify(resourceRegistrationService, times(1)).register(
-                eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(ResourceAuthSettings.class), eq(true));
+                eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(ResourceAuthSettings.class), eq(true), eq(RegistrationPolicy.TOOLSET));
 
         assertEquals("newClientId", newToolSet.getAuthSettings().getClientId());
         assertEquals("newClientSecret", newToolSet.getAuthSettings().getClientSecret());
@@ -210,7 +211,7 @@ class ResourceAuthSettingsServiceTest {
         ClientRegistration mockRegistration = createClientRegistration();
 
         when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
-        when(resourceRegistrationService.register(eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(), eq(false)))
+        when(resourceRegistrationService.register(eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(), eq(false), eq(RegistrationPolicy.TOOLSET)))
                 .thenReturn(mockRegistration);
 
         // When
@@ -220,7 +221,7 @@ class ResourceAuthSettingsServiceTest {
         verify(oauthAuthSettingsValidator, times(1)).validate(
                 any(ResourceAuthSettings.class), eq(ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT));
         verify(resourceRegistrationService, times(1)).register(
-                eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(ResourceAuthSettings.class), eq(false));
+                eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(ResourceAuthSettings.class), eq(false), eq(RegistrationPolicy.TOOLSET));
 
         assertEquals("newClientId", newToolSet.getAuthSettings().getClientId());
         assertEquals("newClientSecret", newToolSet.getAuthSettings().getClientSecret());
@@ -394,7 +395,7 @@ class ResourceAuthSettingsServiceTest {
         resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         assertEquals(Boolean.TRUE, updatedToolSet.getAuthSettings().getDynamicallyRegistered());
-        verify(resourceRegistrationService, never()).register(any(), any(), any(), anyBoolean());
+        verify(resourceRegistrationService, never()).register(any(), any(), any(), anyBoolean(), any());
     }
 
     @Test
@@ -410,7 +411,7 @@ class ResourceAuthSettingsServiceTest {
         resourceAuthSettingsService.processResourceAuthSettings(updatedToolSet, existingToolSet, false);
 
         assertEquals(Boolean.FALSE, updatedToolSet.getAuthSettings().getDynamicallyRegistered());
-        verify(resourceRegistrationService, never()).register(any(), any(), any(), anyBoolean());
+        verify(resourceRegistrationService, never()).register(any(), any(), any(), anyBoolean(), any());
     }
 
     @Test
@@ -586,7 +587,7 @@ class ResourceAuthSettingsServiceTest {
         ClientRegistration mockRegistration = createClientRegistration();
         if (shouldRegister) {
             when(resourceRegistrationService.register(
-                    eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(), eq(changeMode == ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT)))
+                    eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(), eq(changeMode == ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT), eq(RegistrationPolicy.TOOLSET)))
                     .thenReturn(mockRegistration);
         }
         when(validatorFactory.getValidator(expectedAuthType))
@@ -601,13 +602,124 @@ class ResourceAuthSettingsServiceTest {
 
         if (shouldRegister) {
             verify(resourceRegistrationService, times(1))
-                    .register(eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(ResourceAuthSettings.class), eq(changeMode == ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT));
+                    .register(eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(ResourceAuthSettings.class),
+                            eq(changeMode == ResourceAuthSettingsChangeMode.CREATE_DYNAMIC_CLIENT), eq(RegistrationPolicy.TOOLSET));
         } else {
-            verify(resourceRegistrationService, never()).register(any(), any(), any(), anyBoolean());
+            verify(resourceRegistrationService, never()).register(any(), any(), any(), anyBoolean(), any());
         }
 
         assertEquals(expectedAuthType, updatedToolSet.getAuthSettings().getAuthenticationType());
         assertEquals(expectedNullCodeVerifier, updatedToolSet.getAuthSettings().getCodeVerifier() == null);
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_ToolSetWithDiscoveryUrl_Rejected() {
+        ToolSet toolSet = createOauthToolSet("clientId", "clientSecret");
+        toolSet.getAuthSettings().setDiscoveryUrl("https://issuer.example.com");
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> resourceAuthSettingsService.processResourceAuthSettings(toolSet, null, false));
+        verifyNoInteractions(resourceRegistrationService);
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_ToolSetWithBlankDiscoveryUrl_TreatedAsAbsent() {
+        ToolSet toolSet = createOauthToolSet("clientId", "clientSecret");
+        toolSet.getAuthSettings().setDiscoveryUrl(" ");
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(toolSet, createOauthToolSet("clientId", "clientSecret"), false);
+
+        Assertions.assertNull(toolSet.getAuthSettings().getDiscoveryUrl());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_StaticClientWithoutEndpoint_NoRegistrationNoPkce() {
+        ResourceAuthSettings settings = createOauthToolSet("clientId", "clientSecret").getAuthSettings();
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(RESOURCE_NAME, null, settings, null, false, RegistrationPolicy.EXTERNAL_SERVICE);
+
+        verify(oauthAuthSettingsValidator).validate(any(ResourceAuthSettings.class), eq(ResourceAuthSettingsChangeMode.CREATE_STATIC_CLIENT));
+        verifyNoInteractions(resourceRegistrationService);
+        Assertions.assertNull(settings.getCodeChallenge());
+        Assertions.assertNull(settings.getCodeVerifier());
+        Assertions.assertEquals(Boolean.FALSE, settings.getDynamicallyRegistered());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_StaticClientWithoutEndpoint_PkceFromBodyMethod() {
+        ResourceAuthSettings settings = createOauthToolSetWithPkce("clientId", "clientSecret", "S256", null, null).getAuthSettings();
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(RESOURCE_NAME, null, settings, null, false, RegistrationPolicy.EXTERNAL_SERVICE);
+
+        verifyNoInteractions(resourceRegistrationService);
+        Assertions.assertEquals("S256", settings.getCodeChallengeMethod());
+        Assertions.assertEquals(CodeChallenge.compute(CodeChallengeMethod.S256, new CodeVerifier(settings.getCodeVerifier())).getValue(),
+                settings.getCodeChallenge());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_StaticClientWithoutEndpoint_BlankPkceMethodMeansNone() {
+        ResourceAuthSettings settings = createOauthToolSetWithPkce("clientId", "clientSecret", "", null, null).getAuthSettings();
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(RESOURCE_NAME, null, settings, null, false, RegistrationPolicy.EXTERNAL_SERVICE);
+
+        Assertions.assertNull(settings.getCodeChallengeMethod());
+        Assertions.assertNull(settings.getCodeChallenge());
+        Assertions.assertNull(settings.getCodeVerifier());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_UpdateWithBlankPkceMethodClearsStoredPair() {
+        ResourceAuthSettings existing = createOauthToolSetWithPkce("clientId", "clientSecret", "S256", "challenge", "verifier")
+                .getAuthSettings();
+        ResourceAuthSettings settings = createOauthToolSetWithPkce("clientId", null, "", null, null).getAuthSettings();
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        resourceAuthSettingsService.processResourceAuthSettings(RESOURCE_NAME, null, settings, existing, false, RegistrationPolicy.EXTERNAL_SERVICE);
+
+        Assertions.assertNull(settings.getCodeChallengeMethod());
+        Assertions.assertNull(settings.getCodeChallenge());
+        Assertions.assertNull(settings.getCodeVerifier());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_StaticClientWithEndpoint_UsesStaticStrategy() {
+        ResourceAuthSettings settings = createOauthToolSet("clientId", "clientSecret").getAuthSettings();
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+        when(resourceRegistrationService.register(eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(), eq(false), eq(RegistrationPolicy.EXTERNAL_SERVICE)))
+                .thenReturn(createClientRegistration());
+
+        resourceAuthSettingsService.processResourceAuthSettings(RESOURCE_NAME, RESOURCE_ENDPOINT, settings, null, false, RegistrationPolicy.EXTERNAL_SERVICE);
+
+        Assertions.assertEquals(List.of("read", "write"), settings.getScopesSupported());
+        Assertions.assertEquals(Boolean.FALSE, settings.getDynamicallyRegistered());
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_DynamicWithoutEndpoint_Rejected() {
+        ResourceAuthSettings settings = createOauthToolSet(null, null).getAuthSettings();
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+
+        Assertions.assertThrows(IllegalArgumentException.class,
+                () -> resourceAuthSettingsService.processResourceAuthSettings(RESOURCE_NAME, null, settings, null, false, RegistrationPolicy.EXTERNAL_SERVICE));
+        verifyNoInteractions(resourceRegistrationService);
+    }
+
+    @Test
+    void testProcessResourceAuthSettings_DynamicWithEndpoint_PassesExternalServicePolicy() {
+        ResourceAuthSettings settings = createOauthToolSet(null, null).getAuthSettings();
+        when(validatorFactory.getValidator(AuthenticationType.OAUTH)).thenReturn(oauthAuthSettingsValidator);
+        when(resourceRegistrationService.register(eq(RESOURCE_NAME), eq(RESOURCE_ENDPOINT), any(), eq(true), eq(RegistrationPolicy.EXTERNAL_SERVICE)))
+                .thenReturn(createClientRegistration());
+
+        resourceAuthSettingsService.processResourceAuthSettings(RESOURCE_NAME, RESOURCE_ENDPOINT, settings, null, false, RegistrationPolicy.EXTERNAL_SERVICE);
+
+        Assertions.assertEquals("newClientId", settings.getClientId());
+        Assertions.assertEquals(Boolean.TRUE, settings.getDynamicallyRegistered());
     }
 
     // Helper methods

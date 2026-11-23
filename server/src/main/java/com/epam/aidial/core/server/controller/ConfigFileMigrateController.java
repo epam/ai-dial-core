@@ -287,9 +287,8 @@ public class ConfigFileMigrateController {
      * ResourceAuthSettingsService.setCodeChallengeProperties}, never independent input, so a stray
      * pair in a file-sourced ToolSet is leftover from a previous run and safe to drop — leaving it
      * would otherwise fail {@code BaseAuthSettingsValidator}, which forbids {@code code_verifier}
-     * unconditionally. Applications' external services don't need this: {@code
-     * ConfigPostProcessor.validateExternalServices} already drops any that fail the same check at
-     * file-load time.
+     * unconditionally. Applications' external services are copied with theirs: the write path accepts a
+     * verifier only as the stored one, so a stray pair fails that entry's migration.
      */
     private static void clearPkceArtifacts(ResourceTypes resourceType, JsonNode specNode) {
         if (resourceType != ResourceTypes.TOOL_SET) {
