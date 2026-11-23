@@ -133,7 +133,7 @@ public class MergedConfigStoreTest {
 
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
@@ -151,7 +151,7 @@ public class MergedConfigStoreTest {
     public void testRejectsNullBackgroundTracer() {
         NullPointerException error = assertThrows(NullPointerException.class, () -> new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
                 externalServiceService, resourceAuthSettingsEncryptionService, null));
 
         assertEquals("backgroundTracer must not be null", error.getMessage());
@@ -167,7 +167,7 @@ public class MergedConfigStoreTest {
 
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
@@ -180,7 +180,7 @@ public class MergedConfigStoreTest {
     public void testRequestRebuildIsNoOpBeforeInit() {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
 
         store.requestRebuild();
@@ -198,7 +198,7 @@ public class MergedConfigStoreTest {
 
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
@@ -215,7 +215,7 @@ public class MergedConfigStoreTest {
 
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
@@ -233,7 +233,7 @@ public class MergedConfigStoreTest {
 
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
@@ -254,7 +254,7 @@ public class MergedConfigStoreTest {
 
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
@@ -277,7 +277,7 @@ public class MergedConfigStoreTest {
 
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT,
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
@@ -301,13 +301,53 @@ public class MergedConfigStoreTest {
 
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_SKIP,
+                secretFieldProcessor, lockService, OnInvalidEntity.SKIP,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 
         Config config = store.get();
         assertTrue(config.getApplications().isEmpty(), "decrypt-failed entity must not enter merged Config");
         assertTrue(store.getInvalidEntities().get(ResourceTypes.APPLICATION).containsKey("applications/platform/bad-app"));
+    }
+
+    @Test
+    public void testRebuildRecordsBlobModelWithDanglingReferenceUnderAbort() {
+        ResourceDescriptor modelDescriptor = ResourceDescriptorFactory.fromDecoded(
+                ResourceTypes.MODEL, "platform", "platform/", "dangling-model");
+        String modelBody = "{\"endpoint\":\"http://localhost/chat/completions\",\"interceptors\":[\"missing\"]}";
+        stubListResources(ResourceTypes.MODEL,
+                List.of(Pair.of(new ResourceItemMetadata(modelDescriptor), modelBody)));
+        when(fileConfigStore.get()).thenReturn(new Config());
+
+        MergedConfigStore store = new MergedConfigStore(
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
+        store.init(fileConfigStore);
+
+        assertTrue(store.get().getModels().isEmpty(), "model with a dangling reference must not be a deployment");
+        InvalidEntityRecord record = store.getInvalidEntities().get(ResourceTypes.MODEL).get("models/platform/dangling-model");
+        assertEquals("api", record.getSource());
+        assertEquals("interceptors[0]", record.getValidationWarnings().getFirst().getField());
+    }
+
+    @Test
+    public void testRebuildRecordsFileModelWithDanglingReferenceUnderAbort() {
+        Config fileConfig = new Config();
+        Model model = new Model();
+        model.setEndpoint("http://localhost/chat/completions");
+        model.setInterceptors(List.of("missing"));
+        fileConfig.setModels(new LinkedHashMap<>(Map.of("file-model", model)));
+        when(fileConfigStore.get()).thenReturn(fileConfig);
+
+        MergedConfigStore store = new MergedConfigStore(
+                vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT,
+                externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
+        store.init(fileConfigStore);
+
+        assertTrue(store.get().getModels().isEmpty());
+        assertEquals("file", store.getInvalidEntities().get(ResourceTypes.MODEL).get("models/platform/file-model").getSource());
     }
 
     private void stubListResources(ResourceTypes type, List<Pair<ResourceItemMetadata, String>> items) {
@@ -388,7 +428,7 @@ public class MergedConfigStoreTest {
     private Consumer<ResourceEvent> registerAndCaptureListener(String thisPodId) {
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, MergedConfigStore.MODE_ABORT, false, thisPodId, PluginRegistry.EMPTY,
+                secretFieldProcessor, lockService, OnInvalidEntity.ABORT, thisPodId, PluginRegistry.EMPTY,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
 

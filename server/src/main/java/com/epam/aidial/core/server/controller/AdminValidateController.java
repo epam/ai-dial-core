@@ -3,8 +3,11 @@ package com.epam.aidial.core.server.controller;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
+import com.epam.aidial.core.openapi.annotations.ApiParameter;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
+import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
+import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.config.MergedConfigStore;
@@ -61,6 +64,9 @@ public class AdminValidateController implements Controller {
             path = "/v1/admin/validate",
             operationId = "validateConfigManifests",
             tags = {"Admin"},
+            parameters = {
+                    @ApiParameter(name = "softValidation", in = ParameterIn.QUERY, schema = Boolean.class, description = OpenApiDescriptions.SOFT_VALIDATION)
+            },
             requestBody = @ApiSchema(implementation = AdminApplyRequest.class),
             responses = {
                     @ApiResponse(code = 200, description = "Validation successful", body = @ApiSchema(implementation = AdminValidateResponse.class)),
@@ -104,6 +110,13 @@ public class AdminValidateController implements Controller {
 
         // Treat missing precheck value as true
         boolean precheck = request.precheck() == null || request.precheck();
+        boolean softValidation;
+        try {
+            softValidation = ConfigManifestSupport.parseSoftValidation(context.getRequest().getParam("softValidation"));
+        } catch (IllegalArgumentException e) {
+            context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
+            return;
+        }
 
         List<AdminManifest> entries = request.manifests();
         for (int i = 0; i < entries.size(); i++) {
@@ -118,7 +131,7 @@ public class AdminValidateController implements Controller {
             }
         }
 
-        taskExecutor.submit(() -> validateBatch(precheck, entries))
+        taskExecutor.submit(() -> validateBatch(precheck, softValidation, entries))
                 .onSuccess(result -> context.respond(result.status(), result.body()))
                 .onFailure(error -> {
                     if (error instanceof HttpException ex) {
@@ -131,7 +144,7 @@ public class AdminValidateController implements Controller {
                 });
     }
 
-    private ValidateResponse validateBatch(boolean precheck,
+    private ValidateResponse validateBatch(boolean precheck, boolean softValidation,
                                            List<AdminManifest> rawEntries) {
         List<AdminManifest> entries = new ArrayList<>(rawEntries);
         entries.sort(ConfigManifestSupport.DEPENDENCY_ORDER_COMPARATOR);
@@ -150,7 +163,7 @@ public class AdminValidateController implements Controller {
             if (!ConfigManifestSupport.KIND_URL_SEGMENT.containsKey(entry.kind())) {
                 error = "Unknown kind: " + entry.kind();
             } else {
-                ValidationResult validation = validationService.validateOnly(entry, scratch, policyPrecheck);
+                ValidationResult validation = validationService.validateOnly(entry, scratch, policyPrecheck, softValidation);
                 if (!ValidationStatus.VALID.equals(validation.status())) {
                     error = validation.error();
                 }

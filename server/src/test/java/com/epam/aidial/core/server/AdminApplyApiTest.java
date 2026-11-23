@@ -10,7 +10,6 @@ import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
-import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
@@ -1641,107 +1640,157 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                 () -> "Expected 200 for new key, got " + bucketResp.status() + ": " + bucketResp.body());
     }
 
-    public static class SoftValidation extends ResourceBaseTest {
-        @Override
-        protected JsonObject additionalSettingsOverrides() {
-            return new JsonObject()
-                    .put("config", new JsonObject()
-                            .put("write", new JsonObject().put("softValidation", true))
-                            .put("onInvalidEntity", "skip"));
-        }
-
-        @Test
-        @SneakyThrows
-        void testApplySoftValidationStillRejectsUnservedInterface() {
-            // Previously this returned APPLIED_INVALID with the blob written — a model the rebuild
-            // discards every time. Only cross-references stay soft-tolerable.
-            String body = """
+    @Test
+    @SneakyThrows
+    void testApplySoftValidationStillRejectsUnservedInterface() {
+        // Previously this returned APPLIED_INVALID with the blob written — a model the rebuild
+        // discards every time. Only cross-references stay soft-tolerable.
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
                     {
-                      "precheck": false,
-                      "manifests": [
-                        {
-                          "kind": "Model",
-                          "name": "models/platform/apply-soft-unserved",
-                          "spec": {
-                            "type": "chat",
-                            "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
-                            "interfaces": {"openaiChatCompletions": {}}
-                          }
-                        }
-                      ]
+                      "kind": "Model",
+                      "name": "models/platform/apply-soft-unserved",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "interfaces": {"openaiChatCompletions": {}}
+                      }
                     }
-                    """;
-            // Soft mode reports the failure in the result row with a 200 envelope; the hard-mode
-            // twin testApplyRejectsModelWithUnservedInterface pins the 422 envelope.
-            Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
-            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(),
-                    () -> "Body: " + response.body());
-            verify(send(HttpMethod.GET, "/v1/models/platform/apply-soft-unserved", null, "",
-                    "authorization", "admin"), 404);
-        }
-
-        @Test
-        @SneakyThrows
-        void testApplyAdmitsPluginOfUnknownTypeAsInvalid() {
-            String body = """
-                    {
-                      "precheck": false,
-                      "manifests": [
-                        {"kind": "Plugin", "name": "plugins/platform/apply-soft-plugin", "spec": {"type": "missing"}}
-                      ]
-                    }
-                    """;
-            Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
-            verify(response, 200);
-            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals("APPLIED_INVALID", parsed.get("results").get(0).get("status").asText(), response::body);
-        }
-
-        @Test
-        @SneakyThrows
-        void testApplyAdmitsInvalidUnderSoftValidation() {
-            String body = """
-                    {
-                      "precheck": false,
-                      "manifests": [
-                        {
-                          "kind": "Model",
-                          "name": "models/platform/apply-soft-invalid",
-                          "spec": {
-                            "type": "chat",
-                            "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
-                            "interceptors": ["does-not-exist"]
-                          }
-                        }
-                      ]
-                    }
-                    """;
-            Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
-            verify(response, 200);
-            JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
-            assertEquals("APPLIED_INVALID", parsed.get("results").get(0).get("status").asText());
-
-            // Wait for rebuild to surface the invalid record.
-            JsonNode found = null;
-            long deadline = System.nanoTime() + 10_000_000_000L;
-            while (System.nanoTime() < deadline) {
-                Response get = send(HttpMethod.GET, "/v1/models/platform/apply-soft-invalid", null, "",
-                        "authorization", "admin");
-                if (get.status() == 200) {
-                    JsonNode node = ProxyUtil.MAPPER.readTree(get.body());
-                    if ("invalid".equals(node.path("status").asText())) {
-                        found = node;
-                        break;
-                    }
+                  ]
                 }
-                Thread.sleep(100);
+                """;
+        // Soft mode reports the failure in the result row with a 200 envelope; the hard-mode
+        // twin testApplyRejectsModelWithUnservedInterface pins the 422 envelope.
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", "softValidation=true", body, "authorization", "admin");
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals("FAILED", parsed.get("results").get(0).get("status").asText(),
+                () -> "Body: " + response.body());
+        verify(send(HttpMethod.GET, "/v1/models/platform/apply-soft-unserved", null, "",
+                "authorization", "admin"), 404);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyAdmitsPluginOfUnknownTypeAsInvalid() {
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {"kind": "Plugin", "name": "plugins/platform/apply-soft-plugin", "spec": {"type": "missing"}}
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", "softValidation=true", body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals("APPLIED_INVALID", parsed.get("results").get(0).get("status").asText(), response::body);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyAdmitsInvalidUnderSoftValidation() {
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-soft-invalid",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "interceptors": ["does-not-exist"]
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", "softValidation=true", body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(1, parsed.get("applied").asInt(), () -> "Body: " + response.body());
+        assertEquals("APPLIED_INVALID", parsed.get("results").get(0).get("status").asText());
+
+        // Wait for rebuild to surface the invalid record.
+        JsonNode found = null;
+        long deadline = System.nanoTime() + 10_000_000_000L;
+        while (System.nanoTime() < deadline) {
+            Response get = send(HttpMethod.GET, "/v1/models/platform/apply-soft-invalid", null, "",
+                    "authorization", "admin");
+            if (get.status() == 200) {
+                JsonNode node = ProxyUtil.MAPPER.readTree(get.body());
+                if ("invalid".equals(node.path("status").asText())) {
+                    found = node;
+                    break;
+                }
             }
-            assertNotNull(found, "Expected status=invalid after rebuild");
-            JsonNode warnings = found.get("validationWarnings");
-            assertNotNull(warnings);
-            assertTrue(warnings.isArray() && warnings.size() >= 1);
+            Thread.sleep(100);
         }
+        assertNotNull(found, "Expected status=invalid after rebuild");
+        JsonNode warnings = found.get("validationWarnings");
+        assertNotNull(warnings);
+        assertTrue(warnings.isArray() && warnings.size() >= 1);
+    }
+
+    @Test
+    @SneakyThrows
+    void testOneGoodOneDanglingWithParameter() {
+        String body = """
+                {
+                  "precheck": false,
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-soft-good",
+                      "spec": {"type": "chat", "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"}
+                    },
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-soft-dangling",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "interceptors": ["does-not-exist"]
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", "softValidation=true", body, "authorization", "admin");
+        verify(response, 200);
+        JsonNode parsed = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(2, parsed.get("applied").asInt(), response::body);
+        assertEquals(0, parsed.get("failed").asInt(), response::body);
+        assertEquals("APPLIED", parsed.get("results").get(0).get("status").asText(), response::body);
+        assertEquals("APPLIED_INVALID", parsed.get("results").get(1).get("status").asText(), response::body);
+    }
+
+    @Test
+    @SneakyThrows
+    void testValidateAdmitsWhatApplyRecords() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-soft-parity",
+                      "spec": {
+                        "type": "chat",
+                        "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions",
+                        "interceptors": ["does-not-exist"]
+                      }
+                    }
+                  ]
+                }
+                """;
+        Response validate = send(HttpMethod.POST, "/v1/admin/validate", "softValidation=true", body, "authorization", "admin");
+        verify(validate, 200);
+        assertEquals("VALID", ProxyUtil.MAPPER.readTree(validate.body()).get("results").get(0).get("status").asText(), validate::body);
+
+        Response apply = send(HttpMethod.POST, "/v1/admin/apply", "softValidation=true", body, "authorization", "admin");
+        verify(apply, 200);
+        assertEquals("APPLIED_INVALID", ProxyUtil.MAPPER.readTree(apply.body()).get("results").get(0).get("status").asText(), apply::body);
     }
 }

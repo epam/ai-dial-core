@@ -223,7 +223,7 @@ public class ConfigFileMigrateController {
                 manifests.add(pending.manifest());
                 pendingByCanonicalId.put(pending.manifest().name(), pending);
             }
-            List<ConfigApplyService.EntityResult> appliedEntriesResults = applyService.applyEntries(manifests, scratch);
+            List<ConfigApplyService.EntityResult> appliedEntriesResults = applyService.applyEntries(manifests, scratch, false);
             for (ConfigApplyService.EntityResult result : appliedEntriesResults) {
                 results.add(toMigrateResult(result, pendingByCanonicalId.get(result.entityId())));
             }
@@ -472,7 +472,7 @@ public class ConfigFileMigrateController {
             toApply.add(new PendingEntry(manifest, fileId));
             return;
         }
-        ValidationResult validation = validationService.validateOnly(manifest, scratch);
+        ValidationResult validation = validationService.validateOnly(manifest, scratch, false);
         if (ValidationStatus.VALID.equals(validation.status())) {
             results.add(new ConfigFileMigrateResult(manifest.kind(), resourceUrl(manifest.name()), fileId,
                     ConfigFileMigrateStatus.WOULD_MIGRATE, null));

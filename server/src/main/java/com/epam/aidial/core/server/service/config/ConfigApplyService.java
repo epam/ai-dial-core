@@ -74,7 +74,6 @@ public class ConfigApplyService {
     private final MergedConfigStore mergedConfigStore;
     private final ResourceService resourceService;
     private final SecretFieldProcessor secretFieldProcessor;
-    private final boolean softValidation;
     private final ApiKeyStore apiKeyStore;
     private final ApplicationService applicationService;
     private final ToolSetService toolSetService;
@@ -85,7 +84,6 @@ public class ConfigApplyService {
     public ConfigApplyService(MergedConfigStore mergedConfigStore,
                               ResourceService resourceService,
                               SecretFieldProcessor secretFieldProcessor,
-                              boolean softValidation,
                               ApiKeyStore apiKeyStore,
                               ApplicationService applicationService,
                               ToolSetService toolSetService,
@@ -94,7 +92,6 @@ public class ConfigApplyService {
         this.mergedConfigStore = mergedConfigStore;
         this.resourceService = resourceService;
         this.secretFieldProcessor = secretFieldProcessor;
-        this.softValidation = softValidation;
         this.apiKeyStore = apiKeyStore;
         this.applicationService = applicationService;
         this.toolSetService = toolSetService;
@@ -110,7 +107,7 @@ public class ConfigApplyService {
      * {@code /v1/admin/config/file/migrate}, which builds its own entry list and scratch (with any
      * shadowed file entries already removed) before calling this.
      */
-    public List<EntityResult> applyEntries(List<AdminManifest> entries, Config scratch) {
+    public List<EntityResult> applyEntries(List<AdminManifest> entries, Config scratch, boolean softValidation) {
         List<EntityResult> results = new ArrayList<>();
         // Collect partial-update changes per applied entity; flush as one applyBatch
         // after the apply loop so the merged Config swap happens once, after all blobs are written.
@@ -122,7 +119,7 @@ public class ConfigApplyService {
             ConfigManifestSupport.ParsedManifest parsed = null;
             try {
                 parsed = ConfigManifestSupport.parseManifest(entry);
-                result = applySingle(parsed, scratch, pendingChanges);
+                result = applySingle(parsed, scratch, pendingChanges, softValidation);
             } catch (Exception ex) {
                 result = new EntityResult(entry.name(), AdminApplyStatus.FAILED, ex.getMessage());
             }
@@ -156,7 +153,8 @@ public class ConfigApplyService {
         return results;
     }
 
-    private EntityResult applySingle(ConfigManifestSupport.ParsedManifest parsed, Config scratch, List<EntityChange> pending) {
+    private EntityResult applySingle(ConfigManifestSupport.ParsedManifest parsed, Config scratch, List<EntityChange> pending,
+                                     boolean softValidation) {
         String id = parsed.manifest().name();
         return switch (parsed.manifest()) {
             case AdminSettingsManifest settings -> applySettings(settings.spec(), id, parsed.name());
@@ -170,13 +168,13 @@ public class ConfigApplyService {
                     applyManagedEntity(router.spec(), id, parsed.name(), ResourceTypes.ROUTER, scratch, pending);
             case AdminTranslatorManifest translator ->
                     applyTranslator(translator.spec(), id, parsed.name(), pending);
-            case AdminPluginManifest plugin -> applyPlugin(plugin.spec(), id, parsed.name(), pending);
+            case AdminPluginManifest plugin -> applyPlugin(plugin.spec(), id, parsed.name(), pending, softValidation);
             case AdminRoleManifest role ->
                     applyManagedEntity(role.spec(), id, parsed.name(), ResourceTypes.ROLE, scratch, pending);
             case AdminRouteManifest route ->
                     applyManagedEntity(route.spec(), id, parsed.name(), ResourceTypes.ROUTE, scratch, pending);
             case AdminKeyManifest key -> applyKey(key.spec(), id, parsed.name(), scratch, pending);
-            case AdminModelManifest model -> applyModel(model.spec(), id, parsed.name(), scratch, pending);
+            case AdminModelManifest model -> applyModel(model.spec(), id, parsed.name(), scratch, pending, softValidation);
             case AdminToolSetManifest toolSet -> applyToolSet(toolSet.spec(), id, parsed.name(), scratch, pending);
             case AdminApplicationManifest application ->
                     applyApplication(application.spec(), id, parsed.name(), scratch, pending);
@@ -288,12 +286,13 @@ public class ConfigApplyService {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyPlugin(Plugin plugin, String id, ParsedName parsed, List<EntityChange> pending) {
+    private EntityResult applyPlugin(Plugin plugin, String id, ParsedName parsed, List<EntityChange> pending,
+                                     boolean softValidation) {
         List<ValidationWarning> warnings = new ArrayList<>();
-        ConfigPostProcessor.validatePlugin(id, plugin, mergedConfigStore.getPluginRegistry(), true, warnings);
-        // Without a provider the unknown type is the only warning: a dangling reference, soft-tolerable as a model's
-        boolean softFailure = mergedConfigStore.getPluginRegistry().get(plugin.getType()) == null;
-        if (!warnings.isEmpty() && !(softFailure && softValidation)) {
+        ConfigPostProcessor.validatePluginSettings(id, plugin, mergedConfigStore.getPluginRegistry(), warnings);
+        boolean hardFailure = !warnings.isEmpty();
+        boolean softFailure = !ConfigPostProcessor.validatePluginType(id, plugin, mergedConfigStore.getPluginRegistry(), warnings);
+        if (hardFailure || (softFailure && !softValidation)) {
             return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
@@ -336,7 +335,8 @@ public class ConfigApplyService {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyModel(Model model, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
+    private EntityResult applyModel(Model model, String id, ParsedName parsed, Config scratch, List<EntityChange> pending,
+                                    boolean softValidation) {
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateModelInvariants(model, scratch.getTranslators(), warnings);
         catalogSchemaService.validate(model, warnings);

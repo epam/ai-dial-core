@@ -78,39 +78,52 @@ jar lies directly in `plugins.dir` or directly in a group directory.
 - **WHEN** `<plugins.dir>/custom/empty/` holds no jar that registers a provider
 - **THEN** Core does not start, with a message naming `custom/empty`
 
-### Requirement: Unknown plugin type is a dangling reference
-A `type` no loaded provider declares SHALL be treated as a dangling reference: a Configuration API write
-SHALL answer `422` with warning field `type` unless `config.write.softValidation` is on, and an admin apply
-entry SHALL be `FAILED`, or `APPLIED_INVALID` when it is on; a rebuild SHALL check
-it only under `config.onInvalidEntity: skip`, where the entity is dropped and recorded as invalid; under
-`abort` the entity SHALL stay in the merged config.
+### Requirement: Unknown plugin type is recorded as invalid
+A `type` no loaded provider declares SHALL be a dangling reference, checked on every write and on every rebuild,
+whatever `config.onInvalidEntity`. A checked plugin SHALL be dropped alone and recorded as an invalid entity; it never
+fails the rebuild. A write SHALL answer `422` with warning field `type`, and an admin apply entry SHALL be `FAILED`,
+unless the request carries `softValidation=true`: the write is then accepted and recorded, and the entry is
+`APPLIED_INVALID`.
 
 #### Scenario: Strict write
 - **WHEN** no provider of type `missing` is loaded and an admin sends `PUT /v1/plugins/platform/p1` with
-  `{"type": "missing"}`
+  `{"type": "missing"}` and no `softValidation` parameter
 - **THEN** Core answers `422` with one warning, `field: "type"`, whose `message` contains `missing`, and
   `GET /v1/plugins/platform/p1` answers `404`
 
-#### Scenario: Soft write under skip
-- **WHEN** `config.write.softValidation` and `config.onInvalidEntity: skip` are on and the same `PUT` is sent
-- **THEN** Core answers `200`, and `GET /v1/plugins/platform/p1` answers `status: "invalid"` with warning
-  field `type`
+#### Scenario: Soft write
+- **WHEN** whatever `config.onInvalidEntity`, the same `PUT` is sent with `?softValidation=true`
+- **THEN** Core answers `200`, and `GET /v1/plugins/platform/p1` answers `status: "invalid"` with warning field `type`
 
 #### Scenario: Unknown type in a soft batch
-- **WHEN** `config.write.softValidation` is on and an admin sends `POST /v1/admin/apply` with one `Plugin`
-  manifest `plugins/platform/p1` of type `missing`
+- **WHEN** an admin sends `POST /v1/admin/apply?softValidation=true` with one `Plugin` manifest
+  `plugins/platform/p1` of type `missing`
 - **THEN** Core answers `200` with that result `APPLIED_INVALID`
 
-#### Scenario: Rebuild under abort keeps the entity
-- **WHEN** a blob `plugins/platform/p1` declares `type: "missing"`, `config.onInvalidEntity` is unset and the
-  config reloads
-- **THEN** the reload answers `200`, `GET /v1/plugins/platform/p1` answers `status: "valid"` and
-  `GET /v1/admin/health/config` answers `status: "ok"`
+#### Scenario: Unknown type validated softly
+- **WHEN** an admin sends `POST /v1/admin/validate?softValidation=true` with the same `Plugin` manifest
+- **THEN** Core answers `200` with that result `VALID`, and `GET /v1/plugins/platform/p1` answers `404`
 
-#### Scenario: Rebuild under skip drops the entity
-- **WHEN** the same blob exists, `config.onInvalidEntity: skip` is on and the config reloads
-- **THEN** `GET /v1/admin/health/config` answers `status: "degraded"` with a `skipped` entry
-  `id: "plugins/platform/p1"`, and the entity GET answers `status: "invalid"` with warning field `type`
+#### Scenario: Unknown type in a strict batch
+- **WHEN** an admin sends the same body to `POST /v1/admin/apply` with `precheck: false`
+- **THEN** Core answers `200` with that result `FAILED`, and `GET /v1/plugins/platform/p1` answers `404`
+
+#### Scenario: Rebuild of a blob plugin
+- **WHEN** a blob `plugins/platform/p1` declares `type: "missing"`, whatever `config.onInvalidEntity`, and the config
+  reloads
+- **THEN** the reload answers `200`, `GET /v1/admin/health/config` answers `status: "degraded"` with a `skipped`
+  entry `id: "plugins/platform/p1"`, and the entity GET answers `status: "invalid"` with warning field `type`
+
+#### Scenario: File plugin
+- **WHEN** whatever `config.onInvalidEntity`, the config file declares `plugins: {"file-plugin": {"type":
+  "missing"}}`
+- **THEN** Core starts, the other entities load, and the health endpoint lists `plugins/platform/file-plugin` as
+  skipped
+
+#### Scenario: Deployment naming an invalid plugin
+- **WHEN** plugin `p1` of type `missing` is recorded as invalid, and model `m` declares `baseUrl:
+  dial-plugin://p1` with `interfaces.openaiChatCompletions: {}`
+- **THEN** `m` is a deployment and its GET answers `status: "valid"`
 
 ### Requirement: Settings validated by the provider
 When the provider of a declaration is loaded, Core SHALL hand it the `settings` object to validate. A rejection,

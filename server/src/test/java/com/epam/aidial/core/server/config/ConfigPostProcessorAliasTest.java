@@ -147,7 +147,7 @@ class ConfigPostProcessorAliasTest {
 
         ConfigPostProcessor.processStructural(config);
         ConfigPostProcessor.processSemantic(config, null, config.getKeys(), java.util.Map.of(),
-                (type, error) -> skipped.add(error));
+                OnInvalidEntity.SKIP, (type, error) -> skipped.add(error));
 
         assertEquals(List.of("good"), List.copyOf(config.getAliases().keySet()));
         assertEquals(1, skipped.size());

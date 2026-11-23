@@ -4,6 +4,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
+import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
@@ -15,8 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * Soft-mode tests for slice 2S.13 cross-reference validation. With
- * {@code config.write.softValidation=true} and {@code config.onInvalidEntity=skip},
+ * Soft-write tests for slice 2S.13 cross-reference validation. With
+ * {@code softValidation=true} on the request and {@code config.onInvalidEntity=skip},
  * Model writes with unknown interceptor refs commit; the next merged-config rebuild
  * surfaces the entity through the invalid-entity sibling store with
  * {@code status:invalid} and the cross-ref warning.
@@ -49,14 +50,12 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
     @Override
     protected JsonObject additionalSettingsOverrides() {
         return new JsonObject()
-                .put("config", new JsonObject()
-                        .put("write", new JsonObject().put("softValidation", true))
-                        .put("onInvalidEntity", "skip"));
+                .put("config", new JsonObject().put("onInvalidEntity", "skip"));
     }
 
     @Test
     void testSoftModeCommitsUnknownRef() {
-        Response post = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-unknown", null,
+        Response post = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-unknown", "softValidation=true",
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
         verify(post, 200);
         assertNotNull(post.headers().get("etag"));
@@ -64,7 +63,7 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
 
     @Test
     void testSoftModeShowsStatusInvalidPostRebuild() {
-        Response post = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-invalid", null,
+        Response post = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-invalid", "softValidation=true",
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
         verify(post, 200);
 
@@ -83,7 +82,7 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
         verify(send(HttpMethod.PUT, "/v1/models/platform/soft-cr-put", null,
                 MODEL_BODY_NO_INTERCEPTORS, "authorization", "admin", "If-None-Match", "*"), 200);
 
-        Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-put", null,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-put", "softValidation=true",
                 MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin");
         verify(put, 200);
 
@@ -120,7 +119,7 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
                   "interfaces": {"openaiChatCompletions": {}}
                 }
                 """;
-        Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-unserved-interface", null, body,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-unserved-interface", "softValidation=true", body,
                 "authorization", "admin", "If-None-Match", "*");
         verify(put, 422);
         assertTrue(put.body().contains("interfaces.openaiChatCompletions"),
@@ -142,11 +141,58 @@ public class ModelCrossRefValidationSoftModeApiTest extends ResourceBaseTest {
                   "pricing": {"unit": "char_without_whitespace", "prompt": "0.1", "cacheRead": "0.01"}
                 }
                 """;
-        Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-bad-pricing", null, body,
+        Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-bad-pricing", "softValidation=true", body,
                 "authorization", "admin", "If-None-Match", "*");
         verify(put, 422);
         verify(send(HttpMethod.GET, "/v1/models/platform/soft-bad-pricing", null, "",
                 "authorization", "admin"), 404);
+    }
+
+    @Test
+    void testSoftWriteSurvivesRebuildUnderSkip() {
+        verify(send(HttpMethod.PUT, "/v1/models/platform/soft-survives", "softValidation=true",
+                MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin"), 200);
+
+        verify(operationRequest("/v1/ops/config/reload", null, "Authorization", "admin"), 200);
+
+        JsonNode body = waitForGetMatching("/v1/models/platform/soft-survives",
+                node -> "invalid".equals(node.path("status").asText()));
+        assertEquals("interceptors[0]", body.at("/validationWarnings/0/field").asText());
+    }
+
+    @Test
+    void testInterceptorCreatedLaterUnderSkip() {
+        verify(send(HttpMethod.PUT, "/v1/models/platform/soft-later", "softValidation=true",
+                MODEL_BODY_UNKNOWN_INTERCEPTOR.replace("unknown-interceptor", "soft-later-i"), "authorization", "admin"), 200);
+        waitForGetMatching("/v1/models/platform/soft-later", node -> "invalid".equals(node.path("status").asText()));
+
+        verify(send(HttpMethod.PUT, "/v1/interceptors/platform/soft-later-i", null,
+                "{\"endpoint\": \"http://localhost:7001/intercept\"}", "authorization", "admin"), 200);
+
+        waitForGetMatching("/v1/models/platform/soft-later", node -> "valid".equals(node.path("status").asText()));
+    }
+
+    /** The default {@code config.onInvalidEntity: abort}: a soft write is recorded the same way. */
+    public static class AbortMode extends ResourceBaseTest {
+
+        @Test
+        @SneakyThrows
+        void testSoftWriteUnderAbort() {
+            Response put = send(HttpMethod.PUT, "/v1/models/platform/soft-cr-invalid", "softValidation=true",
+                    MODEL_BODY_UNKNOWN_INTERCEPTOR, "authorization", "admin", "If-None-Match", "*");
+            verify(put, 200);
+            assertNotNull(put.headers().get("etag"));
+
+            Response get = send(HttpMethod.GET, "/v1/models/platform/soft-cr-invalid", null, "", "authorization", "admin");
+            verify(get, 200);
+            JsonNode body = ProxyUtil.MAPPER.readTree(get.body());
+            assertEquals("invalid", body.get("status").asText());
+            assertEquals("interceptors[0]", body.at("/validationWarnings/0/field").asText());
+
+            JsonNode health = ProxyUtil.MAPPER.readTree(
+                    send(HttpMethod.GET, "/v1/admin/health/config", null, "", "authorization", "admin").body());
+            assertEquals("degraded", health.get("status").asText());
+        }
     }
 
     private JsonNode waitForGetMatching(String url, Predicate<JsonNode> predicate) {

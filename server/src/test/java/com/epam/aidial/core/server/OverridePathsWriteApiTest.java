@@ -75,29 +75,23 @@ class OverridePathsWriteApiTest extends ResourceBaseTest {
         assertTrue(response.body().contains("getOpenaiResponsesById"), response.body());
     }
 
-    @Test
-    void modelPutReturnsOverridePathAndCrossReferenceWarnings() throws Exception {
-        modelPutReturnsOverridePathAndCrossReferenceWarnings(this);
-    }
-
-    private static void modelPutReturnsOverridePathAndCrossReferenceWarnings(ResourceBaseTest api) throws Exception {
+    @ParameterizedTest
+    @CsvSource(value = {"NULL", "softValidation=true"}, nullValues = "NULL")
+    void modelPutReturnsOverridePathAndCrossReferenceWarnings(String query) throws Exception {
         String path = "/v1/models/platform/override-combined";
         String body = new JsonObject(INVALID).put("interceptors", List.of("missing-interceptor")).encode();
 
-        Response response = api.send(HttpMethod.PUT, path, null, body, "authorization", "admin");
+        Response response = send(HttpMethod.PUT, path, query, body, "authorization", "admin");
 
         assertEquals(422, response.status(), response.body());
         assertTrue(response.body().contains("interfaces.openaiResponses.overridePaths.getOpenaiResponsesById"), response.body());
         assertTrue(response.body().contains("interceptors[0]"), response.body());
-        assertEquals(404, api.send(HttpMethod.GET, path, null, "", "authorization", "admin").status());
+        assertEquals(404, send(HttpMethod.GET, path, null, "", "authorization", "admin").status());
     }
 
-    @Test
-    void modelApplyReturnsAllValidationWarnings() throws Exception {
-        modelApplyReturnsAllValidationWarnings(this);
-    }
-
-    private static void modelApplyReturnsAllValidationWarnings(ResourceBaseTest api) throws Exception {
+    @ParameterizedTest
+    @CsvSource(value = {"NULL", "softValidation=true"}, nullValues = "NULL")
+    void modelApplyReturnsAllValidationWarnings(String query) throws Exception {
         String id = "models/platform/override-combined";
         JsonObject spec = new JsonObject(INVALID)
                 .put("interceptors", List.of("missing-interceptor"))
@@ -106,7 +100,7 @@ class OverridePathsWriteApiTest extends ResourceBaseTest {
                 .put("manifests", List.of(new JsonObject().put("kind", "Model").put("name", id).put("spec", spec)))
                 .encode();
 
-        Response response = api.send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", query, body, "authorization", "admin");
 
         assertEquals(200, response.status(), response.body());
         var result = ProxyUtil.MAPPER.readTree(response.body());
@@ -115,21 +109,22 @@ class OverridePathsWriteApiTest extends ResourceBaseTest {
         assertTrue(response.body().contains("interfaces.openaiResponses.overridePaths.getOpenaiResponsesById"), response.body());
         assertTrue(response.body().contains("interceptors[0]"), response.body());
         assertTrue(response.body().contains("pricing"), response.body());
-        assertEquals(404, api.send(HttpMethod.GET, "/v1/" + id, null, "", "authorization", "admin").status());
+        assertEquals(404, send(HttpMethod.GET, "/v1/" + id, null, "", "authorization", "admin").status());
     }
 
     /**
      * Soft validation forgives cross-reference warnings, but not override-path defects: the real apply
-     * phase refuses those regardless of the mode, so the precheck surface must refuse them as well.
+     * phase refuses those regardless of the parameter, so the precheck surface must refuse them as well.
      */
-    private static void modelValidateRejectsOverridePathOnly(ResourceBaseTest api) throws Exception {
+    @Test
+    void modelValidateRejectsOverridePathOnly() throws Exception {
         String crossReferenceOnly = new JsonObject(VALID).put("interceptors", List.of("missing-interceptor")).encode();
-        Response accepted = api.send(HttpMethod.POST, "/v1/admin/validate", null,
+        Response accepted = send(HttpMethod.POST, "/v1/admin/validate", "softValidation=true",
                 validateBody(crossReferenceOnly), "authorization", "admin");
         assertEquals(200, accepted.status(), accepted.body());
         assertEquals(0, ProxyUtil.MAPPER.readTree(accepted.body()).path("failed").asInt(), accepted.body());
 
-        Response rejected = api.send(HttpMethod.POST, "/v1/admin/validate", null,
+        Response rejected = send(HttpMethod.POST, "/v1/admin/validate", "softValidation=true",
                 validateBody(INVALID), "authorization", "admin");
         assertEquals(422, rejected.status(), rejected.body());
         assertTrue(rejected.body().contains("getOpenaiResponsesById"), rejected.body());
@@ -142,30 +137,6 @@ class OverridePathsWriteApiTest extends ResourceBaseTest {
                         .put("name", "models/platform/override-soft-validate")
                         .put("spec", new JsonObject(spec))))
                 .encode();
-    }
-
-    public static class SoftValidation extends ResourceBaseTest {
-        @Test
-        void modelPutReturnsOverridePathAndCrossReferenceWarnings() throws Exception {
-            OverridePathsWriteApiTest.modelPutReturnsOverridePathAndCrossReferenceWarnings(this);
-        }
-
-        @Test
-        void modelValidateRejectsOverridePathOnly() throws Exception {
-            OverridePathsWriteApiTest.modelValidateRejectsOverridePathOnly(this);
-        }
-
-        @Test
-        void modelApplyReturnsAllValidationWarnings() throws Exception {
-            OverridePathsWriteApiTest.modelApplyReturnsAllValidationWarnings(this);
-        }
-
-        @Override
-        protected JsonObject additionalSettingsOverrides() {
-            return new JsonObject().put("config", new JsonObject()
-                    .put("write", new JsonObject().put("softValidation", true))
-                    .put("onInvalidEntity", "skip"));
-        }
     }
 
     private void assertStoredPath(String path, String... auth) throws Exception {

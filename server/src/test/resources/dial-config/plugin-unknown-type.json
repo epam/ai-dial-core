@@ -1,0 +1,25 @@
+{
+  "plugins": {
+    "file-plugin": {
+      "type": "missing"
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "EPM-RTC-GPT",
+      "role": "default"
+    },
+    "adminKey1": {
+      "project": "AdminTest",
+      "roles": ["admin"]
+    }
+  },
+  "roles": {
+    "default": {
+      "limits": {}
+    },
+    "admin": {
+      "limits": {}
+    }
+  }
+}
