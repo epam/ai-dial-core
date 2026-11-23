@@ -135,8 +135,12 @@
       "userRoles": ["default-user"],
       "target": {"path": "models/missing-model"}
     },
-    "inherited-alias": {
+    "open-alias": {
       "target": {"path": "models/gpt-4-internal"}
+    },
+    "open-resource-alias": {
+      "presentAs": "application",
+      "target": {"path": "applications/3R4ac3QT6AZjujjrzHhd8M/res-app"}
     },
     "gone-resource-alias": {
       "presentAs": "application",

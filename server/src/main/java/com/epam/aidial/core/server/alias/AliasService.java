@@ -33,8 +33,9 @@ import javax.annotation.Nullable;
  * Resolves the target of an alias, and builds the deployment that serves a call of it ({@link AliasPasses#build}) or
  * a listing shows ({@link AliasPasses#view}). Aliases are managed by admins, so an alias grants every caller who may
  * use it the right to call its target. Who may use it is set by the alias's {@code userRoles}; an alias without them
- * takes the target's: the {@code userRoles} of a config target, or read access to a resource target. A resource
- * target is read from storage, so the methods that may resolve one run on the task executor.
+ * is open to every caller, unless its target is a resource: then a caller who can read the resource may use it, or,
+ * for a resource in the platform bucket, a caller with one of the resource's {@code userRoles}. A resource target is
+ * read from storage, so the methods that may resolve one run on the task executor.
  */
 @Slf4j
 public class AliasService {
@@ -148,34 +149,31 @@ public class AliasService {
 
     /**
      * Whether the caller may use {@code alias}, as far as the config tells: by the alias's {@code userRoles}, or, when
-     * it has none, by those of its config target. Null when only the target can tell, which the methods resolving it
-     * check: the alias has no {@code userRoles} and its target is a resource or missing from the config.
+     * it has none and its target is a config deployment, yes. Null when only the target can tell, which the methods
+     * resolving it check: the alias has no {@code userRoles} and its target is a resource.
      */
     @Nullable
     public Boolean hasConfigAccess(ProxyContext context, Alias alias) {
         if (alias.getUserRoles() != null) {
             return alias.hasAccess(context.getUserRoles());
         }
-        String path = alias.getTarget().getPath();
-        if (AliasTargets.isResourcePath(path)) {
-            return null;
-        }
-        AliasTargets.TargetRef ref = AliasTargets.parse(path);
-        Deployment target = ref == null ? null : AliasTargets.resolve(context.getConfig(), ref);
-        return target == null ? null : target.hasAccess(context.getUserRoles());
+        return AliasTargets.isResourcePath(alias.getTarget().getPath()) ? null : true;
     }
 
     /**
-     * Whether the caller may use {@code alias}, whose target is resolved: by the alias's {@code userRoles}, or else by
-     * the target's {@code userRoles} or the caller's read access to the target resource. For platform-bucket resource
-     * targets the bucket is admin-only, so access is determined by the target deployment's {@code userRoles} rather
-     * than by the bucket-level ACL.
+     * Whether the caller may use {@code alias}, whose target is resolved: by the alias's {@code userRoles}; without
+     * them, yes for a config target, and for a resource target the caller's read access to it. The platform bucket is
+     * admin-only, so a resource there is decided by the target deployment's {@code userRoles} rather than by the
+     * bucket-level ACL.
      */
     private boolean hasAccess(ProxyContext context, Alias alias, Target target) {
         if (alias.getUserRoles() != null) {
             return alias.hasAccess(context.getUserRoles());
         }
-        if (target.isResource() && !ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName())) {
+        if (!target.isResource()) {
+            return true;
+        }
+        if (!ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName())) {
             return accessService.hasReadAccess(target.resource(), context);
         }
         return target.deployment().hasAccess(context.getUserRoles());
@@ -277,8 +275,8 @@ public class AliasService {
 
     /**
      * The deployment listings show for {@code alias}, or null when its target is missing or does not fit. The view
-     * carries the roles that may use the alias, its own or a config target's, for the caller to check; an alias that
-     * takes its access from a resource target is checked here, and left out when the caller cannot read the target.
+     * carries the alias's own roles, for the caller to check; an alias that takes its access from a resource target is
+     * checked here, and left out when the caller may not use the target.
      */
     @Nullable
     public Deployment toView(ProxyContext context, Alias alias) {
@@ -293,30 +291,16 @@ public class AliasService {
         if (target == null || !AliasTargets.fits(presentation, target.deployment())) {
             return null;
         }
-        if (alias.getUserRoles() == null && target.isResource()) {
-            boolean isPlatformTarget = ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName());
-            if (isPlatformTarget) {
-                if (!target.deployment().hasAccess(context.getUserRoles())) {
-                    return null;
-                }
-            } else {
-                try {
-                    if (!accessService.hasReadAccess(target.resource(), context)) {
-                        return null;
-                    }
-                } catch (RuntimeException e) {
-                    log.warn("Can't check access to the target of alias {}: {}", alias.getName(), e.getMessage());
-                    return null;
-                }
+        // the alias's own userRoles were checked by the caller; without them, the rule of a call
+        try {
+            if (alias.getUserRoles() == null && !hasAccess(context, alias, target)) {
+                return null;
             }
+        } catch (RuntimeException e) {
+            log.warn("Can't check access to the target of alias {}: {}", alias.getName(), e.getMessage());
+            return null;
         }
-        Deployment view = AliasPasses.view(alias, presentation, target.deployment());
-        if (alias.getUserRoles() == null) {
-            if (!target.isResource() || ResourceDescriptor.PLATFORM_BUCKET.equals(target.resource().getBucketName())) {
-                view.setUserRoles(target.deployment().getUserRoles());
-            }
-        }
-        return view;
+        return AliasPasses.view(alias, presentation, target.deployment());
     }
 
     @Nullable

@@ -182,7 +182,7 @@ class AliasPlatformApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void platformAliasWithoutUserRolesTakesTheTargetRoles() {
+    void platformAliasWithoutUserRolesIsOpenToAnyone() {
         assertEquals(200, putAlias("open-v1", "{\"target\":{\"path\":\"models/gpt-4-internal\"}}").status());
         reload();
 
@@ -191,11 +191,10 @@ class AliasPlatformApiTest extends ResourceBaseTest {
                     "Content-Type", "application/json");
 
             // gpt-4-internal is for power-user only
-            assertEquals(403, chat("open-v1", "default-key").status());
+            assertEquals(200, chat("open-v1", "default-key").status());
             assertEquals(200, chat("open-v1", "power-key").status());
         }
-        assertTrue(ids(models("power-key")).contains("open-v1"));
-        assertFalse(ids(models("default-key")).contains("open-v1"));
+        assertTrue(ids(models("default-key")).contains("open-v1"));
     }
 
     @Test
@@ -203,7 +202,7 @@ class AliasPlatformApiTest extends ResourceBaseTest {
     void noUserRolesAliasTakesPlatformResourceTargetRoles() {
         verify(send(HttpMethod.PUT, "/v1/applications/platform/plt-app", null,
                 "{\"endpoint\": \"http://localhost:4848/plt-app/chat/completions\",\"userRoles\":[\"default-user\"]}", "authorization", "admin"), 200);
-        // no userRoles on the alias: the alias inherits access from the target's userRoles
+        // no userRoles on the alias over a platform resource: the resource's userRoles decide
         assertEquals(200, putAlias("open-plt-v1", "{\"target\":{\"path\":\"applications/platform/plt-app\"}}").status());
         reload();
 
@@ -215,6 +214,9 @@ class AliasPlatformApiTest extends ResourceBaseTest {
             // power-user has no role on the target application, so the alias is also denied
             assertEquals(403, chat("open-plt-v1", "power-key").status());
         }
+        // and listings agree with calls
+        assertTrue(ids(send(HttpMethod.GET, "/openai/applications", null, "", "api-key", "default-key")).contains("open-plt-v1"));
+        assertFalse(ids(send(HttpMethod.GET, "/openai/applications", null, "", "api-key", "power-key")).contains("open-plt-v1"));
     }
 
     @Test

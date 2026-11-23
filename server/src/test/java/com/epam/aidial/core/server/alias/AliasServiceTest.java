@@ -153,12 +153,15 @@ class AliasServiceTest {
     }
 
     @Test
-    void aliasWithoutUserRolesTakesTheConfigTargetRoles() {
+    void aliasWithoutUserRolesIsOpenOverConfigTarget() {
+        // gpt-4 is for power-user only
+        when(context.getUserRoles()).thenReturn(List.of("default-user"));
         Alias alias = alias(null, "models/gpt-4");
         assertEquals(Boolean.TRUE, service.hasConfigAccess(context, alias));
-        assertEquals(Set.of("power-user"), service.toView(context, alias).getUserRoles());
+        assertNull(service.toView(context, alias).getUserRoles());
+        assertInstanceOf(AliasPass.class, service.toPass(context, alias));
 
-        when(context.getUserRoles()).thenReturn(List.of("default-user"));
+        alias.setUserRoles(Set.of());
         assertEquals(Boolean.FALSE, service.hasConfigAccess(context, alias));
         HttpException forbidden = assertThrows(HttpException.class, () -> service.toPass(context, alias));
         assertEquals(HttpStatus.FORBIDDEN, forbidden.getStatus());

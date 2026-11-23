@@ -125,15 +125,9 @@ public class DeploymentServiceTest {
         assertEquals(application, deployment);
     }
 
-    /**
-     * The access {@link AliasService#hasConfigAccess} answers for an alias with {@code userRoles}; null, decided by the
-     * target, for one without.
-     */
+    // the real rule of AliasService#hasConfigAccess, which reads no state of the service
     private void stubConfigAccess() {
-        when(aliasService.hasConfigAccess(eq(context), any())).thenAnswer(call -> {
-            Alias alias = call.getArgument(1);
-            return alias.getUserRoles() == null ? null : alias.hasAccess(context.getUserRoles());
-        });
+        when(aliasService.hasConfigAccess(eq(context), any())).thenCallRealMethod();
     }
 
     @Test
