@@ -18,6 +18,8 @@ None: one more field, already resolved for the request; no extra pass, parse or 
 - `IdentityProvider.java:toExtractedClaims`, `IdentityProvider.java:extractStringClaim` - the project from
   `projectPath`, a string or null.
 - `ProxyContext.java:initExtractedClaims` - `userProject` from the claims, the starting caller's for a per-request key.
+- `EmbeddedProxyRequest.java` (`new Caller`) - the plugin's caller takes `ProxyContext.java:getProject`, the JWT
+  project first, then the key's; the deployment-origin delta states it, no code change.
 - `ApiKeyData.java:initFromContext` - a per-request key copies the starting caller's key and claims, one of them null.
 - `Proxy.java:authorizeRequest` - a plain key with a different `Authorization` is `400`; a per-request key wins over
   the header.
