@@ -2313,6 +2313,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+      parameters:
+      - name: softValidation
+        in: query
+        description: "false (the default) rejects an entity with an unresolved reference, a model's interceptor or a plugin's type; true accepts it, and a write records it as invalid until the reference resolves. Any other value answers 400."
+        required: false
+        schema:
+          type: boolean
   /v1/admin/config/file/aliases:
     get:
       tags:
@@ -3598,6 +3605,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+      parameters:
+      - name: softValidation
+        in: query
+        description: "false (the default) rejects an entity with an unresolved reference, a model's interceptor or a plugin's type; true accepts it, and a write records it as invalid until the reference resolves. Any other value answers 400."
+        required: false
+        schema:
+          type: boolean
   /v1/aliases/{bucket}/{path}:
     get:
       tags:
@@ -8901,6 +8915,12 @@ paths:
         required: false
         schema:
           type: string
+      - name: softValidation
+        in: query
+        description: "false (the default) rejects an entity with an unresolved reference, a model's interceptor or a plugin's type; true accepts it, and a write records it as invalid until the reference resolves. Any other value answers 400."
+        required: false
+        schema:
+          type: boolean
       requestBody:
         content:
           application/json:
@@ -12375,6 +12395,12 @@ paths:
         required: false
         schema:
           type: string
+      - name: softValidation
+        in: query
+        description: "false (the default) rejects an entity with an unresolved reference, a model's interceptor or a plugin's type; true accepts it, and a write records it as invalid until the reference resolves. Any other value answers 400."
+        required: false
+        schema:
+          type: boolean
       requestBody:
         content:
           application/json:
