@@ -28,7 +28,7 @@ key": `testCallerWithApiKey`. "Caller with a JWT": `testCallerWithJwt`. "Caller 
   value); the user-info sentence in `docs/dynamic-settings/routers.md` (`project` also for a JWT whose provider
   resolves one); the caller in `docs/dynamic-settings/plugins.md` "Origin plugins" (the project is the API
   key's, or the one the JWT's provider resolves). Verify each against the two spec deltas.
-- [ ] 1.4 `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
+- [x] 1.4 `./gradlew checkstyleMain checkstyleTest` and `./gradlew :server:test --tests
   "com.epam.aidial.core.server.UserInfoApiTest" --tests "com.epam.aidial.core.server.RouterApiTest" --tests
   "com.epam.aidial.core.server.EmbeddedCallApiTest"` pass (`RouterApiTest` reads user info through a router's key),
   and `npx -y @fission-ai/openspec@1.14.3 validate

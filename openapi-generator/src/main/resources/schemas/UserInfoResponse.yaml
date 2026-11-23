@@ -7,7 +7,7 @@ properties:
         type: string
     project:
       type: string
-      description: The caller's project. For API key authentication it is the key's project; for user-based session authentication it is resolved from the identity provider's configured projectPath claim path. Absent when the token has no project.
+      description: The caller's project. For API key authentication it is the key's project. For user-based session authentication it is present only when the identity provider's configured projectPath resolves a string claim.
     userClaims:
       type: object
       description: Normalized token claims. Present only for user-based session authentication.

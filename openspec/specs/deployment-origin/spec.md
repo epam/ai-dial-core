@@ -405,7 +405,9 @@ answers of its calls that are still open, and SHALL answer a call made after tha
 
 ### Requirement: Caller in the plugin request
 With each request Core SHALL hand an origin plugin the caller's identity: the user id of a caller with a JWT, the
-project of a caller with an API key, and the caller's roles.
+caller's project, and the caller's roles. The project SHALL be the key's project for a caller with an API key, and for
+a caller with a JWT the project its identity provider's `projectPath` resolved from the token, none when it resolved
+none.
 
 #### Scenario: Caller with an API key
 - **WHEN** a client with API key `proxyKey1` (project `EPM-RTC-GPT`, role `default`) sends a chat completion to an
@@ -413,8 +415,12 @@ project of a caller with an API key, and the caller's roles.
 - **THEN** `p1` receives project `EPM-RTC-GPT`, roles `["default"]` and no user id
 
 #### Scenario: Caller with a JWT
-- **WHEN** a client authenticated by a JWT sends the same request
-- **THEN** `p1` receives the token's user id and the roles it grants
+- **WHEN** a client authenticated by a JWT without a project sends the same request
+- **THEN** `p1` receives the token's user id and the roles it grants, and no project
+
+#### Scenario: Caller with a JWT that carries a project
+- **WHEN** a client whose token carries user id `user`, role `user` and project `projA` sends the same request
+- **THEN** `p1` receives user id `user`, roles `["user"]` and project `projA`
 
 ### Requirement: Client gone before the plugin answers
 When the client of a pass that an origin plugin serves goes away before the plugin answers, Core SHALL tell the plugin
