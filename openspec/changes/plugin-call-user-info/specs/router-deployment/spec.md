@@ -16,8 +16,8 @@ request carries no key, so calls made while answering it SHALL be answered `401`
 #### Scenario: Plugin reads the caller while deciding
 - **WHEN** a client with API key `proxyKey1` (project `EPM-RTC-GPT`, role `default`) calls `r1`, and `p1`, on receiving
   the decide request, calls `GET /v1/user/info` through its host and then answers `{"candidates": ["m1"]}`
-- **THEN** the call's answer is `200` with `project: "EPM-RTC-GPT"` and `roles: ["default"]`, and the client receives
-  `m1`'s answer
+- **THEN** the call's answer is `200` `{"roles":["default"],"project":"EPM-RTC-GPT","userDisplayName":"EPM-RTC-GPT"}`,
+  and the client receives `m1`'s answer
 
 #### Scenario: Call after the decision
 - **WHEN** `p1` keeps its host and calls `POST /openai/deployments/m2/chat/completions` after its answer was read

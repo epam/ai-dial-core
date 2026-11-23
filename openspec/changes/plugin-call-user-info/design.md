@@ -55,36 +55,42 @@ sources compile, unchanged.
 - **Rejected: a second record or interface method for a `GET`** - two ways to make a call that differ only in the
   method.
 
-### D2. The host serves a list of method and route pairs; `GET /v1/user/info` is the one new pair
+### D2. The host serves `GET` on the user info route besides `POST` on the create routes
 
-The host checks a call against a list of method and route pairs: `POST` on the five create routes, as today, and
-`GET` on the user info route. Any other call fails before a pass starts. A read route a plugin needs later (file
-reads, file metadata, limits) is one more pair and a test: the in-process answer already streams with backpressure,
-reset and cancel, which a file download's pipe needs. A JSON write or an upload needs more, because the in-process
-request has no body bytes and no multipart.
+The host checks the call's method, then its path: `POST` reaches the five create routes, as today, and `GET` the user
+info route. Any other call fails before a pass starts. A read route a plugin needs later (file reads, file metadata,
+limits) is one more path for `GET` and a test: the in-process answer already streams with backpressure, reset and
+cancel, which a file download's pipe needs. A JSON write or an upload needs more, because the in-process request has
+no body bytes and no multipart.
 
 The alias hop asks the host whether a path is a create route, to decide whether an alias pass goes in process. That
-question keeps its meaning: create routes only, whatever the list holds.
+question keeps its meaning: create routes only.
 
 - **Rejected: every route Core serves** - each controller would run on a request it was never tested on, and a
   member of the in-memory request that throws would turn into a `500` for the plugin.
 - **Rejected: `GET` on every route** - the same risk for the read controllers, with no consumer today.
+- **Rejected: a table of method and route pairs** - each method has rules of its own (a body and the background rule
+  for `POST`, no body for `GET`) that a table does not hold; with one `GET` route a condition is shorter.
 
-### D3. A pass the host serves is marked as a child pass by a flag, not by its body tree
+### D3. A pass is a child pass when its request is the in-memory one, not when it has a body tree
 
 A `GET` call has no tree, so with today's test its pass would count as one with a server span of its own:
 `Proxy.dispatch` writes the pass's conversation id and parent span on the current span, which is the plugin's server
-span, and the log layout enriches that span with the user info pass's log fields. The host sets the mark on every
-pass it starts. The two readers that mean "a pass with a tree but no bytes" (the decision router's stand-in body and
-the empty-body read of a router pass) check for the tree as well, as they do today.
+span, and the log layout enriches that span with the user info pass's log fields. Only the host creates the in-memory
+request, one for each pass it serves (a call, or an alias's target pass), so every pass that counts as a child today
+still does, and a `GET` pass does too, with no step the host has to remember. The decision router's in-process call
+checks for the tree itself, as today. The router pass's empty-body read serializes the tree without checking for it,
+but only a create operation's pass reaches it, and that pass always has one.
 
 - **Rejected: an empty tree for a `GET`** - those two readers would take it for a body.
+- **Rejected: a flag the host sets on each pass it starts** - a field and a step to keep in step with the request
+  the host creates, which already marks the pass.
 
-### D4. A `GET` call with a body is refused
+### D4. A call without a method, or a `GET` with a body, is refused
 
 `Call.body` is the tree a `POST` hands over. A `GET` that carries one would have it dropped without a word, and a
-plugin bug (a `GET` built where a `POST` was meant) would show as a wrong answer instead of a failed call. The call
-fails, as a call to a route outside the list does.
+plugin bug (a `GET` built where a `POST` was meant) would show as a wrong answer instead of a failed call. A call
+without a method fails as one without a path does today.
 
 - **Rejected: ignoring the body** - hides the bug.
 
@@ -94,6 +100,11 @@ The call carries the key a `POST` call carries: the plugin's pass key, or the de
 request, so the answer describes the client's caller, as the HTTP read with that key does. The depth check runs for
 every call, so a `GET` from a plugin 32 deployments deep gets `400`, as that plugin's `POST` calls do. After the
 request has ended, and while answering a notice, the call gets `401`.
+
+The checks keep today's order. The call's own fields come first (a path, a method, a body for `POST` and none for
+`GET`) and fail the call even after the request has ended. Then a closed host answers `401`. Then come the method and
+route, the background rule and the depth. So a `GET` of another path after the end is answered `401`, as a `POST`
+outside the create operations is today.
 
 - **Rejected: no depth check for a `GET`** - an extra branch for a plugin whose other calls fail at that depth
   anyway; a `GET` of user info starts no further pass, so it cannot loop.
@@ -151,8 +162,11 @@ On `development` (4a2aecb0d).
 Plugin API (`aidial-core-plugin-api`):
 
 - `Call.java`: the record and its javadoc, which lists the create operations.
-- `HostDelegate.java:call`: the javadoc says `GET /v1/user/info` and file reads go to Core over HTTP.
+- `HostDelegate.java:call`: the javadoc says Core checks, limits, charges and logs a call, lists the failures, and
+  says `GET /v1/user/info` and file reads go to Core over HTTP.
 - `Request.java`: the method comes first there.
+- Three-argument callers that stay unchanged: `ProxyClient.java:FORWARD` (the alias hop),
+  `ForwardOriginPluginProvider.java` (the `forward` sample), the tests.
 
 The host and the in-process request (D1, D2, D4, D5):
 
@@ -163,8 +177,8 @@ The host and the in-process request (D1, D2, D4, D5):
 - `VertxHostDelegate.java:servesCall` is also read by `BaseDeploymentPostController.java:isInProcessAliasHop`; it keeps
   meaning the create routes (D2).
 - `VertxHostDelegate.java:forRouter`: the decide request's key, and a host closed from the start for a notice.
-- `EmbeddedServerRequest.java`: `method()` answers `POST`, and the constructor sets `Content-Type: application/json`
-  and drops `DROPPED_HEADERS`.
+- `EmbeddedServerRequest.java`: the class javadoc (a `POST`; members no create controller uses throw), `method()`
+  answers `POST`, and the constructor sets `Content-Type: application/json` and drops `DROPPED_HEADERS`.
 - `EmbeddedServerResponse.java`: the answer side, unchanged.
 
 The user info pass:
@@ -178,17 +192,23 @@ The user info pass:
 
 The child-pass mark (D3):
 
-- `ProxyContext.java:isChildPass`, `setCallTree`, `getCallTree`, `isAliasTargetPass`.
+- `ProxyContext.java:isChildPass` (`callTree != null` today), `getRequest`, `setCallTree`, `getCallTree`,
+  `isAliasTargetPass`. `VertxHostDelegate.java:call` is the only place that creates an `EmbeddedServerRequest` and
+  calls `setCallTree`.
 - Readers: `GenAiTraceAttributes.java:set`, `AutoEnrichedOtelJsonLayout.java:buildEnrichedOtelLogRecord`,
-  `VertxHostDelegate.java:writesOnAliasSpan`, `DeploymentPostController.java:readRequestBody`,
-  `RouterDecisionFlow.java:inProcessCall`.
+  `VertxHostDelegate.java:writesOnAliasSpan`, `DeploymentPostController.java:readRequestBody` (no tree check),
+  `RouterDecisionFlow.java:inProcessCall` (checks the tree).
 
 Tests to extend:
 
 - `EmbeddedCallApiTest` (`testCallOutsideTheCreateOperations`, `testCallAfterThePluginsPassEnded`,
-  `testCallerWithApiKey`, `testCallerWithJwt` show the patterns), `EmbeddedDecisionApiTest`.
+  `testCallerWithApiKey`, `testCallerWithJwt` show the patterns), `EmbeddedDecisionApiTest`; `UserInfoApiTest` has
+  the HTTP answers the scenarios pin.
+- Tests that mark a child pass by `setCallTree` alone or assume a `POST`: `ProxyContextTest`
+  (`testCallTreeUntilTheBodyIsSet`), `GenAiTraceAttributesTest` (`childContext`), `EmbeddedServerRequestTest`.
 - `config/TestOriginPluginProvider.java`: `X-Test-Call`, `X-Test-Decide-Call`, `X-Test-Notice-Call`, and `HOSTS` for a
   call after the pass.
 
-Docs: `docs/dynamic-settings/plugins.md` ("Calling another deployment"; "Deciding for a router", "The key"),
-`docs/tracing.md` ("Calls from an origin plugin").
+Docs: `docs/dynamic-settings/plugins.md` ("Calling another deployment"; "Translating for a deployment",
+"Responses"; "Deciding for a router", "The key"; "The forward sample"), `docs/dynamic-settings/routers.md` (the
+plugin paragraph of "Decision mode"), `docs/tracing.md` ("Calls from an origin plugin").

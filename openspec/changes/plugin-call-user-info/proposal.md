@@ -20,8 +20,8 @@ through `HostDelegate` is always a `POST` to a create operation (issue #2346).
   built against today's plugin API compile and run unchanged.
 - The rules of every call apply: `401` once the plugin's request has ended, `401` while answering a router's notice,
   and the depth limit of 32.
-- Refused as a call outside the create operations is today (the call fails): a `GET` of any other path, any method
-  other than `POST` and `GET`, and a `GET` with a body.
+- Refused as a call outside the create operations is today (the call fails): a call without a method, a `GET` of any
+  other path, any method other than `POST` and `GET`, and a `GET` with a body.
 
 Out of scope:
 
@@ -50,11 +50,14 @@ None.
   `/v1/user/info`, the one route a plugin needs today. Left out: other methods and routes (see Out of scope). The
   consumer is epam/ai-dial-model-provider-plugin PR #2, which is blocked by the issue.
 - Code: `aidial-core-plugin-api` (`Call`, and the javadoc of `Call` and `HostDelegate`); `server` (`VertxHostDelegate`,
-  `EmbeddedServerRequest`, the child-pass mark in `ProxyContext`). The published plugin API gains a record
+  `EmbeddedServerRequest`, `ProxyContext.isChildPass`). The published plugin API gains a record
   component; the kept constructor and accessors keep plugin jars built against the old API working.
 - Records, per plugin request that reads the user info through the host instead of over HTTP: one HTTP request into
   Core fewer, one Redis GET fewer (the per-request key lookup) and one OTel server span fewer. Neither way writes an
   analytics row.
-- Docs: `docs/dynamic-settings/plugins.md` (what a call reaches; the decide key paragraph, which says user info goes
-  over HTTP) and `docs/tracing.md` (calls from an origin plugin).
+- Docs: `docs/dynamic-settings/plugins.md` (calling another deployment; the decide key paragraph, which says user info
+  goes over HTTP), `docs/dynamic-settings/routers.md` (a decision plugin's calls) and `docs/tracing.md` (calls from an
+  origin plugin).
 - Dependencies: none.
+- Supersedes: embedded-call D1 (a call's `uri` is the path of a create operation; a `GET` call's is the user info
+  route).
