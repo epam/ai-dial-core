@@ -365,8 +365,8 @@ public class ProxyContext {
 
     /**
      * Returns the data of the caller's per request key as the Redis master holds it, or null if there is nothing to
-     * read: the caller has another kind of key, the key is gone, or the pass is served in process and has the key
-     * from memory. The request is authenticated with a copy that may come from a replica.
+     * read: the caller has another kind of key, the key is gone, the master cannot be read, or the pass is served in
+     * process and has the key from memory. The request is authenticated with a copy that may come from a replica.
      *
      * <p>
      *     The read is blocking, so on an event-loop thread the method reads nothing and returns null.

@@ -21,6 +21,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.RedisException;
 import org.redisson.client.codec.StringCodec;
 
 import java.time.Duration;
@@ -147,7 +148,7 @@ public class ApiKeyStore {
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
             String json = bucket.get();
             if (json == null) {
-                json = blockingCallTracer.trace("auth.api_key.lookup_master", () -> readOnMaster(redisKey));
+                json = readOnMasterIfReachable(redisKey);
             }
             return ProxyUtil.convertToObject(json, ApiKeyData.class);
         })).compose(result -> {
@@ -159,14 +160,24 @@ public class ApiKeyStore {
     }
 
     /**
-     * Returns the data of a per request key as the Redis master holds it, or null if it is not there. Blocking.
+     * Returns the data of a per request key as the Redis master holds it, or null if it is not there or the master
+     * cannot be read. Blocking.
      */
     public ApiKeyData getPerRequestKeyDataOnMaster(String perRequestKey) {
-        return blockingCallTracer.trace("auth.api_key.lookup_master", () -> readDataOnMaster(perRequestKey));
+        return ProxyUtil.convertToObject(readOnMasterIfReachable(toRedisKey(perRequestKey)), ApiKeyData.class);
     }
 
-    private ApiKeyData readDataOnMaster(String perRequestKey) {
-        return ProxyUtil.convertToObject(readOnMaster(toRedisKey(perRequestKey)), ApiKeyData.class);
+    /**
+     * Reads the key from the Redis master, or returns null if the master cannot be read. The read only repairs an
+     * answer a replica gave, so a failed read leaves that answer as it was instead of failing the request.
+     */
+    private String readOnMasterIfReachable(String redisKey) {
+        try {
+            return blockingCallTracer.trace("auth.api_key.lookup_master", () -> readOnMaster(redisKey));
+        } catch (RedisException e) {
+            log.warn("Can't read a per request key on the Redis master, the replica's answer stands: {}", e.toString());
+            return null;
+        }
     }
 
     /**

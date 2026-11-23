@@ -25,7 +25,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
 import org.redisson.api.RBucket;
 import org.redisson.api.RKeys;
+import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.RedisTimeoutException;
 import org.redisson.client.codec.Codec;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.config.ConfigSupport;
@@ -379,6 +381,25 @@ public class ApiKeyStoreTest {
         Future<ApiKeyData> unknown = laggingStore.getApiKeyData(ApiKeyGenerator.generateKey(), null);
         assertTrue(unknown.failed());
         assertEquals(HttpStatus.UNAUTHORIZED, ((HttpException) unknown.cause()).getStatus());
+    }
+
+    @Test
+    public void testMasterReadFailureKeepsReplicaAnswer() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        RedissonClient unreachableMaster = mock(RedissonClient.class);
+        when(unreachableMaster.getBucket(any(), any())).thenReturn(mock(RBucket.class));
+        when(unreachableMaster.getScript(StringCodec.INSTANCE)).thenReturn(mock(RScript.class, invocation -> {
+            throw new RedisTimeoutException("master timed out");
+        }));
+        ApiKeyStore unreachableStore = new ApiKeyStore(taskExecutor, unreachableMaster, null, new JsonObject(), BlockingCallTracer.NOOP);
+
+        Future<ApiKeyData> unknown = unreachableStore.getApiKeyData(ApiKeyGenerator.generateKey(), null);
+        assertTrue(unknown.failed());
+        assertEquals(HttpStatus.UNAUTHORIZED, ((HttpException) unknown.cause()).getStatus());
+        assertNull(unreachableStore.getPerRequestKeyDataOnMaster(ApiKeyGenerator.generateKey()));
     }
 
     @Test
