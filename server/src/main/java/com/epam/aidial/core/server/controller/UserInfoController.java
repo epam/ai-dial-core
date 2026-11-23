@@ -44,6 +44,9 @@ public class UserInfoController implements Controller {
             response.put("userId", context.getExtractedClaims().userId());
             ObjectNode claims = normalize(context.getExtractedClaims().userClaims());
             response.put("userClaims", claims);
+            if (context.getUserProject() != null) {
+                response.put("project", context.getUserProject());
+            }
         }
         String userDisplayName = context.getUserDisplayName();
         if (userDisplayName != null) {

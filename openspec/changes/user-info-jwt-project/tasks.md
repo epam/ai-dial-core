@@ -11,16 +11,16 @@ key": `testCallerWithApiKey`. "Caller with a JWT": `testCallerWithJwt`. "Caller 
 
 ## 1. JWT project in user info
 
-- [ ] 1.1 Tests first, in `UserInfoApiTest`: `testJwtUserInfoWithProject` (`Authorization: user@projA`, asserts the
+- [x] 1.1 Tests first, in `UserInfoApiTest`: `testJwtUserInfoWithProject` (`Authorization: user@projA`, asserts the
   whole answer) and `testPerRequestKeyOfJwtCallerWithProject` (an `ApiKeyData` with
   `createClaims("user", "projA")` assigned through `apiKeyStore.assignPerRequestApiKey`, sent as `api-key`; asserts
   `project` and `userId`). The three existing tests stay as they are. Verify both new tests fail before 1.2. In
   `EmbeddedCallApiTest`: `testCallerWithJwt` also asserts no project, and `testCallerWithJwtProject`
   (`Authorization: user@projA`) asserts user id `user`, roles `["user"]` and project `projA`; both pass already (the
   plugin's caller has the JWT project today).
-- [ ] 1.2 `UserInfoController.java:handle`: in the JWT branch put `project` from `context.getUserProject()` when it is
+- [x] 1.2 `UserInfoController.java:handle`: in the JWT branch put `project` from `context.getUserProject()` when it is
   not null (design, Code map). Verify with 1.4.
-- [ ] 1.3 Docs, so they say that a JWT user has a project too: the `UserInfoResponse.project` description in
+- [x] 1.3 Docs, so they say that a JWT user has a project too: the `UserInfoResponse.project` description in
   `docs/open_api_core.yaml` (present for an API key, and for a JWT when the identity provider's `projectPath` resolves
   one; `SpecMerger` keeps descriptions from the committed file, as #1738 did for `userId`); the
   `identityProviders.*.projectPath` row in `README.md` (the JWT user's project: the analytics `project.id`, the budget

@@ -595,6 +595,20 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         Caller caller = TestOriginPluginProvider.REQUESTS.get(0).caller();
         assertEquals("user", caller.userId());
         assertEquals(List.of("user"), caller.roles());
+        assertNull(caller.project());
+    }
+
+    @Test
+    void testCallerWithJwtProject() {
+        servedApp();
+
+        verify(send(HttpMethod.POST, "/openai/deployments/app/chat/completions", null, CHAT_BODY,
+                "content-type", "application/json", "authorization", "user@projA"), 200);
+
+        Caller caller = TestOriginPluginProvider.REQUESTS.get(0).caller();
+        assertEquals("user", caller.userId());
+        assertEquals(List.of("user"), caller.roles());
+        assertEquals("projA", caller.project());
     }
 
     @BeforeEach
