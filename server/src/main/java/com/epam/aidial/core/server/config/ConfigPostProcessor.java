@@ -33,6 +33,7 @@ import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.server.alias.AliasTargets;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.ExternalServiceValidation;
 import com.epam.aidial.core.server.service.OrgUnitRoles;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.PathTemplateUtil;
@@ -845,7 +846,9 @@ public final class ConfigPostProcessor {
                 continue;
             }
             try {
-                validator.validate(authSettings, ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES);
+                ExternalServiceValidation.validate(serviceId, service);
+                // The PKCE verifier is state Core generated on write, not input, and the validators forbid it.
+                validator.validate(authSettings.toBuilder().codeVerifier(null).build(), ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES);
             } catch (RuntimeException e) {
                 log.error("Dropping external service '{}' on application '{}': invalid auth_settings: {}",
                         serviceId, application.getName(), e.getMessage());
