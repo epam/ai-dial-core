@@ -97,6 +97,30 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         assertTrue(traceparent.contains(traceId), traceparent + " / " + traceId);
     }
 
+    // deployment-origin "Body sent to the origin": a plugin's call has a tree, which the plugin may have changed, and
+    // no bytes, so Core serializes it
+
+    @Test
+    void testCallBodyIsTheTreeSerialized() {
+        servedApp();
+        verify(adminPut("/v1/models/platform/m3", """
+                {"type": "chat", "endpoint": "http://localhost:4870/openai/deployments/m3/chat/completions"}
+                """), 200);
+        AtomicReference<String> seen = new AtomicReference<>();
+
+        try (TestWebServer server = new TestWebServer(4870)) {
+            server.map(HttpMethod.POST, "/openai/deployments/m3/chat/completions", request -> {
+                seen.set(request.getBody().readUtf8());
+                return TestWebServer.createResponse(200, CHAT_ANSWER, "content-type", "application/json");
+            });
+
+            verify(chat("/openai/deployments/app/chat/completions", "{ \"messages\" : [{\"role\": \"user\", \"content\": \"hi\"}] }",
+                    "X-Test-Call", "/openai/deployments/m3/chat/completions"), 200);
+        }
+
+        assertEquals("{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}", seen.get());
+    }
+
     @Test
     void testUnknownTarget() {
         servedApp();

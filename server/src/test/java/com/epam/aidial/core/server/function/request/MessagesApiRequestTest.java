@@ -200,6 +200,18 @@ class MessagesApiRequestTest {
     }
 
     @Test
+    void testBuildCacheKeys_leavesTreeUnchanged() throws JsonProcessingException {
+        String body = """
+                {"messages": [{"role": "user", "content": [{"type": "text", "text": "hi", "a": [{"z": 1, "b": 2}]}]}]}
+                """;
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
+
+        new MessagesApiRequest(tree).buildCacheKeys(NODE_ORDER);
+
+        assertEquals(ProxyUtil.MAPPER.readTree(body).toString(), tree.toString());
+    }
+
+    @Test
     void testBuildCacheKeys_stringContentMatchesTextBlock() throws JsonProcessingException {
         String stringContent = """
                 {

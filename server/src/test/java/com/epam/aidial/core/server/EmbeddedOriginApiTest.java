@@ -21,6 +21,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -330,6 +331,32 @@ public class EmbeddedOriginApiTest extends ResourceBaseTest {
 
         assertEquals(List.of("/anthropic/v1/messages", "/anthropic/v1/messages/count_tokens"),
                 TestOriginPluginProvider.REQUESTS.stream().map(Request::uri).toList());
+    }
+
+    // deployment-origin "Body sent to the origin"
+
+    @Test
+    void testPluginGetsTheClientBytes() {
+        servedApp("openaiChatCompletions");
+        String body = "{ \"messages\" : [{\"role\": \"user\", \"content\": \"Привет 😀\"}] }";
+
+        verify(chat("/openai/deployments/app/chat/completions", body), 200);
+
+        assertEquals(body, onlyRequest().body().toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testPluginBehindAnAliasGetsTheClientBytesWithTheModelReplaced() {
+        plugin("p1", "{}");
+        verify(adminPut("/v1/models/platform/" + MODEL, """
+                {"type": "chat", "interfaces": {"openaiChatCompletions": {"base_url": "dial-plugin://p1"}}}
+                """), 200);
+        verify(adminPut("/v1/aliases/public/plugin-alias", "{\"target\": {\"path\": \"models/" + MODEL + "\"}}"), 200);
+        String body = "{ \"model\" : \"aliases/public/plugin-alias\",\n \"messages\": [{\"role\": \"user\", \"content\": \"Привет 😀\"}] }";
+
+        verify(chat("/openai/v1/chat/completions", body), 200);
+
+        assertEquals(body.replace("\"aliases/public/plugin-alias\"", "\"" + MODEL + "\""), onlyRequest().body().toString(StandardCharsets.UTF_8));
     }
 
     @Test

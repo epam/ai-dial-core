@@ -8,6 +8,7 @@ import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -74,14 +75,14 @@ class EmbeddedProxyRequestTest {
     @BeforeEach
     void recordAttempts() {
         doAnswer(invocation -> attempts.add(invocation.getArgument(0))).when(pass).addHostDelegate(any());
-        // the tree the chain parsed, as a first attempt finds it
-        when(pass.getRequestTree()).thenReturn(ProxyUtil.MAPPER.createObjectNode());
+        // the body the chain made, as a first attempt finds it
+        when(pass.getPluginBody()).thenReturn(ReceivedBody.of(ProxyUtil.MAPPER.createObjectNode()));
     }
 
     @Test
     void testRetriedAttemptParsesTheBodyOffTheEventLoop() throws Exception {
         // an earlier attempt took the chain's tree
-        when(pass.getRequestTree()).thenReturn(null);
+        when(pass.getPluginBody()).thenReturn(null);
         Proxy proxy = mock(Proxy.class);
         when(proxy.getTaskExecutor()).thenReturn(new AsyncTaskExecutor(vertx, new JsonObject()));
         when(pass.getProxy()).thenReturn(proxy);
@@ -235,8 +236,8 @@ class EmbeddedProxyRequestTest {
 
         assertSame(tree, seen.get().bodyTree());
         assertEquals("/decide", seen.get().uri());
-        verify(pass, never()).getRequestTree();
-        verify(pass, never()).setRequestTree(any());
+        verify(pass, never()).getPluginBody();
+        verify(pass, never()).setPluginBody(any());
     }
 
     @Test

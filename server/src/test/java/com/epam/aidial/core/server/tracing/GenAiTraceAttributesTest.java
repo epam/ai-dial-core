@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
@@ -541,7 +542,7 @@ class GenAiTraceAttributesTest {
 
     private static ProxyContext childContext(boolean aliasTarget) {
         ProxyContext context = context(proxy(enabledSettings()));
-        context.setCallTree(ProxyUtil.MAPPER.createObjectNode());
+        context.setCallBody(ReceivedBody.of(ProxyUtil.MAPPER.createObjectNode()));
         context.setAliasTargetPass(aliasTarget);
         return context;
     }

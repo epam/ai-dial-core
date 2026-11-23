@@ -18,8 +18,8 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 
@@ -75,56 +75,28 @@ public class JsonUtil {
         }
     }
 
-    public void applyDefault(ObjectNode object, String key, JsonNode defaultValue) {
-        object.set(key, copy(object.get(key), defaultValue));
-    }
-
     /**
-     * Copies default values to the target node from the source.
-     * The default value is copied from the source to the target if it's missed in the target node.
+     * Copies the default value to the object under the key if it's missed there; objects are merged recursively.
      *
      * <p>
      *     Note. Arrays are not copied.
      * </p>
+     *
+     * @return whether the object changed
      */
-    private JsonNode copy(JsonNode target, JsonNode source) {
-        if (target == null || target.isNull()) {
-            return source;
-        }
-        if (source == null || source.isNull()) {
-            return target;
-        }
-        if (target.getNodeType() != source.getNodeType()) {
-            return source;
-        }
-        if (source.isObject()) {
-            return copyObjects((ObjectNode) target, (ObjectNode) source);
-        }
-        return target;
-    }
-
-    private ObjectNode copyObjects(ObjectNode target, ObjectNode source) {
-        for (Map.Entry<String, JsonNode> entry : source.properties()) {
-            String name = entry.getKey();
-            target.set(name, copy(target.get(name), entry.getValue()));
-        }
-        return target;
-    }
-
-    public JsonNode sort(JsonNode node) {
-        if (node.isArray()) {
-            ArrayNode arrayNode = (ArrayNode) node;
-            for (int i = 0; i < node.size(); i++) {
-                arrayNode.set(i, sort(arrayNode.get(i)));
+    public boolean applyDefault(ObjectNode object, String key, JsonNode defaultValue) {
+        JsonNode target = object.get(key);
+        if (target != null && target.isObject() && defaultValue != null && defaultValue.isObject()) {
+            boolean changed = false;
+            for (Map.Entry<String, JsonNode> entry : defaultValue.properties()) {
+                changed |= applyDefault((ObjectNode) target, entry.getKey(), entry.getValue());
             }
-        } else if (node.isObject()) {
-            ObjectNode result = new ObjectNode(ProxyUtil.MAPPER.getNodeFactory(), new TreeMap<>());
-            for (Map.Entry<String, JsonNode> entry : node.properties()) {
-                result.set(entry.getKey(), sort(entry.getValue()));
-            }
-            node = result;
+            return changed;
         }
-        return node;
+        boolean keepTarget = target != null && !target.isNull()
+                && (defaultValue == null || defaultValue.isNull() || target.getNodeType() == defaultValue.getNodeType());
+        object.set(key, keepTarget ? target : defaultValue);
+        return !Objects.equals(target, object.get(key));
     }
 
     public JsonNode tryParse(String data) {

@@ -49,7 +49,7 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
 
     @Override
     protected RequestObject parseRequest(Buffer body) throws IOException {
-        return pathMapping == null ? new ResponsesApiRequest(parseObject(body)) : null;
+        return pathMapping == null ? new ResponsesApiRequest(parseBody(body)) : null;
     }
 
     // an interceptor speaks the DIAL Responses API, so an item hop renders {id} with the dial response id

@@ -96,6 +96,68 @@ class AliasInProcessApiTest extends ResourceBaseTest {
         assertEquals(1, received.size());
     }
 
+    // deployment-origin "Body sent to the origin"
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void aliasTargetGetsTheClientBytesWithTheModelReplaced() {
+        // spacing, an escape and multi-byte text: any re-serialization would change these bytes
+        String body = "{ \"model\" : \"assistant\",\n  \"messages\": [{\"role\": \"user\", \"content\": \"Привет 😀 \\u00e9\"}] }";
+        Response response;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", request -> {
+                received.add(request);
+                return TestWebServer.createResponse(200, CHAT_RESPONSE, "Content-Type", "application/json");
+            });
+            response = send(HttpMethod.POST, "/openai/v1/chat/completions", null, body,
+                    "api-key", "default-key", "Content-Type", "application/json");
+        }
+        verify(response, 200);
+        assertEquals(1, received.size());
+        assertEquals(body.replace("\"assistant\"", "\"gpt-4-internal\""), received.get(0).getBody().readUtf8());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void aliasTargetGetsTheBodySerializedAfterChangesOnTheWay() {
+        // the alias pass removes the interceptor configuration, so the client's bytes no longer hold the body
+        String body = "{ \"model\" : \"assistant\", \"messages\": [{\"role\": \"user\", \"content\": \"hi\"}],"
+                + " \"custom_fields\": {\"interceptor_configuration\": {\"secret\": 1}} }";
+        Response response;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", request -> {
+                received.add(request);
+                return TestWebServer.createResponse(200, CHAT_RESPONSE, "Content-Type", "application/json");
+            });
+            response = send(HttpMethod.POST, "/openai/v1/chat/completions", null, body,
+                    "api-key", "default-key", "Content-Type", "application/json");
+        }
+        verify(response, 200);
+        assertEquals(1, received.size());
+        assertEquals("{\"model\":\"gpt-4-internal\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                received.get(0).getBody().readUtf8());
+    }
+
+    @Test
+    @DialConfigLocation(ROUTER_CONFIG)
+    void routerCandidateBehindAnAliasGetsTheClientBytesWithTheModelReplaced() {
+        // alias -> router in decision mode -> alias candidate -> model, every hop in process
+        String body = "{\"model\": \"strong\",\n \"max_tokens\": 16, \"messages\": [{\"role\": \"user\", \"content\": \"😀 hi\"}]}";
+        Response response;
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/decide", 200, "{\"candidates\": [\"alias-m1\"]}", "Content-Type", "application/json");
+            server.map(HttpMethod.POST, "/anthropic/v1/messages", request -> {
+                received.add(request);
+                return TestWebServer.createResponse(200, MESSAGES_BODY, "Content-Type", "application/json");
+            });
+            response = send(HttpMethod.POST, "/anthropic/v1/messages", null, body,
+                    "api-key", "proxyKey1", "Content-Type", "application/json");
+        }
+        verify(response, 200);
+        assertEquals(1, received.size());
+        assertEquals(body.replace("\"strong\"", "\"m1\""), received.get(0).getBody().readUtf8());
+    }
+
     @Test
     @DialConfigLocation(CONFIG)
     void requestsThatStayOnHttp() {

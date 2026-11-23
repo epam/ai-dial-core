@@ -3,9 +3,11 @@ package com.epam.aidial.core.server.function.request;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -365,6 +367,32 @@ class ChatCompletionRequestTest {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, request::collectSkills);
 
         assertEquals("Missing url in skill attachment.", error.getMessage());
+    }
+
+    @Test
+    void testBuildCacheKeys_leavesTreeUnchanged() throws IOException {
+        // keys are computed on sorted properties without reordering the tree
+        String body = "{\"model\": \"m\", \"messages\": [{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"hi\"}]}]}";
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
+
+        new ChatCompletionRequest(tree).buildCacheKeys(List.of("prefix.body.messages"));
+
+        assertEquals(ProxyUtil.MAPPER.readTree(body).toString(), tree.toString());
+    }
+
+    @Test
+    void testBuildCacheKeys_hashesNonObjectMessage() throws Exception {
+        ChatCompletionRequest request = request("{\"messages\": [\"x\", {\"role\": \"user\"}]}");
+
+        List<CacheKey> keys = request.buildCacheKeys(List.of("prefix.body.messages"));
+
+        assertEquals(List.of("prefix.body.messages[0]", "prefix.body.messages[1]"), keys.stream().map(CacheKey::path).toList());
+        // the string message feeds the digest as it is, then the object message its values
+        CacheKeyBuilder expected = new CacheKeyBuilder();
+        expected.update(TextNode.valueOf("x"));
+        assertEquals(expected.buildKey("p", false).hash(), keys.get(0).hash());
+        expected.update(TextNode.valueOf("user"));
+        assertEquals(expected.buildKey("p", false).hash(), keys.get(1).hash());
     }
 
     private static ChatCompletionRequest request(String body) throws JsonProcessingException {

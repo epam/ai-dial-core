@@ -32,9 +32,10 @@ public class ProxyClient {
     private static final String PLATFORM_APPLICATIONS = "applications/" + ResourceDescriptor.PLATFORM_BUCKET + "/";
 
     /**
-     * Hands an alias pass's request on to its target, in process: the uri already names the target. It reads the
-     * body tree only; the request's {@code body} is the bytes the alias pass holds, which it does not serialize from the
-     * tree, so the two may differ.
+     * Hands an alias pass's request on to its target, in process: the uri already names the target. It passes the
+     * body tree only, for which its host gives the target pass the alias pass's whole body
+     * ({@link com.epam.aidial.core.server.proxy.embedded.VertxHostDelegate#forAliasHop}); the request's {@code body} is
+     * the bytes the alias pass holds, which it does not serialize from the tree, so the two may differ.
      */
     private static final Plugin FORWARD = (request, host) -> host.call(new Call(request.uri(), request.headers(), request.bodyTree()));
 
@@ -75,7 +76,7 @@ public class ProxyClient {
      * Creates the decide or notice request of a router in decision mode to {@code plugin}, which serves the router's
      * interface. Unlike {@link #embedded}: the context's deployment is not checked (it is the router, or at a redecide or
      * notice the candidate that failed); the attempt's calls carry {@code callKey}, the decide request's key, and are
-     * refused when it is null, as for a notice; the plugin gets {@code bodyTree} and not the context's request tree; the
+     * refused when it is null, as for a notice; the plugin gets {@code bodyTree} and not the context's plugin body; the
      * attempt does not watch the client; and it closes once the plugin's answer has been read or has failed.
      */
     public Future<ProxyRequest> embeddedForRouter(ProxyContext context, HttpMethod method, String absoluteUri, String plugin,

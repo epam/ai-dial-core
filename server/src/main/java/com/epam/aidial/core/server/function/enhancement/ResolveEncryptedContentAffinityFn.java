@@ -60,7 +60,7 @@ public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<Reque
             }
         }
         if (resolvedUpstreamId == null) {
-            return false;
+            return true;
         }
 
         boolean exists = model.getUpstreams().stream()
@@ -70,6 +70,7 @@ public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<Reque
             throw EncryptedContentAffinityUtil.upstreamUnavailableException(resolvedUpstreamId);
         }
         request.setEncryptedUpstreamId(resolvedUpstreamId);
-        return false;
+        // the unwrapped items changed the body
+        return true;
     }
 }

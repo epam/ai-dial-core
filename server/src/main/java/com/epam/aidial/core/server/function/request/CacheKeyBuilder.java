@@ -1,13 +1,15 @@
 package com.epam.aidial.core.server.function.request;
 
-import com.epam.aidial.core.server.util.JsonUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.SneakyThrows;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Shared rolling-hash builder for upstream cache keys, used by all {@link RequestObject} implementations.
@@ -15,22 +17,71 @@ import java.util.List;
  * single cumulative digest (so a change to an earlier node changes every later hash, matching how
  * providers cache the whole rendered prefix), and {@link #buildKey(String, boolean)} snapshots the
  * digest at that point without terminating it.
+ *
+ * <p>The digest is MD5, hex-encoded. The key only pins requests that share a prefix to one upstream, so it has to be
+ * stable, not secure: a collision sends a request to another upstream and loses affinity, nothing else.
  */
 public class CacheKeyBuilder {
+
+    // the canonical form's tags; with every string's length before it, two different trees never feed the same bytes
+    private static final byte OBJECT_START = '{';
+    private static final byte OBJECT_END = '}';
+    private static final byte ARRAY_START = '[';
+    private static final byte ARRAY_END = ']';
+    private static final byte STRING_TAG = '"';
+    private static final byte SCALAR_TAG = '#';
 
     private final MessageDigest digest;
 
     @SneakyThrows
     public CacheKeyBuilder() {
-        this.digest = MessageDigest.getInstance("SHA-1");
+        // not a security boundary: a collision costs affinity only. MD5 because HotSpot intrinsifies it on every x86-64
+        // and aarch64 CPU, while SHA-1 and SHA-256 run far slower over the whole prompt without the CPU SHA extensions
+        this.digest = MessageDigest.getInstance("MD5");
     }
 
     /**
-     * Canonicalizes (sorts object keys, recursively) and feeds the node into the rolling digest.
+     * Feeds the node into the rolling digest in a canonical form: object properties sorted by name, nested ones too,
+     * and every string as its UTF-8 bytes after their length. Equal JSON gives equal keys whatever its layout or property
+     * order. The node is left unchanged.
      */
     public void update(JsonNode node) {
-        JsonNode sorted = JsonUtil.sort(node);
-        digest.update(sorted.toString().getBytes(StandardCharsets.UTF_8));
+        // no JSON text: a generator escapes and encodes char by char, slower than the digest itself; getBytes copies an
+        // ASCII string in bulk
+        switch (node.getNodeType()) {
+            case OBJECT -> {
+                digest.update(OBJECT_START);
+                sortedProperties(node).forEach((name, value) -> {
+                    text(name);
+                    update(value);
+                });
+                digest.update(OBJECT_END);
+            }
+            case ARRAY -> {
+                digest.update(ARRAY_START);
+                node.forEach(this::update);
+                digest.update(ARRAY_END);
+            }
+            case STRING -> {
+                digest.update(STRING_TAG);
+                text(node.textValue());
+            }
+            default -> {
+                // a number as parsed (1 and 1.0 differ), a boolean or null
+                digest.update(SCALAR_TAG);
+                text(node.asText());
+            }
+        }
+    }
+
+    private void text(String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        int length = bytes.length;
+        digest.update((byte) (length >>> 24));
+        digest.update((byte) (length >>> 16));
+        digest.update((byte) (length >>> 8));
+        digest.update((byte) length);
+        digest.update(bytes);
     }
 
     /**
@@ -40,7 +91,7 @@ public class CacheKeyBuilder {
     @SneakyThrows
     public CacheKey buildKey(String path, boolean hasBreakpoint) {
         MessageDigest snapshot = (MessageDigest) digest.clone();
-        return new CacheKey(path, toHex(snapshot.digest()), hasBreakpoint);
+        return new CacheKey(path, HexFormat.of().formatHex(snapshot.digest()), hasBreakpoint);
     }
 
     /**
@@ -60,11 +111,13 @@ public class CacheKeyBuilder {
         return List.of(node);
     }
 
-    private static String toHex(byte[] bytes) {
-        StringBuilder hex = new StringBuilder();
-        for (byte b : bytes) {
-            hex.append(String.format("%02x", b));
-        }
-        return hex.toString();
+    /**
+     * The object's own properties sorted by name, for a caller that skips some of them. The values are not copied:
+     * {@link #update} sorts their nested properties as it feeds them.
+     */
+    public static Map<String, JsonNode> sortedProperties(JsonNode object) {
+        Map<String, JsonNode> propertiesByName = new TreeMap<>();
+        object.properties().forEach(property -> propertiesByName.put(property.getKey(), property.getValue()));
+        return propertiesByName;
     }
 }

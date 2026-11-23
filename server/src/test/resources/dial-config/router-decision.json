@@ -47,7 +47,20 @@
       "interfaces": {"openaiChatCompletions": {}, "openaiResponses": {}, "anthropicMessages": {}}
     }
   },
+  "plugins": {
+    "pm": {"type": "test-origin", "settings": {}}
+  },
   "models": {
+    "pm1": {
+      "type": "chat",
+      "upstreams": [{"id": "u1", "endpoint": "http://cloud-1", "key": "k1"}],
+      "interfaces": {"anthropicMessages": {"base_url": "dial-plugin://pm"}}
+    },
+    "pm2": {
+      "type": "chat",
+      "upstreams": [{"id": "u2", "endpoint": "http://cloud-2", "key": "k2"}],
+      "interfaces": {"anthropicMessages": {"base_url": "dial-plugin://pm"}}
+    },
     "gpt-4": {
       "type": "chat",
       "baseUrl": "http://localhost:4848",
@@ -86,6 +99,11 @@
       "type": "chat",
       "baseUrl": "http://localhost:4848",
       "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}}
+    },
+    "m-defaults": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"anthropicMessages": {"defaults": {"temperature": 0.5}}}
     },
     "m-int": {
       "type": "chat",
@@ -134,6 +152,18 @@
     "alias-m1": {
       "presentAs": "model",
       "target": {"path": "models/m1"}
+    },
+    "alias-m2": {
+      "presentAs": "model",
+      "target": {"path": "models/m2"}
+    },
+    "alias-pm1": {
+      "presentAs": "model",
+      "target": {"path": "models/pm1"}
+    },
+    "alias-pm2": {
+      "presentAs": "model",
+      "target": {"path": "models/pm2"}
     },
     "strong": {
       "presentAs": "model",

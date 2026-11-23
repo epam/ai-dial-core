@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
+import com.epam.aidial.core.server.function.request.ReceivedBody;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
@@ -15,7 +16,6 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -43,12 +43,12 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     protected abstract RequestObject parseRequest(Buffer body) throws IOException;
 
     /**
-     * The request's body as a JSON object: the tree of an in-process call's pass while it has no body, otherwise
-     * {@code body} parsed.
+     * The request's body: an in-process call's body while its pass has no body of its own, otherwise {@code body}
+     * parsed.
      */
-    protected ObjectNode parseObject(Buffer body) throws IOException {
-        ObjectNode tree = context.getCallTree();
-        return tree == null ? ProxyUtil.parseObject(body) : tree;
+    protected ReceivedBody parseBody(Buffer body) throws IOException {
+        ReceivedBody call = context.getCallBody();
+        return call == null ? ReceivedBody.parse(body) : call;
     }
 
     protected abstract String buildUri(ProxyContext context);
@@ -79,8 +79,8 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
                 context.getRequest().headers().size());
 
         return proxy.getTokenStatsTracker().startSpan(context).map(ignore -> {
-            // an in-process call's pass has its tree instead of a body until the chain below serialises it
-            Future<Buffer> body = context.getRequestBody() == null && context.getCallTree() == null
+            // an in-process call's pass has the call's body instead of its own until the chain below serialises it
+            Future<Buffer> body = context.getRequestBody() == null && context.getCallBody() == null
                     ? context.getRequest().body()
                     .onSuccess(context::setRequestBodyWithTimestamp)
                     .onFailure(this::handleRequestBodyError)
@@ -105,7 +105,8 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
             RequestObject request = parseRequest(requestBody);
             if (request != null) {
                 context.setStreamingRequest(request.isStreaming());
-                setProcessedRequestBody(request, ProxyUtil.processChain(request, enhancementFunctions), interfaceType());
+                ProxyUtil.processChain(request, enhancementFunctions);
+                setProcessedRequestBody(request, interfaceType());
             }
             proxy.getApiKeyStore().assignPerRequestApiKey(context.getProxyApiKeyData());
         } catch (Throwable e) {

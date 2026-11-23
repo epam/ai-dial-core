@@ -20,6 +20,8 @@ import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
 import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.redisson.api.RedissonClient;
 
 import java.io.IOException;
@@ -1050,6 +1052,40 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void failingPluginServedAliasCandidateSkippedThroughTierAlias() {
+        // as the tier chain: tier alias, router, alias per candidate, a model served by an origin plugin
+        verdict.set("{\"candidates\": [\"alias-pm1\", \"alias-pm2\"]}");
+        try (TestWebServer server = server()) {
+            verify(send(HttpMethod.POST, "/anthropic/v1/messages", null,
+                    "{\"model\":\"strong\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                    "content-type", "application/json", "X-Test-Status-For-Endpoint", "http://cloud-1=503"), 200);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"m2", "alias-m2"})
+    @DialConfigLocation(CONFIG)
+    void failingAliasCandidateSkippedThroughTierAlias(String next) {
+        // the router pass is an in-process call without bytes of its own: the next candidate starts from a copy of the
+        // call's body, the client's bytes included
+        verdict.set("{\"candidates\": [\"alias-m1\", \"" + next + "\"]}");
+        String body = "{\"model\" : \"strong\", \"max_tokens\": 16, \"messages\": [{\"role\": \"user\", \"content\": \"hi\"}]}";
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if ("m1".equals(request.getHeader(DEPLOYMENT_ID))) {
+                return TestWebServer.createResponse(503, "{\"error\":{\"message\":\"busy\"}}", "content-type", "application/json");
+            }
+            return answer(request);
+        })) {
+            verify(send(HttpMethod.POST, "/anthropic/v1/messages", null, body, "content-type", "application/json"), 200);
+        }
+        single(request -> "m1".equals(request.getHeader(DEPLOYMENT_ID)));
+        assertEquals(body.replace("\"strong\"", "\"m2\""),
+                single(request -> "m2".equals(request.getHeader(DEPLOYMENT_ID))).getBody().readUtf8());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void lastAliasCandidateRelaysItsTargetAnswer() {
         verdict.set("{\"candidates\": [\"alias-m1\"]}");
         try (TestWebServer server = server()) {
@@ -1081,6 +1117,29 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         }
         assertEquals(List.of("m1", "m2"), received.stream().filter(request -> !isDecide(request))
                 .map(request -> request.getHeader(DEPLOYMENT_ID)).toList());
+    }
+
+    // router-deployment "Decide request of an in-process call", scenario "Fallback inside an alias call"
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void fallbackThroughAnAliasStartsFromTheClientsBody() {
+        verdict.set("{\"candidates\": [\"m-defaults\", \"m2\"]}");
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if ("m-defaults".equals(request.getHeader(DEPLOYMENT_ID))) {
+                return TestWebServer.createResponse(503, "{\"error\":{\"message\":\"busy\"}}", "content-type", "application/json");
+            }
+            return answer(request);
+        })) {
+            verify(sendMessages("strong"), 200);
+        }
+        // the first candidate's chain added its default to the tree; the next candidate starts from the client's body
+        RecordedRequest failed = single(request -> "m-defaults".equals(request.getHeader(DEPLOYMENT_ID)));
+        assertTrue(new JsonObject(failed.getBody().readUtf8()).containsKey("temperature"));
+        JsonObject served = new JsonObject(single(request -> "m2".equals(request.getHeader(DEPLOYMENT_ID))).getBody().readUtf8());
+        assertEquals("m2", served.getString("model"));
+        assertFalse(served.containsKey("temperature"));
     }
 
     @Test
