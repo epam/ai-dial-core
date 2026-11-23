@@ -733,8 +733,9 @@ public class ResourceService implements AutoCloseable {
             }
 
             Blob blob = blobStore.load(resource.getAbsoluteFilePath());
+            // the fills below, as in getResourceBytesWithMetadata: only if Redis still has no record
             if (blob == null) {
-                redisPut(key, Result.DELETED_SYNCED);
+                putIfAbsent(key, Result.DELETED_SYNCED);
                 return null;
             }
 
@@ -746,7 +747,7 @@ public class ResourceService implements AutoCloseable {
 
             if (length == null || length <= maxSizeToCache) {
                 result = blobToResult(blob, metadata);
-                redisPut(key, result);
+                putIfAbsent(key, result);
                 return ResourceStream.fromResult(result, etagHeader);
             }
 

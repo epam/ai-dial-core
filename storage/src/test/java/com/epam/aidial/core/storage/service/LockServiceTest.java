@@ -182,9 +182,12 @@ class LockServiceTest {
     @Test
     void testLockLocallyContentionIsRecordedApartFromLock() throws Exception {
         LockService.Lock lock = service.lockLocally("local-only-contended");
-        // another pod and lock() on the same key do not wait for it
+        // another pod and lock() on the same key do not wait for it. lock() runs on another thread: this one would
+        // re-enter a lock it shared with lockLocally()
         new LockService(client, null).lockLocally("local-only-contended").close();
-        service.lock("local-only-contended").close();
+        Thread locker = new Thread(() -> service.lock("local-only-contended").close());
+        locker.start();
+        join(locker);
         Thread waiter = startWaiter(() -> service.lockLocally("local-only-contended").close());
         Assertions.assertEquals(1, queueSize("local_only"));
         Assertions.assertEquals(0, queueSize("local"));

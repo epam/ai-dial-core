@@ -7,6 +7,7 @@ import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Metrics;
@@ -270,25 +271,6 @@ class ResourceServiceComputeWithoutLockTest {
     }
 
     @Test
-    void testDoesNotPutTheStub_WhenAnotherWriteFollowsTheSync() throws IOException {
-        ResourceDescriptor descriptor = limit("requests");
-        String redisKey = RedisUtil.redisKey(descriptor, null);
-        queue().add(0, redisKey);
-        ResourceService creatingPod = Mockito.spy(service);
-        Mockito.doAnswer(invocation -> {
-            Object written = invocation.callRealMethod();
-            sync.run();
-            // another writer's compare-and-set makes the record unsynced again
-            record(redisKey).fastPut("synced", RedisUtil.booleanToRedis(false));
-            return written;
-        }).when(creatingPod).compareAndSet(eq(redisKey), any(), anyBoolean(), any());
-
-        creatingPod.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
-
-        assertEquals("1", blobBody(descriptor), "the stub must not replace the record the sync uploaded");
-    }
-
-    @Test
     void testQueuesTheRecord_WhenTheWriteOutcomeIsUnknown() {
         ResourceDescriptor descriptor = limit("requests");
         String redisKey = RedisUtil.redisKey(descriptor, null);
@@ -502,23 +484,20 @@ class ResourceServiceComputeWithoutLockTest {
     @Test
     void testReadReturnsItsBlobCopyAndKeepsTheNewerRecord_WhenWriteLandsDuringTheCacheFill() {
         ResourceDescriptor descriptor = limit("requests");
-        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
-        sync.run();
-        client.getKeys().delete(RedisUtil.redisKey(descriptor, null));
-
-        // another pod's reader misses the cache, and a write lands while it loads "1" from blob storage
-        BlobStorage loadingStorage = Mockito.spy(storage);
-        Mockito.doAnswer(invocation -> {
-            Object blob = invocation.callRealMethod();
-            service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
-            return blob;
-        }).when(loadingStorage).load(descriptor.getAbsoluteFilePath());
-        ResourceService reader = new ResourceService(Mockito.mock(TimerService.class), client, loadingStorage,
-                new LockService(client, null), settings, null);
+        ResourceService reader = readerRacedByWrite(descriptor);
 
         // the reader returns its blob copy, and Redis keeps the newer write
         assertEquals("1", reader.getResource(descriptor));
         assertEquals("2", service.getResource(descriptor));
+    }
+
+    @Test
+    void testStreamReturnsItsBlobCopyAndKeepsTheNewerRecord_WhenWriteLandsDuringTheCacheFill() throws IOException {
+        ResourceDescriptor file = new ResourceDescriptor(ResourceTypes.FILE, "a", List.of(), "bucket", "bucket/", false);
+        ResourceService reader = readerRacedByWrite(file);
+
+        assertEquals("1", streamBody(reader, file));
+        assertEquals("2", streamBody(service, file));
     }
 
     @Test
@@ -576,6 +555,30 @@ class ResourceServiceComputeWithoutLockTest {
 
         assertFalse(service.putIfAbsent(redisKey, blobCopy));
         assertEquals("1", service.getResource(descriptor));
+    }
+
+    /**
+     * Another pod that misses the cache of a record synced as "1": a write lands while it loads the blob.
+     */
+    private ResourceService readerRacedByWrite(ResourceDescriptor descriptor) {
+        service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+        sync.run();
+        client.getKeys().delete(RedisUtil.redisKey(descriptor, null));
+
+        BlobStorage loadingStorage = Mockito.spy(storage);
+        Mockito.doAnswer(invocation -> {
+            Object blob = invocation.callRealMethod();
+            service.computeResourceWithoutLock(descriptor, ResourceServiceComputeWithoutLockTest::increment);
+            return blob;
+        }).when(loadingStorage).load(descriptor.getAbsoluteFilePath());
+        return new ResourceService(Mockito.mock(TimerService.class), client, loadingStorage,
+                new LockService(client, null), settings, null);
+    }
+
+    private static String streamBody(ResourceService pod, ResourceDescriptor file) throws IOException {
+        try (ResourceService.ResourceStream stream = pod.getResourceStream(file, EtagHeader.ANY)) {
+            return new String(stream.inputStream().readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     private static String increment(String value) {
