@@ -9,7 +9,8 @@ the user as the `costObject` of the budgets in `GET /v1/user/limits` and `GET /v
 ## What Changes
 
 - A JWT caller's answer also has `project` when `projectPath` resolved one; otherwise it stays absent, as today. The
-  API-key answer does not change. A per-request key answers as the caller that started the chain. No new setting.
+  API-key answer does not change. A per-request key answers as the caller that started the chain. No new setting:
+  setting `projectPath` is the opt-in, as it already is for the JWT user's analytics project and budget cost object.
 - Risk: where `projectPath` is set (the sample settings use `aud`), JWT users start getting `project`, so AWS session
   tags and the `Project_<x>` role session name built from `UserInfo.project` (Bedrock adapter, model-provider plugin)
   start carrying it. A client that reads "has `project`" as "API-key caller" would misclassify; `userId` tells them
