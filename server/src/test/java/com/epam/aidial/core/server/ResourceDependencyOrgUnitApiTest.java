@@ -173,6 +173,35 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testUnitEditorDescriptionEditKeepsApprovalOfAppWithExternalServicePkce() {
+        String declaring = """
+                {
+                  "endpoint": "http://localhost:4850/chat/completions",
+                  "display_name": "Ext Svc Pkce App",
+                  "external_services": {
+                    "salesforce": {
+                      "display_name": "Salesforce",
+                      "auth_settings": {
+                        "authentication_type": "OAUTH",
+                        "client_id": "test-client-id",
+                        "client_secret": "unit-value-1",
+                        "authorization_endpoint": "http://localhost:9876/authorize",
+                        "token_endpoint": "http://localhost:9876/token",
+                        "token_endpoint_auth_method": "client_secret_post",
+                        "resource": "http://localhost:9876/api",
+                        "code_challenge_method": "S256"
+                      }
+                    }
+                  },
+                  "resource_dependencies": [
+                    {"kind": "dial.resourceLink", "link_id": "lnk", "target": {"url": "files/public/"}, "access": ["read"]}
+                  ]
+                }
+                """;
+        assertEditorRoundTripKeepsApproval("applications/public/Acme/ext-svc-pkce-app", declaring, "description", "Edited", true);
+    }
+
+    @Test
     void testUnitEditorDescriptionEditKeepsApprovalOfAppWithRouteSecret() {
         String declaring = """
                 {

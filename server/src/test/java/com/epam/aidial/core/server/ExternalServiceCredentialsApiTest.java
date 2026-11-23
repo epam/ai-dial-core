@@ -1797,21 +1797,6 @@ public class ExternalServiceCredentialsApiTest extends ResourceBaseTest {
                 ProxyUtil.MAPPER.readTree(after.body()).get("auth_settings").get("user_level_auth_status").asText());
     }
 
-    private String createPlainDynamicApp(String role, String appName) throws Exception {
-        Response bucketResp = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", role);
-        assertEquals(200, bucketResp.status());
-        String bucket = ProxyUtil.MAPPER.readTree(bucketResp.body()).get("bucket").asText();
-        String appUrl = "applications/" + bucket + "/" + appName;
-        Response createApp = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
-                {
-                    "endpoint": "http://localhost:7001/v1/x",
-                    "display_name": "Mgmt App"
-                }
-                """, "authorization", role);
-        assertEquals(200, createApp.status(), () -> createApp.body());
-        return appUrl;
-    }
-
     @Test
     @DialConfigLocation("dial-config/external-service-credentials.json")
     void testExternalServiceIdWithSpecialCharsRejected() throws Exception {

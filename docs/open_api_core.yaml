@@ -4274,6 +4274,7 @@ paths:
       tags:
       - External Services
       summary: "/v1/applications/{appId}/external-services/{id}"
+      description: "Creates or replaces an external service. An OAUTH service created (or switched to OAUTH) with auth_settings.discovery_url and without client_id and client_secret gets a client registered by DIAL Core (dynamic client registration) with redirect URIs from toolsets.security.allowedRedirectUris only; otherwise it needs client_id, client_secret, authorization_endpoint and token_endpoint. An update that stays OAUTH keeps the stored OAuth fields it omits. Reads never return client_secret or code_verifier."
       operationId: putExternalService
       parameters:
       - name: appId
@@ -21048,6 +21049,9 @@ components:
           readOnly: true
         resource:
           type: string
+        discovery_url:
+          type: string
+          description: "External services only (OAUTH): where DIAL Core reads OAuth metadata from to set up the client - an MCP server's URL, an API's URL that publishes protected resource metadata, or the authorization server's issuer URL. Never a traffic target. Absolute http or https URL; required to register a client automatically."
     ResourceAuthSettingsData:
       type: object
       properties:

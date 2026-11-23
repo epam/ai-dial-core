@@ -9,6 +9,7 @@ import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.credentials.service.registration.RegistrationPolicy;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -66,7 +67,7 @@ public class ToolSetRepairService {
         }
 
         ClientRegistration registration = registrationService.register(
-                resourceUrl, toolSet.getEndpoint(), authSettings, true);
+                resourceUrl, toolSet.getEndpoint(), authSettings, true, RegistrationPolicy.TOOLSET);
 
         String author = toolSet.getAuthor();
         // computeResource holds the distributed lock internally; an outer lock would deadlock against it.
