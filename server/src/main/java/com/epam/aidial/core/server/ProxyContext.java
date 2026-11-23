@@ -13,6 +13,7 @@ import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
+import com.epam.aidial.core.server.proxy.embedded.EmbeddedServerRequest;
 import com.epam.aidial.core.server.proxy.embedded.VertxHostDelegate;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -404,10 +405,10 @@ public class ProxyContext {
 
     /**
      * Whether Core serves this pass in process, for an origin plugin's call or as the target pass of an alias call
-     * ({@link #isAliasTargetPass}).
+     * ({@link #isAliasTargetPass}). Only the host creates the in-memory request, and a user info call has no body tree.
      */
     public boolean isChildPass() {
-        return callTree != null;
+        return request instanceof EmbeddedServerRequest;
     }
 
     /**

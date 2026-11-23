@@ -11,6 +11,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import io.opentelemetry.sdk.trace.IdGenerator;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
 import lombok.extern.slf4j.Slf4j;
@@ -24,8 +25,8 @@ import javax.annotation.Nullable;
  * Serves the in-process calls a plugin makes while it answers one attempt of an embedded pass, and the target pass of
  * an alias call that Core serves in process through its built-in forward plugin ({@link #forAliasHop}). Each call is a
  * child pass: an in-memory request routed by Core's own controller selection, authenticated by the per-request key
- * record of the plugin's pass, so it is checked, limited, charged and logged as a request with that key, with no HTTP
- * request into Core and no key lookup.
+ * record of the plugin's pass, so it is served as a request with that key (a create operation checked, limited,
+ * charged and logged, a user info read answered), with no HTTP request into Core and no key lookup.
  *
  * <p>Calls run on the plugin's context, the one {@code Plugin.handle} was called on. Each child pass runs on a
  * duplicate of it, with its own locals but the plugin's OTel context, so the child's HTTP origin calls are traced
@@ -104,11 +105,15 @@ public final class VertxHostDelegate implements HostDelegate {
     }
 
     /**
-     * Whether a call to {@code path} (without the query) reaches a route an in-process call serves: the create
+     * Whether a {@code POST} to {@code path} (without the query) reaches a route an in-process call serves: the create
      * operations.
      */
     public static boolean servesCall(String path) {
         return CREATE_ROUTES.stream().anyMatch(route -> route.matches(path));
+    }
+
+    private static boolean serves(HttpMethod method, String path) {
+        return HttpMethod.POST.equals(method) ? servesCall(path) : HttpMethod.GET.equals(method) && RouteTemplate.USER_INFO.matches(path);
     }
 
     @Override
@@ -118,8 +123,11 @@ public final class VertxHostDelegate implements HostDelegate {
 
     @Override
     public Future<Response> call(Call call) {
-        if (call == null || call.uri() == null || call.body() == null) {
-            return pluginContext.failedFuture(new IllegalArgumentException("A call needs a uri and a body"));
+        if (call == null || call.method() == null || call.uri() == null) {
+            return pluginContext.failedFuture(new IllegalArgumentException("A call needs a method and a uri"));
+        }
+        if (HttpMethod.POST.equals(call.method()) == (call.body() == null)) {
+            return pluginContext.failedFuture(new IllegalArgumentException("A POST call needs a body, and another call has none"));
         }
         ContextInternal childContext = pluginContext.duplicate();
         Object otelContext = pluginContext.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
@@ -132,8 +140,9 @@ public final class VertxHostDelegate implements HostDelegate {
             return response.answer();
         }
         String path = pathOf(call.uri());
-        if (!servesCall(path)) {
-            return pluginContext.failedFuture(new IllegalArgumentException("A call reaches the create operations only, not " + path));
+        if (!serves(call.method(), path)) {
+            return pluginContext.failedFuture(new IllegalArgumentException(
+                    "A call reaches the create operations and the user info only, not " + call.method() + " " + path));
         }
         if (isResponses(path) && call.body().path("background").asBoolean(false)) {
             return pluginContext.failedFuture(new IllegalArgumentException("A call cannot create a background response"));
@@ -146,7 +155,7 @@ public final class VertxHostDelegate implements HostDelegate {
             return response.answer();
         }
 
-        EmbeddedServerRequest request = new EmbeddedServerRequest(call.uri(), call.headers(), response);
+        EmbeddedServerRequest request = new EmbeddedServerRequest(call.method(), call.uri(), call.headers(), response);
         ProxyContext child = new ProxyContext(proxy, request, key, null, null,
                 IdGenerator.random().generateSpanId(), parent.getTraceFlags());
         child.setCallTree(call.body());

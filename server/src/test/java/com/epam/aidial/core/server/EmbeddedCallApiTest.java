@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.MultiMap;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
@@ -595,6 +596,74 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         Caller caller = TestOriginPluginProvider.REQUESTS.get(0).caller();
         assertEquals("user", caller.userId());
         assertEquals(List.of("user"), caller.roles());
+    }
+
+    // deployment-origin "Caller's user info through the host"
+
+    @Test
+    void testUserInfoOfCallerWithApiKey() {
+        servedApp();
+
+        Response response = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
+                "X-Test-Call", "/v1/user/info", "X-Test-Call-Method", "GET");
+
+        verify(response, 200, """
+                {"roles":["default"],"project":"EPM-RTC-GPT","userDisplayName":"EPM-RTC-GPT"}""");
+    }
+
+    @Test
+    void testUserInfoOfCallerWithJwt() {
+        servedApp();
+
+        Response response = send(HttpMethod.POST, "/openai/deployments/app/chat/completions", null, CHAT_BODY,
+                "content-type", "application/json", "authorization", "user",
+                "X-Test-Call", "/v1/user/info", "X-Test-Call-Method", "GET");
+
+        verify(response, 200, """
+                {"roles":["user"],"userId":"user","userClaims":{"title":["Manager"]},"userDisplayName":"user user"}""");
+    }
+
+    @Test
+    @SneakyThrows
+    void testUserInfoAfterThePluginsPassEnded() {
+        servedApp();
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
+        // Core saves the row and ends the pass in one task, so the pass has ended once the row is there
+        awaitAnalyticsRows(1);
+
+        TestOriginPluginProvider.Host kept = TestOriginPluginProvider.HOSTS.get(0);
+        CompletableFuture<String> answer = new CompletableFuture<>();
+        kept.context().runOnContext(ignored -> kept.host()
+                .call(new Call(HttpMethod.GET, "/v1/user/info", MultiMap.caseInsensitiveMultiMap(), null))
+                .onComplete(result -> {
+                    if (result.failed()) {
+                        answer.completeExceptionally(result.cause());
+                        return;
+                    }
+                    Buffer body = Buffer.buffer();
+                    result.result().body().handler(body::appendBuffer).exceptionHandler(answer::completeExceptionally)
+                            .endHandler(end -> answer.complete(result.result().statusCode() + " " + body));
+                }));
+
+        assertEquals("401 Unknown api key", answer.get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void testOtherReadsMethodsAndGetWithBodyRefused() {
+        servedApp();
+
+        Response limits = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
+                "X-Test-Call", "/v1/user/limits", "X-Test-Call-Method", "GET");
+        Response delete = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
+                "X-Test-Call", "/v1/user/info", "X-Test-Call-Method", "DELETE");
+        Response withBody = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
+                "X-Test-Call", "/v1/user/info", "X-Test-Call-Method", "GET", "X-Test-Call-With-Body", "true");
+
+        for (Response response : List.of(limits, delete, withBody)) {
+            assertEquals(502, response.status(), response.body());
+            assertTrue(response.body().contains("No route"), response.body());
+        }
+        assertEquals(3, TestOriginPluginProvider.REQUESTS.size());
     }
 
     @BeforeEach

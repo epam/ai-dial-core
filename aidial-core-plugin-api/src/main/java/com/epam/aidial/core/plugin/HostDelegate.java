@@ -14,13 +14,17 @@ import io.vertx.core.Future;
 public interface HostDelegate {
 
     /**
-     * Calls a deployment in process, as a child pass of the request the plugin answers: Core checks, limits, charges
-     * and logs it as a request that deployment's per-request key sends to Core, with no HTTP request into Core.
+     * Serves a call in process, as a child pass of the request the plugin answers, with no HTTP request into Core. A
+     * {@code POST} calls a deployment: Core checks, limits, charges and logs it as a request that deployment's
+     * per-request key sends to Core. A {@code GET} of {@code /v1/user/info} reads the caller's user info: Core
+     * answers it as it answers that request over HTTP with the call's key, with no check, limit or row of a
+     * deployment.
      *
      * <p>Call it on the context {@link Plugin#handle} was called on. The future completes there with the answer
      * once its status and headers are known, and the answer's body emits there, as an {@link Response} of a
      * plugin does. An answer of any status, {@code 404} or {@code 429} included, completes the future; it fails only
-     * for a call Core cannot serve: a path outside the operations {@link Call#uri()} names, a Responses call
+     * for a call Core cannot serve: a call without a method, a method other than {@code POST} and {@code GET}, a path
+     * outside the operations {@link Call#uri()} names for its method, a {@code GET} with a body, a Responses call
      * with {@code background: true}, or an answer cut before its status.
      *
      * <p>A call ends with the request it belongs to: once the plugin's request has ended, Core cancels the answers
@@ -29,8 +33,8 @@ public interface HostDelegate {
      * <p>On a router's {@code POST /decide} request, the calls carry the decide request's key instead, and they end
      * with the decide call: once the plugin's answer has been read, Core cancels the calls still open. A notice request
      * ({@code X-DIAL-ROUTER-NOTICE}) carries no key, so every call made while answering it is answered {@code 401}.
-     * In process a plugin can call only the operations {@link Call#uri()} names; {@code GET /v1/user/info} and
-     * file reads go to Core over HTTP with the {@code API-KEY} header of the request.
+     * In process a plugin can call only the operations {@link Call#uri()} names; file reads and Core's other APIs
+     * go to Core over HTTP with the {@code API-KEY} header of the request.
      */
     Future<Response> call(Call call);
 

@@ -28,9 +28,10 @@ import java.util.Set;
 import javax.security.cert.X509Certificate;
 
 /**
- * The request of a pass Core serves in process, for an origin plugin's call or as the target pass of an alias call: a
- * {@code POST} to the call's path and query, with the call's headers. The pass takes the call's body as a tree, so
- * {@link #body()} is empty and already read. Members no controller of the create operations uses throw.
+ * The request of a pass Core serves in process, for an origin plugin's call or as the target pass of an alias call: the
+ * call's method, path and query, with the call's headers. The pass takes a {@code POST}'s body as a tree, and a
+ * {@code GET} has none, so {@link #body()} is empty and already read. Members no controller of the create operations
+ * or of the user info uses throw.
  */
 public final class EmbeddedServerRequest implements HttpServerRequest {
 
@@ -45,6 +46,7 @@ public final class EmbeddedServerRequest implements HttpServerRequest {
             Proxy.HEADER_OVERRIDE_NAME, Proxy.HEADER_DEPLOYMENT_ID,
             Proxy.HEADER_APPLICATION_ID, Proxy.HEADER_APPLICATION_PROPERTIES, Proxy.HEADER_DEPLOYMENT_FEATURES);
 
+    private final HttpMethod method;
     private final String uri;
     private final String path;
     private final String query;
@@ -54,10 +56,12 @@ public final class EmbeddedServerRequest implements HttpServerRequest {
     private String paramsCharset = StandardCharsets.UTF_8.name();
 
     /**
+     * @param method  the call's method; a {@code POST} carries a JSON body
      * @param uri     the path and query of the call
      * @param headers the call's headers, copied
      */
-    public EmbeddedServerRequest(String uri, MultiMap headers, HttpServerResponse response) {
+    public EmbeddedServerRequest(HttpMethod method, String uri, MultiMap headers, HttpServerResponse response) {
+        this.method = method;
         this.uri = uri;
         int question = uri.indexOf('?');
         this.path = question < 0 ? uri : uri.substring(0, question);
@@ -67,12 +71,14 @@ public final class EmbeddedServerRequest implements HttpServerRequest {
             this.headers.addAll(headers);
         }
         DROPPED_HEADERS.forEach(this.headers::remove);
-        this.headers.set(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        if (HttpMethod.POST.equals(method)) {
+            this.headers.set(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
+        }
     }
 
     @Override
     public HttpMethod method() {
-        return HttpMethod.POST;
+        return method;
     }
 
     @Override

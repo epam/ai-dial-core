@@ -60,13 +60,23 @@ class EmbeddedServerRequestTest {
     }
 
     @Test
+    void testGetWithoutContentType() {
+        EmbeddedServerRequest request = new EmbeddedServerRequest(HttpMethod.GET, "/v1/user/info", null, mock(HttpServerResponse.class));
+
+        assertEquals(HttpMethod.GET, request.method());
+        assertEquals("/v1/user/info", request.path());
+        assertNull(request.getHeader("content-type"));
+        assertEquals(0, request.body().result().length());
+    }
+
+    @Test
     void testResponse() {
         HttpServerResponse response = mock(HttpServerResponse.class);
 
-        assertSame(response, new EmbeddedServerRequest("/x", MultiMap.caseInsensitiveMultiMap(), response).response());
+        assertSame(response, new EmbeddedServerRequest(HttpMethod.POST, "/x", MultiMap.caseInsensitiveMultiMap(), response).response());
     }
 
     private static EmbeddedServerRequest request(String uri, MultiMap headers) {
-        return new EmbeddedServerRequest(uri, headers, mock(HttpServerResponse.class));
+        return new EmbeddedServerRequest(HttpMethod.POST, uri, headers, mock(HttpServerResponse.class));
     }
 }

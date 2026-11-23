@@ -12,6 +12,7 @@ import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.impl.ContextInternal;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -30,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -235,8 +237,56 @@ class VertxHostDelegateTest {
         assertEquals("done", read.get(5, TimeUnit.SECONDS));
     }
 
+    // deployment-origin "Caller's user info through the host"
+
+    @Test
+    void testUserInfoCallDispatchedAsChildPass() throws Exception {
+        call(HttpMethod.GET, "/v1/user/info", null);
+
+        awaitCondition(() -> dispatched.size() == 1);
+        ProxyContext child = dispatched.get(0);
+        assertEquals(HttpMethod.GET, child.getRequest().method());
+        assertEquals("/v1/user/info", child.getRequest().path());
+        assertTrue(child.isChildPass());
+        assertNull(child.getCallTree());
+    }
+
+    @Test
+    void testUserInfoCallPastTheDepthLimit() throws Exception {
+        parent.getProxyApiKeyData().setExecutionPath(Collections.nCopies(VertxHostDelegate.MAX_CALL_DEPTH, "app"));
+
+        Response answer = await(call(HttpMethod.GET, "/v1/user/info", null));
+
+        assertEquals(400, answer.statusCode());
+        verify(proxy, never()).dispatch(any());
+    }
+
+    @Test
+    void testCallWithoutMethodFails() {
+        assertThrows(ExecutionException.class, () -> await(call(null, "/openai/v1/chat/completions", body())));
+        verify(proxy, never()).dispatch(any());
+    }
+
+    @Test
+    void testOtherReadsAndMethodsFail() {
+        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.GET, "/v1/user/limits", null)));
+        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.DELETE, "/v1/user/info", null)));
+        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.POST, "/v1/user/info", body())));
+        verify(proxy, never()).dispatch(any());
+    }
+
+    @Test
+    void testGetWithBodyFails() {
+        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.GET, "/v1/user/info", body())));
+        verify(proxy, never()).dispatch(any());
+    }
+
     private Future<Response> call(String uri, ObjectNode body) {
-        return on(pluginContext, () -> host.call(new Call(uri, MultiMap.caseInsensitiveMultiMap(), body)));
+        return call(HttpMethod.POST, uri, body);
+    }
+
+    private Future<Response> call(HttpMethod method, String uri, ObjectNode body) {
+        return on(pluginContext, () -> host.call(new Call(method, uri, MultiMap.caseInsensitiveMultiMap(), body)));
     }
 
     private static ObjectNode body() {
