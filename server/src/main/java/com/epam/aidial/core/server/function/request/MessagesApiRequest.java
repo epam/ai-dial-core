@@ -2,7 +2,6 @@ package com.epam.aidial.core.server.function.request;
 
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
-import com.epam.aidial.core.server.util.JsonUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -59,6 +58,7 @@ public class MessagesApiRequest implements RequestObject {
     @Override
     public List<CacheKey> buildCacheKeys(List<String> nodeOrder) {
         CacheKeyBuilder builder = new CacheKeyBuilder();
+        builder.section("messages");
         List<CacheKey> result = new ArrayList<>();
         for (String designator : nodeOrder) {
             String node = CachePrefixPath.parseNode(designator);
@@ -81,6 +81,7 @@ public class MessagesApiRequest implements RequestObject {
      * one-element array (e.g. {@code system:"x"} -> {@code system[0]}).
      */
     private void appendItemCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
+        builder.section(node);
         List<JsonNode> elements = CacheKeyBuilder.elements(tree.get(node));
         for (int index = 0; index < elements.size(); index++) {
             JsonNode element = asBlock(elements.get(index));
@@ -95,6 +96,7 @@ public class MessagesApiRequest implements RequestObject {
      * every later hash. String content is scalar-normalized to {@code content[0]}.
      */
     private void appendMessageCacheKeys(CacheKeyBuilder builder, List<CacheKey> result) {
+        builder.section("messages");
         JsonNode messages = tree.get("messages");
         if (messages == null || !messages.isArray()) {
             return;
@@ -104,13 +106,8 @@ public class MessagesApiRequest implements RequestObject {
             if (!message.isObject()) {
                 continue;
             }
-            ObjectNode sorted = (ObjectNode) JsonUtil.sort(message);
-            for (Map.Entry<String, JsonNode> entry : sorted.properties()) {
-                if (!entry.getKey().equals(CONTENT_NODE)) {
-                    builder.update(entry.getValue());
-                }
-            }
-            List<JsonNode> blocks = CacheKeyBuilder.elements(sorted.get(CONTENT_NODE));
+            builder.updateProperties(message, (name, value) -> name.equals(CONTENT_NODE) ? null : value);
+            List<JsonNode> blocks = CacheKeyBuilder.elements(message.get(CONTENT_NODE));
             for (int contentIndex = 0; contentIndex < blocks.size(); contentIndex++) {
                 JsonNode block = asBlock(blocks.get(contentIndex));
                 updateExcludingCacheControl(builder, block);
@@ -131,12 +128,7 @@ public class MessagesApiRequest implements RequestObject {
             builder.update(block);
             return;
         }
-        ObjectNode sorted = (ObjectNode) JsonUtil.sort(block);
-        for (Map.Entry<String, JsonNode> entry : sorted.properties()) {
-            if (!entry.getKey().equals(CACHE_CONTROL_NODE)) {
-                builder.update(entry.getValue());
-            }
-        }
+        builder.updateProperties(block, (name, value) -> name.equals(CACHE_CONTROL_NODE) ? null : value);
     }
 
     /**

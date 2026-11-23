@@ -70,6 +70,7 @@ public class ResponsesApiRequest implements RequestObject {
     @Override
     public List<CacheKey> buildCacheKeys(List<String> nodeOrder) {
         CacheKeyBuilder builder = new CacheKeyBuilder();
+        builder.section("responses");
         List<CacheKey> result = new ArrayList<>();
         for (String designator : nodeOrder) {
             String node = CachePrefixPath.parseNode(designator);
@@ -83,6 +84,7 @@ public class ResponsesApiRequest implements RequestObject {
     }
 
     private void appendCacheKeys(CacheKeyBuilder builder, String node, List<CacheKey> result) {
+        builder.section(node);
         List<JsonNode> elements = CacheKeyBuilder.elements(tree.get(node));
         for (int index = 0; index < elements.size(); index++) {
             builder.update(elements.get(index));
