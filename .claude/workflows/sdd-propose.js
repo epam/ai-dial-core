@@ -5,7 +5,7 @@ export const meta = {
   phases: [
     { title: 'Draft', detail: 'proposal, spec deltas, design, tasks per change' },
     { title: 'Review', detail: 'fidelity and simplicity reviewers per change' },
-    { title: 'Revise', detail: 'apply findings, record them in design.md, validate --strict' },
+    { title: 'Revise', detail: 'apply findings in place, validate --strict' },
   ],
 }
 
@@ -54,8 +54,8 @@ Steps, all from the repository root, with ${OPENSPEC} wherever OpenSpec says "op
 2. ${OPENSPEC} status --change ${it.id} --json, then for each artifact in dependency order
    ${OPENSPEC} instructions <artifact> --change ${it.id} --json and write the artifact as instructed
    (proposal.md; spec deltas under specs/<capability>/spec.md with ADDED / MODIFIED / REMOVED Requirements against the
-   existing capabilities; design.md; tasks.md). The schema needs design.md before tasks.md; for a small change it may be
-   a few lines (Context pointing at the proposal, no decisions, Migration Plan "none") rather than a full document.
+   existing capabilities; design.md; tasks.md). The schema needs design.md before tasks.md; for a small change, as
+   openspec/config.yaml defines it, design.md is the three-section short form (at most 25 lines), not a full document.
 3. ${OPENSPEC} validate ${it.id} --strict until it passes.
 Other changes in this run (stay out of their scope; name a dependency on one if you have it):
 ${ALL}
@@ -113,9 +113,9 @@ const revise = (r, it) => {
     `Revise the OpenSpec change "${it.id}" in openspec/changes/${it.id} of the repository at your current working directory
 with these review findings:
 ${JSON.stringify(findings, null, 1)}
-For each: apply it if it holds (check the evidence yourself), or reject it with a reason. Append a section
-"## Spec review" to design.md that lists every finding with lens, severity, accepted/rejected and what changed.
-Then ${OPENSPEC} validate ${it.id} --strict (from the repository root) until it passes. Do not edit Java code.`,
+For each: apply it if it holds (check the evidence yourself), or reject it with a reason. An accepted
+finding changes the requirement, decision or task it concerns, in place; keep no list of findings in the artifacts.
+Return each rejected finding with its reason. Then ${OPENSPEC} validate ${it.id} --strict (from the repository root) until it passes. Do not edit Java code.`,
     {
       label: `revise:${it.id}`, phase: 'Revise',
       schema: {
@@ -123,6 +123,7 @@ Then ${OPENSPEC} validate ${it.id} --strict (from the repository root) until it 
         properties: {
           accepted: { type: 'number' },
           rejected: { type: 'number' },
+          rejectedReasons: { type: 'array', items: { type: 'string' } },
           validateOutput: { type: 'string' },
           passed: { type: 'boolean' },
         },

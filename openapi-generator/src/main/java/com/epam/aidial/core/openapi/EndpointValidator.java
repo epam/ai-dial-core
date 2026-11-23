@@ -480,7 +480,7 @@ public final class EndpointValidator {
             return false;
         }
         String path = endpoint.path();
-        if (Proxy.HEALTH_CHECK_PATH.equals(path) || Proxy.VERSION_PATH.equals(path)) {
+        if (Proxy.HEALTH_CHECK_PATH.equals(path) || Proxy.VERSION_PATH.equals(path) || Proxy.OPENAPI_PATH.equals(path)) {
             return true;
         }
         String samplePath = RouteExtractor.toSamplePath(path);

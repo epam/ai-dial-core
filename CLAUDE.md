@@ -97,6 +97,17 @@ cross-cutting changes, tests, and documentation.
 changing that code. The CLI is not installed globally. Where an OpenSpec skill or doc says `openspec`, run
 `npx -y @fission-ai/openspec@1.14.3`. `openspec/config.yaml` holds the project rules the skills and workflows follow.
 
+**When a change is needed.** A PR needs an OpenSpec change when it changes behaviour at a boundary the specs describe:
+the HTTP API, the request Core sends to an origin, or the records Core writes. A plain PR is enough for a fix that
+restores what the spec already says (add the test), a refactor, a dependency update, CI or tooling, docs, and tests for
+existing behaviour.
+
+**Size.** `openspec/config.yaml` defines a small change, and its artifacts are short. For any other change, open a
+draft PR with `proposal.md` and the spec deltas before applying, so the approach is reviewed before the code exists.
+
+**Review.** A reviewer reads the spec delta, then the code, and the Decisions in `design.md` when it has them.
+`tasks.md` and `review.md` are records and need no review.
+
 1. **Propose**: `openspec/changes/<id>/` with `proposal.md`, spec deltas, `design.md` and `tasks.md`, created by
    `/opsx:propose` (the `openspec-propose` skill) or the `sdd-propose` workflow. Then
    `npx -y @fission-ai/openspec@1.14.3 validate <id> --strict`.

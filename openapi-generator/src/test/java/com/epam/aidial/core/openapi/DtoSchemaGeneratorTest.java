@@ -3,10 +3,13 @@ package com.epam.aidial.core.openapi;
 import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Operator;
+import com.epam.aidial.core.config.Pricing;
+import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.epam.aidial.core.openapi.annotations.ApiSchemaType;
 import com.epam.aidial.core.openapi.annotations.ApiSubType;
 import com.epam.aidial.core.openapi.annotations.ApiSubTypes;
+import com.epam.aidial.core.server.data.PricingData;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -126,6 +129,51 @@ class DtoSchemaGeneratorTest {
         enumValues.forEach(node -> actual.add(node.asText()));
         List<String> expected = Arrays.stream(Operator.values()).map(Operator::getSymbol).collect(Collectors.toList());
         assertEquals(expected, actual, "Enum values should be the @JsonValue symbols, not the constant names");
+    }
+
+    @Test
+    void pricingRatesAreFlatStringOrPricingRateTree() {
+        for (Class<?> type : List.of(Pricing.class, PricingData.class)) {
+            DtoSchemaGenerator generator = new DtoSchemaGenerator();
+            generator.processType(type);
+
+            ObjectNode schema = generator.getSchemas().get(generator.resolveTypeName(type));
+            assertNotNull(schema, type.getSimpleName() + " schema should be generated");
+
+            ObjectNode properties = (ObjectNode) schema.get("properties");
+            int rates = 0;
+            for (Map.Entry<String, JsonNode> property : properties.properties()) {
+                if (property.getKey().equals("unit")) {
+                    continue;
+                }
+                rates++;
+                ArrayNode oneOf = (ArrayNode) property.getValue().get("oneOf");
+                assertNotNull(oneOf, type.getSimpleName() + "." + property.getKey() + " should be a oneOf");
+                assertEquals(2, oneOf.size());
+                assertEquals("string", oneOf.get(0).get("type").asText());
+                assertEquals("#/components/schemas/PricingRate", oneOf.get(1).get("$ref").asText());
+            }
+            assertEquals(4, rates, "prompt, completion, cacheRead and cacheWrite should all be unions");
+        }
+    }
+
+    @Test
+    void regexPatternIsStringNotObject() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(Route.class);
+
+        Map<String, ObjectNode> schemas = generator.getSchemas();
+        ObjectNode route = schemas.get(generator.resolveTypeName(Route.class));
+        assertNotNull(route, "Route schema should be generated");
+
+        ObjectNode items = (ObjectNode) route.get("properties").get("paths").get("items");
+        ObjectNode pattern = items.has("$ref")
+                ? schemas.get(items.get("$ref").asText().substring("#/components/schemas/".length()))
+                : items;
+        assertNotNull(pattern, "the paths item schema should be resolvable");
+        assertEquals("string", pattern.get("type").asText());
+        assertEquals("regex", pattern.get("format").asText());
+        assertFalse(pattern.has("properties"), "a Pattern must not expose its bean shape");
     }
 
     @ApiSchema(

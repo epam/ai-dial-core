@@ -74,8 +74,9 @@ const impl = await agent(
   `Implement the OpenSpec change "${id}" in the repository at your current working directory. Read CLAUDE.md,
 docs/CODE_STYLE.md, openspec/config.yaml, everything in ${CHANGE}, and the specs it modifies; then run
 ${OPENSPEC} instructions apply --change ${id} --json and follow it.
-- First compare design.md with the current code (earlier changes may have landed since it was written); record any
-  drift and your adjustment in design.md under "## Implementation notes".
+- First compare design.md with the current code (earlier changes may have landed since it was written); on a
+  drift, correct the decision or Code map entry in design.md in place, so that it describes what is built, and report
+  the drift.
 - Rebase the spec deltas onto the current openspec/specs: an earlier change may have been archived since. A MODIFIED
   requirement must start from the current text of that requirement, and a REMOVED one must still exist. Then validate.
 - Work through tasks.md in order, ticking each task when done. Write the JUnit / Vert.x test for each spec scenario with
@@ -155,7 +156,8 @@ Review findings (high and medium; check each yourself, fix it or reject it with 
 ${JSON.stringify(open, null, 1)}
 Failed checks from the independent verification:
 ${JSON.stringify(ver.failures, null, 1)}
-Keep tasks.md and design.md "## Implementation notes" truthful. Do not commit. Run the checks before returning:
+Keep tasks.md truthful, and where a fix changes a decision, correct that decision in design.md in place and report it
+as drift. Do not commit. Run the checks before returning:
 ${CHECKS}`,
     {
       label: `fix:${round}`, phase: 'Fix',
@@ -196,11 +198,12 @@ const report = {
 }
 phase('Record')
 await agent(
-  `Append to ${CHANGE}/review.md (create it if missing; keep what is there) a record of this implementation run of the
-OpenSpec change "${id}", from the report below. Sections: "## Implementation" (tasks done and deferred, tests added,
-design drift), "## Verification" (each run: passed or not, the test classes run, the cost-claim check), "## Review
-findings" (a table: lens, severity, file:line, finding), one "## Fix round N" per round (fixed, rejected with reason,
-still open), and "## Outcome" (high/medium findings still open, low findings left, what CI must still confirm). Plain,
+  `Write ${CHANGE}/review.md for the OpenSpec change "${id}" from the report below (if the file exists, merge into its
+sections). Exactly four sections, as the archive guidance of openspec/config.yaml says: "## What shipped" (behaviour and
+docs, as built), "## Verification" (each check and the test classes run, with the final result, and the cost-claim
+check), "## Drift from design.md" (what was built differently and why, or "None") and "## Not done" (deferred tasks,
+high/medium findings still open, low findings left, what CI must still confirm, or "None"). No review rounds, finding
+tables, test counts or commit hashes. At most 15 lines for a small change, as openspec/config.yaml defines it. Plain,
 factual, no praise. Edit no other file.
 Report: ${JSON.stringify(report)}`,
   { label: 'record', phase: 'Record', effort: 'low' },

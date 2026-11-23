@@ -54,7 +54,7 @@ final class CallerUnitRoles {
     }
 
     /**
-     * Persons only; always false for applications and API keys.
+     * Always false for applications.
      */
     boolean holdsRoleBelow(String unit) {
         if (unitsAboveHeldRoles == null) {
