@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: The alias relays the target's answer
-Core SHALL answer an alias call with the status and body of the target pass, SHALL NOT retry the target pass, and SHALL NOT let the status of one call affect other calls of the alias. The one exception is the no-budget refusal on `POST /openai/v1/responses` and `POST /openai/responses`: there Core SHALL answer the client the 400 of the requirement "No budget for the model" in `spend-limit-reporting`, as on a direct call of the target, except for a background request, which keeps the target pass's 429.
+Core SHALL answer an alias call with the status and body of the target pass, SHALL NOT retry the target pass, and SHALL NOT let the status of one call affect other calls of the alias. The one exception is the no-budget refusal on `POST /openai/v1/responses` and `POST /openai/responses`, which the requirement "No budget through an alias" in `spend-limit-reporting` states.
 
 #### Scenario: Error of one caller
 - **WHEN** the target pass answers `429` to one caller of `assistant` because that caller's limit is used up

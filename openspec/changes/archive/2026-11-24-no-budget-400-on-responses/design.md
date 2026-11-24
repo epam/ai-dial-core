@@ -97,9 +97,9 @@ Codex prints the 400 body word for word, and Claude Code prints `error.message`.
 
 | What | Today | After | Requirement |
 |---|---|---|---|
-| Responses no-budget, the client's own request, streaming or not | 429, DIAL JSON, `x-should-retry: false` | 400, `text/plain` message, `x-should-retry: false` | No budget for the model |
-| Responses no-budget through an alias, or a router with an alias as its target or candidate | 429, DIAL JSON | 400, `text/plain` message; a background request keeps the 429 | No budget for the model; The alias relays the target's answer; No limit check on an alias pass |
-| Responses no-budget to an application's, interceptor's or translator's call | 429 | 429, new message, no `X-DIAL-REFUSAL` | No budget for the model |
+| Responses no-budget, the client's own request, streaming or not | 429, DIAL JSON, `x-should-retry: false` | 400, `text/plain` message, `x-should-retry: false` | No budget on the Responses routes |
+| Responses no-budget through an alias, or a router with an alias as its target or candidate | 429, DIAL JSON | 400, `text/plain` message; a background request keeps the 429 | No budget through an alias; The alias relays the target's answer; No limit check on an alias pass |
+| Responses no-budget to an application's, interceptor's or translator's call | 429 | 429, new message, no `X-DIAL-REFUSAL` | No budget on the Responses routes; No budget behind an interceptor |
 | Responses no-budget, answered by the pass with a flagged key to its alias pass | 429 | 429 with `X-DIAL-REFUSAL: no_budget` | - (inside Core) |
 | `X-DIAL-REFUSAL` from a model's upstream, an application or an interceptor | relayed | removed | The no-budget mark stays inside Core |
 | The no-budget message on Messages and Responses | `No budget covers <model> for cost object <cost object>` | `No DIAL spend limit is assigned for <model> in project <cost object>. Ask your DIAL admin to assign one.` | No budget for the model |

@@ -50,10 +50,14 @@ None.
 ### Modified Capabilities
 
 - `spend-limit-reporting`:
-  - "No budget for the model": answers 400 with a plain-text message on the Responses routes, directly and through
-    an alias, and gets the new message wording.
+  - "No budget for the model": gets the new message wording; the Responses, alias and interceptor cases move to
+    requirements of their own.
   - "No limit check on an alias pass": the caller gets the refusal of a direct call of the target.
-  - New requirement "The no-budget mark stays inside Core".
+  - New requirements:
+    - "No budget on the Responses routes": the 400 with a plain-text message for the client's own request;
+    - "No budget through an alias";
+    - "No budget behind an interceptor";
+    - "The no-budget mark stays inside Core".
 - `deployment-aliases`: "The alias relays the target's answer" gets its one exception.
 
 ## Impact

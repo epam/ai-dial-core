@@ -1554,7 +1554,7 @@ paths:
               schema:
                 type: string
         "400":
-          description: Bad request
+          description: "Bad request, as a `text/plain` message. With enforced budgets, no budget for the model gives the client's own request, directly or through an alias (not a background one), the message naming the model and the cost object, with `x-should-retry: false` and no `retry-after`; with an interceptor in front of the model, global interceptors included, the client gets what the interceptor answers"
           content:
             application/json:
               schema:
@@ -1587,7 +1587,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
         "429":
-          description: Rate limit exceeded
+          description: "DIAL limit reached. A reached day/week/month spend cap, or with enforced budgets used-up budgets for the model, gives an error of type `usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the `x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`; with enforced budgets, no budget for the model gives a call made with a per-request key an error naming the model and the cost object, with `x-should-retry: false` and no `retry-after`"
           content:
             application/json:
               schema:
@@ -1934,7 +1934,7 @@ paths:
               schema:
                 type: string
         "400":
-          description: Bad request
+          description: "Bad request, as a `text/plain` message. With enforced budgets, no budget for the model gives the client's own request, directly or through an alias (not a background one), the message naming the model and the cost object, with `x-should-retry: false` and no `retry-after`; with an interceptor in front of the model, global interceptors included, the client gets what the interceptor answers"
           content:
             application/json:
               schema:
@@ -1978,7 +1978,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
         "429":
-          description: Rate limit reached.
+          description: "DIAL limit reached. A reached day/week/month spend cap, or with enforced budgets used-up budgets for the model, gives an error of type `usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the `x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`; with enforced budgets, no budget for the model gives a call made with a per-request key an error naming the model and the cost object, with `x-should-retry: false` and no `retry-after`"
           content:
             application/json:
               schema:
