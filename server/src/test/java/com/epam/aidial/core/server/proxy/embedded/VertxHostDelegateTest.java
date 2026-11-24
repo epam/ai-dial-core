@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
@@ -29,8 +31,8 @@ import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -98,12 +100,30 @@ class VertxHostDelegateTest {
     }
 
     @Test
-    void testCallOutsideTheCreateRoutesFails() {
-        ExecutionException error = assertThrows(ExecutionException.class,
-                () -> await(call("/v1/ops/resource/share/list", body())));
+    void testAliasHopServesTheCreateRoutesOnly() throws Exception {
+        VertxHostDelegate aliasHop = VertxHostDelegate.forAliasHop(proxy, parent, pluginContext);
 
-        assertInstanceOf(IllegalArgumentException.class, error.getCause());
-        verify(proxy, never()).dispatch(any());
+        assertThrows(ExecutionException.class, () -> await(on(pluginContext,
+                () -> aliasHop.call(new Call("/v1/toolset/search/mcp", MultiMap.caseInsensitiveMultiMap(), body())))));
+        on(pluginContext, () -> aliasHop.call(new Call("/openai/deployments/m/chat/completions", MultiMap.caseInsensitiveMultiMap(), body())));
+
+        awaitCondition(() -> dispatched.size() == 1);
+        assertEquals("/openai/deployments/m/chat/completions", dispatched.get(0).getRequest().path());
+    }
+
+    @Test
+    void testCallOutsideTheCreateRoutesTakesTheBodyAsBytes() throws Exception {
+        AsyncTaskExecutor executor = mock(AsyncTaskExecutor.class);
+        when(executor.submit(any())).thenAnswer(invocation -> Future.succeededFuture(invocation.<Callable<?>>getArgument(0).call()));
+        when(proxy.getTaskExecutor()).thenReturn(executor);
+
+        call(HttpMethod.PUT, "/v1/conversations/b/c", body());
+
+        awaitCondition(() -> dispatched.size() == 1);
+        ProxyContext child = dispatched.get(0);
+        assertNull(child.getCallTree());
+        assertEquals("application/json", child.getRequest().getHeader("content-type"));
+        assertEquals("{\"model\":\"m\"}", await(child.getRequest().body()).toString());
     }
 
     @Test
@@ -129,6 +149,8 @@ class VertxHostDelegateTest {
         assertEquals(16, child.getSpanId().length());
         assertNotEquals(dispatched.get(1).getSpanId(), child.getSpanId());
         assertEquals("/openai/deployments/m/chat/completions", child.getRequest().path());
+        assertNotNull(child.getCallTree());
+        assertEquals(0, await(child.getRequest().body()).length());
     }
 
     @Test
@@ -237,7 +259,7 @@ class VertxHostDelegateTest {
         assertEquals("done", read.get(5, TimeUnit.SECONDS));
     }
 
-    // deployment-origin "Caller's user info through the host"
+    // deployment-origin "Core's API through the host"
 
     @Test
     void testUserInfoCallDispatchedAsChildPass() throws Exception {
@@ -262,33 +284,30 @@ class VertxHostDelegateTest {
     }
 
     @Test
-    void testCallWithoutMethodFails() {
+    void testCallWithoutMethodOrUriFails() {
         assertThrows(ExecutionException.class, () -> await(call(null, "/openai/v1/chat/completions", body())));
+        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.GET, null, null)));
         verify(proxy, never()).dispatch(any());
     }
 
     @Test
-    void testOtherReadsAndMethodsFail() {
-        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.GET, "/v1/user/limits", null)));
-        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.DELETE, "/v1/user/info", null)));
-        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.POST, "/v1/user/info", body())));
-        verify(proxy, never()).dispatch(any());
+    void testAnyMethodAndRouteDispatched() throws Exception {
+        call(HttpMethod.GET, "/v1/user/limits", null);
+        call(HttpMethod.DELETE, "/v1/conversations/b/c", null);
+        call(HttpMethod.POST, "/v1/ops/resource/share/list", body());
+        call(HttpMethod.GET, "/v1/user/info", body());
+        call(HttpMethod.POST, "/openai/v1/chat/completions", null);
+
+        awaitCondition(() -> dispatched.size() == 5);
     }
 
-    @Test
-    void testGetWithBodyFails() {
-        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.GET, "/v1/user/info", body())));
-        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.POST, "/openai/v1/chat/completions", null)));
-        verify(proxy, never()).dispatch(any());
-    }
-
-    // plugin-call-user-info design D5: the call's own fields first, then the closed host's 401, then the route
+    // plugin-call-user-info design D5: the call's own fields first, then the closed host's 401
 
     @Test
     void testChecksAfterCloseKeepTheirOrder() throws Exception {
         host.close();
 
-        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.GET, "/v1/user/info", body())));
+        assertThrows(ExecutionException.class, () -> await(call(null, "/v1/user/info", null)));
         assertEquals(401, await(call(HttpMethod.GET, "/v1/user/limits", null)).statusCode());
         verify(proxy, never()).dispatch(any());
     }

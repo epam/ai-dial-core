@@ -55,22 +55,25 @@ sources compile, unchanged.
 - **Rejected: a second record or interface method for a `GET`** - two ways to make a call that differ only in the
   method.
 
-### D2. The host serves `GET` on the user info route besides `POST` on the create routes
+### D2. The host serves every route of Core's API
 
-The host checks the call's method, then its path: `POST` reaches the five create routes, as today, and `GET` the user
-info route. Any other call fails before a pass starts. A read route a plugin needs later (file reads, file metadata,
-limits) is one more path for `GET` and a test: the in-process answer already streams with backpressure, reset and
-cancel, which a file download's pipe needs. A JSON write or an upload needs more, because the in-process request has
-no body bytes and no multipart.
+A call reaches the controller Core's controller selection picks for its method and path, as that request sent over
+HTTP with the call's key does: the user info, resources and files, sharing, limits, the configured routes, the create
+operations. Each controller checks the key's access, so a plugin reaches nothing it could not reach over HTTP with
+that key, and a path Core does not serve gets the answer it gets over HTTP. The in-process answer already streams with
+backpressure, reset and cancel, which a file download's pipe needs.
 
-The alias hop asks the host whether a path is a create route, to decide whether an alias pass goes in process. That
-question keeps its meaning: create routes only.
+The alias hop asks the host whether a path is a create route (`takesBodyTree`, formerly `servesCall`), to decide
+whether an alias pass goes in process. That question keeps its meaning: create routes only. The host of an alias hop
+keeps serving the create routes only: it serves a request Core builds to an alias's target, and a toolset alias's
+chat completion names the toolset's MCP endpoint, which must fail as a chat completion to the toolset does
+(deployment-aliases "Toolset alias over an MCP application").
 
-- **Rejected: every route Core serves** - each controller would run on a request it was never tested on, and a
-  member of the in-memory request that throws would turn into a `500` for the plugin.
-- **Rejected: `GET` on every route** - the same risk for the read controllers, with no consumer today.
-- **Rejected: a table of method and route pairs** - each method has rules of its own (a body and the background rule
-  for `POST`, no body for `GET`) that a table does not hold; with one `GET` route a condition is shorter.
+- **Rejected: `GET` on the user info route besides `POST` on the create routes** (the first design of this change) -
+  a list to grow with each consumer, which the review of this change asked to drop: the key, not the list, bounds
+  what a call reaches. What the list did protect, a write losing its body, D4 covers.
+- **Rejected: `GET` on every route, `POST` on the create routes only** - the same list for writes, which need only the
+  body as bytes (D4).
 
 ### D3. A pass is a child pass when its request is the in-memory one, not when it has a body tree
 
@@ -79,32 +82,42 @@ A `GET` call has no tree, so with today's test its pass would count as one with 
 span, and the log layout enriches that span with the user info pass's log fields. Only the host creates the in-memory
 request, one for each pass it serves (a call, or an alias's target pass), so every pass that counts as a child today
 still does, and a `GET` pass does too, with no step the host has to remember. The decision router's in-process call
-checks for the tree itself, as today. The router pass's empty-body read serializes the tree without checking for it,
-but only a create operation's pass reaches it, and that pass always has one.
+checks for the tree itself, as today, and so does the router pass's empty-body read
+(`DeploymentPostController.readRequestBody`), which checked for a child pass: a create operation's call without a
+body has no tree.
 
 - **Rejected: an empty tree for a `GET`** - those two readers would take it for a body.
 - **Rejected: a flag the host sets on each pass it starts** - a field and a step to keep in step with the request
   the host creates, which already marks the pass.
 
-### D4. A call without a method, or a `GET` with a body, is refused
+### D4. The body goes to a create operation as a tree, and to any other route as bytes
 
-`Call.body` is the tree a `POST` hands over. A `GET` that carries one would have it dropped without a word, and a
-plugin bug (a `GET` built where a `POST` was meant) would show as a wrong answer instead of a failed call. A call
-without a method fails as one without a path does today.
+A create operation's pass takes the call's body as a tree, as before. Every other controller reads
+`request.body()`, which was always empty in process: a `PUT` of a conversation through the host would have written an
+empty conversation and answered `200`. The in-memory request now serves the body's bytes, serialized on a worker when
+a controller first reads them, on the pass's own context. It drops a `Content-Length` the plugin passes on from its own
+request, which `ResourceController` would check against its limit; the body is whole, and the controllers measure it.
+A call may carry a body or not with any method, as over HTTP: a `GET` ignores it, and a `POST` without one is
+answered as an empty body is over HTTP. A call without a method or a uri fails.
 
-- **Rejected: ignoring the body** - hides the bug.
+A call cannot carry a multipart body or open a WebSocket, so the members of an upload, a WebSocket, cookies and the
+connection still throw; a plugin sends an upload to Core over HTTP.
 
-### D5. The user info call keeps the key, the depth limit and the end of every call
+- **Rejected: a `GET` with a body refused** (the first design) - one more rule than HTTP has.
+- **Rejected: the bytes for every call, create operations included** - a serialization per model call that the create
+  operations never read.
+- **Rejected: serializing in the host before the pass starts** - a serialization for a body a controller may not
+  read, completed on the plugin's context instead of the pass's.
+
+### D5. Every call keeps the key, the depth limit and the end with the request
 
 The call carries the key a `POST` call carries: the plugin's pass key, or the decide request's key on a decide
 request, so the answer describes the client's caller, as the HTTP read with that key does. The depth check runs for
 every call, so a `GET` from a plugin 32 deployments deep gets `400`, as that plugin's `POST` calls do. After the
 request has ended, and while answering a notice, the call gets `401`.
 
-The checks keep today's order. The call's own fields come first (a path, a method, a body for `POST` and none for
-`GET`) and fail the call even after the request has ended. Then a closed host answers `401`. Then come the method and
-route, the background rule and the depth. So a `GET` of another path after the end is answered `401`, as a `POST`
-outside the create operations is today.
+The checks keep today's order. The call's own fields come first (a method and a uri) and fail the call even after
+the request has ended. Then a closed host answers `401`. Then come the background rule and the depth.
 
 - **Rejected: no depth check for a `GET`** - an extra branch for a plugin whose other calls fail at that depth
   anyway; a `GET` of user info starts no further pass, so it cannot loop.
@@ -113,12 +126,12 @@ outside the create operations is today.
 
 | What | Today | After | Requirement |
 |---|---|---|---|
-| `GET /v1/user/info` through the host | the call fails: not a create operation | served in process with the call's key | deployment-origin "Caller's user info through the host" |
-| User info while deciding, through the host | the call fails | served with the decide request's key; a notice gets `401` | router-deployment "Calls of an embedded router while it decides" |
-| Server span of a plugin's user info read, when it uses the host | a server span of its own | none; the read writes nothing on the plugin's span (D3) | none; `docs/tracing.md` |
+| A call outside the create operations through the host (`GET /v1/user/info`, a resource's `PUT`, `GET`, `DELETE`) | the call fails | served in process with the call's key; a body as bytes | deployment-origin "Core's API through the host", "Calling a deployment from an origin plugin" |
+| The same calls while deciding | the call fails | served with the decide request's key; a notice gets `401` | router-deployment "Calls of an embedded router while it decides" |
+| Server span of such a call, when the plugin uses the host instead of HTTP | a server span of its own | none; the call writes nothing on the plugin's span (D3) | none; `docs/tracing.md` |
 | `Call` in the plugin API | path, headers, body; always `POST` | method first; the three-argument constructor means `POST` | none (plugin API) |
 
-The user info read over HTTP keeps working unchanged.
+Calls over HTTP keep working unchanged.
 
 ## Effect per request
 
@@ -133,14 +146,19 @@ Per plugin request that reads the user info through the host instead of over HTT
 | Encode and parse of the answer | Core encodes, the plugin parses | the same |
 | Analytics rows, blob operations | none | none |
 
-Requests that do not read the user info: none, the host's check is one more list entry. Expected, not measured: the
-saving needs the plugin side, which comes after this change; task 4.1 measures it then.
+Any other call outside the create operations saves the same when it moves to the host, plus the serialization of a
+body moving from the plugin to Core's worker. Create operations' calls: none, they lose a route check and serialize
+nothing new. Expected, not measured: the saving needs the plugin side, which comes after this change; task 4.1
+measures it then.
 
 ## Risks / Trade-offs
 
-- [The user info controller runs on the in-memory request for the first time] → it reads only the pass's context
-  (roles, key, claims, display name) and answers through the context's `respond`; tests cover both caller kinds and
-  the decide key.
+- [Controllers outside the create operations run on the in-memory request for the first time] → it serves every
+  member they read but those of an upload, a WebSocket, cookies and the connection, which a call cannot carry; one
+  that throws ends in a `500` for the plugin, as an error of the controller does. Tests cover the user info for both
+  caller kinds and the decide key, and a resource written, read and deleted. Paths Core answers before it
+  authenticates (`/health`, `/version`, the OpenAPI document) are not routes of the controller selection, and a call
+  gets what an unknown path gets.
 - [A plugin keeps the host past its request and reads the user info later] → `401`, as for any call after the end,
   and as the HTTP read gets once the key is deleted.
 - [The plugin API record changes] → the kept constructor and accessors keep jars built against the old API working;

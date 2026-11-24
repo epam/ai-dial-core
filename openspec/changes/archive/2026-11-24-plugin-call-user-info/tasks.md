@@ -80,6 +80,29 @@
   request, and record the result in review.md. (deferred: needs the perf environment and the plugin's user info read
   through the host)
 
+## 5. Every route through the host (PR review)
+
+- [x] 5.1 The host serves every route (design D2, D4): drop the method and route check and the body rule, keeping a
+  call's method and uri, the closed host's `401`, the background rule and the depth. `EmbeddedServerRequest` takes the
+  call's body: a create operation's pass takes it as a tree as before, any other pass reads its bytes from `body()`,
+  serialized on the task executor when first read; `Content-Type: application/json` for a call with a body; a
+  passed-on `Content-Length` dropped. Rename `servesCall` to `takesBodyTree`. The host of an alias hop keeps serving
+  the create routes only, so a chat completion to a toolset alias still answers as one to the toolset does
+  (`AliasApiTest.chatCompletionToToolsetAliasAnswersAsForToolset`). `DeploymentPostController.readRequestBody`
+  serializes the call tree only when there is one. Update `VertxHostDelegateTest` (any method and route dispatched, a
+  body as bytes outside the create routes, a tree and no bytes for them, the checks after close) and
+  `EmbeddedServerRequestTest` (bytes serialized once when read, `Content-Length` dropped).
+- [x] 5.2 Scenarios in `EmbeddedCallApiTest`: `testWriteReadAndDeleteThroughTheHost` (deployment-origin "Write, read
+  and delete a resource", in the caller's appdata folder of `app`, checked over HTTP after each call) in place of the
+  refused calls, and `testBackgroundResponseCallRefused` ("Background response") in place of
+  `testCallOutsideTheCreateOperations`.
+- [x] 5.3 Docs: `docs/dynamic-settings/plugins.md` (calling another deployment: every route, the body, `Content-Length`;
+  translating, "Responses"; deciding, "The key"; the forward sample), `docs/dynamic-settings/routers.md` (a decision
+  plugin's calls), `docs/tracing.md` (calls from an origin plugin), the javadoc of `Call`, `HostDelegate`,
+  `EmbeddedServerRequest`, `VertxHostDelegate` and the `forward` sample.
+- [x] 5.4 Run `./gradlew checkstyleMain checkstyleTest` and the test classes of 2.7 and 3.3 with
+  `EmbeddedOriginApiTest` and `RouterDecisionApiTest`; verify both succeed.
+
 ## Workflow follow-up
 
 - Open a draft PR with proposal.md and the spec deltas for review before applying (not a small change).

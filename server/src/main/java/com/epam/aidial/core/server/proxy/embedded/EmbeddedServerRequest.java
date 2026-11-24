@@ -1,6 +1,9 @@
 package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.handler.codec.DecoderResult;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.vertx.core.Future;
@@ -25,13 +28,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nullable;
 import javax.security.cert.X509Certificate;
 
 /**
  * The request of a pass Core serves in process, for an origin plugin's call or as the target pass of an alias call: the
- * call's method, path and query, with the call's headers. The pass takes a {@code POST}'s body as a tree, and a
- * {@code GET} has none, so {@link #body()} is empty and already read. Members no controller of the create operations
- * or of the user info uses throw.
+ * call's method, path and query, with the call's headers and JSON body. A create operation takes the body as a tree,
+ * so its {@link #body()} is empty; any other pass reads the body's bytes from {@link #body()}, serialized on a worker
+ * when first read. The body is whole before the pass starts, so nothing is streamed. The members of a file upload, a
+ * WebSocket, cookies and the connection throw: a plugin's call has none of them.
  */
 public final class EmbeddedServerRequest implements HttpServerRequest {
 
@@ -52,26 +57,36 @@ public final class EmbeddedServerRequest implements HttpServerRequest {
     private final String query;
     private final MultiMap headers = MultiMap.caseInsensitiveMultiMap();
     private final HttpServerResponse response;
+    private final ObjectNode body;
+    private final AsyncTaskExecutor serializer;
+    private Future<Buffer> bytes;
     private MultiMap params;
     private String paramsCharset = StandardCharsets.UTF_8.name();
 
     /**
-     * @param method  the call's method; a {@code POST} carries a JSON body
-     * @param uri     the path and query of the call
-     * @param headers the call's headers, copied
+     * @param method     the call's method
+     * @param uri        the path and query of the call
+     * @param headers    the call's headers, copied
+     * @param body       the call's body, if any
+     * @param serializer serializes the body for {@link #body()}; null when the pass takes the body as a tree
      */
-    public EmbeddedServerRequest(HttpMethod method, String uri, MultiMap headers, HttpServerResponse response) {
+    public EmbeddedServerRequest(HttpMethod method, String uri, MultiMap headers, @Nullable ObjectNode body,
+                                 @Nullable AsyncTaskExecutor serializer, HttpServerResponse response) {
         this.method = method;
         this.uri = uri;
         int question = uri.indexOf('?');
         this.path = question < 0 ? uri : uri.substring(0, question);
         this.query = question < 0 ? null : uri.substring(question + 1);
         this.response = response;
+        this.body = body;
+        this.serializer = serializer;
         if (headers != null) {
             this.headers.addAll(headers);
         }
         DROPPED_HEADERS.forEach(this.headers::remove);
-        if (HttpMethod.POST.equals(method)) {
+        // the length of the plugin's own request, if passed on: the body is whole, and a controller measures it
+        this.headers.remove(HttpHeaders.CONTENT_LENGTH);
+        if (body != null) {
             this.headers.set(HttpHeaders.CONTENT_TYPE, Proxy.HEADER_CONTENT_TYPE_APPLICATION_JSON);
         }
     }
@@ -155,7 +170,12 @@ public final class EmbeddedServerRequest implements HttpServerRequest {
 
     @Override
     public Future<Buffer> body() {
-        return Future.succeededFuture(Buffer.buffer());
+        if (bytes == null) {
+            bytes = body == null || serializer == null
+                    ? Future.succeededFuture(Buffer.buffer())
+                    : serializer.submit(() -> Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(body)));
+        }
+        return bytes;
     }
 
     @Override

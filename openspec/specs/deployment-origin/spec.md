@@ -371,8 +371,8 @@ as it arrives.
 - **WHEN** `p1` relays the streamed answer of a call to a model whose HTTP origin closes its connection mid-stream
 - **THEN** the answer of `p1`'s call fails, and the client's connection is closed before the answer completes
 
-#### Scenario: Call outside the create operations
-- **WHEN** `p1` calls `/v1/ops/resource/share/list`, or `/openai/v1/responses` with `"background": true`
+#### Scenario: Background response
+- **WHEN** `p1` calls `/openai/v1/responses` with `"background": true`
 - **THEN** the call fails, no deployment is called and no row is written for it, and the client gets `502` with the
   message `No route`
 
@@ -494,12 +494,11 @@ any origin plugin's are.
 - **WHEN** the translator's `baseUrl` is `dial-plugin://missing` and no `plugins.missing` exists
 - **THEN** the client gets `502` with the message `Failed to connect to upstream server`
 
-### Requirement: Caller's user info through the host
-An origin plugin SHALL be able to read the user info of the request it answers through its host. Core SHALL serve a
-`GET /v1/user/info` call without a body as `GET /v1/user/info` sent with the key the plugin's calls carry, and SHALL
-hand the plugin the answer as it hands the answer of any call. Core SHALL refuse a call without a method, a `GET` of
-any other path, a method other than `POST` and `GET`, and a `GET` with a body: the call fails, as a call outside the
-create operations does.
+### Requirement: Core's API through the host
+An origin plugin SHALL be able to call any route of Core's API through its host. Core SHALL serve a call outside the
+create operations as that request, with its method, path, query, headers and JSON body, sent to Core with the key the
+plugin's calls carry, and SHALL hand the plugin the answer as it hands the answer of any call. A call without a method
+or a uri fails.
 
 #### Scenario: Caller with an API key
 - **WHEN** a client with API key `proxyKey1` (project `EPM-RTC-GPT`, role `default`) sends a chat completion to `app`,
@@ -519,7 +518,9 @@ create operations does.
   host it kept
 - **THEN** that call's answer is `401` with the message `Unknown api key`
 
-#### Scenario: Other reads, other methods and a GET with a body
-- **WHEN** `p1` calls, through its host, `GET /v1/user/limits`, `DELETE /v1/user/info`, or `GET /v1/user/info` with a
-  body
-- **THEN** each call fails, and the client gets `502` with the message `No route`
+#### Scenario: Write, read and delete a resource
+- **WHEN** a client with API key `proxyKey1` sends three chat completions to `app`, and `p1` calls through its host, one
+  per request, `PUT /v1/conversations/<bucket>/appdata/app/c1` with the body of the client's request, `GET` of that
+  path, and `DELETE` of it, where `<bucket>` is the bucket of `proxyKey1`
+- **THEN** the `PUT` is answered `200` and the client's `GET` of the path over HTTP answers that body, the call's `GET`
+  answers `200` with that body, and after the `DELETE` the client's `GET` answers `404`

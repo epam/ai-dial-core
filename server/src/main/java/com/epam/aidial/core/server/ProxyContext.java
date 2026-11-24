@@ -405,7 +405,8 @@ public class ProxyContext {
 
     /**
      * Whether Core serves this pass in process, for an origin plugin's call or as the target pass of an alias call
-     * ({@link #isAliasTargetPass}). Only the host creates the in-memory request, and a user info call has no body tree.
+     * ({@link #isAliasTargetPass}). Only the host creates the in-memory request, and only a create operation's call has a
+     * body tree.
      */
     public boolean isChildPass() {
         return request instanceof EmbeddedServerRequest;

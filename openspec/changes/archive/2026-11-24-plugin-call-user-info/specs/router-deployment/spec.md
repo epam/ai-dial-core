@@ -1,9 +1,8 @@
 ## MODIFIED Requirements
 
 ### Requirement: Calls of an embedded router while it decides
-A plugin answering a decide request MAY call Core through its host: the create operations and the caller's user info,
-as deployment-origin lists them. Core SHALL serve each call with the decide request key, as it serves an HTTP router's
-calls with that key. When the decide call ends Core SHALL cancel the calls still open and SHALL answer `401` to later
+A plugin answering a decide request MAY call Core through its host, as deployment-origin lists the calls. Core SHALL
+serve each call with the decide request key, as it serves an HTTP router's calls with that key. When the decide call ends Core SHALL cancel the calls still open and SHALL answer `401` to later
 ones. The notice request carries no key, so calls made while answering it SHALL be answered `401`.
 
 #### Scenario: Plugin asks a model while deciding

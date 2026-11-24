@@ -201,20 +201,17 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testCallOutsideTheCreateOperations() {
+    void testBackgroundResponseCallRefused() {
         servedApp();
         servedModel("m2", "openaiResponses");
 
-        Response list = chat("/openai/deployments/app/chat/completions", CHAT_BODY, "X-Test-Call", "/v1/ops/resource/share/list");
         Response background = chat("/openai/deployments/app/chat/completions",
                 "{\"background\":true,\"input\":\"hi\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
                 "X-Test-Call", "/openai/v1/responses", "X-Test-Call-Model", "m2");
 
-        for (Response response : List.of(list, background)) {
-            assertEquals(502, response.status(), response.body());
-            assertTrue(response.body().contains("No route"), response.body());
-        }
-        assertEquals(2, TestOriginPluginProvider.REQUESTS.size());
+        assertEquals(502, background.status(), background.body());
+        assertTrue(background.body().contains("No route"), background.body());
+        assertEquals(1, TestOriginPluginProvider.REQUESTS.size());
         analyticsRows.forEach(row -> assertEquals("app", row.getDeploymentName()));
     }
 
@@ -598,7 +595,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         assertEquals(List.of("user"), caller.roles());
     }
 
-    // deployment-origin "Caller's user info through the host"
+    // deployment-origin "Core's API through the host"
 
     @Test
     void testUserInfoOfCallerWithApiKey() {
@@ -649,20 +646,21 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testOtherReadsMethodsAndGetWithBodyRefused() {
+    void testWriteReadAndDeleteThroughTheHost() {
         servedApp();
+        // the per-request key of app's pass may write the caller's appdata folder of app
+        String conversation = "/v1/conversations/" + bucket + "/appdata/app/c1";
 
-        Response limits = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
-                "X-Test-Call", "/v1/user/limits", "X-Test-Call-Method", "GET");
-        Response delete = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
-                "X-Test-Call", "/v1/user/info", "X-Test-Call-Method", "DELETE");
-        Response withBody = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
-                "X-Test-Call", "/v1/user/info", "X-Test-Call-Method", "GET", "X-Test-Call-With-Body", "true");
+        verify(chat("/openai/deployments/app/chat/completions", CONVERSATION_BODY,
+                "X-Test-Call", conversation, "X-Test-Call-Method", "PUT", "X-Test-Call-With-Body", "true"), 200);
+        verify(send(HttpMethod.GET, conversation), 200, CONVERSATION_BODY);
 
-        for (Response response : List.of(limits, delete, withBody)) {
-            assertEquals(502, response.status(), response.body());
-            assertTrue(response.body().contains("No route"), response.body());
-        }
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY,
+                "X-Test-Call", conversation, "X-Test-Call-Method", "GET"), 200, CONVERSATION_BODY);
+
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY,
+                "X-Test-Call", conversation, "X-Test-Call-Method", "DELETE"), 200);
+        verify(send(HttpMethod.GET, conversation), 404);
         assertEquals(3, TestOriginPluginProvider.REQUESTS.size());
     }
 
@@ -676,6 +674,9 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     // the shared test config gives role default token limits on this model
     private static final String LIMITED_MODEL = "chat-gpt-35-turbo";
     private static final String CHAT_BODY = "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+    // a chat completion that is a conversation too, for a plugin that writes its request's body as one
+    private static final String CONVERSATION_BODY = "{\"id\":\"c1\",\"folderId\":\"f\",\"name\":\"c1\",\"prompt\":\"\","
+            + "\"temperature\":1,\"model\":{\"id\":\"m\"},\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String STREAM_BODY = "{\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String GREETING_P2 = "{\"greeting\": \"from-p2\"}";
     private static final String INLINE_TRANSLATOR = "{\"out\": \"openaiChatCompletions\", \"baseUrl\": \"dial-plugin://p1\"}";

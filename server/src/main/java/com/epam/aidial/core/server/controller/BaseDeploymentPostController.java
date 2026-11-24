@@ -491,14 +491,14 @@ public class BaseDeploymentPostController {
     /**
      * Whether the alias pass's request to its target is served in process; otherwise it goes over HTTP to Core's own
      * address. In process when the deployment is an alias pass, the pass is not a background job, and the request's
-     * path is one an in-process call serves (Messages {@code count_tokens} is not). The request's path classifies as the
-     * target's does: an override path keeps the action, and {@code count_tokens} stays {@code count_tokens}. The send and
-     * the body follow this one check: an HTTP send of bytes the alias pass did not serialize from the tree would name
-     * the alias in {@code model} and reach the alias again.
+     * path is a create operation's, whose pass takes the body as a tree (Messages {@code count_tokens} is not). The
+     * request's path classifies as the target's does: an override path keeps the action, and {@code count_tokens} stays
+     * {@code count_tokens}. The send and the body follow this one check: an HTTP send of bytes the alias pass did not
+     * serialize from the tree would name the alias in {@code model} and reach the alias again.
      */
     private boolean isInProcessAliasHop() {
         return context.getDeployment() instanceof AliasPass && !context.isBackgroundJob()
-                && VertxHostDelegate.servesCall(context.getRequest().path());
+                && VertxHostDelegate.takesBodyTree(context.getRequest().path());
     }
 
     protected Future<ProxyResponse> sendProxyRequest(ProxyRequest proxyRequest, InterfaceType type) {
