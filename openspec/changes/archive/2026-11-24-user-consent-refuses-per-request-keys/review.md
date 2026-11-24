@@ -7,7 +7,7 @@ OpenAPI annotation already lists `403`.
 ## Verification
 
 - `ConsentApiTest.testAcceptConsent_RefusedToPerRequestKey` failed before the fix (`200` instead of `403`) and passes
-  after it; it also checks the user's later call is still refused for missing consent.
+  after it; it also checks, with `GET /v1/consent/secured-app` as the user, that nothing was stored.
 - `./gradlew checkstyleMain checkstyleTest :server:test --tests "*ConsentApiTest"`: 6 tests, all pass.
 - Other tests that accept consent use an admin JWT (`ToolSetApiTest`) or a project API key (`AliasApiTest`); the check
   only fires for per-request keys.

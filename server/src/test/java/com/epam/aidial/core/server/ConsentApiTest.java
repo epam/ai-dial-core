@@ -122,8 +122,8 @@ public class ConsentApiTest extends ResourceBaseTest {
         verify(resp, 403, "User consent is not allowed for per-request keys");
 
         // nothing was stored for the user
-        resp = send(HttpMethod.POST, "/openai/deployments/secured-app/chat/completions", null, APP_REQUEST,
-                "Authorization", "user", "content-type", "application/json");
-        verify(resp, 403, "User didn't accept consent to call the deployment: secured-app");
+        resp = send(HttpMethod.GET, "/v1/consent/secured-app", null, null, "Authorization", "user");
+        verify(resp, 200);
+        assertFalse(ProxyUtil.MAPPER.readTree(resp.body()).get("accepted").asBoolean());
     }
 }

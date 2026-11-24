@@ -16,5 +16,5 @@ None: one field read on the consent write path; the proxy path is untouched.
 - `ConsentController.acceptConsent` — add the check first, as `ShareController.handle` does (`403`, before the body).
 - `ProxyContext.getApiKeyData` / `ApiKeyData.getPerRequestKey` — the caller is a per-request key when it is non-null.
 - `ConsentService.acceptConsent`, `BucketBuilder.buildInitiatorBucket` — unchanged; why the key writes the user's record.
-- Tests: `ConsentApiTest` (user workflow); per-request key set-up as in
-  `ShareApiTest` (`ApiKeyData` with `setOriginalKey`, `ApiKeyStore.assignPerRequestApiKey`).
+- Tests: `ConsentApiTest` (user workflow); a per-request key of the user from `ResourceBaseTest.createAppKey`,
+  registered with `ApiKeyStore.assignPerRequestApiKey`.
