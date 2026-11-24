@@ -147,7 +147,7 @@ also records calls made outside a request.
 
 These metrics show where Core waits rather than works. The timers have buckets from 100 µs to 30 s.
 Locks and async tasks each have queue-size gauges and timers for the wait and the work; the event loops have a
-queue-size gauge only. The event-loop gauges are only registered when a Prometheus or OTLP registry is enabled. The
+queue-size gauge and a task timer. The event-loop gauges are only registered when a Prometheus or OTLP registry is enabled. The
 analytics log writer has a gauge of the bodies its queue holds and a counter of rows written without them; the counter
 stays at 0 unless `analytics.maxPendingBodyHeapPercent` is set.
 
@@ -163,6 +163,7 @@ stays at 0 unless `analytics.maxPendingBodyHeapPercent` is set.
 | `dial_async_task_duration`            | timer | Time an `AsyncTaskExecutor` task runs, from its start until it returns or throws                               |
 | `netty_eventexecutor_tasks_pending`   | gauge | Tasks queued on each event loop, tagged with the loop thread `name` (Micrometer `NettyEventExecutorMetrics`)   |
 | `netty_eventexecutor_workers`         | gauge | Number of event loops (Micrometer `NettyEventExecutorMetrics`)                                                 |
+| `dial_event_loop_task_duration`       | timer | Time an event loop runs one Vert.x dispatch (a handler, a future callback), tagged with the loop thread `name` |
 | `dial_analytics_log_pending_body_bytes` | gauge | Bytes of request and response bodies held by analytics log rows that wait to be written, with or without `analytics.maxPendingBodyHeapPercent` |
 | `dial_analytics_log_bodies_skipped_total` | counter | Analytics log rows written without bodies because the waiting bodies reached `analytics.maxPendingBodyHeapPercent` |
 
@@ -189,12 +190,18 @@ Event loops:
 - `netty_eventexecutor_tasks_pending` counts the loop's task queue (callbacks such as `AsyncTaskExecutor` results and
   `runOnContext`; Redisson replies arrive on its own threads), not incoming I/O. It is read once per scrape, so it
   misses short bursts.
-- A loop blocked by a single long task is reported by the Vert.x blocked thread checker in the log. Netty has no
-  public per-task timing, so there is no event-loop counterpart to `dial_async_task_duration`.
+- A loop blocked by a single long task is reported by the Vert.x blocked thread checker in the log.
+- `dial_event_loop_task_duration` times the outermost dispatch only, so nested dispatches count in their parent.
+  Netty work outside a dispatch (codecs, TLS, flushes) is not timed, and `-Dvertx.disableContextTimings=true` turns
+  the timer off, together with the blocked thread checker. `rate(..._seconds_sum)` per `name` is the share of time a
+  loop spends in dispatches, which shows a single hot loop. The acceptor thread (`vert.x-acceptor-thread-0`) is timed
+  too; it has no `netty_eventexecutor_tasks_pending` series, as it is not one of the event loops.
+- Vert.x has no public hook for this: the timer hooks the package-private `VertxThread.executeEnd()`, so it works on
+  the classpath only.
 
 Prometheus adds the unit to the names: a timer is exported as `<name>_seconds_count`, `_sum`, `_max` and `_bucket`.
-The values are fractional seconds, so `_sum` and `_max` keep nanosecond precision, and the `dial_lock_*` and
-`dial_async_task_*` buckets start at 100 µs (`le="0.0001"`).
+The values are fractional seconds, so `_sum` and `_max` keep nanosecond precision, and the `dial_lock_*`,
+`dial_async_task_*` and `dial_event_loop_task_duration` buckets start at 100 µs (`le="0.0001"`).
 
 ## Trace context after the response
 
