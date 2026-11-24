@@ -1559,6 +1559,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+            text/plain:
+              schema:
+                type: string
+          headers:
+            x-should-retry:
+              description: '`false` on the no-budget refusal'
+              required: false
+              schema:
+                type: string
         "403":
           description: Forbidden
           content:
@@ -1930,6 +1939,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+            text/plain:
+              schema:
+                type: string
+          headers:
+            x-should-retry:
+              description: '`false` on the no-budget refusal'
+              required: false
+              schema:
+                type: string
         "401":
           description: Invalid Authentication
           content:
