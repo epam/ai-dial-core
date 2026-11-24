@@ -291,8 +291,8 @@ public class ConfigApplyService {
     private EntityResult applyPlugin(Plugin plugin, String id, ParsedName parsed, List<EntityChange> pending) {
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validatePlugin(id, plugin, mergedConfigStore.getPluginRegistry(), true, warnings);
-        // Without a provider the unknown type is the only warning: a dangling reference, soft-tolerable as a model's
-        boolean softFailure = mergedConfigStore.getPluginRegistry().get(plugin.getType()) == null;
+        // Without a provider the unknown id is the only warning: a dangling reference, soft-tolerable as a model's
+        boolean softFailure = mergedConfigStore.getPluginRegistry().get(plugin.getPluginId()) == null;
         if (!warnings.isEmpty() && !(softFailure && softValidation)) {
             return new EntityResult(id, AdminApplyStatus.FAILED, ConfigManifestSupport.joinWarnings(warnings));
         }

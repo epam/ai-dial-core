@@ -4,6 +4,7 @@ import com.epam.aidial.core.plugin.Call;
 import com.epam.aidial.core.plugin.HostDelegate;
 import com.epam.aidial.core.plugin.Plugin;
 import com.epam.aidial.core.plugin.PluginProvider;
+import com.epam.aidial.core.plugin.PluginTarget;
 import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -23,14 +24,16 @@ import io.vertx.core.streams.ReadStream;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Origin plugin provider of type {@code test-origin}, registered on the test classpath. It answers like an HTTP
+ * Origin plugin provider of id {@code test-origin}, registered on the test classpath. It answers like an HTTP
  * origin, by the path: a chat completion (SSE when the body asks for {@code stream}), an embedding list, a response
  * and its item operations, an Anthropic message and its token count. The setting {@code greeting} is the text it
  * answers with. Client headers, which Core forwards to an origin, steer the other cases:
@@ -71,7 +74,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class TestOriginPluginProvider implements PluginProvider {
 
-    public static final String TYPE = "test-origin";
+    public static final String ID = "test-origin";
 
     /**
      * Every request a {@code test-origin} plugin was called with, oldest first.
@@ -123,8 +126,16 @@ public class TestOriginPluginProvider implements PluginProvider {
     }
 
     @Override
-    public String type() {
-        return TYPE;
+    public String id() {
+        return ID;
+    }
+
+    /**
+     * Only {@code router}, though models and applications name its entries: targets are a hint Core does not check.
+     */
+    @Override
+    public Set<PluginTarget> targets() {
+        return EnumSet.of(PluginTarget.ROUTER);
     }
 
     @Override

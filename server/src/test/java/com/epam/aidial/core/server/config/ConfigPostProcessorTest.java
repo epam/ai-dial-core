@@ -28,6 +28,7 @@ import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Vertx;
@@ -41,8 +42,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.config.InterfaceType.ANTHROPIC_MESSAGES;
 import static com.epam.aidial.core.config.InterfaceType.OPENAI_CHAT_COMPLETIONS;
@@ -778,7 +781,7 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
-    void testPluginOfAnUnknownTypeIsKeptInAbortMode() {
+    void testPluginOfAnUnknownIdIsKeptInAbortMode() {
         Config config = configWithPlugin("p1", new Plugin("missing", null));
 
         ConfigPostProcessor.processPlugins(config, PLUGINS, null);
@@ -787,7 +790,7 @@ public class ConfigPostProcessorTest {
     }
 
     @Test
-    void testPluginOfAnUnknownTypeIsDroppedInSkipMode() {
+    void testPluginOfAnUnknownIdIsDroppedInSkipMode() {
         Config config = configWithPlugin("p1", new Plugin("missing", null));
         AtomicReference<InvalidEntityException> skipped = new AtomicReference<>();
 
@@ -795,12 +798,12 @@ public class ConfigPostProcessorTest {
 
         assertFalse(config.getPlugins().containsKey("p1"));
         assertEquals("p1", skipped.get().getMapKey());
-        assertEquals("type", skipped.get().getWarnings().get(0).getField());
+        assertEquals("pluginId", skipped.get().getWarnings().get(0).getField());
     }
 
     @Test
     void testPluginWithRejectedSettingsFailsInAbortMode() {
-        Config config = configWithPlugin("p1", new Plugin(TestEchoPluginProvider.TYPE, null));
+        Config config = configWithPlugin("p1", new Plugin(TestEchoPluginProvider.ID, null));
 
         InvalidEntityException error = assertThrows(InvalidEntityException.class,
                 () -> ConfigPostProcessor.processPlugins(config, PLUGINS, null));
@@ -810,7 +813,7 @@ public class ConfigPostProcessorTest {
 
     @Test
     void testPluginWithRejectedSettingsIsDroppedInSkipMode() {
-        Config config = configWithPlugin("p1", new Plugin(TestEchoPluginProvider.TYPE, null));
+        Config config = configWithPlugin("p1", new Plugin(TestEchoPluginProvider.ID, null));
         AtomicReference<InvalidEntityException> skipped = new AtomicReference<>();
 
         ConfigPostProcessor.processPlugins(config, PLUGINS, (type, error) -> skipped.set(error));
@@ -822,7 +825,7 @@ public class ConfigPostProcessorTest {
     @Test
     void testValidPluginIsKeptInSkipMode() {
         ObjectNode settings = JsonNodeFactory.instance.objectNode().put("greeting", "hi");
-        Config config = configWithPlugin("p1", new Plugin(TestEchoPluginProvider.TYPE, settings));
+        Config config = configWithPlugin("p1", new Plugin(TestEchoPluginProvider.ID, settings));
 
         ConfigPostProcessor.processPlugins(config, PLUGINS, (type, error) -> {
             throw new AssertionError("unexpected skip: " + error.getMessage());
@@ -833,8 +836,8 @@ public class ConfigPostProcessorTest {
 
     @Test
     void testStructuralDropsSlashKeyedPlugin() {
-        Config config = configWithPlugin("bad/plugin", new Plugin(TestEchoPluginProvider.TYPE, null));
-        config.getPlugins().put("valid-plugin", new Plugin(TestEchoPluginProvider.TYPE, null));
+        Config config = configWithPlugin("bad/plugin", new Plugin(TestEchoPluginProvider.ID, null));
+        config.getPlugins().put("valid-plugin", new Plugin(TestEchoPluginProvider.ID, null));
 
         ConfigPostProcessor.processStructural(config);
 
@@ -865,11 +868,54 @@ public class ConfigPostProcessorTest {
         assertEquals("settings", warnings.get(0).getField());
     }
 
+    @Test
+    void testSchemaWarningFieldsNameArrayItemsAndNestedProperties() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode schema = (ObjectNode) mapper.readTree("{\"type\": \"object\", \"properties\": {"
+                + "\"items\": {\"type\": \"array\", \"items\": {\"type\": \"object\", \"required\": [\"name\"]}},"
+                + "\"a\": {\"type\": \"object\", \"required\": [\"b\"]}}}");
+        PluginRegistry registry = registryOf(schema, settings -> List.of());
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        ConfigPostProcessor.validatePlugin("p1", new Plugin("custom", (ObjectNode) mapper.readTree("{\"items\": [{}], \"a\": {}}")),
+                registry, true, warnings);
+
+        assertEquals(Set.of("settings.items[0].name", "settings.a.b"),
+                Set.copyOf(warnings.stream().map(ValidationWarning::getField).toList()), warnings::toString);
+    }
+
+    @Test
+    void testFailingSchemaCheckIsOneWarningOnSettings() throws Exception {
+        AtomicBoolean validated = new AtomicBoolean();
+        // Refers to itself without reading the settings: it passes the load and overflows on every check
+        ObjectNode schema = (ObjectNode) new ObjectMapper().readTree("{\"allOf\": [{\"$ref\": \"#\"}]}");
+        PluginRegistry registry = registryOf(schema, settings -> {
+            validated.set(true);
+            return List.of();
+        });
+        List<ValidationWarning> warnings = new ArrayList<>();
+
+        ConfigPostProcessor.validatePlugin("p1", new Plugin("custom", null), registry, true, warnings);
+
+        assertEquals(1, warnings.size(), warnings::toString);
+        assertEquals("settings", warnings.get(0).getField());
+        assertFalse(validated.get());
+    }
+
     private static PluginRegistry registryOf(Function<ObjectNode, List<PluginProvider.Problem>> validate) {
-        return new PluginRegistry(Map.of("custom", new PluginProvider() {
+        return registryOf(null, validate);
+    }
+
+    private static PluginRegistry registryOf(@Nullable ObjectNode schema, Function<ObjectNode, List<PluginProvider.Problem>> validate) {
+        return new PluginRegistry(List.of(new PluginProvider() {
             @Override
-            public String type() {
+            public String id() {
                 return "custom";
+            }
+
+            @Override
+            public ObjectNode settingsSchema() {
+                return schema;
             }
 
             @Override

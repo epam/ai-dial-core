@@ -265,7 +265,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     {
                       "kind": "Plugin",
                       "name": "plugins/platform/apply-order-plugin",
-                      "spec": {"type": "test-echo", "settings": {"greeting": "hi"}}
+                      "spec": {"pluginId": "test-echo", "settings": {"greeting": "hi"}}
                     }
                   ]
                 }
@@ -276,6 +276,23 @@ public class AdminApplyApiTest extends ResourceBaseTest {
         assertEquals("plugins/platform/apply-order-plugin", results.get(0).get("entityId").asText(), response::body);
         assertEquals("translators/platform/apply-order-translator", results.get(1).get("entityId").asText(), response::body);
         verify(send(HttpMethod.GET, "/v1/plugins/platform/apply-order-plugin", null, "", "authorization", "admin"), 200);
+    }
+
+    @Test
+    @SneakyThrows
+    void testApplyPluginManifestWithTheAlias() {
+        String body = """
+                {"manifests": [
+                  {"kind": "Plugin", "name": "plugins/platform/apply-alias-plugin",
+                   "spec": {"type": "test-echo", "settings": {"greeting": "hi"}}}
+                ]}
+                """;
+        Response response = send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin");
+        verify(response, 200);
+        assertEquals("APPLIED", ProxyUtil.MAPPER.readTree(response.body()).get("results").get(0).get("status").asText(), response::body);
+        Response get = send(HttpMethod.GET, "/v1/plugins/platform/apply-alias-plugin", null, "", "authorization", "admin");
+        verify(get, 200);
+        assertEquals("test-echo", ProxyUtil.MAPPER.readTree(get.body()).get("pluginId").asText(), get::body);
     }
 
     @Test
@@ -1688,7 +1705,7 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                     {
                       "precheck": false,
                       "manifests": [
-                        {"kind": "Plugin", "name": "plugins/platform/apply-soft-plugin", "spec": {"type": "missing"}}
+                        {"kind": "Plugin", "name": "plugins/platform/apply-soft-plugin", "spec": {"pluginId": "missing"}}
                       ]
                     }
                     """;

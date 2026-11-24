@@ -98,9 +98,9 @@ public class PluginManager {
     }
 
     private Plugin create(String name, com.epam.aidial.core.config.Plugin declaration) {
-        PluginProvider provider = pluginRegistry.get(declaration.getType());
+        PluginProvider provider = pluginRegistry.get(declaration.getPluginId());
         if (provider == null) {
-            throw new IllegalStateException("No plugin provider of type '" + declaration.getType() + "' is loaded");
+            throw new IllegalStateException("No plugin provider of id '" + declaration.getPluginId() + "' is loaded");
         }
         Plugin created;
         try {

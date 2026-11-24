@@ -42,6 +42,9 @@ import com.epam.aidial.core.server.service.OrgUnitRoles;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.PathTemplateUtil;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.networknt.schema.JsonNodePath;
+import com.networknt.schema.JsonSchema;
+import com.networknt.schema.ValidationMessage;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -156,7 +159,7 @@ public final class ConfigPostProcessor {
 
     /**
      * Checks every {@code plugins} entry with {@link #validatePlugin}. Runs before {@link #processSemantic}, so the
-     * entities that reference a plugin see only the valid ones. An unknown type is checked only when {@code onSkip} is
+     * entities that reference a plugin see only the valid ones. An unknown plugin id is checked only when {@code onSkip} is
      * set, as a model's interceptors are in {@link #processModels}: a jar not yet on a pod during a rollout must not
      * fail that pod's rebuild.
      */
@@ -189,32 +192,47 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * Checks a {@code plugins} entry against the provider of its type. Settings the provider rejects are a defect of
-     * the entry itself, reported under {@code settings.<path>} whatever {@code checkType}. A type no loaded provider
-     * declares is a dangling reference, reported under {@code type} only when {@code checkType}; without a provider the
-     * settings cannot be checked. A provider that fails while checking rejects the settings, so one provider's defect
+     * Checks a {@code plugins} entry against the provider its {@code pluginId} names. Settings the provider rejects are
+     * a defect of the entry itself, reported under {@code settings.<path>} whatever {@code checkPluginId}. An id no loaded
+     * provider declares is a dangling reference, reported under {@code pluginId} only when {@code checkPluginId}; without a
+     * provider the settings cannot be checked. A provider that fails while checking rejects the settings, so one provider's defect
      * drops or fails only its own entries. Shared by every write surface (full load, partial update, Configuration API,
      * admin apply and validate).
      */
     public static void validatePlugin(@Nullable String name, Plugin plugin, PluginRegistry pluginRegistry,
-                                      boolean checkType, List<ValidationWarning> warnings) {
-        PluginProvider provider = pluginRegistry.get(plugin.getType());
+                                      boolean checkPluginId, List<ValidationWarning> warnings) {
+        PluginProvider provider = pluginRegistry.get(plugin.getPluginId());
         if (provider == null) {
-            if (checkType) {
-                warnings.add(new ValidationWarning("type", messageWithEntityPrefix("Plugin", name,
-                        "No plugin provider of type '" + plugin.getType() + "' is loaded")));
+            if (checkPluginId) {
+                warnings.add(new ValidationWarning("pluginId", messageWithEntityPrefix("Plugin", name,
+                        "No plugin provider of id '" + plugin.getPluginId() + "' is loaded")));
             }
             return;
         }
+        JsonSchema schema = pluginRegistry.settingsSchema(plugin.getPluginId());
         List<PluginProvider.Problem> problems;
         try {
+            Set<ValidationMessage> violations = schema == null ? Set.of() : schema.validate(plugin.getSettings());
+            if (!violations.isEmpty()) {
+                // validate() is not called: it would see settings of the wrong shape
+                for (ValidationMessage violation : violations) {
+                    warnings.add(new ValidationWarning(schemaViolationField(violation), messageWithEntityPrefix("Plugin", name, violation.getError())));
+                }
+                return;
+            }
             // a copy: a provider that changed the settings would change the config being validated
             problems = List.copyOf(provider.validate(plugin.getSettings().deepCopy()));
-        } catch (RuntimeException | LinkageError e) {
-            // plugin code: a jar missing a class throws NoClassDefFoundError on first use
-            log.warn("Plugin provider of type '{}' failed to check plugin '{}'", plugin.getType(), name, e);
+        } catch (RuntimeException | LinkageError | StackOverflowError e) {
+            // plugin code: a jar missing a class throws NoClassDefFoundError on first use. A schema that refers to
+            // itself without reading the settings passes the start and overflows the stack on every check
+            if (e instanceof StackOverflowError) {
+                // the same overflow on every check: a trace of a thousand frames each time would flood the log
+                log.warn("Plugin provider of id '{}' overflowed the stack checking plugin '{}'", plugin.getPluginId(), name);
+            } else {
+                log.warn("Plugin provider of id '{}' failed to check plugin '{}'", plugin.getPluginId(), name, e);
+            }
             warnings.add(new ValidationWarning("settings", messageWithEntityPrefix("Plugin", name,
-                    "The plugin provider of type '" + plugin.getType() + "' failed to check the settings")));
+                    "The plugin provider of id '" + plugin.getPluginId() + "' failed to check the settings")));
             return;
         }
         for (PluginProvider.Problem problem : problems) {
@@ -222,6 +240,25 @@ public final class ConfigPostProcessor {
             String field = path == null || path.isEmpty() ? "settings" : "settings." + path;
             warnings.add(new ValidationWarning(field, messageWithEntityPrefix("Plugin", name, problem.message())));
         }
+    }
+
+    /**
+     * {@code settings} plus where in the settings the schema found the violation, {@code settings.items[0].name}.
+     * {@code required} and {@code additionalProperties} are reported on the object, so the property is added;
+     * {@code dependencies} names the property that is present, not the missing one, so it stays on the object.
+     */
+    private static String schemaViolationField(ValidationMessage violation) {
+        StringBuilder field = new StringBuilder("settings");
+        JsonNodePath location = violation.getInstanceLocation();
+        for (int i = 0; i < location.getNameCount(); i++) {
+            Object element = location.getElement(i);
+            field.append(element instanceof Integer index ? "[" + index + "]" : "." + element);
+        }
+        String keyword = violation.getType();
+        if (("required".equals(keyword) || "additionalProperties".equals(keyword)) && violation.getProperty() != null) {
+            field.append('.').append(violation.getProperty());
+        }
+        return field.toString();
     }
 
     /**

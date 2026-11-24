@@ -310,7 +310,7 @@ public class AiDial {
             ExternalServiceService externalServiceService = new ExternalServiceService(resourceService,
                     resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor, resourceAuthSettingsService);
 
-            // Before the config stores: they validate every plugins entry against the provider of its type
+            // Before the config stores: they validate every plugins entry against the provider its pluginId names
             PluginRegistry pluginRegistry = PluginRegistry.load(settings("plugins"));
             String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             boolean softValidation = settings("config").getJsonObject("write", new JsonObject())

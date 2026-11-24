@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
@@ -87,14 +88,30 @@ public final class FileConfigStore implements ConfigStore {
         JsonNode tree = jsonMapper.createObjectNode();
 
         for (String path : paths) {
+            JsonNode file;
             try (InputStream stream = openStream(path)) {
-                tree = jsonMapper.readerForUpdating(tree).readTree(stream);
+                // as an update, the way files were read before: an empty file fails, a section repeated in a file merges
+                file = jsonMapper.readerForUpdating(jsonMapper.createObjectNode()).readTree(stream);
             }
+            renamePluginTypeAlias(file);
+            tree = jsonMapper.readerForUpdating(tree).readValue(file);
         }
 
         Config config = jsonMapper.convertValue(tree, Config.class);
         rejectCanonicalShapedKeys(config);
         return config;
+    }
+
+    // The deprecated alias of pluginId, renamed in each file before the merge: a base file's type and an overlay's
+    // pluginId would otherwise meet in one entry, which does not bind
+    private static void renamePluginTypeAlias(JsonNode file) {
+        if (file.get("plugins") instanceof ObjectNode plugins) {
+            for (JsonNode entry : plugins) {
+                if (entry instanceof ObjectNode plugin && plugin.has("type") && !plugin.has("pluginId")) {
+                    plugin.set("pluginId", plugin.remove("type"));
+                }
+            }
+        }
     }
 
     // Canonical-ID shape "{typeSegment}/{bucket}/{name}" is reserved for API-managed entries

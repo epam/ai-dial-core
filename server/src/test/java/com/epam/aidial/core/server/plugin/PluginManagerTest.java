@@ -49,28 +49,28 @@ class PluginManagerTest {
 
     @Test
     void testPluginCreatedWithCoresVertx() {
-        origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello"))), "p1");
+        origins.resolve(configWith(new Plugin(TestOriginPluginProvider.ID, greeting("hello"))), "p1");
 
         assertSame(vertx, TestOriginPluginProvider.CREATED_WITH.get());
     }
 
     @Test
     void testSamePluginForTheSameAndForAnEqualDeclaration() {
-        Config config = configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello")));
+        Config config = configWith(new Plugin(TestOriginPluginProvider.ID, greeting("hello")));
         com.epam.aidial.core.plugin.Plugin first = origins.resolve(config, "p1");
 
         assertSame(first, origins.resolve(config, "p1"));
         // a rebuild makes new objects for the same declaration
-        assertSame(first, origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello"))), "p1"));
+        assertSame(first, origins.resolve(configWith(new Plugin(TestOriginPluginProvider.ID, greeting("hello"))), "p1"));
     }
 
     @Test
     void testProviderChangingItsSettingsKeepsThePlugin() {
-        com.epam.aidial.core.plugin.Plugin first = origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE,
+        com.epam.aidial.core.plugin.Plugin first = origins.resolve(configWith(new Plugin(TestOriginPluginProvider.ID,
                 greeting("hello").put("mutateSettings", true))), "p1");
 
         // the rebuild's declaration equals the one the plugin was created from
-        assertSame(first, origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE,
+        assertSame(first, origins.resolve(configWith(new Plugin(TestOriginPluginProvider.ID,
                 greeting("hello").put("mutateSettings", true))), "p1"));
     }
 
@@ -93,9 +93,9 @@ class PluginManagerTest {
 
     @Test
     void testNewPluginAfterSettingsChange() {
-        com.epam.aidial.core.plugin.Plugin hello = origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello"))), "p1");
+        com.epam.aidial.core.plugin.Plugin hello = origins.resolve(configWith(new Plugin(TestOriginPluginProvider.ID, greeting("hello"))), "p1");
 
-        assertNotSame(hello, origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hi"))), "p1"));
+        assertNotSame(hello, origins.resolve(configWith(new Plugin(TestOriginPluginProvider.ID, greeting("hi"))), "p1"));
     }
 
     @Test
@@ -111,7 +111,7 @@ class PluginManagerTest {
 
     @Test
     void testRacingRequestsShareOnePlugin() throws Exception {
-        Config config = configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("hello").put("createMillis", 200)));
+        Config config = configWith(new Plugin(TestOriginPluginProvider.ID, greeting("hello").put("createMillis", 200)));
 
         CompletableFuture<com.epam.aidial.core.plugin.Plugin> first = CompletableFuture.supplyAsync(() -> origins.resolve(config, "p1"));
         CompletableFuture<com.epam.aidial.core.plugin.Plugin> second = CompletableFuture.supplyAsync(() -> origins.resolve(config, "p1"));
@@ -123,7 +123,7 @@ class PluginManagerTest {
 
     @Test
     void testPluginCreatedDuringShutdownIsClosed() throws Exception {
-        Config config = configWith(new Plugin(TestOriginPluginProvider.TYPE, greeting("late").put("createMillis", 300)));
+        Config config = configWith(new Plugin(TestOriginPluginProvider.ID, greeting("late").put("createMillis", 300)));
         var resolving = CompletableFuture.supplyAsync(() -> origins.resolve(config, "p1"));
         Thread.sleep(100);
 
@@ -146,7 +146,7 @@ class PluginManagerTest {
     @Test
     void testCloseThatThrowsChangesNothingElse() throws Exception {
         ObjectNode failing = greeting("hello").put("closeFails", true);
-        origins.resolve(configWith(new Plugin(TestOriginPluginProvider.TYPE, failing)), "p1");
+        origins.resolve(configWith(new Plugin(TestOriginPluginProvider.ID, failing)), "p1");
         Config hi = configWith(origin("hi"));
         com.epam.aidial.core.plugin.Plugin current = origins.resolve(hi, "p1");
         awaitClosed(1);
@@ -159,7 +159,7 @@ class PluginManagerTest {
         origins.resolve(configWith(origin("replaced")), "p1");
         Config current = new Config();
         // a close that throws fails neither the others nor the future
-        current.setPlugins(Map.of("p1", new Plugin(TestOriginPluginProvider.TYPE, greeting("current").put("closeFails", true)),
+        current.setPlugins(Map.of("p1", new Plugin(TestOriginPluginProvider.ID, greeting("current").put("closeFails", true)),
                 "p2", origin("other")));
         origins.resolve(current, "p1");
         origins.resolve(current, "p2");
@@ -180,21 +180,21 @@ class PluginManagerTest {
 
     @Test
     void testProviderNotLoaded() {
-        assertFailure(configWith(new Plugin("missing", null)), "No plugin provider of type 'missing' is loaded");
+        assertFailure(configWith(new Plugin("missing", null)), "No plugin provider of id 'missing' is loaded");
     }
 
     @Test
     void testPluginThatCannotBeCreated() {
         ObjectNode settings = JsonNodeFactory.instance.objectNode().put("failCreate", true);
 
-        assertFailure(configWith(new Plugin(TestOriginPluginProvider.TYPE, settings)), "Plugin 'p1' cannot be created");
+        assertFailure(configWith(new Plugin(TestOriginPluginProvider.ID, settings)), "Plugin 'p1' cannot be created");
     }
 
     @Test
     void testProviderReturningNullCannotCreate() {
         ObjectNode settings = JsonNodeFactory.instance.objectNode().put("createNull", true);
 
-        assertFailure(configWith(new Plugin(TestOriginPluginProvider.TYPE, settings)), "its provider returned null");
+        assertFailure(configWith(new Plugin(TestOriginPluginProvider.ID, settings)), "its provider returned null");
     }
 
     private void assertFailure(Config config, String message) {
@@ -216,7 +216,7 @@ class PluginManagerTest {
     }
 
     private static Plugin origin(String greeting) {
-        return new Plugin(TestOriginPluginProvider.TYPE, greeting(greeting));
+        return new Plugin(TestOriginPluginProvider.ID, greeting(greeting));
     }
 
     private static Config configWith(Plugin plugin) {

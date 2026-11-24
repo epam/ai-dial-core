@@ -224,12 +224,12 @@ public class MergedConfigStoreReplicaUpdateTest {
     public void pluginUpdateFromAnotherPodIsApplied() {
         MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("plugins/platform/p1", null);
-        when(resourceService.getResource(descriptor)).thenReturn("{\"type\":\"test-echo\",\"settings\":{\"greeting\":\"hi\"}}");
+        when(resourceService.getResource(descriptor)).thenReturn("{\"pluginId\":\"test-echo\",\"settings\":{\"greeting\":\"hi\"}}");
 
         store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE, null);
 
         Plugin applied = store.get().getPlugins().get("p1");
-        assertEquals("test-echo", applied.getType());
+        assertEquals("test-echo", applied.getPluginId());
         assertEquals("hi", applied.getSettings().get("greeting").asText());
     }
 
