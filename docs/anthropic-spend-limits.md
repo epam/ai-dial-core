@@ -87,7 +87,9 @@ usage endpoint on `/anthropic/*` then describe a budget.
   can pay again first, the first by priority on a tie. This holds with one budget or several, and wins over a token
   or request limit.
 - **No budget for the model.** 429 with the DIAL error body, whose `message` names the model and the cost object,
-  with no `retry-after` and no `anthropic-ratelimit-unified-*` header.
+  with `x-should-retry: false`, no `retry-after` and no `anthropic-ratelimit-unified-*` header, also through an
+  alias. Only an admin adding a budget can make the call pass, so Claude Code shows the error at once instead of
+  retrying it.
 - **Counter unreadable.** A token or request limit that rejects decides the answer. Otherwise the request gets the
   `fetch_error` 429 below when a budget below 2^53 covers the model, and the 500 with `x-should-retry: true` when
   none does. The usage endpoint answers its 500.

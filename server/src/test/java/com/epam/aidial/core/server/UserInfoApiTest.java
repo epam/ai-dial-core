@@ -1,6 +1,8 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.data.ApiKeyData;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,5 +34,30 @@ public class UserInfoApiTest extends ResourceBaseTest {
         assertEquals(200, resp.status());
         assertEquals("""
                 {"roles":[],"userId":"svc","userClaims":{"azp":["svc"]}}""", resp.body());
+    }
+
+    @Test
+    public void testJwtUserInfoWithProject() {
+        var resp = send(HttpMethod.GET, "/v1/user/info", null, null, "Authorization", "user@projA");
+
+        assertEquals(200, resp.status());
+        assertEquals("""
+                {"roles":["user"],"userId":"user","userClaims":{"title":["Manager"]},"project":"projA","userDisplayName":"user user"}""", resp.body());
+    }
+
+    @Test
+    public void testPerRequestKeyOfJwtCallerWithProject() {
+        ApiKeyData key = new ApiKeyData();
+        key.setExtractedClaims(createClaims("user", "projA"));
+        key.setSourceDeployment("testapp");
+        key.setTraceId("trace-id");
+        apiKeyStore.assignPerRequestApiKey(key);
+
+        var resp = send(HttpMethod.GET, "/v1/user/info", null, null, "api-key", key.getPerRequestKey());
+
+        assertEquals(200, resp.status(), resp.body());
+        JsonObject body = new JsonObject(resp.body());
+        assertEquals("projA", body.getString("project"));
+        assertEquals("user", body.getString("userId"));
     }
 }

@@ -108,7 +108,7 @@ public class BudgetEnforcer {
         List<BudgetInstance> candidates = resolveCandidates(context, costObject, model, timestamp);
         if (candidates.isEmpty()) {
             context.setBudgetCheck(started.noBudget());
-            return Future.succeededFuture(rejectNoBudget(settings, claims, costObject, model));
+            return Future.succeededFuture(rejectNoBudget(settings, claims, costObject, model, isWithSpendCaps));
         }
         // the candidates are a subset of the cost object's budgets, so with several the caller has several
         boolean isReported = isWithSpendCaps && candidates.size() == 1 && EffectiveBudgets.resolveInCostObject(
@@ -176,10 +176,15 @@ public class BudgetEnforcer {
                 .toList();
     }
 
-    private static RateLimitResult rejectNoBudget(SpendingLimits settings, ExtractedClaims claims, String costObject, Model model) {
+    /**
+     * @param isWithSpendCaps the routes that report spend caps tell their client not to retry: only an admin adding
+     *                        a budget can make the call pass
+     */
+    private static RateLimitResult rejectNoBudget(SpendingLimits settings, ExtractedClaims claims, String costObject, Model model,
+                                                  boolean isWithSpendCaps) {
         return reject(settings, NO_BUDGET, claims.userId(), costObject, model, new RateLimitResult(
                 HttpStatus.TOO_MANY_REQUESTS, "No budget covers " + model.getName() + " for cost object " + costObject,
-                "You have no budget for this model", -1));
+                "You have no budget for this model", -1, null, null, isWithSpendCaps));
     }
 
     private static RateLimitResult buildExhaustedResult(String costObject, @Nullable String displayMessage, Outcome outcome, long timestamp) {
