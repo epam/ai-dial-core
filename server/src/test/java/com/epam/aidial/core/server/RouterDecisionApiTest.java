@@ -1645,8 +1645,9 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         }
         // the decision runs behind the interceptor, whose name is last in the path; the answer still names the alias
         assertEquals("strong", ProxyUtil.MAPPER.readTree(response.body()).get("model").asText());
-        // the alias lends the router to its pass and the interceptor in front of it, not to the deployment it chose
-        assertNull(modelKey.get().getLentDeployment());
+        // the alias grants the router to its pass and the interceptor in front of it, not to the deployment it chose
+        assertTrue(modelKey.get().getPerRequestSharedResources().isEmpty(), modelKey.get().getPerRequestSharedResources().toString());
+        assertNull(modelKey.get().getAliasName());
     }
 
     @Test

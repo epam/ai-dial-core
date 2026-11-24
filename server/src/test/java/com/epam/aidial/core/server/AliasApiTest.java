@@ -1,7 +1,9 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -17,6 +19,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -161,8 +164,13 @@ class AliasApiTest extends ResourceBaseTest {
             assertEquals(200, response.status(), response.body());
         }
         assertEquals(List.of("assistant", "gpt-4-internal"), targetKey.get().getExecutionPath());
-        // the key the target pass hands on lends the target itself only, for its own callbacks such as a translator's
-        assertEquals("gpt-4-internal", targetKey.get().getLentDeployment());
+        // the key the target pass hands on grants the target itself only, for its own callbacks such as a translator's
+        assertEquals(List.of("models/platform/gpt-4-internal"), List.copyOf(targetKey.get().getPerRequestSharedResources().keySet()));
+        assertEquals(Set.of(ResourceAccessType.READ),
+                targetKey.get().getPerRequestSharedResources().get("models/platform/gpt-4-internal").permissions());
+        assertFalse(ProxyUtil.convertToString(targetKey.get()).contains("lentDeployment"));
+        // and the alias's name, whose roles the target's limits come from
+        assertEquals("assistant", targetKey.get().getAliasName());
     }
 
     @Test
@@ -180,6 +188,24 @@ class AliasApiTest extends ResourceBaseTest {
             assertEquals(429, second.status(), second.body());
             // the limit of one caller is not remembered against the alias
             assertEquals(200, chat("assistant", "default-key").status());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void limitOfRoleTheAliasDoesNotAdmitDoesNotApply() {
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
+                    "Content-Type", "application/json");
+
+            // limited-user's limit of 1 token for gpt-4-internal is used up by the first call through assistant
+            assertEquals(200, chat("assistant", "mixed-key").status());
+            Thread.sleep(1000); // usage is saved after the answer
+            assertEquals(429, chat("assistant", "mixed-key").status());
+            // plain-alias-v1 admits default-user only, so limited-user's limit does not apply through it
+            Response throughPlain = chat("plain-alias-v1", "mixed-key");
+            assertEquals(200, throughPlain.status(), throughPlain.body());
         }
     }
 

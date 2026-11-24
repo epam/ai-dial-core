@@ -5,6 +5,8 @@ import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.metaschemas.MetaSchemaHolder;
 import com.epam.aidial.core.server.ProxyContext;
@@ -12,6 +14,7 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
+import com.epam.aidial.core.server.service.DeploymentGrants;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
@@ -187,7 +190,22 @@ public class AliasService {
      */
     public Deployment toPass(ProxyContext context, Alias alias) {
         Target target = resolveUsableTarget(context, alias);
-        return AliasPasses.build(alias, alias.getEffectivePresentation(), target.deployment(), target.name(), target.isResource(), localBaseUrl);
+        return AliasPasses.build(alias, alias.getEffectivePresentation(), target.deployment(), target.name(), target.isResource(),
+                targetDependencies(context.getConfig(), target), localBaseUrl);
+    }
+
+    /**
+     * The target as a resource-dependency list of one entry: {@code READ} on its url, the right to call it. A resource
+     * target's url is its name; a config target's is its platform url ({@link DeploymentGrants#urlOf}).
+     */
+    private static List<ResourceDependency> targetDependencies(Config config, Target target) {
+        String url = target.isResource() ? target.name() : DeploymentGrants.urlOf(config, target.name());
+        ResourceDependency dependency = new ResourceDependency()
+                .setKind(ResourceDependency.KIND)
+                .setTarget(new ResourceDependency.Target().setUrl(url))
+                .setAccess(ResourceAccessType.READ_ONLY)
+                .setRequired(true);
+        return List.of(dependency);
     }
 
     /**

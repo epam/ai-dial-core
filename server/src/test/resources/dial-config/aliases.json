@@ -168,6 +168,7 @@
     "proxyKey1": {"project": "test", "role": "default"},
     "default-key": {"project": "default-project", "role": "default-user"},
     "power-key": {"project": "power-project", "role": "power-user"},
-    "limited-key": {"project": "limited-project", "role": "limited-user"}
+    "limited-key": {"project": "limited-project", "role": "limited-user"},
+    "mixed-key": {"project": "mixed-project", "roles": ["default-user", "limited-user"]}
   }
 }

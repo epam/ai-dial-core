@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.InterfacePathMapping;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ModelType;
+import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
@@ -34,14 +35,15 @@ public class AliasPasses {
      * {@code localBaseUrl}, Core's own address, for {@code target}, so that the target runs as a second Core pass.
      *
      * @param targetName     the name {@code target} is called by: a config name, or a resource url, already path-encoded
-     * @param resourceTarget whether {@code targetName} is a resource url
+     * @param resourceTarget     whether {@code targetName} is a resource url
+     * @param targetDependencies the grants the alias pass bakes into the target pass's key, see {@link AliasPass#getTargetDependencies}
      */
     public Deployment build(Alias alias, AliasPresentation presentation, Deployment target, String targetName,
-                            boolean resourceTarget, String localBaseUrl) {
+                            boolean resourceTarget, List<ResourceDependency> targetDependencies, String localBaseUrl) {
         String base = Strings.CS.removeEnd(localBaseUrl, "/");
         String targetSegment = resourceTarget ? targetName : UrlUtil.encodePathSegment(targetName);
         if (presentation == AliasPresentation.TOOLSET) {
-            AliasToolSetPass pass = new AliasToolSetPass(alias, targetName, resourceTarget);
+            AliasToolSetPass pass = new AliasToolSetPass(alias, targetName, resourceTarget, targetDependencies);
             pass.setName(alias.getName());
             pass.setForwardPerRequestKey(true);
             if (target instanceof ToolSet toolSet) {
@@ -55,7 +57,7 @@ public class AliasPasses {
             return pass;
         }
 
-        AliasApplicationPass pass = new AliasApplicationPass(alias, targetName, resourceTarget);
+        AliasApplicationPass pass = new AliasApplicationPass(alias, targetName, resourceTarget, targetDependencies);
         pass.setName(alias.getName());
         // set on the request where the client sent none, so the target pass reads them as the client's
         pass.setDefaultHeaders(alias.getDefaultHeaders());

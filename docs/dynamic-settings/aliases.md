@@ -123,9 +123,20 @@ reachable on `localhost`. The second pass:
   plugin's span, so its target pass writes no span attributes, as the plugin's call does not;
 * checks and charges limits and cost under the **target's** name, to the user who made the request. Several aliases
   to one model share its quota, and a role that reaches a model only through an alias needs its limit defined under
-  the model's name; a limit under the alias's name has no effect, and the config load logs a warning for it;
+  the model's name; a limit under the alias's name has no effect, and the config load logs a warning for it. The limits
+  are those of the caller's roles that the alias's `userRoles` admit: a role of the caller that is not in them does
+  not count, even with a limit under the model's name. An alias without `userRoles` takes the target's limits as a
+  direct call does;
 * runs the target's interceptors and the global interceptors once;
 * is not refused by `accessibleByPerRequestKey: false` on the target.
+
+The right to call the target is in the per-request key the alias pass gives the second pass: `READ` on the target's
+url in `perRequestSharedResources`. That url is the resource url of a resource target, and
+`<models|applications|toolsets|routers>/platform/<name>` for a config target, the url the config store keeps it under.
+Next to it the key records the alias's name, `aliasName`: the target pass reads the alias's `userRoles` from the alias
+it names for the limits, and a router's answer names the alias. Both go on to the target's interceptors and to calls
+back for the target itself (such as a translator's), and to nothing else. The per-request permission API refuses a
+`platform` url, so an application cannot pass it on.
 
 The alias relays the target's answer, error statuses included, so an error of the target pass may name the target.
 On Messages and Responses the alias makes no limit check of its own: it reads no spend caps and checks no token,
@@ -133,7 +144,7 @@ request or cost limit. It leaves the target's `anthropic-ratelimit-*` and `x-cod
 status, so Claude Code and Codex see the caps of the deployment that serves the call, also when a router in decision
 mode chose the alias (see [Claude Code spend limits](../anthropic-spend-limits.md#which-cap-is-reported) and
 [Codex spend limits](../codex-spend-limits.md#aliases)). Answers keep the target's `model` value; for a router
-target in decision mode, the answer names the alias where the router would name itself (see [Decision mode](routers.md#decision-mode)). For a router target the alias lends the
+target in decision mode, the answer names the alias where the router would name itself (see [Decision mode](routers.md#decision-mode)). For a router target the alias grants the
 router only: the deployment the router chooses is checked against the caller's own rights. The caller's
 `Authorization` header is not forwarded through an alias, so a target with `forwardAuthToken` does not receive it.
 

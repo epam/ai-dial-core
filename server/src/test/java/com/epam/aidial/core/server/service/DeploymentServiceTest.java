@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.alias.AliasService;
 import com.epam.aidial.core.server.data.ApiKeyData;
@@ -264,5 +265,69 @@ public class DeploymentServiceTest {
         List<String> result = service.getInterceptors(context, application);
 
         assertEquals(List.of("i1", "i2", "i3", "i4"), result);
+    }
+
+    @Test
+    public void testFindCallableDeployment_TargetPassOfConfigAliasGetsTheAlias() {
+        Model model = callableModel();
+        Alias alias = new Alias().setTarget(new AliasTarget().setPath("models/gpt-4"));
+        alias.setUserRoles(Set.of("default-user"));
+        when(config.getAliases()).thenReturn(Map.of("assistant", alias));
+        when(context.getApiKeyData()).thenReturn(aliasCallKey("assistant", "models/platform/gpt-4"));
+
+        assertSame(model, service.findCallableDeployment(context, "gpt-4"));
+
+        verify(context).setCallingAlias(alias);
+    }
+
+    @Test
+    public void testFindCallableDeployment_TargetPassOfStoredAliasGetsTheAlias() {
+        callableModel();
+        Alias alias = new Alias().setTarget(new AliasTarget().setPath("models/gpt-4"));
+        when(aliasService.findStoredAlias(any())).thenReturn(alias);
+        when(context.getApiKeyData()).thenReturn(aliasCallKey("aliases/public/assistant", "models/platform/gpt-4"));
+
+        service.findCallableDeployment(context, "gpt-4");
+
+        verify(context).setCallingAlias(alias);
+    }
+
+    @Test
+    public void testFindCallableDeployment_NoCallingAliasWithoutTheGrantOnTheDeployment() {
+        callableModel();
+        // the key names an alias, but holds no right to call this deployment: it was handed to another one
+        when(context.getApiKeyData()).thenReturn(aliasCallKey("assistant", "models/platform/other"));
+
+        service.findCallableDeployment(context, "gpt-4");
+
+        verify(context).setCallingAlias(null);
+        verifyNoInteractions(aliasService);
+    }
+
+    @Test
+    public void testFindCallableDeployment_NoCallingAliasWhenTheAliasIsGone() {
+        callableModel();
+        when(config.getAliases()).thenReturn(Map.of());
+        when(context.getApiKeyData()).thenReturn(aliasCallKey("assistant", "models/platform/gpt-4"));
+
+        service.findCallableDeployment(context, "gpt-4");
+
+        verify(context).setCallingAlias(null);
+    }
+
+    private Model callableModel() {
+        Model model = new Model();
+        model.setName("gpt-4");
+        when(config.selectDeployment("gpt-4")).thenReturn(model);
+        when(config.getModels()).thenReturn(Map.of("gpt-4", model));
+        return model;
+    }
+
+    private static ApiKeyData aliasCallKey(String aliasName, String grantedUrl) {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("prk");
+        apiKeyData.setAliasName(aliasName);
+        apiKeyData.grant(grantedUrl, ResourceAccessType.READ_ONLY);
+        return apiKeyData;
     }
 }

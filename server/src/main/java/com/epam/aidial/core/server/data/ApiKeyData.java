@@ -1,22 +1,28 @@
 package com.epam.aidial.core.server.data;
 
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.security.ExtractedClaims;
-import com.epam.aidial.core.storage.util.UrlUtil;
+import com.epam.aidial.core.server.service.DeploymentGrants;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.vertx.core.MultiMap;
 import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import javax.annotation.Nullable;
 
 /**
  * The container keeps data associated with API key.
@@ -28,8 +34,13 @@ import java.util.Map;
  *         <li>Per request key is generated in runtime and valid during the request</li>
  *     </ul>
  * </p>
+ *
+ * <p>
+ *     Unknown fields are ignored, so that a key stored by another Core version during a rolling upgrade still decodes.
+ * </p>
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ApiKeyData {
     private static final List<String> HTTP_HEADERS_TO_STORE = List.of(
             Proxy.HEADER_JOB_TITLE,
@@ -65,8 +76,6 @@ public class ApiKeyData {
     private List<String> interceptors;
     // Index to track which interceptor is called next
     private int interceptorIndex = -1;
-    // the deployment an alias pass lends its target pass the right to call
-    private String lentDeployment;
     // deployment triggers interceptors
     private String initialDeployment;
     private String initialDeploymentApi;
@@ -78,6 +87,9 @@ public class ApiKeyData {
     // Map of resources are shared by per request API key.
     // A key is a resource ID and value - per request shared data
     private Map<String, PerRequestSharedData> perRequestSharedResources = new HashMap<>();
+    // the name of the alias whose call this key serves, recorded by the alias pass next to its grant of the target and
+    // carried on with that grant; null otherwise
+    private String aliasName;
 
     public ApiKeyData() {
     }
@@ -112,23 +124,6 @@ public class ApiKeyData {
         }
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();
-            if (context.getDeployment() instanceof AliasPass pass) {
-                proxyApiKeyData.setLentDeployment(pass.getTargetName());
-                if (pass.isResourceTarget()) {
-                    // lets the target pass read the target resource, as access checks of resources expect
-                    proxyApiKeyData.getAttachedDeployments().put(pass.getTargetName(), new AutoSharedData(ResourceAccessType.READ_ONLY));
-                }
-            } else if (context.getDecision() == null && isLentTo(apiKeyData, receiver, context.getInitialDeployment())) {
-                // an interceptor in front of the target, and the target's own callback such as a translator's, call
-                // Core back for the same target; the lending goes with them and covers that target only. A lent
-                // router's choice is checked against the caller's own rights, so the lending stops at the decision
-                String lent = apiKeyData.getLentDeployment();
-                proxyApiKeyData.setLentDeployment(lent);
-                AutoSharedData attached = apiKeyData.getAttachedDeployments().get(lent);
-                if (attached != null) {
-                    proxyApiKeyData.getAttachedDeployments().put(lent, attached);
-                }
-            }
             currentPath.add(receiver);
             proxyApiKeyData.setSourceDeployment(receiver);
         } else if (context.getRoute() != null) {
@@ -146,17 +141,46 @@ public class ApiKeyData {
                 sharePerRequestPermissions(proxyApiKeyData, receivers, context.getInitialDeployment());
             }
         }
+        // after the sharing above, whose putAll would replace a granted entry with a plain one of the same url
+        if (context.getDeployment() instanceof AliasPass pass) {
+            // the right to call the target, for the target pass, and the alias call it is granted by
+            for (ResourceDependency dependency : pass.getTargetDependencies()) {
+                proxyApiKeyData.grant(dependency.getTarget().getUrl(), dependency.getAccess());
+            }
+            proxyApiKeyData.setAliasName(pass.getAlias().getName());
+        } else if (context.getDeployment() != null && context.getDecision() == null && apiKeyData.getPerRequestKey() != null) {
+            // an interceptor in front of the target, and the target's own callback such as a translator's, call
+            // Core back for the same target; the right to call it goes with them and covers that target only. A
+            // granted router's choice is checked against the caller's own rights, so the right stops at the decision
+            String url = DeploymentGrants.urlOf(context.getConfig(), servedDeployment(context, receiver));
+            if (url != null && DeploymentGrants.isGranted(apiKeyData, url)) {
+                proxyApiKeyData.grant(url, ResourceAccessType.READ_ONLY);
+                proxyApiKeyData.setAliasName(apiKeyData.getAliasName());
+            }
+        }
         proxyApiKeyData.setExecutionPath(currentPath);
         proxyApiKeyData.setSpanId(context.getSpanId());
     }
 
-    private static boolean isLentTo(ApiKeyData apiKeyData, String receiver, String initialDeployment) {
-        String lent = apiKeyData.getLentDeployment();
-        if (apiKeyData.getPerRequestKey() == null || lent == null) {
-            return false;
-        }
-        return lent.equals(receiver) || initialDeployment != null
-                && (lent.equals(initialDeployment) || lent.equals(UrlUtil.encodePath(initialDeployment)));
+    /**
+     * Grants {@code access} on {@code url} in {@code perRequestSharedResources}, joined with what the key holds there.
+     * Copy-on-write: the entry may be shared with the calling key's receivers.
+     */
+    public void grant(String url, Set<ResourceAccessType> access) {
+        perRequestSharedResources.merge(url, new PerRequestSharedData(new HashSet<>(access)), (existing, added) -> {
+            Set<ResourceAccessType> union = new HashSet<>(existing.permissions());
+            union.addAll(added.permissions());
+            return new PerRequestSharedData(union);
+        });
+    }
+
+    /**
+     * The deployment the pass acts for: for an interceptor's hop, the deployment its chain is in front of; for any other
+     * pass, its own deployment {@code receiver}.
+     */
+    @Nullable
+    private static String servedDeployment(ProxyContext context, @Nullable String receiver) {
+        return context.getDeployment() instanceof Interceptor ? context.getInitialDeployment() : receiver;
     }
 
     private static void sharePerRequestPermissions(ApiKeyData proxyApiKeyData, Map<String, Map<String, PerRequestSharedData>> receivers,

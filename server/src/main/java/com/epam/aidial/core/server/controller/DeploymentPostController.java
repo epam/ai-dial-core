@@ -160,7 +160,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
                     Features features = dep.resolveFeatures(requestedInterface());
                     boolean isPerRequestKey = context.getApiKeyData().getPerRequestKey() != null;
                     if (features != null && Boolean.FALSE.equals(features.getAccessibleByPerRequestKey()) && isPerRequestKey
-                            && !DeploymentService.isLent(context, dep)) {
+                            && !DeploymentService.isGranted(context, dep)) {
                         throw new PermissionDeniedException(String.format("Deployment %s is not accessible by %s", deploymentId, context.getApiKeyData().getSourceDeployment()));
                     }
 

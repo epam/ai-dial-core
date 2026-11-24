@@ -74,7 +74,7 @@ public class DeploymentService {
     public Deployment findDeployment(ProxyContext context, String id) {
         Deployment deployment = context.getConfig().selectDeployment(id);
         if (deployment != null) {
-            if (!hasAccess(context, deployment) && !isLent(context, deployment)) {
+            if (!hasAccess(context, deployment) && !isGranted(context, deployment)) {
                 throwForbiddenDeploymentError(id);
             }
             return deployment;
@@ -111,7 +111,7 @@ public class DeploymentService {
         if (alias == null) {
             throw new ResourceNotFoundException("Unknown deployment: " + id);
         }
-        if (Boolean.FALSE.equals(aliasService.hasConfigAccess(context, alias)) && !isLent(context, alias)) {
+        if (Boolean.FALSE.equals(aliasService.hasConfigAccess(context, alias)) && !isGranted(context, alias)) {
             throwForbiddenDeploymentError(id);
         }
         return alias;
@@ -119,21 +119,55 @@ public class DeploymentService {
 
     /**
      * {@link #findDeployment} for a request that calls the deployment: an {@link Alias} becomes the pass that forwards
-     * the call to its target, see {@link AliasService#toPass}.
+     * the call to its target, see {@link AliasService#toPass}. For the target pass of an alias call, the alias the key
+     * names goes on the context ({@link ProxyContext#getCallingAlias}). May read storage, so it runs on the task executor.
      */
     public Deployment findCallableDeployment(ProxyContext context, String id) {
         Deployment deployment = findDeployment(context, id);
-        return deployment instanceof Alias alias ? aliasService.toPass(context, alias) : deployment;
+        if (deployment instanceof Alias alias) {
+            return aliasService.toPass(context, alias);
+        }
+        context.setCallingAlias(findCallingAlias(context, deployment));
+        return deployment;
     }
 
     /**
-     * Whether the request is the target pass of an alias call for {@code deployment}: its per-request key was made by
-     * the alias pass, which lends the right to call the target. The key is kept by Core and sent only to Core itself.
+     * The alias the request's per-request key names, when the key holds the right to call {@code deployment}: the
+     * alias pass wrote the name next to that grant, and the grant carries it on. Null otherwise, and when the alias is
+     * gone since.
      */
-    public static boolean isLent(ProxyContext context, RoleBasedEntity deployment) {
+    @Nullable
+    private Alias findCallingAlias(ProxyContext context, Deployment deployment) {
+        String name = context.getApiKeyData().getAliasName();
+        return name == null || !isGranted(context, deployment) ? null : findAlias(context, name);
+    }
+
+    /**
+     * The alias named {@code name}: of the config (platform aliases included), or stored at {@code aliases/public/<name>};
+     * null when there is none.
+     */
+    @Nullable
+    private Alias findAlias(ProxyContext context, String name) {
+        Alias alias = context.getConfig().getAliases().get(name);
+        if (alias != null || !name.startsWith(ALIAS.group() + ResourceDescriptor.PATH_SEPARATOR)) {
+            return alias;
+        }
+        try {
+            return aliasService.findStoredAlias(ResourceDescriptorFactory.fromAnyUrl(name, encryptionService));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether the request's per-request key holds the right to call {@code deployment}: {@code READ} on its url in
+     * {@code perRequestSharedResources} ({@link DeploymentGrants}), as the target pass of an alias call holds it. The
+     * key is kept by Core and sent only to Core itself.
+     */
+    public static boolean isGranted(ProxyContext context, RoleBasedEntity deployment) {
         ApiKeyData apiKeyData = context.getApiKeyData();
-        String lentDeployment = apiKeyData.getLentDeployment();
-        return apiKeyData.getPerRequestKey() != null && lentDeployment != null && lentDeployment.equals(deployment.getName());
+        return apiKeyData.getPerRequestKey() != null
+                && DeploymentGrants.isGranted(apiKeyData, DeploymentGrants.urlOf(context.getConfig(), deployment.getName()));
     }
 
     /**
