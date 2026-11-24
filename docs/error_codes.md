@@ -83,7 +83,7 @@ On the Anthropic-compatible routes (`/anthropic/*`) the response body has the An
 
 On the Responses routes (`/openai/v1/responses`, `/openai/responses`) a reached day, week or month spend cap gives an error of type `usage_limit_reached` with `resets_at` and `limit_window_minutes` and `x-codex-primary-*` headers, which Codex CLI shows as a usage-limit message; see [Codex spend limits](codex-spend-limits.md).
 
-With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these spend-cap answers on both routes when the budgets that cover the model are used up, and a 429 with the DIAL error body that names the model and the cost object when no budget covers the model.
+With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these spend-cap answers on both routes when the budgets that cover the model are used up, and a 429 with the DIAL error body that names the model and the cost object, `x-should-retry: false` and no `retry-after` when no budget covers the model.
 
 #### 500 INTERNAL SERVER ERROR
 

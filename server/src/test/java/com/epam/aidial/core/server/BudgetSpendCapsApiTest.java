@@ -433,18 +433,73 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
         try (TestWebServer server = upstreams(upstreamCalls)) {
             Response response = postMessages("claude-spend", USER_A);
 
-            assertEquals(429, response.status(), response.body());
+            assertNoBudgetAnswer(response, "claude-spend");
             assertEquals(0, upstreamCalls.get());
             // the DIAL error body, not the Anthropic shape with its top-level "type"
-            JsonNode body = parse(response.body());
-            assertNull(body.get("type"), response.body());
-            JsonNode error = body.get("error");
-            assertEquals("429", error.get("code").asText());
-            assertEquals("No budget covers claude-spend for cost object projA", error.get("message").asText());
-            assertEquals("You have no budget for this model", error.get("display_message").asText());
-            assertFalse(hasHeaderWithPrefix(response, UNIFIED), response.headers().toString());
-            assertNull(header(response, "retry-after"));
+            assertNull(parse(response.body()).get("type"), response.body());
         }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testBudgetForAnotherModelOnlyOnResponses() {
+        budgetFor("projA/a1", 10, "10", null, List.of("gpt-other"));
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            Response versioned = postResponses("gpt-spend", USER_A);
+            Response unversioned = send(HttpMethod.POST, "/openai/responses", null, responsesBody("gpt-spend"),
+                    "content-type", "application/json", "authorization", USER_A);
+
+            assertNoBudgetAnswer(versioned, "gpt-spend");
+            assertNoBudgetAnswer(unversioned, "gpt-spend");
+            assertEquals(0, upstreamCalls.get());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testNoBudgetThroughAliasAndRouterOnMessages() {
+        budgetFor("projA/a1", 10, "10", null, List.of("claude-other"));
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            AtomicInteger decisions = decideAliasOfM1(server);
+
+            Response response = postMessages("strong", USER_A);
+
+            assertNoBudgetAnswer(response, "m1");
+            assertEquals(3, decisions.get());
+            assertEquals(0, upstreamCalls.get());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testNoBudgetThroughAliasAndRouterOnResponses() {
+        budgetFor("projA/a1", 10, "10", null, List.of("claude-other"));
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            AtomicInteger decisions = decideAliasOfM1(server);
+
+            Response response = postResponses("strong", USER_A);
+
+            assertNoBudgetAnswer(response, "m1");
+            assertEquals(3, decisions.get());
+            assertEquals(0, upstreamCalls.get());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testNoBudgetOnChatCompletionsHasNoShouldRetry() {
+        // the header is for the routes that report spend caps; chat completions keeps today's answer
+        budgetFor("projA/a1", 10, "10", null, List.of("claude-other"));
+        Response response = send(HttpMethod.POST, "/openai/deployments/gpt-translated/chat/completions", null,
+                "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}", "content-type", "application/json", "authorization", USER_A);
+
+        assertEquals(429, response.status(), response.body());
+        assertEquals("No budget covers gpt-translated for cost object projA", parse(response.body()).get("error").get("message").asText());
+        assertNull(header(response, "x-should-retry"), response.headers().toString());
+        assertNull(header(response, "retry-after"));
     }
 
     // --- Unreadable budget counter -----------------------------------------------------------------------------------------
@@ -1167,6 +1222,21 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
 
     private static long expectedReset(CalendarPeriod period) {
         return CalendarWindowCalculator.nextPeriodStart(period, System.currentTimeMillis(), new RateLimitSchedule()) / 1000;
+    }
+
+    /**
+     * The no-budget 429 in the DIAL format: a client must not retry it, and there is no reset or cap to report.
+     */
+    private static void assertNoBudgetAnswer(Response response, String model) {
+        assertEquals(429, response.status(), response.body());
+        JsonNode error = parse(response.body()).get("error");
+        assertEquals("429", error.get("code").asText());
+        assertEquals("No budget covers " + model + " for cost object projA", error.get("message").asText());
+        assertEquals("You have no budget for this model", error.get("display_message").asText());
+        assertEquals("false", header(response, "x-should-retry"), response.headers().toString());
+        assertNull(header(response, "retry-after"));
+        assertFalse(hasHeaderWithPrefix(response, UNIFIED), response.headers().toString());
+        assertFalse(hasHeaderWithPrefix(response, "x-codex-"), response.headers().toString());
     }
 
     private static String header(Response response, String name) {
