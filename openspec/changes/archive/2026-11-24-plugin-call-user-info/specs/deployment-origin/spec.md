@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
 ### Requirement: Core's API through the host
-An origin plugin SHALL be able to call any route of Core's API through its host. Core SHALL serve a call outside the
-create operations as that request, with its method, path, query, headers and JSON body, sent to Core with the key the
-plugin's calls carry, and SHALL hand the plugin the answer as it hands the answer of any call. A call without a method
-or a uri fails.
+An origin plugin SHALL be able to call through its host any route Core serves once it has authenticated a request.
+Core SHALL serve a call outside the create operations as that request, with its method, path, query, headers and JSON
+body, sent with the key the plugin's calls carry, SHALL answer a body longer than `resources.maxSize` `413`, and SHALL
+hand the plugin the answer as for any call. A call without a method or a uri, a file upload or a WebSocket fails.
 
 #### Scenario: Caller with an API key
 - **WHEN** a client with API key `proxyKey1` (project `EPM-RTC-GPT`, role `default`) sends a chat completion to `app`,
@@ -31,14 +31,24 @@ or a uri fails.
 - **THEN** the `PUT` is answered `200` and the client's `GET` of the path over HTTP answers that body, the call's `GET`
   answers `200` with that body, and after the `DELETE` the client's `GET` answers `404`
 
+#### Scenario: Body over the size limit
+- **WHEN** `p1` calls `PUT /v1/conversations/<bucket>/appdata/app/c1` through its host with a body longer than
+  `resources.maxSize`
+- **THEN** that call's answer is `413` with the message `Request body is too large`, and no conversation is written
+
+#### Scenario: File upload or WebSocket
+- **WHEN** `p1` calls `PUT /v1/files/<bucket>/f.txt` with `Content-Type: multipart/form-data`, or a route with
+  `Upgrade: websocket`, through its host
+- **THEN** the call fails, and no controller serves it
+
 ## MODIFIED Requirements
 
 ### Requirement: Calling a deployment from an origin plugin
 An origin plugin SHALL be able to call a deployment while it answers a request. Core SHALL serve a `POST` the plugin
 names to a deployments-POST action, `/openai/v1/chat/completions`, `/openai/v1/responses` or `/openai/responses` (not
-in background), or `/anthropic/v1/messages`, with the body tree the plugin passes, as a request authenticated by the
-key of the request the plugin answers, and SHALL hand the plugin the answer: status and headers first, then the body
-as it arrives.
+in background), or `/anthropic/v1/messages`, with the body tree the plugin passes (a call without one fails),
+authenticated by the key of the request the plugin answers, and SHALL hand the plugin the answer: status and headers
+first, then the body as it arrives.
 
 #### Scenario: Call reaches a model
 - **WHEN** application `app` is served by plugin `p1` of type `test-origin`, a client sends a chat completion to
@@ -75,3 +85,7 @@ as it arrives.
 - **WHEN** `p1` calls `/openai/v1/responses` with `"background": true`
 - **THEN** the call fails, no deployment is called and no row is written for it, and the client gets `502` with the
   message `No route`
+
+#### Scenario: Call without a body
+- **WHEN** `p1` calls `/openai/v1/chat/completions` through its host with no body
+- **THEN** the call fails, and no deployment is called

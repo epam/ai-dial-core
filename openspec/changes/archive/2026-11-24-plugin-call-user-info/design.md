@@ -61,7 +61,10 @@ A call reaches the controller Core's controller selection picks for its method a
 HTTP with the call's key does: the user info, resources and files, sharing, limits, the configured routes, the create
 operations. Each controller checks the key's access, so a plugin reaches nothing it could not reach over HTTP with
 that key, and a path Core does not serve gets the answer it gets over HTTP. The in-process answer already streams with
-backpressure, reset and cancel, which a file download's pipe needs.
+backpressure, reset and cancel, which a file download's pipe needs. What `Proxy.handleRequest` answers before it
+authenticates a request (`OPTIONS`, a method outside its list, `/health`, `/version`, `/openapi.yaml`, MCP resource
+metadata) a call does not reach: it goes to controller selection, as a path Core does not serve. None of it needs a
+key, and a plugin has no use for it.
 
 The alias hop asks the host whether a path is a create route (`takesBodyTree`, formerly `servesCall`), to decide
 whether an alias pass goes in process. That question keeps its meaning: create routes only. The host of an alias hop
@@ -83,8 +86,7 @@ span, and the log layout enriches that span with the user info pass's log fields
 request, one for each pass it serves (a call, or an alias's target pass), so every pass that counts as a child today
 still does, and a `GET` pass does too, with no step the host has to remember. The decision router's in-process call
 checks for the tree itself, as today, and so does the router pass's empty-body read
-(`DeploymentPostController.readRequestBody`), which checked for a child pass: a create operation's call without a
-body has no tree.
+(`DeploymentPostController.readRequestBody`), which checked for a child pass: the tree is what it reads.
 
 - **Rejected: an empty tree for a `GET`** - those two readers would take it for a body.
 - **Rejected: a flag the host sets on each pass it starts** - a field and a step to keep in step with the request
@@ -94,20 +96,26 @@ body has no tree.
 
 A create operation's pass takes the call's body as a tree, as before. Every other controller reads
 `request.body()`, which was always empty in process: a `PUT` of a conversation through the host would have written an
-empty conversation and answered `200`. The in-memory request now serves the body's bytes, serialized on a worker when
-a controller first reads them, on the pass's own context. It drops a `Content-Length` the plugin passes on from its own
-request, which `ResourceController` would check against its limit; the body is whole, and the controllers measure it.
-A call may carry a body or not with any method, as over HTTP: a `GET` ignores it, and a `POST` without one is
-answered as an empty body is over HTTP. A call without a method or a uri fails.
+empty conversation and answered `200`. The in-memory request now serves the body's bytes, serialized on a worker.
+The host reads them before the pass starts, on the pass's own context, and answers a body longer than
+`resources.maxSize` `413` `Request body is too large`, as `Proxy.handleRequest` does before any controller over HTTP:
+most controllers outside `ResourceController` do not measure the body themselves (the PR review). It drops a
+`Content-Length` the plugin passes on from its own request, which `ResourceController` would check against its
+limit; the body is whole, and the host measures it. A call may carry a body or not with any method, as over HTTP: a
+`GET` ignores it, and a `POST` outside the create operations without one is answered as an empty body is over HTTP.
+A call to a create operation without a body fails, as before this change. A call without a method or a uri fails.
 
-A call cannot carry a multipart body or open a WebSocket, so the members of an upload, a WebSocket, cookies and the
-connection still throw; a plugin sends an upload to Core over HTTP.
+A call cannot carry a multipart body or open a WebSocket. The host fails a call whose `Content-Type` is multipart or
+whose `Upgrade` names a WebSocket, before any controller reaches the members of an upload or a WebSocket, which still
+throw; a plugin sends those to Core over HTTP.
 
 - **Rejected: a `GET` with a body refused** (the first design) - one more rule than HTTP has.
 - **Rejected: the bytes for every call, create operations included** - a serialization per model call that the create
-  operations never read.
-- **Rejected: serializing in the host before the pass starts** - a serialization for a body a controller may not
-  read, completed on the plugin's context instead of the pass's.
+  operations never read. A create operation's tree is not measured: no call of one was before this change.
+- **Rejected: the size check where a controller first reads the bytes** - each controller turns a failed read into
+  an answer of its own (`AdminApplyController` answers `400`), so the `413` would differ by route.
+- **Rejected: a route list for the upload and WebSocket routes** - the list D2 dropped; the headers are what select
+  the upload and WebSocket handling.
 
 ### D5. Every call keeps the key, the depth limit and the end with the request
 
@@ -116,8 +124,10 @@ request, so the answer describes the client's caller, as the HTTP read with that
 every call, so a `GET` from a plugin 32 deployments deep gets `400`, as that plugin's `POST` calls do. After the
 request has ended, and while answering a notice, the call gets `401`.
 
-The checks keep today's order. The call's own fields come first (a method and a uri) and fail the call even after
-the request has ended. Then a closed host answers `401`. Then come the background rule and the depth.
+The checks keep today's order. The call's own fields come first (a method, a uri, and a create operation's body) and
+fail the call even after the request has ended. Then a closed host answers `401`. Then come the background rule, an
+upload or a WebSocket, and the depth. The body's size is checked last, once its bytes are serialized, just before
+the pass starts.
 
 - **Rejected: no depth check for a `GET`** - an extra branch for a plugin whose other calls fail at that depth
   anyway; a `GET` of user info starts no further pass, so it cannot loop.
@@ -126,7 +136,7 @@ the request has ended. Then a closed host answers `401`. Then come the backgroun
 
 | What | Today | After | Requirement |
 |---|---|---|---|
-| A call outside the create operations through the host (`GET /v1/user/info`, a resource's `PUT`, `GET`, `DELETE`) | the call fails | served in process with the call's key; a body as bytes | deployment-origin "Core's API through the host", "Calling a deployment from an origin plugin" |
+| A call outside the create operations through the host (`GET /v1/user/info`, a resource's `PUT`, `GET`, `DELETE`) | the call fails | served in process with the call's key; a body as bytes, `413` over `resources.maxSize`; an upload or a WebSocket still fails | deployment-origin "Core's API through the host", "Calling a deployment from an origin plugin" |
 | The same calls while deciding | the call fails | served with the decide request's key; a notice gets `401` | router-deployment "Calls of an embedded router while it decides" |
 | Server span of such a call, when the plugin uses the host instead of HTTP | a server span of its own | none; the call writes nothing on the plugin's span (D3) | none; `docs/tracing.md` |
 | `Call` in the plugin API | path, headers, body; always `POST` | method first; the three-argument constructor means `POST` | none (plugin API) |

@@ -35,8 +35,9 @@ import javax.security.cert.X509Certificate;
  * The request of a pass Core serves in process, for an origin plugin's call or as the target pass of an alias call: the
  * call's method, path and query, with the call's headers and JSON body. A create operation takes the body as a tree,
  * so its {@link #body()} is empty; any other pass reads the body's bytes from {@link #body()}, serialized on a worker
- * when first read. The body is whole before the pass starts, so nothing is streamed. The members of a file upload, a
- * WebSocket, cookies and the connection throw: a plugin's call has none of them.
+ * when first read (the host reads them before the pass starts, to apply the size limit). The body is whole before the
+ * pass starts, so nothing is streamed. The members of a file upload, a WebSocket, cookies and the connection throw: a
+ * plugin's call has none of them, and the host refuses a call whose headers name an upload or a WebSocket.
  */
 public final class EmbeddedServerRequest implements HttpServerRequest {
 

@@ -29,6 +29,16 @@ calls), `docs/tracing.md` (calls from an origin plugin), and the `Call` and `Hos
 
 None.
 
+## PR review round 2
+
+- A body outside the create operations is measured before the pass starts and answered `413` over
+  `resources.maxSize`, as over HTTP (D4).
+- A call to a create operation without a body fails again, as before this change (D4, D5).
+- A call with a multipart `Content-Type` or a WebSocket `Upgrade` fails instead of answering `500` (D4).
+- The requirement and the javadoc name the routes a call reaches: the ones Core serves after it authenticates a
+  request (D2).
+- `VertxHostDelegateTest`: the `413`, a create call without a body, an upload and a WebSocket call.
+
 ## Not done
 
 - Task 4.1, the A/B of the user info read over HTTP against the read through the host: deferred until the

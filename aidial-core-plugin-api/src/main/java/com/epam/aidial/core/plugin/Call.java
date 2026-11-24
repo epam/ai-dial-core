@@ -20,8 +20,9 @@ import io.vertx.core.http.HttpMethod;
  *                {@code X-DIAL-APPLICATION-PROPERTIES} and {@code X-DIAL-DEPLOYMENT-FEATURES}) and
  *                {@code Content-Length}, so a plugin may pass on its own request's headers. The call carries the
  *                per-request key of the plugin's request
- * @param body    the request's JSON body, or null for none. Core takes it: the called deployment's processing changes
- *                it in place, so a plugin that calls twice with one body passes a {@code deepCopy()}
+ * @param body    the request's JSON body, or null for none; a create operation needs one. Core takes it: the called
+ *                deployment's processing changes it in place, so a plugin that calls twice with one body passes a
+ *                {@code deepCopy()}
  */
 public record Call(HttpMethod method, String uri, MultiMap headers, ObjectNode body) {
 

@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
@@ -44,6 +45,8 @@ import static org.mockito.Mockito.when;
 
 class VertxHostDelegateTest {
 
+    private static final int MAX_BODY_SIZE = 64;
+
     private static Vertx vertx;
 
     private ContextInternal pluginContext;
@@ -70,6 +73,12 @@ class VertxHostDelegateTest {
             dispatched.add(invocation.getArgument(0));
             return Future.succeededFuture();
         });
+        AsyncTaskExecutor executor = mock(AsyncTaskExecutor.class);
+        when(executor.submit(any())).thenAnswer(invocation -> Future.succeededFuture(invocation.<Callable<?>>getArgument(0).call()));
+        when(proxy.getTaskExecutor()).thenReturn(executor);
+        ResourceService resourceService = mock(ResourceService.class);
+        when(resourceService.getMaxSize()).thenReturn(MAX_BODY_SIZE);
+        when(proxy.getResourceService()).thenReturn(resourceService);
         ApiKeyData key = new ApiKeyData();
         key.setOriginalKey(new Key());
         key.setPerRequestKey("per-request-key");
@@ -113,10 +122,6 @@ class VertxHostDelegateTest {
 
     @Test
     void testCallOutsideTheCreateRoutesTakesTheBodyAsBytes() throws Exception {
-        AsyncTaskExecutor executor = mock(AsyncTaskExecutor.class);
-        when(executor.submit(any())).thenAnswer(invocation -> Future.succeededFuture(invocation.<Callable<?>>getArgument(0).call()));
-        when(proxy.getTaskExecutor()).thenReturn(executor);
-
         call(HttpMethod.PUT, "/v1/conversations/b/c", body());
 
         awaitCondition(() -> dispatched.size() == 1);
@@ -296,9 +301,39 @@ class VertxHostDelegateTest {
         call(HttpMethod.DELETE, "/v1/conversations/b/c", null);
         call(HttpMethod.POST, "/v1/ops/resource/share/list", body());
         call(HttpMethod.GET, "/v1/user/info", body());
-        call(HttpMethod.POST, "/openai/v1/chat/completions", null);
 
-        awaitCondition(() -> dispatched.size() == 5);
+        awaitCondition(() -> dispatched.size() == 4);
+    }
+
+    @Test
+    void testCreateCallWithoutBodyFails() {
+        assertThrows(ExecutionException.class, () -> await(call("/openai/v1/chat/completions", null)));
+        verify(proxy, never()).dispatch(any());
+    }
+
+    @Test
+    void testBodyOverTheSizeLimitAnswers413() throws Exception {
+        ObjectNode large = body().put("text", "x".repeat(MAX_BODY_SIZE));
+
+        Response answer = await(call(HttpMethod.PUT, "/v1/conversations/b/c", large));
+
+        assertEquals(413, answer.statusCode());
+        verify(proxy, never()).dispatch(any());
+        // a create operation's tree is not measured
+        call("/openai/v1/chat/completions", large);
+        awaitCondition(() -> dispatched.size() == 1);
+    }
+
+    @Test
+    void testUploadOrWebSocketCallFails() {
+        MultiMap upload = MultiMap.caseInsensitiveMultiMap().add("Content-Type", "multipart/form-data; boundary=b");
+        MultiMap webSocket = MultiMap.caseInsensitiveMultiMap().add("Upgrade", "websocket");
+
+        assertThrows(ExecutionException.class, () -> await(on(pluginContext,
+                () -> host.call(new Call(HttpMethod.PUT, "/v1/files/b/f.txt", upload, null)))));
+        assertThrows(ExecutionException.class, () -> await(on(pluginContext,
+                () -> host.call(new Call(HttpMethod.GET, "/v1/route/r", webSocket, null)))));
+        verify(proxy, never()).dispatch(any());
     }
 
     // plugin-call-user-info design D5: the call's own fields first, then the closed host's 401
