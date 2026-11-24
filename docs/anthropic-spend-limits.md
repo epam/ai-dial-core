@@ -86,7 +86,8 @@ usage endpoint on `/anthropic/*` then describe a budget.
   it goes upstream with the `billing_error` 429 below. It names the used-up window and the reset of the budget that
   can pay again first, the first by priority on a tie. This holds with one budget or several, and wins over a token
   or request limit.
-- **No budget for the model.** 429 with the DIAL error body, whose `message` names the model and the cost object,
+- **No budget for the model.** 429 with the DIAL error body, whose `message` names the model and the cost object
+  (`No DIAL spend limit is assigned for <model> in project <cost object>. Ask your DIAL admin to assign one.`),
   with `x-should-retry: false`, no `retry-after` and no `anthropic-ratelimit-unified-*` header, also through an
   alias. Only an admin adding a budget can make the call pass, so Claude Code shows the error at once instead of
   retrying it.

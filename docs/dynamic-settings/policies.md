@@ -83,6 +83,12 @@ In `enforce` mode a call with `no_budget` or `exhausted` is refused with 429, an
 a refused call. Those two outcomes therefore appear in `shadow` mode only, where the call goes through. The metric
 `dial_budget_rejections_total` counts refusals in both modes.
 
+One exception to the 429: on the Responses routes, a client's own request with `no_budget` is refused with a 400
+whose body is the message as `text/plain`, also through an alias. A background request through an alias still gets
+the 429. With an interceptor in front of the model, global interceptors included, the refusal is made on the
+interceptor's call, so the client gets what the interceptor answers (see
+[Codex spend limits](../codex-spend-limits.md)).
+
 A row has no `spending_limits` when:
 
 - the caller is an API key, or an application whose call chain started with an API key;
