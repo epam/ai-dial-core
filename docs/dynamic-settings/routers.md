@@ -112,7 +112,7 @@ An entry carries `id`, `object: "router"`, `display_name`, `display_version`, `i
 
 ## Identity
 
-DIAL Core sends a router the same `API-KEY` it sends an application: a per-request key, on every request it forwards and on every decide request. A router that needs the caller's identity calls `GET /v1/user/info` with that key; the answer is the caller's, as if the caller had asked (`roles`, and `project` for a project API key or `userId` and `userClaims` for a JWT).
+DIAL Core sends a router the same `API-KEY` it sends an application: a per-request key, on every request it forwards and on every decide request. A router that needs the caller's identity calls `GET /v1/user/info` with that key; the answer is the caller's, as if the caller had asked (`roles`, and `project` for a project API key or `userId` and `userClaims` for a JWT, with `project` too when the JWT's identity provider resolves one).
 
 ## Decision mode
 
