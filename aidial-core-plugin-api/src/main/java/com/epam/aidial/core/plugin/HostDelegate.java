@@ -3,8 +3,8 @@ package com.epam.aidial.core.plugin;
 import io.vertx.core.Future;
 
 /**
- * Core, as one request of a plugin sees it. It serves the calls the plugin makes to other deployments while
- * it answers that request.
+ * Core, as one request of a plugin sees it. It serves the calls the plugin makes to other deployments, and its reads
+ * of the caller's user info, while it answers that request.
  *
  * <p>Core creates one host per attempt to answer a request and hands it to {@link Plugin#handle} with that
  * request. It cannot be set up once for the plugin: it carries that request's per-request key, which authenticates
@@ -23,9 +23,9 @@ public interface HostDelegate {
      * <p>Call it on the context {@link Plugin#handle} was called on. The future completes there with the answer
      * once its status and headers are known, and the answer's body emits there, as an {@link Response} of a
      * plugin does. An answer of any status, {@code 404} or {@code 429} included, completes the future; it fails only
-     * for a call Core cannot serve: a call without a method, a method other than {@code POST} and {@code GET}, a path
-     * outside the operations {@link Call#uri()} names for its method, a {@code GET} with a body, a Responses call
-     * with {@code background: true}, or an answer cut before its status.
+     * for a call Core cannot serve: a call without a method or a uri, a {@code POST} without a body or another call
+     * with one, a method other than {@code POST} and {@code GET}, a path outside the operations {@link Call#uri()}
+     * names for its method, a Responses call with {@code background: true}, or an answer cut before its status.
      *
      * <p>A call ends with the request it belongs to: once the plugin's request has ended, Core cancels the answers
      * still open and answers a later call {@code 401}.

@@ -278,6 +278,18 @@ class VertxHostDelegateTest {
     @Test
     void testGetWithBodyFails() {
         assertThrows(ExecutionException.class, () -> await(call(HttpMethod.GET, "/v1/user/info", body())));
+        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.POST, "/openai/v1/chat/completions", null)));
+        verify(proxy, never()).dispatch(any());
+    }
+
+    // plugin-call-user-info design D5: the call's own fields first, then the closed host's 401, then the route
+
+    @Test
+    void testChecksAfterCloseKeepTheirOrder() throws Exception {
+        host.close();
+
+        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.GET, "/v1/user/info", body())));
+        assertEquals(401, await(call(HttpMethod.GET, "/v1/user/limits", null)).statusCode());
         verify(proxy, never()).dispatch(any());
     }
 

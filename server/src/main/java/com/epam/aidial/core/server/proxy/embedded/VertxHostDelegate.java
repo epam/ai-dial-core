@@ -112,7 +112,7 @@ public final class VertxHostDelegate implements HostDelegate {
         return CREATE_ROUTES.stream().anyMatch(route -> route.matches(path));
     }
 
-    private static boolean serves(HttpMethod method, String path) {
+    private static boolean isServed(HttpMethod method, String path) {
         return HttpMethod.POST.equals(method) ? servesCall(path) : HttpMethod.GET.equals(method) && RouteTemplate.USER_INFO.matches(path);
     }
 
@@ -126,8 +126,9 @@ public final class VertxHostDelegate implements HostDelegate {
         if (call == null || call.method() == null || call.uri() == null) {
             return pluginContext.failedFuture(new IllegalArgumentException("A call needs a method and a uri"));
         }
-        if (HttpMethod.POST.equals(call.method()) == (call.body() == null)) {
-            return pluginContext.failedFuture(new IllegalArgumentException("A POST call needs a body, and another call has none"));
+        boolean post = HttpMethod.POST.equals(call.method());
+        if (post != (call.body() != null)) {
+            return pluginContext.failedFuture(new IllegalArgumentException("A POST call needs a body, and any other call takes none"));
         }
         ContextInternal childContext = pluginContext.duplicate();
         Object otelContext = pluginContext.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
@@ -140,7 +141,7 @@ public final class VertxHostDelegate implements HostDelegate {
             return response.answer();
         }
         String path = pathOf(call.uri());
-        if (!serves(call.method(), path)) {
+        if (!isServed(call.method(), path)) {
             return pluginContext.failedFuture(new IllegalArgumentException(
                     "A call reaches the create operations and the user info only, not " + call.method() + " " + path));
         }

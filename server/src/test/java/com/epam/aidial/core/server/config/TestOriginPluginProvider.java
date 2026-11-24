@@ -340,8 +340,8 @@ public class TestOriginPluginProvider implements PluginProvider {
     }
 
     /**
-     * Calls {@code path} through the host, a {@code POST} with a small chat body of its own, and records how the call's
-     * answer ended and its body. The future completes when that answer has ended or failed.
+     * Calls {@code path} through the host with {@code method}, a {@code POST} with a small chat body of its own, and
+     * records how the call's answer ended and its body. The future completes when that answer has ended or failed.
      */
     private static Future<Void> callThrough(HostDelegate host, HttpMethod method, String path, boolean stream, Decided decided) {
         DecideCall call = new DecideCall(path, new AtomicReference<>("sent"), new StringBuffer());
