@@ -1695,6 +1695,56 @@ public class RateLimiterTest {
         assertEquals(0, new BigDecimal("1000").compareTo(result.spendCaps().reported().total()));
     }
 
+    /**
+     * A JWT caller's call to an application with the role cost limit used up: enforce lets it through, on both kinds
+     * of route, and reports no caps; shadow and an API key caller keep the role cost limit.
+     */
+    @Test
+    public void testRoleCostLimitOfApplicationCall() {
+        stubInlineExecutor();
+        Application application = new Application();
+        application.setName("app");
+
+        Config enforce = applicationBudgetConfig(SpendingLimitMode.ENFORCE);
+        ProxyContext user = userContext(enforce, List.of("role"), "app-enforce");
+        user.setDeployment(application);
+        seedCost(user, "100");
+
+        assertEquals(HttpStatus.OK, rateLimiter.limit(user, application).result().status());
+        RateLimitResult withCaps = rateLimiter.limitWithSpendCaps(user, application).result();
+        assertEquals(HttpStatus.OK, withCaps.status());
+        assertNull(withCaps.spendCaps());
+
+        Config shadow = applicationBudgetConfig(SpendingLimitMode.SHADOW);
+        ProxyContext shadowUser = userContext(shadow, List.of("role"), "app-shadow");
+        shadowUser.setDeployment(application);
+        seedCost(shadowUser, "100");
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, rateLimiter.limit(shadowUser, application).result().status());
+
+        Key key = new Key();
+        key.setRole("role");
+        key.setKey("app-key");
+        key.setProject("app-key");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        ProxyContext apiKey = new ProxyContext(mockProxy(enforce), request, apiKeyData, null, "trace-id", "span-id", "01");
+        apiKey.setDeployment(application);
+        seedCost(apiKey, "100");
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, rateLimiter.limit(apiKey, application).result().status());
+    }
+
+    private static Config applicationBudgetConfig(SpendingLimitMode mode) {
+        Config config = budgetConfig(mode, "ORG/a");
+        Role role = config.getRoles().get("role");
+        Limit limit = new Limit();
+        limit.setMinute(100_000);
+        limit.setDay(100_000);
+        role.setLimits(Map.of("model", role.getLimits().get("model"), "app", limit));
+        return config;
+    }
+
     private static Config budgetConfig(SpendingLimitMode mode, String... assignmentIds) {
         Role role = new Role();
         Limit limit = new Limit();

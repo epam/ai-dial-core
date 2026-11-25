@@ -193,10 +193,11 @@ public class RateLimiter {
             if (withSpendCaps && isEnforced) {
                 return checkBudgetsWithSpendCaps(context, (Model) roleBasedEntity, limit);
             }
+            boolean isRoleCostLimitSkipped = BudgetEnforcer.isRoleCostLimitSkipped(context);
             // in shadow the budget is checked and its payer charged on every route, while the legacy cost limit,
             // and the spend caps read from it, still decide
             boolean isBudgetCheck = isBudgetApplicable && context.getConfig().getSpendingLimits().getMode() != SpendingLimitMode.OFF;
-            Future<RateLimitResult> legacyResult = submitCheck(context, limit, roleBasedEntity, withSpendCaps, isEnforced);
+            Future<RateLimitResult> legacyResult = submitCheck(context, limit, roleBasedEntity, withSpendCaps, isRoleCostLimitSkipped);
             if (!isBudgetCheck) {
                 return legacyResult;
             }
@@ -645,7 +646,8 @@ public class RateLimiter {
         long timestamp = System.currentTimeMillis();
         RateLimitSchedule schedule = context.getConfig().getRateLimitSchedule();
         CostLimit costLimit = getCostLimitByUser(context);
-        if (withSpendCaps) {
+        // without the role cost limit there are no role caps to report: the budgets check the models the call reaches
+        if (withSpendCaps && !isCostCheckSkipped) {
             return checkLimitWithSpendCaps(context, limit, roleBasedEntity, costLimit, timestamp, schedule);
         }
 
