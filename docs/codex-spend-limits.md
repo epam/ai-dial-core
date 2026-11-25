@@ -79,8 +79,9 @@ instead of by the role `costLimit` (see the `spendingLimits` row in the README).
 - **Translated deployments** only read the budget. With one budget they get its headers, even when it covers other
   models only, and the `usage_limit_reached` 429 once it is used up. In every other case the request is forwarded
   without `x-codex-*` headers, and the translator's call back to DIAL is checked and charged.
-- **Applications** keep the role `costLimit`. An application's own call to a model is checked against the budget of
-  the user who called the application.
+- **Applications** are not checked against the role `costLimit` or the budget, and a call to one carries no
+  `x-codex-*` header. An application's own call to a model is checked against the budget of the user who called the
+  application. API key callers keep the role `costLimit` on every call.
 - **Charging.** In `shadow` and `enforce`, a call to a model is charged to the budget that pays for it, as on every
   other model route.
 - **`shadow` mode** keeps reporting and enforcing the role `costLimit`. Budgets are checked and charged but never

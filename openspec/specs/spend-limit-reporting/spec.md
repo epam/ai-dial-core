@@ -129,7 +129,7 @@ For a Responses request to a deployment that Core serves through a translator, w
 - **THEN** Core answers the `usage_limit_reached` 429 without calling the translator
 
 ### Requirement: Budgets decide the caps in enforce mode
-When `spendingLimits.mode` is `enforce`, for a JWT caller of a model on `POST /anthropic/v1/messages`, `POST /openai/v1/responses` and `POST /openai/responses`, and for a JWT caller of `GET /anthropic/api/oauth/usage`, Core SHALL take the spend caps from the caller's budget and SHALL NOT read or enforce the role cost limit. The cost object is the token's project claim, or `defaultCostObject` when it has none. Other callers, deployments and modes keep the role cost limit.
+When `spendingLimits.mode` is `enforce`, for a JWT caller of a model on `POST /anthropic/v1/messages`, `POST /openai/v1/responses` and `POST /openai/responses`, and for a JWT caller of `GET /anthropic/api/oauth/usage`, Core SHALL take the spend caps from the caller's budget and SHALL NOT read or enforce the role cost limit; the cost object is the token's project claim or `defaultCostObject`. A JWT caller of anything else SHALL get no caps. API key callers and other modes keep the role limit.
 
 #### Scenario: Project budget reported on Messages
 - **WHEN** a caller whose token carries project `projA` has one budget in `projA` with a day amount of $10 and $8.20
@@ -157,8 +157,12 @@ When `spendingLimits.mode` is `enforce`, for a JWT caller of a model on `POST /a
 #### Scenario: Call to an application
 - **WHEN** a caller at 30% of their role day cost limit, with one budget at 82%, sends a Messages request to an
   application that answers 200
-- **THEN** the answer carries `anthropic-ratelimit-unified-overage-utilization: 0.30`, while the usage endpoint
-  reports the budget
+- **THEN** the answer carries no `anthropic-ratelimit-unified-*` header, while the usage endpoint reports the budget
+
+#### Scenario: Messages call to an application with the role cost limit reached
+- **WHEN** a caller who has spent their whole role day cost limit, with one budget with room, sends a Messages request
+  to an application that answers 200
+- **THEN** Core answers 200
 
 ### Requirement: Only a single budget is reported
 Under the requirement above, Core SHALL report a budget only when the caller has exactly one unexpired cost budget that matches the caller in their cost object, counted whatever models the budgets cover. Otherwise Core SHALL send no `anthropic-ratelimit-unified-*` and no `x-codex-*` header on a 200 answer, and `GET /anthropic/api/oauth/usage` SHALL return `{"limits":[]}`.

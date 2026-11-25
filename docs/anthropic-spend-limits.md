@@ -96,8 +96,9 @@ usage endpoint on `/anthropic/*` then describe a budget.
 - **Translated models** only read the budget. With one budget they get its headers, even when it covers other models
   only, and the `billing_error` 429 once it is used up. In every other case the request is forwarded without spend
   headers, and the translator's call back to DIAL is checked and charged.
-- **Applications** keep the role `costLimit`, so a Messages call to an application reports role caps while the usage
-  endpoint reports the budget.
+- **Applications** are not checked against the role `costLimit` or the budget; their own calls to models are checked
+  against the budget of the user who called them. A Messages call to an application reports no spend caps, while the
+  usage endpoint reports the budget. API key callers keep the role `costLimit` on every call.
 - **Charging.** In `shadow` and `enforce`, a call to a model is charged to the budget that pays for it, as on every
   other model route.
 - **`shadow` mode** keeps reporting and enforcing the role `costLimit`. Budgets are checked and charged but never

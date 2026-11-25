@@ -51,6 +51,9 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
     private static final String USAGE_PATH = "/anthropic/api/oauth/usage";
     private static final String USER_USAGE_PATH = "/v1/user/usage";
     private static final String APP_CHAIN_PATH = "/openai/deployments/app-chain/chat/completions";
+    // the route with the deployment in the body checks the limits of an application; the deployment route does not
+    private static final String CHAT_PATH = "/openai/v1/chat/completions";
+    private static final String APP_CHAIN_BODY = "{\"model\":\"app-chain\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String POLICIES = "/v1/policies/platform/";
     private static final String ASSIGNMENTS = "/v1/policy_assignments/platform/";
     private static final String MANAGER = """
@@ -145,7 +148,7 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void testApplicationCallKeepsRoleCaps() {
+    void testApplicationCallReportsNoCaps() {
         roleSpend("Users/user/", "3");
         budget("projA/a1", 10, "10", null);
         spend("projA/a1", "claude-spend", "8.2");
@@ -153,11 +156,65 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
             Response response = postMessages("app-claude", USER_A);
 
             assertEquals(200, response.status(), response.body());
-            assertEquals("0.30", header(response, OVERAGE + "utilization"));
+            assertFalse(hasHeaderWithPrefix(response, UNIFIED), response.headers().toString());
         }
 
         JsonNode usage = usage(USER_A);
         assertActiveRow(usage, "daily", 82);
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testMessagesCallToApplicationWithRoleCostLimitReached() {
+        roleSpend("Users/user/", "10");
+        budget("projA/a1", 10, "10", null);
+        try (TestWebServer server = upstreams(null)) {
+            Response response = postMessages("app-claude", USER_A);
+
+            assertEquals(200, response.status(), response.body());
+        }
+    }
+
+    // --- Role cost limit is off for user callers in enforce mode (spec: budget-counters) ----------------------------
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testApplicationCalledWithRoleCostLimitReached() {
+        roleSpend("Users/user/", "10");
+        budget("projA/a1", 10, "10", null);
+        AtomicReference<Response> inner = new AtomicReference<>();
+        try (TestWebServer server = upstreams(null)) {
+            server.map(HttpMethod.POST, APP_CHAIN_PATH, request -> {
+                inner.set(send(HttpMethod.POST, RESPONSES_PATH, null, responsesBody("gpt-spend"),
+                        "content-type", "application/json", "api-key", request.getHeader("Api-Key")));
+                return TestWebServer.createResponse(200, CHAT_ANSWER, "Content-Type", "application/json");
+            });
+
+            Response outer = send(HttpMethod.POST, CHAT_PATH, null, APP_CHAIN_BODY,
+                    "content-type", "application/json", "authorization", USER_A);
+
+            assertEquals(200, outer.status(), outer.body());
+            assertEquals(200, inner.get().status(), inner.get().body());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testApiKeyCallerOfApplicationKeepsRoleCostLimit() {
+        roleSpend("Keys/spend/", "10");
+        AtomicInteger appCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(null)) {
+            server.map(HttpMethod.POST, APP_CHAIN_PATH, request -> {
+                appCalls.incrementAndGet();
+                return TestWebServer.createResponse(200, CHAT_ANSWER, "Content-Type", "application/json");
+            });
+
+            Response response = send(HttpMethod.POST, CHAT_PATH, null, APP_CHAIN_BODY,
+                    "content-type", "application/json", "api-key", "proxyKey1");
+
+            assertEquals(429, response.status(), response.body());
+            assertEquals(0, appCalls.get());
+        }
     }
 
     // --- Only a single budget is reported ---------------------------------------------------------------------------
