@@ -19,10 +19,13 @@ import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
+import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.RedisException;
 import org.redisson.client.codec.StringCodec;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -88,6 +91,12 @@ public class ApiKeyStore {
 
     public void assignPerRequestApiKey(ApiKeyData data, Duration customTtl) {
         blockingCallTracer.trace("auth.api_key.assign", () -> {
+            if (data.getCallerKey() != null) {
+                ApiKeyData caller = getPerRequestKeyDataOnMaster(data.getCallerKey());
+                if (caller != null) {
+                    data.addCallerPermissions(caller.getPerRequestReceivers());
+                }
+            }
             String perRequestKey = generateKey();
             data.setPerRequestKey(perRequestKey);
             String json = ProxyUtil.convertToString(data);
@@ -108,7 +117,8 @@ public class ApiKeyStore {
         RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
         // lock free
         while (true) {
-            String oldJson = bucket.get();
+            // the write below compares with the master, so a copy from a replica that is behind must not be used
+            String oldJson = readOnMaster(redisKey);
             if (oldJson == null) {
                 throw new IllegalArgumentException("Per request key is not found: " + key);
             }
@@ -137,6 +147,9 @@ public class ApiKeyStore {
         return taskExecutor.submit(() -> blockingCallTracer.trace("auth.api_key.lookup", () -> {
             RBucket<String> bucket = redis.getBucket(redisKey, StringCodec.INSTANCE);
             String json = bucket.get();
+            if (json == null) {
+                json = readOnMasterIfReachable(redisKey);
+            }
             return ProxyUtil.convertToObject(json, ApiKeyData.class);
         })).compose(result -> {
             if (result == null) {
@@ -144,6 +157,36 @@ public class ApiKeyStore {
             }
             return Future.succeededFuture(result);
         });
+    }
+
+    /**
+     * Returns the data of a per request key as the Redis master holds it, or null if it is not there or the master
+     * cannot be read. Blocking.
+     */
+    public ApiKeyData getPerRequestKeyDataOnMaster(String perRequestKey) {
+        return ProxyUtil.convertToObject(readOnMasterIfReachable(toRedisKey(perRequestKey)), ApiKeyData.class);
+    }
+
+    /**
+     * Reads the key from the Redis master, or returns null if the master cannot be read. The read only repairs an
+     * answer a replica gave, so a failed read leaves that answer as it was instead of failing the request.
+     */
+    private String readOnMasterIfReachable(String redisKey) {
+        try {
+            return blockingCallTracer.trace("auth.api_key.lookup_master", () -> readOnMaster(redisKey));
+        } catch (RedisException e) {
+            log.warn("Can't read a per request key on the Redis master, the replica's answer stands: {}", e.toString());
+            return null;
+        }
+    }
+
+    /**
+     * Reads the key from the Redis master. {@link RBucket#get()} reads a replica, which may not have a key
+     * issued a moment ago yet.
+     */
+    private String readOnMaster(String redisKey) {
+        return redis.getScript(StringCodec.INSTANCE).eval(RScript.Mode.READ_WRITE,
+                "return redis.call('get', KEYS[1])", RScript.ReturnType.VALUE, List.of(redisKey));
     }
 
     private static Future<ApiKeyData> validateIpAddressRange(ApiKeyData apiKeyData, String clientIpAddress) {

@@ -36,6 +36,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -984,5 +986,71 @@ public class AccessServiceTest {
 
         assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(resource), context).get(resource));
         assertTrue(accessService.lookupInitiatorPermissions(Set.of(resource), context).get(resource).isEmpty());
+    }
+
+    @Test
+    public void testLookupPermissions_ReadsTheKeyOnMasterBeforeRefusing() {
+        // the request is authenticated with a copy of the key from a replica, which is behind an attachment; the grant
+        // only in the master's copy cannot happen (a key's grants are fixed when it is built) and checks that both maps count
+        ResourceDescriptor granted = new ResourceDescriptor(ResourceTypes.FILE, "granted.json", List.of(), "bucket", "Users/other-user/", false);
+        ResourceDescriptor attached = new ResourceDescriptor(ResourceTypes.FILE, "attached.json", List.of(), "bucket", "Users/other-user/", false);
+        ResourceDescriptor other = new ResourceDescriptor(ResourceTypes.FILE, "other.json", List.of(), "bucket", "Users/other-user/", false);
+        chainedHop();
+        ApiKeyData onMaster = new ApiKeyData();
+        onMaster.getPerRequestSharedResources().put(granted.getUrl(), new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.READ))));
+        onMaster.getAttachedFiles().put(attached.getUrl(), new AutoSharedData(ResourceAccessType.READ_ONLY));
+        when(context.loadMasterApiKeyData()).thenReturn(onMaster);
+        AccessService accessService = accessService(mock(ApplicationSchemaService.class));
+
+        assertTrue(accessService.hasReadAccess(granted, context));
+        assertFalse(accessService.hasWriteAccess(granted, context));
+        assertTrue(accessService.hasReadAccess(attached, context));
+        assertFalse(accessService.hasReadAccess(other, context));
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(granted, context, Set.of(ResourceAccessType.READ)));
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(attached), context).get(attached));
+        // the initiator's reach never counts the calling key's grants, the master's copy included
+        assertTrue(accessService.lookupInitiatorPermissions(Set.of(granted), context).get(granted).isEmpty());
+    }
+
+    @Test
+    public void testHasReadAccessToEverythingUnder_ReadsTheKeyOnMasterBeforeRefusing() {
+        // a public folder in a unit the caller has no role in, attached to the key a moment ago
+        ResourceDescriptor folder = new ResourceDescriptor(ResourceTypes.FILE, null, List.of("docs"), "public", "public/", true);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setPerRequestKey("prk");
+        lenient().when(context.getApiKeyData()).thenReturn(apiKeyData);
+        when(orgUnitGrants.isEnabled()).thenReturn(true);
+        AccessService accessService = accessService(mock(ApplicationSchemaService.class));
+
+        assertFalse(accessService.hasReadAccessToEverythingUnder(folder, context));
+
+        ApiKeyData onMaster = new ApiKeyData();
+        onMaster.getAttachedFolders().put(folder.getUrl(), new AutoSharedData(ResourceAccessType.READ_ONLY));
+        when(context.loadMasterApiKeyData()).thenReturn(onMaster);
+
+        assertTrue(accessService.hasReadAccessToEverythingUnder(folder, context));
+    }
+
+    @Test
+    public void testLookupPermissions_StaysOffMasterWhenTheNeededAccessIsGranted() {
+        ResourceDescriptor attached = new ResourceDescriptor(ResourceTypes.FILE, "attached.json", List.of(), "bucket", "Users/other-user/", false);
+        ResourceDescriptor granted = new ResourceDescriptor(ResourceTypes.FILE, "granted.json", List.of(), "bucket", "Users/other-user/", false);
+        chainedHop();
+        context.getApiKeyData().getAttachedFiles().put(attached.getUrl(), new AutoSharedData(ResourceAccessType.READ_ONLY));
+        context.getApiKeyData().getPerRequestSharedResources().put(granted.getUrl(),
+                new PerRequestSharedData(new HashSet<>(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE))));
+        AccessService accessService = accessService(mock(ApplicationSchemaService.class));
+
+        // read only is short of all the permissions the lookups ask the rules for, but it is what the caller needs
+        assertTrue(accessService.hasReadAccess(attached, context));
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(attached, context, Set.of(ResourceAccessType.READ)));
+        assertEquals(ResourceAccessType.READ_ONLY, accessService.lookupPermissions(Set.of(attached), context).get(attached));
+        // the grant gives more than the read the caller asks for
+        assertTrue(accessService.hasReadAccess(granted, context));
+        verify(context, never()).loadMasterApiKeyData();
+
+        // the needed access is missing
+        assertFalse(accessService.hasWriteAccess(attached, context));
+        verify(context).loadMasterApiKeyData();
     }
 }

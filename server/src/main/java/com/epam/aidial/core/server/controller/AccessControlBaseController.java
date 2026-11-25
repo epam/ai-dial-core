@@ -32,7 +32,7 @@ public abstract class AccessControlBaseController {
         return proxy.getTaskExecutor()
                 .submit(() -> {
                     AccessService service = proxy.getAccessService();
-                    return service.lookupPermissions(Set.of(resource), context).get(resource);
+                    return service.lookupPermissions(resource, context, Set.of(isWriteAccess ? ResourceAccessType.WRITE : ResourceAccessType.READ));
                 })
                 .compose(permissions -> {
                     boolean hasAccess = permissions.contains(isWriteAccess

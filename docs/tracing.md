@@ -121,6 +121,7 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 | Span                                                     | Covers                                                                        | Attributes                                    |
 |----------------------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------|
 | `auth.api_key.lookup`                                    | Reading a per-request API key from Redis                                      |                                               |
+| `auth.api_key.lookup_master`                             | Reading a per-request API key from the Redis master: after a replica miss, before an access refusal, before building a nested call's key |                                               |
 | `auth.api_key.assign`                                    | Storing the per-request API key handed to the upstream deployment             |                                               |
 | `auth.jwks.fetch`                                        | Fetching an identity provider's signing key; once per key id while it is cached |                                             |
 | `deployment.resolve`                                     | Finding the requested deployment and checking access and user consent         |                                               |
