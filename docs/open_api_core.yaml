@@ -22262,6 +22262,16 @@ components:
         userDisplayName:
           type: string
           description: Human-readable caller name. For user-based session authentication it is resolved from the identity provider's configured userDisplayName claim path; for API key authentication it is the key's project name. Absent when not configured.
+        costObject:
+          type: string
+          description: The cost object the caller's calls are charged to.
+        costObjectSource:
+          type: string
+          description: "Where costObject came from - claim is the token's claim at the identity provider's costObjectPath, key is the API key's project, default is spendingLimits.defaultCostObject."
+          enum:
+          - claim
+          - key
+          - default
     UserLimitStats:
       type: object
       properties:
