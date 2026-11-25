@@ -277,21 +277,69 @@ public class ResponsesApiTest extends ResourceBaseTest {
     }
 
     @Test
-    public void testUnavailableUpstreamEncryptedContentAffinityRejected() throws IOException {
-        try (CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
+    public void testReasoningFromUnavailableUpstreamDropped() throws IOException {
+        AtomicReference<String> upstreamKey = new AtomicReference<>();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
+            server.map(HttpMethod.POST, "/openai/v1/responses", request -> {
+                upstreamKey.set(request.getHeader("X-UPSTREAM-KEY"));
+                requestBody.set(request.getBody().readUtf8());
+                return TestWebServer.createResponse(200,
+                        "{\"id\":\"resp_1\",\"object\":\"response\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+                        "Content-Type", "application/json");
+            });
+
+            ObjectNode removed = ProxyUtil.MAPPER.createObjectNode();
+            removed.put("type", "reasoning");
+            removed.put("id", "rs_old");
+            removed.put("encrypted_content", "cipher-old");
+            EncryptedContentAffinityUtil.wrapOutputItem(removed, "up-nonexistent", "responses-cache");
+
+            ObjectNode kept = ProxyUtil.MAPPER.createObjectNode();
+            kept.put("type", "reasoning");
+            kept.put("id", "rs_1");
+            kept.put("encrypted_content", "cipher-1");
+            EncryptedContentAffinityUtil.wrapOutputItem(kept, "up-a", "responses-cache");
+
+            String body = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
+                    + "\"input\":[" + removed + "," + kept + ",{\"role\":\"user\",\"content\":\"Continue\"}]}";
+            Response response = post(client, body);
+            assertEquals(200, response.status());
+
+            // the item of the removed upstream is dropped, the configured upstream still wins
+            assertEquals("keyA", upstreamKey.get());
+            JsonNode forwardedInput = ProxyUtil.MAPPER.readTree(requestBody.get()).path("input");
+            assertEquals(2, forwardedInput.size());
+            assertEquals("rs_1", forwardedInput.get(0).path("id").asText());
+            assertEquals("Continue", forwardedInput.get(1).path("content").asText());
+        }
+    }
+
+    @Test
+    public void testReasoningFromRemovedUpstreamOnlyIsDroppedAndRequestIsNotPinned() throws IOException {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = HttpClientBuilder.create().disableAutomaticRetries().build()) {
+            server.map(HttpMethod.POST, "/openai/v1/responses", request -> {
+                requestBody.set(request.getBody().readUtf8());
+                return TestWebServer.createResponse(200,
+                        "{\"id\":\"resp_1\",\"object\":\"response\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}",
+                        "Content-Type", "application/json");
+            });
+
             ObjectNode item = ProxyUtil.MAPPER.createObjectNode();
             item.put("type", "reasoning");
             item.put("id", "rs_1");
             item.put("encrypted_content", "cipher-1");
             EncryptedContentAffinityUtil.wrapOutputItem(item, "up-nonexistent", "responses-cache");
 
-            String requestBody = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
-                    + "\"input\":[" + item + "]}";
-            Response response = post(client, requestBody);
+            String body = "{\"model\":\"responses-cache\",\"stream\":false,\"store\":false,"
+                    + "\"input\":[" + item + ",{\"role\":\"user\",\"content\":\"Continue\"}]}";
+            Response response = post(client, body);
+            assertEquals(200, response.status());
 
-            assertEquals(409, response.status());
-            JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
-            assertEquals("encrypted_content_upstream_unavailable", body.path("error").path("code").asText());
+            JsonNode forwardedInput = ProxyUtil.MAPPER.readTree(requestBody.get()).path("input");
+            assertEquals(1, forwardedInput.size());
+            assertEquals("Continue", forwardedInput.get(0).path("content").asText());
         }
     }
 

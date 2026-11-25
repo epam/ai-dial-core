@@ -10,7 +10,6 @@ import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -36,37 +35,20 @@ public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<Reque
             return false;
         }
         Model model = (Model) context.getDeployment();
-        List<EncryptedContentAffinityUtil.ResolvedAffinity> results = responsesRequest.resolveAndUnwrapEncryptedContentAffinity();
-        if (results.isEmpty()) {
-            return false;
-        }
-        String currentDeploymentName = model.getName();
-        String resolvedUpstreamId = null;
-        for (EncryptedContentAffinityUtil.ResolvedAffinity result : results) {
-            if (result.upstreamId() == null) {
-                log.warn("Upstream ID is null. Blind routing may result in errors on the model side.");
-                continue;
-            }
-
-            // resolveAndUnwrap has already dropped items from any other upstream, so all ids agree
-            resolvedUpstreamId = result.upstreamId();
-
-            if (result.deploymentName() != null && !result.deploymentName().equals(currentDeploymentName)) {
-                log.warn("Deployment mismatch: encrypted content was produced by '{}' but current deployment is '{}'",
-                        result.deploymentName(), currentDeploymentName);
-            }
-        }
-        if (resolvedUpstreamId == null) {
-            return false;
-        }
-
-        boolean exists = model.getUpstreams().stream()
+        Set<String> configuredUpstreamIds = model.getUpstreams().stream()
                 .map(Upstream::getId)
-                .anyMatch(resolvedUpstreamId::equals);
-        if (!exists) {
-            throw EncryptedContentAffinityUtil.upstreamUnavailableException(resolvedUpstreamId);
+                .collect(Collectors.toSet());
+        EncryptedContentAffinityUtil.Resolution resolution = responsesRequest.resolveAndUnwrapEncryptedContentAffinity(configuredUpstreamIds);
+        if (resolution.upstreamId() == null) {
+            return false;
         }
-        request.setEncryptedUpstreamId(resolvedUpstreamId);
+        for (String deploymentName : resolution.deploymentNames()) {
+            if (!deploymentName.equals(model.getName())) {
+                log.warn("Deployment mismatch: encrypted content was produced by '{}' but current deployment is '{}'",
+                        deploymentName, model.getName());
+            }
+        }
+        request.setEncryptedUpstreamId(resolution.upstreamId());
         return false;
     }
 }

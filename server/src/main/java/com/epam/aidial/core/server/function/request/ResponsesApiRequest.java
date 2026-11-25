@@ -128,13 +128,15 @@ public class ResponsesApiRequest implements RequestObject {
 
     /**
      * Resolves and unwraps the upstream config id encoded into any echoed encrypted content items in
-     * {@code input}, mutating them in place back to their provider-native shape.
+     * {@code input}, mutating them in place back to their provider-native shape and removing the items the
+     * resolved upstream cannot decrypt.
      *
-     * @return unique resolved affinities; empty if {@code input} is missing or carries no wrapped item
+     * @return the upstream to route to; {@link EncryptedContentAffinityUtil.Resolution#NONE} if {@code input} is
+     *     missing or carries no kept wrapped item
      */
-    public List<EncryptedContentAffinityUtil.ResolvedAffinity> resolveAndUnwrapEncryptedContentAffinity() {
+    public EncryptedContentAffinityUtil.Resolution resolveAndUnwrapEncryptedContentAffinity(Set<String> configuredUpstreamIds) {
         return tree.get("input") instanceof ArrayNode input
-                ? EncryptedContentAffinityUtil.resolveAndUnwrap(input)
-                : List.of();
+                ? EncryptedContentAffinityUtil.resolveAndUnwrap(input, configuredUpstreamIds)
+                : EncryptedContentAffinityUtil.Resolution.NONE;
     }
 }

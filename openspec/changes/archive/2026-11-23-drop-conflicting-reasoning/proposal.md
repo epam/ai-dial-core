@@ -8,12 +8,12 @@ with `400 conflicting_encrypted_content_affinity`.
 
 ## What Changes
 
-- On `POST /openai/v1/responses` to a model with `upstreams`, the first upstream found in the `input` reasoning items
-  wins; a later reasoning item from another upstream is removed from `input` before forwarding, with a warning in the
-  log, instead of the `400`.
+- On `POST /openai/v1/responses` to a model with `upstreams`, the first configured upstream found in the `input`
+  reasoning items wins; a reasoning item from another upstream, or from an upstream the model no longer has, is removed
+  from `input` before forwarding, with one warning per request in the log, instead of the `400` or the `409`.
 - The spec gains the reasoning-item affinity Core has today, which no capability describes yet.
 
-Out of scope: the `409 encrypted_content_upstream_unavailable` answer, item operations, the stamp format.
+Removed: the `409 encrypted_content_upstream_unavailable` answer. Out of scope: item operations, the stamp format.
 
 ## Capabilities
 
