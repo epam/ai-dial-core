@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.limiter.SpendReadException;
+import com.epam.aidial.core.server.limiter.SpendingRefusal;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.micrometer.core.instrument.Metrics;
@@ -190,7 +191,7 @@ public class BudgetEnforcer {
         // an alias pass and a router fall back on; every other route answers the refusal's own status
         HttpStatus status = isWithSpendCaps ? HttpStatus.TOO_MANY_REQUESTS : refusal.status();
         return reject(settings, refusal, claims.userId(), costObject, model, new RateLimitResult(
-                status, message, "You have no budget for this model", -1, null, null, isWithSpendCaps, true, refusal.code()));
+                status, message, "You have no budget for this model", -1, null, null, isWithSpendCaps, refusal));
     }
 
     private static RateLimitResult buildExhaustedResult(String costObject, @Nullable String displayMessage, Outcome outcome, long timestamp) {
@@ -198,7 +199,7 @@ public class BudgetEnforcer {
         long retryAfter = Math.max(1, Math.ceilDiv(outcome.earliestResetAt - timestamp, 1000L));
         SpendingRefusal refusal = SpendingRefusal.BUDGET_EXHAUSTED;
         return new RateLimitResult(refusal.status(), "Budget exhausted for cost object " + costObject,
-                displayMessage, retryAfter, null, null, false, false, refusal.code());
+                displayMessage, retryAfter, null, null, false, refusal);
     }
 
     /**

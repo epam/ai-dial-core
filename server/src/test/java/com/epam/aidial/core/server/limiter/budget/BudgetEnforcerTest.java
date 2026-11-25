@@ -21,6 +21,7 @@ import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.limiter.SpendReadException;
+import com.epam.aidial.core.server.limiter.SpendingRefusal;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
@@ -93,7 +94,7 @@ class BudgetEnforcerTest {
         RateLimitResult result = enforcer.check(context, model, NOW, SCHEDULE).result();
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
-        assertEquals("budget_exhausted", result.errorCode());
+        assertEquals(SpendingRefusal.BUDGET_EXHAUSTED, result.refusal());
     }
 
     @Test
@@ -122,7 +123,7 @@ class BudgetEnforcerTest {
         RateLimitResult result = enforcer.check(context, model, NOW, SCHEDULE).result();
 
         assertEquals(HttpStatus.FORBIDDEN, result.status());
-        assertEquals("no_budget", result.errorCode());
+        assertEquals(SpendingRefusal.NO_BUDGET, result.refusal());
         assertEquals(-1, result.replyAfterSeconds());
         assertFalse(result.isClientRetryDisabled());
     }
@@ -363,7 +364,7 @@ class BudgetEnforcerTest {
 
         // the Messages and Responses routes keep a 429 inside Core and answer their client in their own way
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
-        assertEquals("no_budget", result.errorCode());
+        assertEquals(SpendingRefusal.NO_BUDGET, result.refusal());
         assertTrue(result.isNoBudget());
         assertTrue(result.isClientRetryDisabled());
         assertNull(result.spendCaps());

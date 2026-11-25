@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.limiter.budget;
+package com.epam.aidial.core.server.limiter;
 
 import com.epam.aidial.core.storage.http.HttpStatus;
 
