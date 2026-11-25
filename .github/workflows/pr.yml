@@ -41,7 +41,7 @@ jobs:
         with:
           lfs: true
           ref: ${{ github.head_ref }}
-      - uses: epam/ai-dial-ci/actions/java_prepare@5.0.0
+      - uses: epam/ai-dial-ci/actions/java_prepare@5.1.0
         with:
           java-version: 25
           java-distribution: temurin
