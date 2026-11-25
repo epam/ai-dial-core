@@ -220,6 +220,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "402":
+          description: "With enforced budgets, no budget for the model, to the client's own request, directly or through an alias: `billing_error` with a message naming the model and the cost object, `x-should-retry: false` and no `retry-after`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicErrorData"
         "403":
           description: Forbidden
           content:
