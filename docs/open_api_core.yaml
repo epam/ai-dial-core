@@ -76,6 +76,7 @@ tags:
 - name: Code interpreter
 - name: Config
 - name: Conversations
+- name: Dependencies
 - name: Deployment Feature
 - name: Deployment listing
 - name: Deployments
@@ -10138,6 +10139,38 @@ paths:
       - lang: cURL
         label: CURL
         source: "curl -X POST https://chat.<company>.com/v1/ops/config/reload \\\n  -H \"Api-Key: DIAL_API_KEY\"            \n"
+  /v1/ops/dependency/list:
+    post:
+      tags:
+      - Dependencies
+      summary: /v1/ops/dependency/list
+      operationId: listDependencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DependencyRequestParserDependencyRequestBody"
+        required: true
+      responses:
+        "200":
+          description: "For each selected Application, the flat list of the resources it reaches"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DependencyListResponse"
+        "400":
+          description: "The body is missing, holds a field other than roots, or is not a valid selection of Applications"
+        "403":
+          description: "The caller may not use a selected root, or authenticates with a per-request key"
+        "404":
+          description: A selected Application does not exist
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
   /v1/ops/external-service/credentials:
     post:
       tags:
@@ -19404,6 +19437,53 @@ components:
       type: object
       properties:
         removed:
+          type: string
+    DependencyListResponse:
+      type: object
+      properties:
+        roots:
+          type: array
+          items:
+            $ref: "#/components/schemas/DependencyRootEntry"
+    DependencyRequestParserDependencyRequestBody:
+      type: object
+      properties:
+        roots:
+          type: array
+          items:
+            $ref: "#/components/schemas/DependencyRequestParserDependencyRoot"
+    DependencyRequestParserDependencyRoot:
+      type: object
+      properties:
+        type:
+          type: string
+        url:
+          type: string
+    DependencyResource:
+      type: object
+      properties:
+        name:
+          type: string
+        origin:
+          type: string
+        type:
+          type: string
+        url:
+          type: string
+    DependencyRootEntry:
+      type: object
+      properties:
+        dependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/DependencyResource"
+        name:
+          type: string
+        origin:
+          type: string
+        type:
+          type: string
+        url:
           type: string
     DeploymentData:
       required:

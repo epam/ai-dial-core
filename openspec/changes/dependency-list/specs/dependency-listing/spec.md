@@ -58,7 +58,7 @@ A successful answer SHALL be `{"roots": [...]}`: one entry per root, in the orde
 - **THEN** its entry has `dependencies` as an empty list
 
 #### Scenario: Two roots with shared dependencies
-- **WHEN** `support-bot` (which depends on `summarizer`, a schema, a file, `pii-filter`, `gpt-4o` and `gpt-4o-mini`) and `summarizer` (which depends on `pii-filter`, `gpt-4o` and `gpt-4o-mini`) are the two roots
+- **WHEN** `support-bot` (which depends on `summarizer`, a prompt, a file, `pii-filter`, `gpt-4o` and `gpt-4o-mini`) and `summarizer` (which depends on `pii-filter`, `gpt-4o` and `gpt-4o-mini`) are the two roots
 - **THEN** `roots` holds the `support-bot` entry and then the `summarizer` entry, the first with six items and the second with three
 
 ### Requirement: The dependencies of a root are every resource it reaches, each once

@@ -59,6 +59,7 @@ public class CatalogFileKeyword implements Keyword {
                 ListCollector<String> fileCollector = (ListCollector<String>) collectorContext.getCollectorMap()
                         .computeIfAbsent(ListCollector.ResourceCollectorType.ALL_RESOURCES.getValue(), k -> new ListCollector<String>());
                 fileCollector.combine(List.of(nodeValue));
+                MarkerRecorder.record(collectorContext, jsonNodePath, nodeValue);
             }
             return Set.of();
         }

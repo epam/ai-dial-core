@@ -6,6 +6,7 @@ DIAL Core server cannot or will not process the request due to something that is
  - Resource URL is malformed
  - Both API key and Authorization headers are provided
  - Folder can't be downloaded
+ - The body of `POST /v1/ops/dependency/list` is missing or empty, has a field other than `roots`, or is not a valid selection of Applications (see [Dependency list](dependency-list.md))
 
 #### 401 UNAUTHORIZED
 
@@ -22,6 +23,7 @@ User is authenticated by Core but doesn't have insufficient permissions to a res
 - a required resource dependency of the application is not accessible to the user or not approved by an administrator
 - only administrators can manage an application's admin consent, and only for an application they can read in the config, the public or review bucket, or their own bucket
 - a user changes an application's resource dependencies while `applications.allowUserAuthoredDependencies` is off
+- an application, authenticated with its per-request key, calls `POST /v1/ops/dependency/list`, or a user selects there an Application they may not read or one in `platform/`
 
 #### 404 NOT FOUND
 
@@ -29,6 +31,7 @@ The user request has been authenticated and authorized but DIAL Core server can'
 - application, model
 - file
 - conversation, prompt
+- an Application selected in `POST /v1/ops/dependency/list`
 
 #### 405 METHOD NOT ALLOWED
 

@@ -24,6 +24,7 @@ import com.epam.aidial.core.server.controller.ConfigFileMigrateController;
 import com.epam.aidial.core.server.controller.ConfigResourceController;
 import com.epam.aidial.core.server.controller.ConfigResourceMetadataController;
 import com.epam.aidial.core.server.controller.ConsentController;
+import com.epam.aidial.core.server.controller.DependencyListController;
 import com.epam.aidial.core.server.controller.DeploymentController;
 import com.epam.aidial.core.server.controller.DeploymentFeatureController;
 import com.epam.aidial.core.server.controller.DeploymentPostController;
@@ -77,6 +78,7 @@ public final class AnnotationEndpointCollector {
             AdminSystemImportController.class,
             AdminHealthConfigController.class,
             AdminValidateController.class,
+            DependencyListController.class,
             AnthropicModelController.class,
             AnthropicUsageController.class,
             ApplicationController.class,

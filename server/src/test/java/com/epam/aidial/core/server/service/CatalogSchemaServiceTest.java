@@ -5,20 +5,33 @@ import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.validation.CatalogSchemaValidationException;
+import com.epam.aidial.core.server.validation.CollectionIssueKind;
+import com.epam.aidial.core.server.validation.MarkerCollection;
+import com.epam.aidial.core.server.validation.MarkerCollection.MarkerReference;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -146,4 +159,125 @@ class CatalogSchemaServiceTest {
 
         Assertions.assertEquals(1, result.size());
     }
+
+    // the shared collection algorithm is tested with ApplicationSchemaService; only what is specific to catalog schemas is tested here
+
+    private static Map<String, Object> properties(Object... keyValues) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            result.put((String) keyValues[i], keyValues[i + 1]);
+        }
+        return result;
+    }
+
+    private static MarkerReference fileReference(String pointer, String value) {
+        return new MarkerReference(pointer, value);
+    }
+
+    private MarkerCollection collectFrom(String catalogSchema, Map<String, Object> catalogProperties) {
+        when(config.getCatalogSchema(SCHEMA_ID)).thenReturn(catalogSchema);
+        model.setCatalogSchemaId(SCHEMA_ID);
+        model.setCatalogProperties(catalogProperties);
+        return service.collectMarkerReferences(model, config);
+    }
+
+    @Test
+    void collectMarkerReferencesReturnsPointerAndValueOfEachFile() {
+        String catalogSchema = """
+                {"type":"object","properties":{
+                  "badge":{"type":"string","dial:file":true},
+                  "icon":{"type":"string","dial:file":true},
+                  "tag":{"type":"string"}}}""";
+
+        MarkerCollection result = collectFrom(catalogSchema,
+                properties("badge", "files/public/b.png", "icon", "files/public/i.png", "tag", "Free"));
+
+        Assertions.assertEquals(List.of(fileReference("/badge", "files/public/b.png"),
+                fileReference("/icon", "files/public/i.png")), result.references());
+        Assertions.assertTrue(result.issues().isEmpty());
+        verifyNoInteractions(configStore);
+    }
+
+    @Test
+    void collectMarkerReferencesReturnsEmptyCompleteCollectionWithoutSchemaIdOrProperties() {
+        MarkerCollection withoutSchema = service.collectMarkerReferences(model, config);
+        model.setCatalogSchemaId(SCHEMA_ID);
+        MarkerCollection withoutProperties = service.collectMarkerReferences(model, config);
+
+        for (MarkerCollection result : List.of(withoutSchema, withoutProperties)) {
+            Assertions.assertTrue(result.references().isEmpty());
+            Assertions.assertTrue(result.issues().isEmpty());
+        }
+        verifyNoInteractions(configStore);
+    }
+
+    @Test
+    void collectMarkerReferencesReportsSchemaNotFoundWithoutThrowing() {
+        model.setCatalogSchemaId(SCHEMA_ID);
+        model.setCatalogProperties(properties("badge", "files/public/b.png"));
+
+        MarkerCollection result = service.collectMarkerReferences(model, config);
+
+        Assertions.assertTrue(result.references().isEmpty());
+        Assertions.assertEquals(1, result.issues().size());
+        Assertions.assertEquals(CollectionIssueKind.SCHEMA_NOT_FOUND, result.issues().get(0).kind());
+    }
+
+    @Test
+    void collectMarkerReferencesPropagatesAnUnexpectedRuntimeExceptionInsteadOfRecordingAnIssue() {
+        model.setCatalogSchemaId(SCHEMA_ID);
+        model.setCatalogProperties(properties("badge", "files/public/b.png"));
+        Config failing = org.mockito.Mockito.mock(Config.class);
+        when(failing.getCatalogSchema(SCHEMA_ID)).thenThrow(new IllegalStateException("boom"));
+
+        IllegalStateException thrown = Assertions.assertThrows(IllegalStateException.class,
+                () -> service.collectMarkerReferences(model, failing));
+
+        Assertions.assertEquals("boom", thrown.getMessage());
+    }
+
+    @Test
+    void collectMarkerReferencesAcceptsLocalRefsOfSchemaWithAbsoluteId() {
+        String catalogSchema = """
+                {"$id":"https://dial.example/catalog-schemas/model","type":"object",
+                 "properties":{"badge":{"$ref":"#/$defs/file"}},
+                 "$defs":{"file":{"type":"string","dial:file":true}}}""";
+
+        MarkerCollection result = collectFrom(catalogSchema, properties("badge", "files/public/b.png"));
+
+        Assertions.assertEquals(List.of(fileReference("/badge", "files/public/b.png")), result.references());
+        Assertions.assertTrue(result.issues().isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"remote", "local file"})
+    void collectMarkerReferencesRefusesRefOutsideTheDocumentWithoutFetchingOrReadingIt(String kind) throws IOException {
+        AtomicInteger requests = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/ref.json", exchange -> {
+            requests.incrementAndGet();
+            byte[] body = "{\"type\":\"string\"}".getBytes();
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        Path file = Files.createTempFile("ref", ".json");
+        try {
+            Files.writeString(file, "{\"type\":\"string\"}");
+            String address = kind.equals("remote") ? "http://127.0.0.1:" + server.getAddress().getPort() + "/ref.json" : file.toUri().toString();
+            String catalogSchema = "{\"type\":\"object\",\"properties\":{\"badge\":{\"$ref\":\"" + address + "\"}}}";
+
+            MarkerCollection result = collectFrom(catalogSchema, properties("badge", "files/public/b.png"));
+
+            Assertions.assertEquals(0, requests.get(), "a schema document must not make Core send a request");
+            Assertions.assertTrue(result.references().isEmpty());
+            Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, result.issues().get(0).kind());
+            Assertions.assertFalse(result.issues().get(0).toString().contains(address));
+        } finally {
+            server.stop(0);
+            Files.deleteIfExists(file);
+        }
+    }
+
 }
