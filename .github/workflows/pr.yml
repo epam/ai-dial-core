@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   run_tests:
-    uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@5.0.0
+    uses: epam/ai-dial-ci/.github/workflows/java_pr.yml@5.1.0
     secrets: inherit
     with:
       platforms: "linux/amd64,linux/arm64"
@@ -41,7 +41,7 @@ jobs:
         with:
           lfs: true
           ref: ${{ github.head_ref }}
-      - uses: epam/ai-dial-ci/actions/java_prepare@5.0.0
+      - uses: epam/ai-dial-ci/actions/java_prepare@5.1.0
         with:
           java-version: 25
           java-distribution: temurin
