@@ -182,9 +182,11 @@ public class BudgetEnforcer {
      */
     private static RateLimitResult rejectNoBudget(SpendingLimits settings, ExtractedClaims claims, String costObject, Model model,
                                                   boolean isWithSpendCaps) {
+        // a user reads the message as it is, in Codex CLI and Claude Code; it keeps the model and the cost object for the admin
+        String message = "No DIAL spend limit is assigned for " + model.getName() + " in project " + costObject
+                + ". Ask your DIAL admin to assign one.";
         return reject(settings, NO_BUDGET, claims.userId(), costObject, model, new RateLimitResult(
-                HttpStatus.TOO_MANY_REQUESTS, "No budget covers " + model.getName() + " for cost object " + costObject,
-                "You have no budget for this model", -1, null, null, isWithSpendCaps));
+                HttpStatus.TOO_MANY_REQUESTS, message, "You have no budget for this model", -1, null, null, isWithSpendCaps, true));
     }
 
     private static RateLimitResult buildExhaustedResult(String costObject, @Nullable String displayMessage, Outcome outcome, long timestamp) {
