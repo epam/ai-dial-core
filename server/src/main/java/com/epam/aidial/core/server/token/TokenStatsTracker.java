@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.token;
 
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -21,8 +22,10 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 @Slf4j
@@ -50,6 +53,9 @@ public class TokenStatsTracker {
      * the costs each deployment reports for itself are not affected.
      */
     public Future<Void> startSpan(ProxyContext context) {
+        if (isUntraced(context.getTraceId(), context.getSpanId())) {
+            return Future.succeededFuture();
+        }
         return taskExecutor.submit(() -> {
             update(context.getTraceId(), true, traceContext -> {
                 traceContext.addSpan(context);
@@ -64,18 +70,45 @@ public class TokenStatsTracker {
         });
     }
 
+    /**
+     * Takes the deployment name off the context's span while its router decides again, so the calls the router makes
+     * then grow no candidate's aggregated-cost record.
+     */
+    public Future<Void> unnameSpan(ProxyContext context) {
+        if (isUntraced(context.getTraceId(), context.getSpanId())) {
+            return Future.succeededFuture();
+        }
+        return taskExecutor.submit(() -> {
+            update(context.getTraceId(), false, traceContext -> {
+                TokenStats span = traceContext.spans.get(context.getSpanId());
+                if (span != null) {
+                    span.deploymentName = null;
+                }
+                return true;
+            });
+            return null;
+        });
+    }
+
     public Future<TokenUsage> getTokenStats(ProxyContext context) {
         return getUsageStats(context).map(UsageStats::total);
     }
 
     public Future<UsageStats> getUsageStats(ProxyContext context) {
+        return getUsageStats(context.getTraceId(), context.getSpanId());
+    }
+
+    public Future<UsageStats> getUsageStats(String traceId, String spanId) {
+        if (isUntraced(traceId, spanId)) {
+            return Future.succeededFuture(UsageStats.EMPTY);
+        }
         return taskExecutor.submit(() -> {
-            String json = blockingCallTracer.trace("cost_stats.get", () -> getBucket(context.getTraceId()).get());
+            String json = blockingCallTracer.trace("cost_stats.get", () -> getBucket(traceId).get());
             TraceContext traceContext = ProxyUtil.convertToObject(json, TraceContext.class);
             if (traceContext == null) {
                 return UsageStats.EMPTY;
             }
-            return traceContext.getUsageStats(context.getSpanId());
+            return traceContext.getUsageStats(spanId);
         });
     }
 
@@ -83,6 +116,9 @@ public class TokenStatsTracker {
      * Ends the root span of the trace: deletes its usage record.
      */
     public Future<Void> endSpan(String traceId) {
+        if (isUntraced(traceId, null)) {
+            return Future.succeededFuture();
+        }
         return taskExecutor.submit(() -> blockingCallTracer.trace("cost_stats.delete", () -> {
             RBucket<String> bucket = getBucket(traceId);
             // under the lock, so a racing update cannot write back the deleted record
@@ -125,6 +161,9 @@ public class TokenStatsTracker {
      */
     public Future<UsageStats> updateDeploymentStats(String traceId, String spanId, String deploymentName, TokenUsage tokenUsage,
             boolean rootMayHaveEnded) {
+        if (isUntraced(traceId, spanId)) {
+            return Future.succeededFuture(UsageStats.EMPTY);
+        }
         return taskExecutor.submit(() -> {
             UsageStats result = update(traceId, false, traceContext -> {
                 if (!traceContext.spans.containsKey(spanId)) {
@@ -157,7 +196,16 @@ public class TokenStatsTracker {
         void addSpan(ProxyContext context) {
             String spanId = context.getSpanId();
             String parentSpanId = context.getParentSpanId();
-            String deploymentName = context.getDeployment() == null ? null : context.getDeployment().getName();
+            // a router names no span: it is never charged limits, so what its calls cost goes to no aggregated-cost record
+            String deploymentName = context.getDeployment() == null || context.getDeployment() instanceof Router
+                    ? null : context.getDeployment().getName();
+            TokenStats existing = spans.get(spanId);
+            if (existing != null) {
+                // the pass is re-entered with a router's next candidate: what the failed candidate's children
+                // rolled up stays, and later reports credit the new candidate
+                existing.deploymentName = deploymentName;
+                return;
+            }
             TokenStats tokenStats = new TokenStats(new TokenUsage(), parentSpanId, deploymentName);
             spans.put(spanId, tokenStats);
         }
@@ -191,7 +239,14 @@ public class TokenStatsTracker {
             List<AggregatedCost> aggregatedCosts = new ArrayList<>();
             BigDecimal delta = tokenUsage.getAggCost();
             String parentSpanId = tokenStats.parentSpanId;
+            // a span that is its own ancestor would be rolled into forever, one more entry per step
+            Set<String> visitedSpanIds = new HashSet<>();
+            visitedSpanIds.add(spanId);
             while (parentSpanId != null) {
+                if (!visitedSpanIds.add(parentSpanId)) {
+                    log.warn("Span {} is its own ancestor through span {}: its usage is not rolled up any further", spanId, parentSpanId);
+                    break;
+                }
                 tokenStats = spans.get(parentSpanId);
                 if (tokenStats == null) {
                     log.warn("Parent span {} was not added to the trace context.", parentSpanId);
@@ -273,6 +328,18 @@ public class TokenStatsTracker {
      */
     public record UsageStats(TokenUsage total, List<UsagePerModel> usagePerModel, List<AggregatedCost> aggregatedCosts) {
         public static final UsageStats EMPTY = new UsageStats(null, List.of(), List.of());
+    }
+
+    /**
+     * A no-op tracer (e.g. OpenTelemetry's with a disabled SDK) gives every request all-zero ids: they would all share
+     * one record, and a nested call would be its own parent.
+     */
+    private static boolean isUntraced(String traceId, String spanId) {
+        return isZeroId(traceId) || isZeroId(spanId);
+    }
+
+    private static boolean isZeroId(String id) {
+        return id != null && !id.isEmpty() && id.chars().allMatch(c -> c == '0');
     }
 
     /**

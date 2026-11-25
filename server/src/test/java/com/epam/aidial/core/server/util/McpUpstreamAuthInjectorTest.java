@@ -35,6 +35,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -185,6 +186,48 @@ class McpUpstreamAuthInjectorTest {
         assertFalse(headers.containsKey(HEADER_APPLICATION_PROPERTIES));
     }
 
+    // --- per-request key reuse (a redirect re-enters the injector) ---
+
+    @Test
+    void toolSet_forwardPerRequestKey_reusesAssignedKey() {
+        ToolSet toolSet = new ToolSet();
+        toolSet.setForwardPerRequestKey(true);
+        when(authSettingsResolver.resolve(toolSet, context)).thenReturn(mock(ResourceAuthSettings.class));
+        when(authorizationHeaderProvider.createAuthorizationHeader(any(), any(), any())).thenReturn(null);
+        assignedKeyData("already-assigned-key");
+
+        Map<String, String> headers = collect(toolSet);
+
+        assertEquals("already-assigned-key", headers.get(Proxy.HEADER_API_KEY));
+        verify(apiKeyStore, never()).assignPerRequestApiKey(any());
+        verify(context, never()).setProxyApiKeyData(any());
+    }
+
+    @Test
+    void application_forwardPerRequestKey_reusesAssignedKey() {
+        Application app = appWithMcp(true, Application.McpConfigDelivery.META);
+        app.setName("my-app");
+        assignedKeyData("already-assigned-key");
+
+        Map<String, String> headers = collect(app);
+
+        assertEquals("already-assigned-key", headers.get(Proxy.HEADER_API_KEY));
+        verify(apiKeyStore, never()).assignPerRequestApiKey(any());
+        verify(context, never()).setProxyApiKeyData(any());
+    }
+
+    @Test
+    void application_forwardPerRequestKey_mintsOnceWhenNoKeyAssigned() {
+        Application app = appWithMcp(true, Application.McpConfigDelivery.META);
+        app.setName("my-app");
+        mockPerRequestKeyAssignment("per-request-key-app");
+
+        Map<String, String> headers = collect(app);
+
+        assertEquals("per-request-key-app", headers.get(Proxy.HEADER_API_KEY));
+        verify(apiKeyStore, times(1)).assignPerRequestApiKey(any());
+    }
+
     @Test
     void application_configDeliveryMeta_noPropertiesHeader() {
         Application app = appWithMcp(false, Application.McpConfigDelivery.META);
@@ -222,6 +265,12 @@ class McpUpstreamAuthInjectorTest {
             keyData.setPerRequestKey(key);
             return null;
         }).when(apiKeyStore).assignPerRequestApiKey(any());
+    }
+
+    private void assignedKeyData(String key) {
+        ApiKeyData assigned = new ApiKeyData();
+        assigned.setPerRequestKey(key);
+        when(context.getProxyApiKeyData()).thenReturn(assigned);
     }
 
     private static Application appWithMcp(boolean forwardPerRequestKey,

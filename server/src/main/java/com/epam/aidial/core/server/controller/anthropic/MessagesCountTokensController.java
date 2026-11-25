@@ -12,10 +12,10 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 
@@ -54,8 +54,7 @@ public class MessagesCountTokensController extends MessagesBaseController {
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 503)
-                    }
-            )
+                    })
     })
     @Override
     public Future<?> handle() {
@@ -63,13 +62,14 @@ public class MessagesCountTokensController extends MessagesBaseController {
     }
 
     @Override
-    protected void processResponse(HttpClientResponse proxyResponse) {
+    protected void processResponse(ProxyResponse proxyResponse) {
         proxyResponse.body()
+                .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
                 .compose(body -> forwardResponse(proxyResponse, body))
                 .onFailure(this::handleProxyConnectionError);
     }
 
-    private Future<Void> forwardResponse(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Void> forwardResponse(ProxyResponse proxyResponse, Buffer body) {
         context.setResponseBody(body);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();

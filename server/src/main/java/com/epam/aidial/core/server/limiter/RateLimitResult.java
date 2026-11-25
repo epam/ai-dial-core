@@ -6,23 +6,33 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.http.HttpHeaders;
 
+import java.util.HashMap;
 import java.util.Map;
 import javax.annotation.Nullable;
 
+/**
+ * @param isClientRetryDisabled the rejection tells the client not to retry ({@code x-should-retry: false}); Core's
+ *                              own retry rules still treat it like any other status
+ */
 public record RateLimitResult(
         HttpStatus status, String errorMessage, String displayErrorMessage, long replyAfterSeconds,
-        @Nullable LimitBreach breach, @Nullable SpendCaps spendCaps) {
+        @Nullable LimitBreach breach, @Nullable SpendCaps spendCaps, boolean isClientRetryDisabled) {
     public static final RateLimitResult SUCCESS = new RateLimitResult(HttpStatus.OK, null, null, -1);
 
     public RateLimitResult(HttpStatus status, String errorMessage, String displayErrorMessage, long replyAfterSeconds) {
         this(status, errorMessage, displayErrorMessage, replyAfterSeconds, null, null);
     }
 
+    public RateLimitResult(HttpStatus status, String errorMessage, String displayErrorMessage, long replyAfterSeconds,
+                           @Nullable LimitBreach breach, @Nullable SpendCaps spendCaps) {
+        this(status, errorMessage, displayErrorMessage, replyAfterSeconds, breach, spendCaps, false);
+    }
+
     public RateLimitResult withSpendCaps(@Nullable SpendCaps spendCaps) {
         if (spendCaps == null) {
             return this;
         }
-        return new RateLimitResult(status, errorMessage, displayErrorMessage, replyAfterSeconds, breach, spendCaps);
+        return new RateLimitResult(status, errorMessage, displayErrorMessage, replyAfterSeconds, breach, spendCaps, isClientRetryDisabled);
     }
 
     public void throwIfError() {
@@ -34,12 +44,14 @@ public record RateLimitResult(
             rateLimitError.getError().setDisplayMessage(displayErrorMessage);
 
             String errorMessage = ProxyUtil.convertToString(rateLimitError);
+            Map<String, String> headers = new HashMap<>();
             if (replyAfterSeconds >= 0) {
-                Map<String, String> headers = Map.of(HttpHeaders.RETRY_AFTER.toString(), Long.toString(replyAfterSeconds));
-                throw new HttpException(status, errorMessage, headers);
+                headers.put(HttpHeaders.RETRY_AFTER.toString(), Long.toString(replyAfterSeconds));
             }
-
-            throw new HttpException(status, errorMessage);
+            if (isClientRetryDisabled) {
+                headers.put("x-should-retry", "false");
+            }
+            throw new HttpException(status, errorMessage, headers);
         }
     }
 }

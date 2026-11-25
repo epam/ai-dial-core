@@ -46,13 +46,19 @@ import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpAuthorizationChallengeProvider;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
+import com.epam.aidial.core.server.plugin.PluginManager;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
+import com.epam.aidial.core.server.proxy.ProxyClient;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.AdminRoleAuthorizationService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.AdminConsentService;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
+import com.epam.aidial.core.server.service.AdminSystemImportService;
+import com.epam.aidial.core.server.service.AdminSystemImportValidationService;
 import com.epam.aidial.core.server.service.ApplicationOperatorService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
@@ -97,6 +103,7 @@ import com.epam.aidial.core.server.tracing.DialTracingFactory;
 import com.epam.aidial.core.server.tracing.TracingSettings;
 import com.epam.aidial.core.server.upstream.UpstreamRouteProvider;
 import com.epam.aidial.core.server.util.AuthSettingsResolver;
+import com.epam.aidial.core.server.util.CoreVersion;
 import com.epam.aidial.core.server.util.ProxySettings;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -107,6 +114,7 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.service.TempFolderCleaner;
 import com.epam.aidial.core.storage.service.TimerService;
 import com.epam.aidial.core.storage.tracing.BlockingCallTracer;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -160,6 +168,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -177,6 +186,7 @@ public class AiDial {
     private volatile int serverPort;
     private HttpClient client;
     private WebSocketClient webSocketClient;
+    private PluginManager pluginManager;
 
     private RedissonClient redis;
     private Proxy proxy;
@@ -190,6 +200,7 @@ public class AiDial {
     private ResourceService resourceService;
     private ComplexResourceSweepService complexResourceSweepService;
     private BudgetCounterSweepService budgetCounterSweepService;
+    private TimerService.Timer systemImportStagingCleanupTimer;
     private McpHttpClientBuilder mcpHttpClientBuilder;
     private McpHttpClientBuilder discoveryMcpHttpClientBuilder;
     private EncryptionService encryptionService;
@@ -241,7 +252,7 @@ public class AiDial {
 
             AsyncTaskExecutor taskExecutor = new AsyncTaskExecutor(vertx, settings("asyncTaskExecutor"));
 
-            LogStore logStore = new GfLogStore(AnalyticsSettings.from(settings("analytics")));
+            LogStore logStore = createLogStore(AnalyticsSettings.from(settings("analytics")));
 
             if (accessTokenValidator == null) {
                 String claimsLogLevel = settings.getString("claimsLogLevel", "DEBUG");
@@ -264,7 +275,10 @@ public class AiDial {
                     timerService, redis, storage, lockService, resourceServiceSettings, storage.getPrefix(), () -> podId, blockingCallTracer);
             InvitationService invitationService = new InvitationService(resourceService, encryptionService, settings("invitations"));
             ApiKeyStore apiKeyStore = new ApiKeyStore(taskExecutor, redis, storage.getPrefix(), settings("perRequestApiKey"), blockingCallTracer);
-            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(blockingCallTracer);
+            KmsSettings kmsSettings = readKmsSettings();
+            KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, blockingCallTracer);
+            ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(keyManagementService, kmsSettings);
+            CredentialEncryptionService credentialEncryptionService = getCredentialEncryptionService(contentEncryptionKeyService);
             SecretFieldProcessor secretFieldProcessor = new SecretFieldProcessor(
                     credentialEncryptionService,
                     new BucketInfo(ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION));
@@ -291,18 +305,22 @@ public class AiDial {
                     tokenRefreshStrategyFactory, credentialEncryptionService, timeProvider, tokenService);
             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
                     credentialEncryptionService);
-            ExternalServiceService externalServiceService = new ExternalServiceService(
-                    resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor);
+            ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
+                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
+            ExternalServiceService externalServiceService = new ExternalServiceService(resourceService,
+                    resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor, resourceAuthSettingsService);
 
+            // Before the config stores: they validate every plugins entry against the provider of its type
+            PluginRegistry pluginRegistry = PluginRegistry.load(settings("plugins"));
             String onInvalidEntity = settings("config").getString("onInvalidEntity", MergedConfigStore.MODE_ABORT);
             boolean softValidation = settings("config").getJsonObject("write", new JsonObject())
                     .getBoolean("softValidation", false);
             MergedConfigStore mergedConfigStore = new MergedConfigStore(
                     vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId,
+                    secretFieldProcessor, lockService, onInvalidEntity, softValidation, podId, pluginRegistry,
                     externalServiceService, resourceAuthSettingsEncryptionService, backgroundTracer);
             FileConfigStore fileConfigStore = new FileConfigStore(
-                    vertx, settings("config"), null,
+                    vertx, settings("config"), null, pluginRegistry,
                     List.of(cfg -> mergedConfigStore.requestRebuild()));
             mergedConfigStore.init(fileConfigStore);
             ApplicationOperatorService operatorService = new ApplicationOperatorService(client, settings("applications"));
@@ -325,8 +343,6 @@ public class AiDial {
                     resourceService, mergedConfigStore, complexResourceService, encryptionService, httpProxySelector);
             CatalogSchemaService catalogSchemaService = new CatalogSchemaService(resourceService, mergedConfigStore, encryptionService);
 
-            ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
-                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
             AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
             AuthSettingsResolver authSettingsResolver = new AuthSettingsResolver(
                     encryptionService, resourceAuthSettingsEncryptionService);
@@ -339,7 +355,7 @@ public class AiDial {
                     resourceRegistrationService, resourceAuthSettingsService);
 
             UserExternalServiceService userExternalServiceService = new UserExternalServiceService(
-                    resourceService, resourceAuthSettingsEncryptionService, encryptionService);
+                    resourceService, resourceAuthSettingsEncryptionService, encryptionService, externalServiceService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     secretFieldProcessor, externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));
@@ -357,9 +373,9 @@ public class AiDial {
 
             ConfigApplyService configApplyService = new ConfigApplyService(
                     mergedConfigStore, resourceService, secretFieldProcessor, mergedConfigStore.isSoftValidation(),
-                    apiKeyStore, applicationService, toolSetService, catalogSchemaService);
+                    apiKeyStore, applicationService, toolSetService, catalogSchemaService, applicationSchemaService);
             ConfigValidationService configValidationService = new ConfigValidationService(
-                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService);
+                    resourceService, mergedConfigStore.isSoftValidation(), catalogSchemaService, pluginRegistry, applicationSchemaService);
 
             Settings backgroundJobSettings =
                     Json.decodeValue(settings("backgroundJob").toBuffer(), Settings.class);
@@ -390,13 +406,14 @@ public class AiDial {
                     toolSetService, resourceService, applicationSchemaService, aliasService);
 
             ConsentService consentService = new ConsentService(deploymentService, resourceService);
+            AdminConsentService adminConsentService = new AdminConsentService(deploymentService, resourceService, clock);
+            applicationService.setAdminConsentService(adminConsentService);
 
             HealthCheckController healthCheckController = new HealthCheckController(redis, taskExecutor);
 
             WellKnownResourceMetadataService wellKnownResourceMetadataService = new WellKnownResourceMetadataService(settings("toolsets"));
             WellKnownResourceMetadataController resourceMetadataController = new WellKnownResourceMetadataController(wellKnownResourceMetadataService);
             PerRequestPermissionService perRequestPermissionService = new PerRequestPermissionService(apiKeyStore, accessService, encryptionService);
-
             ApiKeyValidation apiKeyValidation = Json.decodeValue(settings("apiKeyValidation").toBuffer(), ApiKeyValidation.class);
             boolean printAuthorizationHeader = settings.getBoolean("printAuthorizationHeader", false);
 
@@ -419,32 +436,52 @@ public class AiDial {
             budgetCounterSweepService = new BudgetCounterSweepService(timerService, resourceService, lockService, redis,
                     mergedConfigStore, budgetCounterSweepSettings, backgroundTracer);
 
-            ResponsesApiClient responsesApiClient = new ResponsesApiClient(client, clientOptions);
+            pluginManager = new PluginManager(pluginRegistry, vertx, taskExecutor);
+            ProxyClient proxyClient = new ProxyClient(client, vertx, pluginManager);
+            ResponsesApiClient responsesApiClient = new ResponsesApiClient(proxyClient, clientOptions);
             BackgroundJobService backgroundJobService = new BackgroundJobService(
                     vertx, redis, storage.getPrefix(),
                     responseMappingService, resourceService, taskExecutor, mergedConfigStore, apiKeyStore, rateLimiter, tokenStatsTracker,
                     client, logStore, credentialEncryptionService, backgroundJobSettings, backgroundTracer);
 
-            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), readKmsSettings().isEnabled(),
+            AdminSystemExportService adminSystemExportService = new AdminSystemExportService(storage, lockService, clock, version(), kmsSettings.isEnabled(),
                     readEncryptionSettings().getKeySize() / Byte.SIZE);
             AdminSystemExportService.Settings adminSystemExportSettings = Json.decodeValue(settings("adminSystemExport").toBuffer(), AdminSystemExportService.Settings.class);
             adminSystemExportSettings.validate();
+
+            AdminSystemImportService.Settings adminSystemImportSettings = Json.decodeValue(
+                    settings("adminSystemImport").toBuffer(), AdminSystemImportService.Settings.class);
+            adminSystemImportSettings.validate();
+            AdminSystemImportValidationService adminSystemImportValidationService = new AdminSystemImportValidationService(
+                    CoreVersion.parse(version()), kmsSettings.isEnabled(), keyManagementService);
+            AdminSystemImportService adminSystemImportService = new AdminSystemImportService(storage, lockService, resourceService,
+                    mergedConfigStore, adminSystemImportValidationService, contentEncryptionKeyService, command -> taskExecutor.submit(() -> {
+                        command.run();
+                        return null;
+                    }), adminSystemImportSettings, clock, generator);
+            TempFolderCleaner systemImportStagingCleaner = new TempFolderCleaner(
+                    storage, AdminSystemImportService.STAGING_FOLDER, Duration.ofHours(24));
+            long systemImportStagingCleanupPeriodMs = Duration.ofHours(24).toMillis();
+            systemImportStagingCleanupTimer = timerService.scheduleWithFixedDelay(
+                    systemImportStagingCleanupPeriodMs, systemImportStagingCleanupPeriodMs, systemImportStagingCleaner::cleanup);
 
             proxy = new Proxy(vertx, clientOptions, apiKeyValidation, client, webSocketClient, mergedConfigStore, logStore,
                     rateLimiter, upstreamRouteProvider, accessTokenValidator,
                     storage, encryptionService, apiKeyStore, tokenStatsTracker, resourceService, invitationService,
                     shareService, publicationService, accessService, lockService, resourceOperationService, ruleService,
                     notificationService, applicationService, externalServiceService, userExternalServiceService, codeInterpreterService, heartbeatService, upstreamCacheService,
-                    consentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
+                    consentService, adminConsentService, deploymentService, healthCheckController, wellKnownResourceMetadataService, resourceMetadataController,
                     toolSetService, securedResourceService, mcpHttpClientBuilder, toolSetRepairService, applicationSchemaService,
                     catalogSchemaService, authorizationHeaderProvider,
                     resourceAuthSettingsService, resourceCredentialsService,
-                    perRequestPermissionService, resourceAuthSettingsEncryptionService, authSettingsResolver, clientChannelService, taskExecutor, version(),
+                    perRequestPermissionService, resourceAuthSettingsEncryptionService,
+                    authSettingsResolver, clientChannelService, taskExecutor, version(),
                     printAuthorizationHeader,
                     responseMappingService, complexResourceService, backgroundJobService, responsesApiClient, generator,
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
-                    adminSystemExportService, adminSystemExportSettings, orgUnitService);
+                    adminSystemExportService, adminSystemExportSettings, orgUnitService,
+                    adminSystemImportService, adminSystemImportSettings, proxyClient);
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn
@@ -513,19 +550,15 @@ public class AiDial {
         return Json.decodeValue(toolsetSecurity.getJsonObject("encryption", new JsonObject()).toBuffer(), EncryptionSettings.class);
     }
 
-    private CredentialEncryptionService getCredentialEncryptionService(BlockingCallTracer blockingCallTracer) {
-        KmsSettings kmsSettings = readKmsSettings();
-        EncryptionSettings encryptionSettings = readEncryptionSettings();
-        ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(encryptionSettings);
-        KeyManagementService keyManagementService = KeyManagementServiceFactory.create(kmsSettings, blockingCallTracer);
-        ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
-                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
-        ContentEncryptionKeyService contentEncryptionKeyService = getContentEncryptionKeyService(contentEncryptionKeyManager);
-        DataEncryptionService dataEncryptionService = new DataEncryptionService(encryptionSettings, new SecureRandom());
+    private CredentialEncryptionService getCredentialEncryptionService(ContentEncryptionKeyService contentEncryptionKeyService) {
+        DataEncryptionService dataEncryptionService = new DataEncryptionService(readEncryptionSettings(), new SecureRandom());
         return new CredentialEncryptionService(contentEncryptionKeyService, dataEncryptionService);
     }
 
-    private ContentEncryptionKeyService getContentEncryptionKeyService(ContentEncryptionKeyManager contentEncryptionKeyManager) {
+    private ContentEncryptionKeyService getContentEncryptionKeyService(KeyManagementService keyManagementService, KmsSettings kmsSettings) {
+        ContentEncryptionKeyGenerator contentEncryptionKeyGenerator = new ContentEncryptionKeyGenerator(readEncryptionSettings());
+        ContentEncryptionKeyManager contentEncryptionKeyManager = ContentEncryptionKeyManagerFactory.create(
+                resourceService, contentEncryptionKeyGenerator, keyManagementService, kmsSettings.getCache());
         Function<BucketInfo, BucketInfo> rootBucketExtractor = bucketInfo -> {
             String rootLocation = PublicationUtil.getRootLocation(bucketInfo.location());
             if (bucketInfo.location().equals(rootLocation)) {
@@ -562,9 +595,17 @@ public class AiDial {
                 close(vertx, v -> v.undeploy(serverDeploymentId));
             }
             close(client, HttpClient::close);
+            // no request arrives now, and the plugins close their own Vert.x clients before Vert.x closes
+            try {
+                close(pluginManager, PluginManager::close);
+            } catch (TimeoutException e) {
+                // plugin code: one that hangs in close() does not keep the rest from closing
+                log.warn("Plugins did not close in time");
+            }
             close(resourceService);
             close(complexResourceSweepService);
             close(budgetCounterSweepService);
+            close(systemImportStagingCleanupTimer);
             close(mcpHttpClientBuilder);
             close(discoveryMcpHttpClientBuilder);
             // Unhook from the global composite before vertx.close() so its shutdown metrics
@@ -623,6 +664,13 @@ public class AiDial {
             String json = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             return new JsonObject(json);
         }
+    }
+
+    /**
+     * The store analytics rows are written to. Integration tests override it to read the rows.
+     */
+    protected LogStore createLogStore(AnalyticsSettings settings) {
+        return new GfLogStore(settings);
     }
 
     private static String version() {

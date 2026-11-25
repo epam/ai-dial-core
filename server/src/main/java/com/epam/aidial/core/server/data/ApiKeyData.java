@@ -45,9 +45,10 @@ public class ApiKeyData {
     private String traceId;
     // OpenTelemetry span ID created by the Core
     private String spanId;
-    // list of attached file URLs collected from conversation history of the current request
-    private Map<String, AutoSharedData> attachedFiles = new HashMap<>();
-    private Map<String, AutoSharedData> attachedFolders = new HashMap<>();
+    // list of attached file URLs collected from conversation history of the current request. Volatile: a grant from an
+    // origin plugin's in-process call replaces these maps (copy on write) while its other calls read them on virtual threads
+    private volatile Map<String, AutoSharedData> attachedFiles = new HashMap<>();
+    private volatile Map<String, AutoSharedData> attachedFolders = new HashMap<>();
     // list of deployments included into application properties
     @JsonAlias({"attachedToolSets", "attachedDeployments"})
     private Map<String, AutoSharedData> attachedDeployments = new HashMap<>();
@@ -81,6 +82,13 @@ public class ApiKeyData {
     public ApiKeyData() {
     }
 
+    public static ApiKeyData createProxyApiKeyData(ProxyContext context) {
+        ApiKeyData proxyApiKeyData = new ApiKeyData();
+        context.setProxyApiKeyData(proxyApiKeyData);
+        initFromContext(proxyApiKeyData, context);
+        return proxyApiKeyData;
+    }
+
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
         List<String> currentPath;
@@ -98,6 +106,10 @@ public class ApiKeyData {
             currentPath = new ArrayList<>(context.getApiKeyData().getExecutionPath());
         }
         String receiver = null;
+        if (context.getDecision() != null) {
+            // the deployment the client called, so the router is the parent of the one it chose
+            currentPath.add(context.getDecision().getRouterName());
+        }
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();
             if (context.getDeployment() instanceof AliasPass pass) {
@@ -106,9 +118,10 @@ public class ApiKeyData {
                     // lets the target pass read the target resource, as access checks of resources expect
                     proxyApiKeyData.getAttachedDeployments().put(pass.getTargetName(), new AutoSharedData(ResourceAccessType.READ_ONLY));
                 }
-            } else if (isLentTo(apiKeyData, receiver, context.getInitialDeployment())) {
+            } else if (context.getDecision() == null && isLentTo(apiKeyData, receiver, context.getInitialDeployment())) {
                 // an interceptor in front of the target, and the target's own callback such as a translator's, call
-                // Core back for the same target; the lending goes with them and covers that target only
+                // Core back for the same target; the lending goes with them and covers that target only. A lent
+                // router's choice is checked against the caller's own rights, so the lending stops at the decision
                 String lent = apiKeyData.getLentDeployment();
                 proxyApiKeyData.setLentDeployment(lent);
                 AutoSharedData attached = apiKeyData.getAttachedDeployments().get(lent);

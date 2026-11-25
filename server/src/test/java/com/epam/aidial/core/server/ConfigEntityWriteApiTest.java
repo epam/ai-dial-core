@@ -1,8 +1,10 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import io.vertx.core.http.HttpMethod;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -289,6 +291,21 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testApplicationPutWithDecisionModeRejected() {
+        // decision mode is a router setting: no interface of any deployment kind takes it
+        String body = """
+                {
+                  "endpoint": "http://localhost:7003/chat",
+                  "interfaces": {"openaiChatCompletions": {"mode": "decision", "base_url": "http://r"}}
+                }
+                """;
+        Response put = send(HttpMethod.PUT, "/v1/applications/platform/a", null, body, "authorization", "admin");
+        verify(put, 400);
+
+        verify(send(HttpMethod.GET, "/v1/applications/platform/a", null, "", "authorization", "admin"), 404);
+    }
+
+    @Test
     void testTranslatorPutWithoutInReturns422() {
         // Translator.getIn() is only optional when written inline under an interface — a registry
         // entry (the only shape this write surface produces) always needs it (see
@@ -523,6 +540,46 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
         verify(put, 200);
         verify(send(HttpMethod.GET, "/v1/bucket", null, "",
                 "Api-key", "secret-preserve"), 200);
+    }
+
+    @Test
+    void testKeyPutThatWouldKeepAnUnreadableSecretIsRefused() {
+        String keyBody = """
+                {
+                  "key": "%s",
+                  "project": "projB",
+                  "roles": ["admin"]
+                }
+                """;
+        String path = "/v1/keys/platform/test-key-unreadable";
+        verify(send(HttpMethod.PUT, path, null, keyBody.formatted("secret-unreadable-old"),
+                "authorization", "admin", "If-None-Match", "*"), 200);
+        corruptStoredEnvelope(ResourceDescriptorFactory.fromAnyUrl("keys/platform/test-key-unreadable", encryptionService), "", "key");
+        String storedBefore = readStoredBlob("keys/platform/test-key-unreadable");
+
+        Response refused = send(HttpMethod.PUT, path, null, KEY_BODY_PROJECT_B_NO_KEY, "authorization", "admin");
+        verify(refused, 400);
+        assertTrue(refused.body().contains("send a new value for: key"), refused::body);
+        assertEquals(storedBefore, readStoredBlob("keys/platform/test-key-unreadable"));
+
+        verify(send(HttpMethod.PUT, path, null, keyBody.formatted("secret-unreadable-new"), "authorization", "admin"), 200);
+        verify(send(HttpMethod.GET, "/v1/bucket", null, "", "Api-key", "secret-unreadable-new"), 200);
+    }
+
+    @Test
+    void testRoutePutThatWouldKeepAnUnreadableUpstreamKeyIsRefused() {
+        String path = "/v1/routes/platform/test-route-unreadable-key";
+        verify(send(HttpMethod.PUT, path, null, ROUTE_BODY_BEARER, "authorization", "admin", "If-None-Match", "*"), 200);
+        corruptStoredEnvelope(ResourceDescriptorFactory.fromAnyUrl("routes/platform/test-route-unreadable-key", encryptionService),
+                "/upstreams/0", "key");
+        String storedBefore = readStoredBlob("routes/platform/test-route-unreadable-key");
+
+        Response refused = send(HttpMethod.PUT, path, null, ROUTE_BODY_BEARER_NO_KEY, "authorization", "admin");
+        verify(refused, 400);
+        assertTrue(refused.body().contains("upstreams[0].key"), refused::body);
+        assertEquals(storedBefore, readStoredBlob("routes/platform/test-route-unreadable-key"));
+
+        verify(send(HttpMethod.PUT, path, null, ROUTE_BODY_BEARER, "authorization", "admin"), 200);
     }
 
     @Test

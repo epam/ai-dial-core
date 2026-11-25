@@ -1,7 +1,8 @@
 # resource-subscription Specification
 
 ## Purpose
-TBD - created by archiving change subscribe-complex-resources. Update Purpose after archive.
+Which resource URLs the subscribe API accepts for SKILL and PROJECT resources, and which events a subscriber of such a
+resource receives for the resource and for the files inside it.
 
 ## Requirements
 

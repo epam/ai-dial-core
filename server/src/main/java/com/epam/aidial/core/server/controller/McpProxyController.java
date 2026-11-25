@@ -17,6 +17,8 @@ import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpClientUtils;
+import com.epam.aidial.core.server.proxy.http.HttpProxyRequest;
+import com.epam.aidial.core.server.proxy.http.HttpProxyResponse;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ConsentService;
@@ -166,6 +168,10 @@ public class McpProxyController implements Controller {
 
     private void handleRequestBody(Buffer requestBody) {
         context.setRequestBody(requestBody);
+        boolean keyEnrichedByChain = isPerRequestKeyEnrichedByChain();
+        if (keyEnrichedByChain) {
+            ApiKeyData.createProxyApiKeyData(context);
+        }
         String contentType = context.getRequest().getHeader(HttpHeaders.CONTENT_TYPE);
         if (Strings.CI.contains(contentType, HEADER_CONTENT_TYPE_APPLICATION_JSON)) {
 
@@ -191,6 +197,9 @@ public class McpProxyController implements Controller {
                 return;
             }
         }
+        if (keyEnrichedByChain) {
+            apiKeyStore.assignPerRequestApiKey(context.getProxyApiKeyData());
+        }
         sendRequest();
     }
 
@@ -206,7 +215,7 @@ public class McpProxyController implements Controller {
         log.info("Connected to origin: {}", connection.remoteAddress());
 
         HttpServerRequest request = context.getRequest();
-        context.setProxyRequest(proxyRequest);
+        context.setProxyRequest(new HttpProxyRequest(proxyRequest));
 
         Deployment deployment = context.getDeployment();
 
@@ -229,12 +238,8 @@ public class McpProxyController implements Controller {
     protected void injectProxyRequestHeaders(HttpClientRequest proxyRequest, MultiMap excludeHeaders) {
     }
 
-    protected String assignPerRequestKey() {
-        ApiKeyData proxyApiKeyData = new ApiKeyData();
-        context.setProxyApiKeyData(proxyApiKeyData);
-        ApiKeyData.initFromContext(proxyApiKeyData, context);
-        apiKeyStore.assignPerRequestApiKey(proxyApiKeyData);
-        return proxyApiKeyData.getPerRequestKey();
+    protected boolean isPerRequestKeyEnrichedByChain() {
+        return false;
     }
 
     /**
@@ -252,7 +257,7 @@ public class McpProxyController implements Controller {
         // the target pass of an alias has already retried its own upstreams; the alias relays its answer
         if (responseStatusCode == HttpStatus.TOO_MANY_REQUESTS.getCode() && !(context.getDeployment() instanceof AliasPass)) {
             UpstreamRoute upstreamRoute = context.getUpstreamRoute();
-            upstreamRoute.fail(proxyResponse);
+            upstreamRoute.fail(new HttpProxyResponse(proxyResponse));
             // get next upstream
             if (canRetry(upstreamRoute)) {
                 sendRequest(); // try next
@@ -282,13 +287,14 @@ public class McpProxyController implements Controller {
                 ? null
                 : new BufferingReadStream.BaseEventListener(fns);
 
+        HttpProxyResponse wrappedResponse = new HttpProxyResponse(proxyResponse);
         BufferingReadStream proxyResponseStream = new BufferingReadStream(proxyResponse,
-                ProxyUtil.contentLength(proxyResponse, 1024), eventListener);
+                ProxyUtil.contentLength(wrappedResponse, 1024), eventListener);
 
-        context.setProxyResponse(proxyResponse);
+        context.setProxyResponse(wrappedResponse);
 
         HttpServerResponse response = context.getResponse();
-        ProxyUtil.handleChunkedResponse(response, proxyResponse);
+        ProxyUtil.handleChunkedResponse(response, wrappedResponse);
 
         proxyResponseStream.pipe()
                 .endOnFailure(false)
@@ -323,7 +329,7 @@ public class McpProxyController implements Controller {
         URI currentUri;
         URI redirectUri;
         try {
-            currentUri = new URI(context.getProxyRequest().absoluteURI());
+            currentUri = new URI(context.getProxyRequest().absoluteUri());
             // resolve via URI.resolve(URI), not resolve(String) - the latter delegates to URI.create(String),
             // which throws an unchecked IllegalArgumentException on a malformed location instead of the
             // checked URISyntaxException caught below
@@ -448,7 +454,10 @@ public class McpProxyController implements Controller {
             context.setTraceOperation("Send request to %s deployment".formatted(deployment.getName()));
             context.getRequest().body()
                     .onFailure(this::handleRequestBodyError)
-                    .onSuccess(this::handleRequestBody);
+                    .onSuccess(body -> taskExecutor.submit(() -> {
+                        handleRequestBody(body);
+                        return null;
+                    }).onFailure(this::handleError));
             return null;
         });
     }

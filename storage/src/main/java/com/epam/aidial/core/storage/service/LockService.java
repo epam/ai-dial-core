@@ -247,7 +247,7 @@ public class LockService {
 
                         redis.call('hset', KEYS[1], 'owner', ARGV[1], 'deadline', now + ARGV[2])
                         return 0
-                        """, RScript.ReturnType.INTEGER, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
+                        """, RScript.ReturnType.LONG, List.of(id), String.valueOf(owner), String.valueOf(PERIOD));
     }
 
     private void unlock(String id, long owner, LocalLock localLock) {

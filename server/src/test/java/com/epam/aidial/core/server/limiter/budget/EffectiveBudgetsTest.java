@@ -249,6 +249,51 @@ class EffectiveBudgetsTest {
         assertTrue(EffectiveBudgets.resolveAll(index, null, NOW).isEmpty());
     }
 
+    @Test
+    void testInCostObjectIgnoresTheModel() {
+        Map<String, Policy> policies = Map.of(
+                "opus-only", costPolicy(1, PolicyObjectSet.of(List.of("opus"))),
+                "all", costPolicy(2, PolicyObjectSet.all()));
+        Map<String, PolicyAssignment> assignments = Map.of(
+                "projA/g1", assignment("all", null, anyone()),
+                "projA/g2", assignment("opus-only", null, anyone()));
+
+        List<BudgetInstance> budgets = EffectiveBudgets
+                .resolveInCostObject(CostObjectIndex.build(policies, assignments), COST_OBJECT, user("alice"), NOW);
+
+        assertEquals(List.of("projA/g2", "projA/g1"), ids(budgets));
+        assertEquals(0, registry.counter(COUNTER).count());
+    }
+
+    @Test
+    void testInCostObjectSkipsExpiredAndOtherSubjects() {
+        Policy tokens = costPolicy(3, PolicyObjectSet.all());
+        tokens.setQuantity(PolicyQuantity.TOKENS);
+        Map<String, Policy> policies = Map.of("cost", costPolicy(1, PolicyObjectSet.all()), "tokens", tokens);
+        Map<String, PolicyAssignment> assignments = Map.of(
+                "projA/live", assignment("cost", null, anyone()),
+                "projA/expired", assignment("cost", "2026-11-03T09:00:00Z", anyone()),
+                "projA/bob", assignment("cost", null, equal("sub", "bob")),
+                "projA/tokens", assignment("tokens", null, anyone()));
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments);
+
+        assertEquals(List.of("projA/live"), ids(EffectiveBudgets.resolveInCostObject(index, COST_OBJECT, user("alice"), NOW)));
+        assertTrue(EffectiveBudgets.resolveInCostObject(index, COST_OBJECT, null, NOW).isEmpty());
+    }
+
+    @Test
+    void testInCostObjectSkipsOtherCostObjects() {
+        Map<String, Policy> policies = Map.of("cost", costPolicy(1, PolicyObjectSet.all()));
+        Map<String, PolicyAssignment> assignments = Map.of(
+                "projA/g1", assignment("cost", null, anyone()),
+                "projB/g1", assignment("cost", null, anyone()),
+                "ORG/g1", assignment("cost", null, anyone()));
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments);
+
+        assertEquals(List.of("projA/g1"), ids(EffectiveBudgets.resolveInCostObject(index, COST_OBJECT, user("alice"), NOW)));
+        assertTrue(EffectiveBudgets.resolveInCostObject(index, "projZ", user("alice"), NOW).isEmpty());
+    }
+
     private void assertMatched(PolicySubjectRule rule, boolean expected) {
         assertMatchedAny(List.of(rule), expected);
     }

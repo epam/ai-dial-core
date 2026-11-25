@@ -73,12 +73,14 @@ public class ConfigFileMigrateController {
     public static final int KEY_HASH_LENGTH = 12;
 
     private static final List<String> ALL_TYPES = List.of(
-            "settings", "schemas", "catalog_schemas", "interceptors", "translators", "roles", "keys", "routes",
+            "settings", "schemas", "catalog_schemas", "interceptors", "routers", "translators", "plugins", "roles", "keys", "routes",
             "models", "toolsets", "applications");
 
     private static final List<ManagedTypeSpec> MANAGED_TYPE_SPECS = List.of(
             new ManagedTypeSpec("interceptors", "Interceptor", ResourceTypes.INTERCEPTOR, Config::getInterceptors),
+            new ManagedTypeSpec("routers", "Router", ResourceTypes.ROUTER, Config::getRouters),
             new ManagedTypeSpec("translators", "Translator", ResourceTypes.TRANSLATOR, Config::getTranslators),
+            new ManagedTypeSpec("plugins", "Plugin", ResourceTypes.PLUGIN, Config::getPlugins),
             new ManagedTypeSpec("roles", "Role", ResourceTypes.ROLE, Config::getRoles),
             new ManagedTypeSpec("routes", "Route", ResourceTypes.ROUTE, Config::getRoutes),
             new ManagedTypeSpec("models", "Model", ResourceTypes.MODEL, Config::getModels),
@@ -285,9 +287,8 @@ public class ConfigFileMigrateController {
      * ResourceAuthSettingsService.setCodeChallengeProperties}, never independent input, so a stray
      * pair in a file-sourced ToolSet is leftover from a previous run and safe to drop — leaving it
      * would otherwise fail {@code BaseAuthSettingsValidator}, which forbids {@code code_verifier}
-     * unconditionally. Applications' external services don't need this: {@code
-     * ConfigPostProcessor.validateExternalServices} already drops any that fail the same check at
-     * file-load time.
+     * unconditionally. Applications' external services are copied with theirs: the write path accepts a
+     * verifier only as the stored one, so a stray pair fails that entry's migration.
      */
     private static void clearPkceArtifacts(ResourceTypes resourceType, JsonNode specNode) {
         if (resourceType != ResourceTypes.TOOL_SET) {

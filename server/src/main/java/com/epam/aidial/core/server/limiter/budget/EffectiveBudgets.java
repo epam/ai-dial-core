@@ -65,17 +65,28 @@ public class EffectiveBudgets {
      * @return the budgets by cost object name and then in the order of {@link #resolve}
      */
     public List<BudgetInstance> resolveAll(CostObjectIndex index, ExtractedClaims claims, Instant now) {
+        return index.getCostObjects().stream()
+                .sorted()
+                .flatMap(costObject -> resolveInCostObject(index, costObject, claims, now).stream())
+                .toList();
+    }
+
+    /**
+     * Every cost budget of one cost object that matches the caller whatever the model, in the order of
+     * {@link #resolve}. Not metered, as it is read for reporting rather than for a call.
+     *
+     * @param claims claims of the root initiator, {@code null} for an API key caller, which no budget reaches
+     */
+    public List<BudgetInstance> resolveInCostObject(CostObjectIndex index, String costObject, ExtractedClaims claims, Instant now) {
         if (claims == null) {
             return List.of();
         }
-        return index.getCostObjects().stream()
-                .sorted()
-                .flatMap(costObject -> index.getInstances(costObject).stream()
-                        .filter(instance -> instance.policy().getKind() == PolicyKind.BUDGET)
-                        .filter(instance -> instance.policy().getQuantity() == PolicyQuantity.COST)
-                        .filter(instance -> !isExpired(instance, now))
-                        .filter(instance -> isSubjectMatched(instance, claims))
-                        .sorted(ORDER))
+        return index.getInstances(costObject).stream()
+                .filter(instance -> instance.policy().getKind() == PolicyKind.BUDGET)
+                .filter(instance -> instance.policy().getQuantity() == PolicyQuantity.COST)
+                .filter(instance -> !isExpired(instance, now))
+                .filter(instance -> isSubjectMatched(instance, claims))
+                .sorted(ORDER)
                 .toList();
     }
 

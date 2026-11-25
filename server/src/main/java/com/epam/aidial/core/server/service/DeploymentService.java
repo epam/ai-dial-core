@@ -102,8 +102,9 @@ public class DeploymentService {
     }
 
     /**
-     * The alias stored at {@code resource}, called by its url {@code aliases/public/<name>}: read from storage on
-     * demand, as a public application is, and allowed by its {@code userRoles} like an alias of the config file.
+     * The public alias stored at {@code resource} ({@code aliases/public/<name>}): read from storage on demand and
+     * allowed by its {@code userRoles}. Platform aliases are merged into the config at reload time and are found
+     * through the config alias map, not through this method.
      */
     private Alias findStoredAlias(ProxyContext context, ResourceDescriptor resource, String id) {
         Alias alias = aliasService.findStoredAlias(resource);
@@ -137,9 +138,9 @@ public class DeploymentService {
 
     /**
      * The listing views of the aliases shown as {@code presentation} that the caller may use (by their
-     * {@code userRoles}, or the target's): those of the config file and those stored in {@code aliases/public/}. An alias whose target is
-     * missing or does not fit is left out. Lists and reads the stored aliases and reads a resource target, so it runs
-     * on the task executor.
+     * {@code userRoles}, or the target's): those of the config file (which includes platform aliases merged at reload)
+     * and those stored in {@code aliases/public/}. An alias whose target is missing or does not fit is left out.
+     * Lists and reads the stored aliases and reads a resource target, so it runs on the task executor.
      */
     public List<Deployment> listAliasViews(ProxyContext context, AliasPresentation presentation) {
         return listAliasViews(context, presentation, this::listStoredAliasesOrNone);
@@ -147,7 +148,7 @@ public class DeploymentService {
 
     /**
      * {@link #listAliasViews} with the stored aliases from {@code stored}, so that a request listing several types reads
-     * {@code aliases/public/} once ({@link #storedAliasesOnce}).
+     * the alias folders once ({@link #storedAliasesOnce}).
      */
     public List<Deployment> listAliasViews(ProxyContext context, AliasPresentation presentation, Supplier<List<Alias>> stored) {
         List<Deployment> views = new ArrayList<>();
@@ -313,6 +314,19 @@ public class DeploymentService {
         return names;
     }
 
+    /**
+     * Whether an administrator may approve the application: one from the config, in the public or a review bucket, or in
+     * the administrator's own. The right to read it is not enough: its owner or sharer keeps control of it.
+     */
+    public boolean isApprovableLocation(ProxyContext context, String deploymentId) {
+        if (context.getConfig().selectDeployment(deploymentId) != null) {
+            return true;
+        }
+        ResourceDescriptor resource = toResourceDescriptor(context, deploymentId);
+        return resource.isPublic() || PublicationService.isReviewBucket(resource)
+                || accessService.isOwnerOf(context, resource.getBucketName());
+    }
+
     private ResourceDescriptor toResourceDescriptor(ProxyContext context, String resourceUrl) {
         String url;
         ResourceDescriptor resource;
@@ -327,7 +341,7 @@ public class DeploymentService {
         if (resource.isFolder()) {
             throw new ResourceNotFoundException("Invalid deployment url: " + url);
         }
-        // aliases live directly in aliases/public/ only: another bucket or a folder holds no alias
+        // aliases live directly in aliases/public/ or aliases/platform/: another bucket or a folder holds no alias
         if (resource.getType() == ALIAS && !AliasService.isStoredAliasLocation(resource)) {
             throw new ResourceNotFoundException("Unknown deployment: " + resourceUrl);
         }

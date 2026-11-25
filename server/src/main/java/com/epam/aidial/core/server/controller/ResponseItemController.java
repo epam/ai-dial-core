@@ -19,6 +19,8 @@ import com.epam.aidial.core.server.data.ResponseMapping;
 import com.epam.aidial.core.server.function.CollectResponsesApiOutputAttachmentsFn;
 import com.epam.aidial.core.server.function.EncryptedContentWrapFn;
 import com.epam.aidial.core.server.function.ReplaceResponseIdFn;
+import com.epam.aidial.core.server.function.RouterModelFn;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -34,7 +36,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerResponse;
@@ -75,8 +76,7 @@ public class ResponseItemController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "POST",
                     path = "/openai/v1/responses/{response_id}/cancel",
@@ -95,8 +95,7 @@ public class ResponseItemController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            ),
+                    }),
             @ApiOperation(
                     method = "DELETE",
                     path = "/openai/v1/responses/{response_id}",
@@ -115,8 +114,7 @@ public class ResponseItemController implements Controller {
                     },
                     extensions = {
                             @ApiExtension(name = "x-preview", value = "true")
-                    }
-            )
+                    })
     })
     public Future<?> handle() {
         return proxy.getTaskExecutor().submit(this::loadMapping)
@@ -131,6 +129,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> finalizeRequest() {
+        context.closeHostDelegates();
         ApiKeyData proxyApiKeyData = context.getProxyApiKeyData();
         if (proxyApiKeyData == null) {
             return Future.succeededFuture();
@@ -220,7 +219,7 @@ public class ResponseItemController implements Controller {
     }
 
     private Future<Void> sendRequest(ResponseMapping mapping, String targetUrl, Upstream upstream, String perRequestKey) {
-        return proxy.getResponsesApiClient().send(targetUrl, operation.method, upstream, perRequestKey)
+        return proxy.getResponsesApiClient().send(targetUrl, operation.method, context.getDeployment().getName(), upstream, perRequestKey, context)
                 .compose(response -> {
                     context.setProxyResponse(response);
                     String contentType = response.getHeader(HttpHeaders.CONTENT_TYPE);
@@ -232,7 +231,7 @@ public class ResponseItemController implements Controller {
                 });
     }
 
-    private Future<Void> collectAndForward(HttpClientResponse proxyResponse, ResponseMapping mapping) {
+    private Future<Void> collectAndForward(ProxyResponse proxyResponse, ResponseMapping mapping) {
         return proxyResponse.body()
                 .compose(body -> {
                     if (proxyResponse.statusCode() != 200) {
@@ -260,7 +259,7 @@ public class ResponseItemController implements Controller {
                 });
     }
 
-    private Future<Void> sendResponse(HttpClientResponse proxyResponse, Buffer body) {
+    private Future<Void> sendResponse(ProxyResponse proxyResponse, Buffer body) {
         HttpServerResponse serverResponse = context.getResponse();
         serverResponse.setStatusCode(proxyResponse.statusCode());
         if (operation == Operation.GET) {
@@ -290,6 +289,9 @@ public class ResponseItemController implements Controller {
         if (idNode.isTextual() && mapping.getUpstreamResponseId().equals(idNode.asText())) {
             object.put("id", dialResponseId);
         }
+        if (mapping.getRouter() != null) {
+            RouterModelFn.rewrite(object, mapping.getRouter());
+        }
         return Buffer.buffer(JsonUtil.serialize(object));
     }
 
@@ -302,14 +304,14 @@ public class ResponseItemController implements Controller {
         }
     }
 
-    private Future<Void> collectAndForwardStreaming(HttpClientResponse proxyResponse, ResponseMapping mapping) {
+    private Future<Void> collectAndForwardStreaming(ProxyResponse proxyResponse, ResponseMapping mapping) {
         CollectResponsesApiOutputAttachmentsFn attachmentsFn = new CollectResponsesApiOutputAttachmentsFn(proxy, context);
         ReplaceResponseIdFn replaceIdFn = new ReplaceResponseIdFn(proxy, context, dialResponseId, mapping.getUpstreamResponseId());
         EncryptedContentWrapFn wrapFn = new EncryptedContentWrapFn(proxy, context, mapping.getUpstreamKey());
         BufferingReadStream responseStream = new BufferingReadStream(
                 proxyResponse,
                 ProxyUtil.contentLength(proxyResponse, 1024),
-                new ResponsesSseListener(List.of(wrapFn, attachmentsFn, replaceIdFn)));
+                new ResponsesSseListener(RouterModelFn.withRouterModel(proxy, context, mapping.getRouter(), List.of(wrapFn, attachmentsFn, replaceIdFn))));
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
@@ -325,6 +327,8 @@ public class ResponseItemController implements Controller {
                 })
                 .onFailure(error -> {
                     response.reset();
+                    // tells a plugin that its answer is no longer read; an HTTP answer is left to the connection
+                    proxyResponse.discard();
                     log.warn("Can't send streaming response to client. Error:", error);
                 })
                 .mapEmpty();

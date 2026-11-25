@@ -9,6 +9,7 @@ import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.credentials.service.registration.RegistrationPolicy;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -59,8 +60,6 @@ public class ToolSetRepairService {
                     "ToolSet " + resourceUrl + " is not eligible for repair (dynamicallyRegistered != true)");
         }
 
-        encryptionService.decrypt(resourceUrl, bucketInfo, authSettings);
-
         log.info("Repair: discovering AS metadata for toolset={}", resourceUrl);
         if (registrationService.discoverMetadata(resourceUrl, toolSet.getEndpoint()) == null) {
             throw new HttpException(HttpStatus.FAILED_DEPENDENCY,
@@ -68,7 +67,7 @@ public class ToolSetRepairService {
         }
 
         ClientRegistration registration = registrationService.register(
-                resourceUrl, toolSet.getEndpoint(), authSettings, true);
+                resourceUrl, toolSet.getEndpoint(), authSettings, true, RegistrationPolicy.TOOLSET);
 
         String author = toolSet.getAuthor();
         // computeResource holds the distributed lock internally; an outer lock would deadlock against it.
@@ -81,9 +80,14 @@ public class ToolSetRepairService {
             // Decrypt before applying registration: applyRegistration only replaces fields present
             // in the new ClientRegistration (e.g. codeVerifier is skipped when PKCE is absent).
             // Any field left untouched would still carry its encrypted value and be double-encrypted.
-            encryptionService.decrypt(resourceUrl, bucketInfo, storedSettings);
+            // An unreadable secret is lost either way: the registration replaces it.
+            encryptionService.tryDecryptOrDropSecrets(resourceUrl, bucketInfo, storedSettings);
             authSettingsService.applyRegistration(storedSettings, registration);
             storedSettings.setDynamicallyRegistered(true);
+            if (storedSettings.getCodeVerifier() == null) {
+                storedSettings.setCodeChallenge(null);
+                storedSettings.setCodeChallengeMethod(null);
+            }
             encryptionService.encrypt(resourceUrl, bucketInfo, storedSettings);
             return ProxyUtil.convertToString(stored);
         });

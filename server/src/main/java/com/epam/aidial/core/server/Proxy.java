@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
+import com.epam.aidial.core.server.proxy.ProxyClient;
 import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -23,7 +24,9 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.security.IdpNotFoundException;
+import com.epam.aidial.core.server.service.AdminConsentService;
 import com.epam.aidial.core.server.service.AdminSystemExportService;
+import com.epam.aidial.core.server.service.AdminSystemImportService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.BackgroundJobService;
@@ -100,6 +103,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
+    public static final String OPENAPI_PATH = "/openapi.yaml";
     public static final String HEADER_DIAL_TRACE_ID = "X-DIAL-TRACE-ID";
     public static final String HEADER_DIAL_SPAN_ID = "X-DIAL-SPAN-ID";
     /**
@@ -144,6 +148,10 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_CLIENT_CHANNEL_ID = "X-DIAL-CLIENT-CHANNEL-ID";
     public static final String HEADER_DEPLOYMENT_ID = "X-DIAL-DEPLOYMENT-ID";
     public static final String HEADER_DEPLOYMENT_FEATURES = "X-DIAL-DEPLOYMENT-FEATURES";
+    public static final String HEADER_ROUTER = "X-DIAL-ROUTER";
+    public static final String HEADER_API = "X-DIAL-API";
+    public static final String HEADER_ROUTER_ATTEMPTS = "X-DIAL-ROUTER-ATTEMPTS";
+    public static final String HEADER_ROUTER_NOTICE = "X-DIAL-ROUTER-NOTICE";
 
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);
@@ -178,6 +186,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final HeartbeatService heartbeatService;
     private final UpstreamCacheService upstreamCacheService;
     private final ConsentService consentService;
+    private final AdminConsentService adminConsentService;
     private final DeploymentService deploymentService;
     private final HealthCheckController healthCheckController;
     private final WellKnownResourceMetadataService resourceMetadataService;
@@ -212,6 +221,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AdminSystemExportService adminSystemExportService;
     private final AdminSystemExportService.Settings adminSystemExportSettings;
     private final OrgUnitService orgUnitService;
+    private final AdminSystemImportService adminSystemImportService;
+    private final AdminSystemImportService.Settings adminSystemImportSettings;
+    private final ProxyClient proxyClient;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -222,7 +234,7 @@ public class Proxy implements Handler<HttpServerRequest> {
         }
     }
 
-    private void handleError(Throwable error, HttpServerRequest request) {
+    public void handleError(Throwable error, HttpServerRequest request) {
         if (!request.response().ended()) {
             HttpStatus status;
             String message;
@@ -283,7 +295,7 @@ public class Proxy implements Handler<HttpServerRequest> {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
                 return;
             }
-        } else {
+        } else if (!isSystemImport(request)) {
             // not only the case, Content-Length can be missing when Transfer-Encoding: chunked
             if (contentLength > resourceService.getMaxSize()) {
                 respond(request, HttpStatus.REQUEST_ENTITY_TOO_LARGE, "Request body is too large");
@@ -299,6 +311,18 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         if (request.method() == HttpMethod.GET && path.equals(VERSION_PATH)) {
             respond(request, HttpStatus.OK, version);
+            return;
+        }
+
+        if (request.method() == HttpMethod.GET && path.equals(OPENAPI_PATH)) {
+            String spec = OpenApiSpec.get();
+            if (spec == null) {
+                respond(request, HttpStatus.NOT_FOUND, "OpenAPI specification is not available");
+            } else {
+                respond(request, HttpStatus.OK, spec, Map.of(
+                        HttpHeaders.CONTENT_TYPE.toString(), "application/yaml; charset=utf-8",
+                        HttpHeaders.CACHE_CONTROL.toString(), "public, max-age=300"));
+            }
             return;
         }
 
@@ -320,6 +344,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     /**
      * The method authorizes HTTP request by user access token or (and) API key.
+     *
      * <p>
      * There are four possible use cases:
      *     <ol>
@@ -474,15 +499,24 @@ public class Proxy implements Handler<HttpServerRequest> {
         Future<?> future;
         try {
             ProxyContext context = new ProxyContext(this, request, apiKeyData, extractedClaims, traceId, spanId, traceFlags);
-            GenAiTraceAttributes.initialize(context);
-            ContextManager.setProxyContext(context);
-            ControllerTemplate controllerTemplate = ControllerSelector.select(request);
-            Controller controller = controllerTemplate.build(this, context);
-            future = controller.handle();
+            future = dispatch(context);
         } catch (Exception t) {
             future = Future.failedFuture(t);
         }
         return future;
+    }
+
+    /**
+     * Serves an authenticated pass: the controller of the request's method and path handles it. A child pass of an
+     * origin plugin's in-process call, or the in-process target pass of an alias call, starts here too.
+     */
+    @SneakyThrows
+    public Future<?> dispatch(ProxyContext context) {
+        GenAiTraceAttributes.initialize(context);
+        ContextManager.setProxyContext(context);
+        ControllerTemplate controllerTemplate = ControllerSelector.select(context.getRequest());
+        Controller controller = controllerTemplate.build(this, context);
+        return controller.handle();
     }
 
     private void respond(HttpServerRequest request, HttpStatus status) {
@@ -506,5 +540,10 @@ public class Proxy implements Handler<HttpServerRequest> {
     private static boolean isMcpResourceMetadataPath(String path) {
         return TOOLSET_PROXY_METADATA_PATTERN.matcher(path).matches()
                 || APPLICATION_MCP_PROXY_METADATA_PATTERN.matcher(path).matches();
+    }
+
+    private static boolean isSystemImport(HttpServerRequest request) {
+        String path = request.path();
+        return request.method() == HttpMethod.POST && path != null && RouteTemplate.ADMIN_SYSTEM_IMPORT.matches(path);
     }
 }

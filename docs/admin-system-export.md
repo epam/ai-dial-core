@@ -1,7 +1,8 @@
 # Admin system export
 
 `POST /v1/admin/system-export` streams the `public` and `platform` buckets as one ZIP archive. It is an admin-only preview
-endpoint (`x-preview`), and it is meant for backups and migrations.
+endpoint (`x-preview`), and it is meant for backups and migrations. To bring an archive back, see
+[Admin system import](admin-system-import.md).
 
 ```bash
 curl -X POST -H "Authorization: Bearer <admin token>" -o dial-system-export.zip https://<core>/v1/admin/system-export

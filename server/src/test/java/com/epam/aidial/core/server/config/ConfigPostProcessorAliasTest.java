@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.AliasPresentation;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import lombok.SneakyThrows;
@@ -28,12 +29,13 @@ class ConfigPostProcessorAliasTest {
               "mcp-app": {"mcp": {"endpoint": "http://localhost/mcp"}}
             },
             "toolsets": {"search": {"endpoint": "http://localhost/search"}},
+            "routers": {"r1": {"baseUrl": "http://localhost/router", "mode": "decision", "interfaces": {"openaiChatCompletions": {}}}},
             """;
 
     @Test
     void aliasIsLoaded() {
         Config config = load(alias("assistant", "model", "models/gpt-4-internal"));
-        ConfigPostProcessor.process(config, null);
+        ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY);
 
         assertEquals("assistant", config.getAliases().get("assistant").getName());
         assertEquals(config.getAliases().get("assistant"), config.selectDeployment("assistant"));
@@ -45,7 +47,7 @@ class ConfigPostProcessorAliasTest {
                 + alias("a2", "application", "models/gpt-4-internal") + ","
                 + alias("a3", "toolset", "toolsets/search") + ","
                 + alias("a4", "toolset", "applications/mcp-app"));
-        ConfigPostProcessor.process(config, null);
+        ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY);
 
         assertEquals(4, config.getAliases().size());
     }
@@ -65,7 +67,7 @@ class ConfigPostProcessorAliasTest {
                 "a": {"target": {"path": "applications/plain-app"}},
                 "t": {"target": {"path": "toolsets/search"}},
                 "r": {"target": {"path": "applications/bucket/app"}}""");
-        ConfigPostProcessor.process(config, null);
+        ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY);
 
         assertEquals(AliasPresentation.MODEL, config.getAliases().get("m").getEffectivePresentation());
         assertEquals(AliasPresentation.APPLICATION, config.getAliases().get("a").getEffectivePresentation());
@@ -76,7 +78,7 @@ class ConfigPostProcessorAliasTest {
     @Test
     void resourceTargetLoadsWithoutBeingRead() {
         Config config = load(alias("tools", "toolset", "toolsets/bucket/search"));
-        ConfigPostProcessor.process(config, null);
+        ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY);
 
         assertTrue(config.getAliases().containsKey("tools"));
     }
@@ -85,7 +87,7 @@ class ConfigPostProcessorAliasTest {
     void nameClashFailsTheLoad() {
         Config config = load(alias("gpt-4-internal", "model", "applications/plain-app"));
 
-        IllegalStateException error = assertThrows(IllegalStateException.class, () -> ConfigPostProcessor.process(config, null));
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY));
         assertEquals("Deployment uniqueness is violated: duplicate is found gpt-4-internal", error.getMessage());
     }
 
@@ -102,9 +104,37 @@ class ConfigPostProcessorAliasTest {
     }
 
     @Test
+    void routerTargetIsLoaded() {
+        Config config = load(alias("strong", "model", "routers/r1") + "," + alias("strong-app", "application", "routers/r1"));
+        ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY);
+
+        assertEquals(AliasPresentation.MODEL, config.getAliases().get("strong").getEffectivePresentation());
+        assertTrue(config.getAliases().containsKey("strong-app"));
+    }
+
+    @Test
+    void routerTypeByDefault() {
+        Config config = load("\"tier\": {\"target\": {\"path\": \"routers/r1\"}}");
+        ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY);
+
+        assertEquals(AliasPresentation.ROUTER, config.getAliases().get("tier").getEffectivePresentation());
+    }
+
+    @Test
+    void routerTypeOverModelIsRefused() {
+        assertRefused(alias("tier", "router", "models/gpt-4-internal"), "An alias shown as router must point to routers/<name>");
+        assertRefused(alias("tier", "router", "models/missing"), "An alias shown as router must point to routers/<name>");
+    }
+
+    @Test
+    void routerShownAsToolsetIsRefused() {
+        assertRefused(alias("strong", "toolset", "routers/r1"), "An alias shown as toolset cannot point to routers/r1");
+    }
+
+    @Test
     void missingTargetLoads() {
         Config config = load(alias("broken", "model", "models/missing"));
-        ConfigPostProcessor.process(config, null);
+        ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY);
 
         assertTrue(config.getAliases().containsKey("broken"));
     }
@@ -127,7 +157,7 @@ class ConfigPostProcessorAliasTest {
 
     private static void assertRefused(String aliases, String message) {
         Config config = load(aliases);
-        InvalidEntityException error = assertThrows(InvalidEntityException.class, () -> ConfigPostProcessor.process(config, null));
+        InvalidEntityException error = assertThrows(InvalidEntityException.class, () -> ConfigPostProcessor.process(config, null, PluginRegistry.EMPTY));
         assertEquals(ResourceTypes.ALIAS, error.getType());
         assertTrue(error.getWarnings().stream().anyMatch(warning -> warning.getMessage().startsWith(message)),
                 error.getWarnings().toString());

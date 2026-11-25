@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -29,6 +31,16 @@ public class UpstreamAuthConfigTest {
 
         assertEquals(UpstreamAuthType.BEARER, upstream.getAuthType().type());
         assertNull(upstream.getAuthType().headerName());
+    }
+
+    @Test
+    void headerNameIsOmittedFromJsonWhenAbsent() throws Exception {
+        JsonNode bearer = MAPPER.readTree(MAPPER.writeValueAsString(new UpstreamAuthConfig(UpstreamAuthType.BEARER, null)));
+        assertEquals("BEARER", bearer.get("type").asText());
+        assertFalse(bearer.has("headerName"), "a null headerName must not be written as null");
+
+        JsonNode custom = MAPPER.readTree(MAPPER.writeValueAsString(new UpstreamAuthConfig(UpstreamAuthType.CUSTOM_HEADER, "X-Key")));
+        assertEquals("X-Key", custom.get("headerName").asText());
     }
 
     @ParameterizedTest

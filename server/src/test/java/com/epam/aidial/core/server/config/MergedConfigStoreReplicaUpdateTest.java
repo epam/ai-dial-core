@@ -4,10 +4,13 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
@@ -203,6 +206,34 @@ public class MergedConfigStoreReplicaUpdateTest {
     }
 
     @Test
+    public void platformBucketPluginEventIsDispatched() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(taskExecutor, resourceService);
+        when(taskExecutor.submit(any())).thenReturn(Future.succeededFuture());
+
+        ResourceEvent event = new ResourceEvent()
+                .setUrl("plugins/platform/p1")
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("pod-other");
+        invokeOnResourceEvent(store, event);
+
+        verify(taskExecutor).submit(any());
+    }
+
+    @Test
+    public void pluginUpdateFromAnotherPodIsApplied() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("plugins/platform/p1", null);
+        when(resourceService.getResource(descriptor)).thenReturn("{\"type\":\"test-echo\",\"settings\":{\"greeting\":\"hi\"}}");
+
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.UPDATE, null);
+
+        Plugin applied = store.get().getPlugins().get("p1");
+        assertEquals("test-echo", applied.getType());
+        assertEquals("hi", applied.getSettings().get("greeting").asText());
+    }
+
+    @Test
     public void isManagedEventUrlMatchesManagedSegments() {
         assertTrue(MergedConfigStore.isManagedEventUrl("models/platform/gpt-4"));
         assertTrue(MergedConfigStore.isManagedEventUrl("schemas/platform/s-1"));
@@ -211,6 +242,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         assertTrue(MergedConfigStore.isManagedEventUrl("keys/platform/proj-a"));
         assertTrue(MergedConfigStore.isManagedEventUrl("routes/public/rt-1"));
         assertTrue(MergedConfigStore.isManagedEventUrl("settings/platform/global"));
+        assertTrue(MergedConfigStore.isManagedEventUrl("routers/platform/r1"));
 
         assertFalse(MergedConfigStore.isManagedEventUrl("conversations/x"));
         assertFalse(MergedConfigStore.isManagedEventUrl("prompts/x"));
@@ -408,6 +440,59 @@ public class MergedConfigStoreReplicaUpdateTest {
     }
 
     @Test
+    public void routerCreateAndDeleteFromAnotherPodApplied() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl("routers/platform/r1", null);
+        when(resourceService.getResource(descriptor))
+                .thenReturn("{\"baseUrl\":\"http://router\",\"interfaces\":{\"openaiChatCompletions\":{}}}");
+
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.CREATE, null);
+
+        Router applied = store.get().getRouters().get("r1");
+        assertEquals("http://router", applied.getBaseUrl());
+        assertEquals("r1", applied.getName());
+
+        store.applyReplicaEvent(descriptor, ResourceEvent.Action.DELETE, null);
+
+        assertFalse(store.get().getRouters().containsKey("r1"));
+    }
+
+    @Test
+    public void rebuildRequestFromAnotherPodSchedulesRebuild() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(vertx);
+
+        invokeOnResourceEvent(store, new ResourceEvent()
+                .setUrl(MergedConfigStore.REBUILD_EVENT_URL)
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId("another-pod"));
+
+        verify(vertx, atLeastOnce()).setTimer(anyLong(), any());
+    }
+
+    @Test
+    public void rebuildRequestFromThisPodIsIgnored() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Mockito.reset(vertx);
+
+        invokeOnResourceEvent(store, new ResourceEvent()
+                .setUrl(MergedConfigStore.REBUILD_EVENT_URL)
+                .setAction(ResourceEvent.Action.UPDATE)
+                .setSenderPodId(POD_ID));
+
+        verifyNoInteractions(vertx);
+    }
+
+    @Test
+    public void requestRebuildOnAllPodsPublishesTheRebuildEvent() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+
+        store.requestRebuildOnAllPods();
+
+        verify(resourceService).publishUpdate(MergedConfigStore.REBUILD_EVENT_URL);
+    }
+
+    @Test
     public void fetchExceptionFallsBackToRequestRebuild() {
         MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
         Mockito.reset(vertx);
@@ -487,7 +572,7 @@ public class MergedConfigStoreReplicaUpdateTest {
         when(fileConfigStore.get()).thenReturn(seeded);
         MergedConfigStore store = new MergedConfigStore(
                 vertx, taskExecutor, resourceService, apiKeyStore, new PlatformEntityLocationStrategy(),
-                secretFieldProcessor, lockService, onInvalidEntity, false, POD_ID,
+                secretFieldProcessor, lockService, onInvalidEntity, false, POD_ID, PluginRegistry.EMPTY,
                 externalServiceService, resourceAuthSettingsEncryptionService, mockBackgroundTracer());
         store.init(fileConfigStore);
         return store;

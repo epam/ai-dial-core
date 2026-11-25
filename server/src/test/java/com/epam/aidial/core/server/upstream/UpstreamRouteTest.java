@@ -6,13 +6,13 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.data.cache.CachePolicy;
 import com.epam.aidial.core.server.data.cache.CachedUpstreamEntry;
+import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.UpstreamCacheService;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpClientResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -204,7 +204,7 @@ public class UpstreamRouteTest {
         assertEquals(model.getUpstreams().get(1), route.get());
         assertEquals(1, route.getAttemptCount());
 
-        HttpClientResponse response = mock(HttpClientResponse.class);
+        ProxyResponse response = mock(ProxyResponse.class);
         when(response.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH)).thenReturn("prefix");
         when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable callable = invocation.getArgument(0);
@@ -239,7 +239,7 @@ public class UpstreamRouteTest {
 
         assertEquals(model.getUpstreams().get(1), route.get());
 
-        HttpClientResponse response = mock(HttpClientResponse.class);
+        ProxyResponse response = mock(ProxyResponse.class);
         when(response.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH)).thenReturn(nestedPath);
         when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
             Callable callable = invocation.getArgument(0);
@@ -272,7 +272,7 @@ public class UpstreamRouteTest {
         assertEquals(model.getUpstreams().get(1), route.get());
         assertEquals(1, route.getAttemptCount());
 
-        HttpClientResponse response = mock(HttpClientResponse.class);
+        ProxyResponse response = mock(ProxyResponse.class);
         when(response.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH)).thenReturn("unknown");
 
 
@@ -302,7 +302,7 @@ public class UpstreamRouteTest {
         assertEquals(model.getUpstreams().get(1), route.get());
         assertEquals(1, route.getAttemptCount());
 
-        HttpClientResponse response = mock(HttpClientResponse.class);
+        ProxyResponse response = mock(ProxyResponse.class);
         when(response.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH)).thenReturn("prefix");
 
         route.succeed(response, model);
@@ -323,7 +323,7 @@ public class UpstreamRouteTest {
         UpstreamRoute route = upstreamRouteProvider.get(model, null);
         assertNotNull(route.next());
 
-        HttpClientResponse response = mock(HttpClientResponse.class);
+        ProxyResponse response = mock(ProxyResponse.class);
         when(response.getHeader(Proxy.HEADER_CACHE_BREAKPOINT_PATH)).thenReturn(null);
 
         route.succeed(response, model);

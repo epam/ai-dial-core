@@ -8,8 +8,10 @@ import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Plugin;
 import com.epam.aidial.core.config.Role;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.Translator;
 import com.epam.aidial.core.config.TranslatorRef;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
@@ -269,6 +271,32 @@ public class MergedConfigStorePartialUpdateTest {
     }
 
     @Test
+    public void pluginWriteKeepsTheOtherPlugins() {
+        Config seeded = newConfig();
+        seeded.setPlugins(mutable("a", new Plugin("test-echo", null)));
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        Config before = store.get();
+
+        Config result = store.applyEntityWrite(ResourceTypes.PLUGIN, "b", new Plugin("test-echo", null));
+
+        assertEquals(Set.of("a", "b"), result.getPlugins().keySet());
+        assertEquals(Set.of("a"), before.getPlugins().keySet(), "the previous Config keeps its own map");
+    }
+
+    @Test
+    public void pluginDeleteKeepsTheOtherPlugins() {
+        Config seeded = newConfig();
+        Map<String, Plugin> plugins = mutable("a", new Plugin("test-echo", null));
+        plugins.put("b", new Plugin("test-echo", null));
+        seeded.setPlugins(plugins);
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+
+        Config result = store.applyEntityDelete(ResourceTypes.PLUGIN, "a");
+
+        assertEquals(Set.of("b"), result.getPlugins().keySet());
+    }
+
+    @Test
     public void projectKeyWriteDoesNotTouchApiKeyStore() {
         Config seeded = newConfig();
         MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
@@ -357,6 +385,71 @@ public class MergedConfigStorePartialUpdateTest {
         assertNotSame(before, store.get(), "volatile Config reference swapped");
         assertSame(before.getApplications(), store.get().getApplications(),
                 "untouched maps reference-shared with previous Config");
+    }
+
+    @Test
+    public void modelWriteKeepsFileRouters() {
+        Router router = new Router();
+        router.setBaseUrl("http://router");
+        router.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
+        Config seeded = newConfig();
+        seeded.setRouters(mutable("r1", router));
+        MergedConfigStore store = initStore(seeded, MergedConfigStore.MODE_ABORT);
+        assertSame(router, store.get().getRouters().get("r1"), "rebuild copies the file routers");
+
+        Model model = new Model();
+        model.setEndpoint("http://model/chat");
+        Config result = store.applyEntityWrite(ResourceTypes.MODEL, MODEL_ID, model);
+
+        assertTrue(result.getModels().containsKey(MODEL_ID));
+        assertSame(router, result.getRouters().get("r1"), "partial update keeps the file routers");
+    }
+
+    @Test
+    public void routerWriteIsVisibleAndDeleteRemovesIt() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Router router = router();
+        router.setInterceptors(null);
+
+        Config written = store.applyEntityWrite(ResourceTypes.ROUTER, "r-blob", router);
+
+        assertSame(router, written.getRouters().get("r-blob"));
+        assertEquals("r-blob", router.getName());
+        assertEquals(List.of(), router.getInterceptors(), "a null interceptor list never reaches the request path");
+
+        Config deleted = store.applyEntityDelete(ResourceTypes.ROUTER, "r-blob");
+        assertFalse(deleted.getRouters().containsKey("r-blob"));
+    }
+
+    @Test
+    public void invalidRouterWriteUnderSkipIsRecordedAsInvalid() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_SKIP);
+        Router router = router();
+        router.setInterceptors(List.of("i1"));
+
+        Config result = store.applyEntityWrite(ResourceTypes.ROUTER, "r-bad", router);
+
+        assertFalse(result.getRouters().containsKey("r-bad"));
+        Map<String, InvalidEntityRecord> invalid = store.getInvalidEntities().get(ResourceTypes.ROUTER);
+        assertNotNull(invalid, "the skipped router is recorded");
+        assertEquals(1, invalid.size());
+    }
+
+    @Test
+    public void invalidRouterWriteUnderAbortThrows() {
+        MergedConfigStore store = initStore(newConfig(), MergedConfigStore.MODE_ABORT);
+        Router router = router();
+        router.setEndpoint("http://router/chat");
+
+        assertThrows(InvalidEntityException.class, () -> store.applyEntityWrite(ResourceTypes.ROUTER, "r-bad", router));
+        assertFalse(store.get().getRouters().containsKey("r-bad"));
+    }
+
+    private static Router router() {
+        Router router = new Router();
+        router.setBaseUrl("http://router");
+        router.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface()));
+        return router;
     }
 
     private MergedConfigStore initStore(Config seeded, String onInvalidEntity) {

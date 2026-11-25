@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Features;
 import com.epam.aidial.core.config.InterfaceType;
@@ -14,7 +15,6 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayDeque;
 import java.util.HashSet;
@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-@Slf4j
 public class ConsentService {
 
     private static final ReviewConsentResponse ACCEPTED_CONSENT_RESPONSE = new ReviewConsentResponse(null, true);
@@ -43,6 +42,7 @@ public class ConsentService {
         seen.add(deploymentId);
         Consent newConsent = new Consent();
         boolean noneConsentRequired = true;
+        Deployment rootDeployment = null;
         while (!queue.isEmpty()) {
             String currentDeploymentId = queue.poll();
             Deployment deployment = deploymentService.findDeployment(context, currentDeploymentId);
@@ -50,16 +50,28 @@ public class ConsentService {
                 // the alias requires what its target requires, and the target pass checks the consent under the
                 // target's name; the target is reached through the alias, so it is not looked up by that name
                 Deployment target = deploymentService.getAliasService().findTarget(context, alias);
+                if (currentDeploymentId.equals(deploymentId)) {
+                    // the target pass gets the target's grants, so the user reviews the target's declaration
+                    rootDeployment = target;
+                }
                 noneConsentRequired &= !addToConsent(newConsent, currentDeploymentId, target, queue, seen);
                 if (seen.add(target.getName())) {
                     addToConsent(newConsent, target.getName(), target, queue, seen);
                 }
             } else {
+                if (currentDeploymentId.equals(deploymentId)) {
+                    rootDeployment = deployment;
+                }
                 noneConsentRequired &= !addToConsent(newConsent, currentDeploymentId, deployment, queue, seen);
             }
         }
-        if (noneConsentRequired) {
-            // no deployments required user consent
+        // a declaring app is never auto-accepted, whatever its author set in features.consentRequired
+        List<Consent.ResourceEntry> resources = resourceEntriesOf(rootDeployment);
+        if (!resources.isEmpty()) {
+            newConsent.setResources(resources);
+        }
+        if (noneConsentRequired && resources.isEmpty()) {
+            // no deployments required user consent and nothing is declared
             return ACCEPTED_CONSENT_RESPONSE;
         }
         Consent prevConsent = readConsent(context, deploymentId);
@@ -122,6 +134,10 @@ public class ConsentService {
         if (consentDeployment == null || !consentDeployment.isConsentRequired()) {
             fail(currentDeploymentId);
         }
+    }
+
+    private static List<Consent.ResourceEntry> resourceEntriesOf(Deployment deployment) {
+        return deployment instanceof Application application ? Consent.toResourceEntries(application.getResourceDependencies()) : List.of();
     }
 
     private String getRootDeploymentId(ProxyContext context, Deployment current) {

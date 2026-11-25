@@ -59,6 +59,14 @@ public class ResourceAuthSettings {
 
     private String resource;
 
+    /**
+     * Where Core reads OAuth metadata from when it sets up the client: an MCP server's URL, an API's URL that
+     * publishes protected resource metadata, or the authorization server's issuer URL. Never a traffic target.
+     * External services only.
+     */
+    @JsonAlias({"discoveryUrl", "discovery_url"})
+    private String discoveryUrl;
+
     @JsonAlias({"redirectUri", "redirect_uri"})
     private String redirectUri;
 

@@ -1,7 +1,14 @@
 package com.epam.aidial.core.server;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.InvitationLink;
+import com.epam.aidial.core.server.log.AnalyticsLogContext;
+import com.epam.aidial.core.server.log.AnalyticsSettings;
+import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.EncryptionService;
@@ -9,6 +16,12 @@ import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.security.IdpNotFoundException;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -39,12 +52,16 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 import redis.embedded.RedisServer;
 
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -52,10 +69,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -117,6 +136,8 @@ public class ResourceBaseTest {
     CloseableHttpClient client;
     String bucket;
     long time = 0;
+    // every analytics row this test's Core wrote, in order
+    final List<AnalyticsLogContext> analyticsRows = new CopyOnWriteArrayList<>();
     long id = 123;
 
     int serverPort;
@@ -206,6 +227,10 @@ public class ResourceBaseTest {
                             return Future.succeededFuture(createClaims(authorization));
                         }
 
+                        if (authorization.startsWith("user@")) {
+                            return Future.succeededFuture(createClaims("user", authorization.substring("user@".length())));
+                        }
+
                         if (authorization.startsWith("azp:")) {
                             return Future.succeededFuture(createWorkloadClaims(authorization.substring("azp:".length())));
                         }
@@ -225,7 +250,16 @@ public class ResourceBaseTest {
                         return Future.failedFuture("Not authorized");
                     });
 
-            dial = new AiDial();
+            dial = new AiDial() {
+                @Override
+                protected LogStore createLogStore(AnalyticsSettings analyticsSettings) {
+                    LogStore store = super.createLogStore(analyticsSettings);
+                    return logContext -> {
+                        analyticsRows.add(logContext);
+                        store.save(logContext);
+                    };
+                }
+            };
             dial.setSettings(settings);
             dial.setGenerator(this::generate);
             dial.setClock(() -> time);
@@ -247,9 +281,14 @@ public class ResourceBaseTest {
     }
 
     static ExtractedClaims createClaims(String role) {
+        return createClaims(role, null);
+    }
+
+    // The same claims as createClaims(role), with the project claim set, as a projectPath IdP would give.
+    static ExtractedClaims createClaims(String role, String project) {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("title", "Manager");
-        return new ExtractedClaims(role, List.of(role), role, claims, null, role + " user", null);
+        return new ExtractedClaims(role, List.of(role), role, claims, project, role + " user", null);
     }
 
     // A workload (service-principal) JWT carrying an azp claim and no user roles.
@@ -313,12 +352,173 @@ public class ResourceBaseTest {
         return "0" + id++;
     }
 
+    // Structurally valid Base64 that no key decrypts, standing in for a secret whose key is lost.
+    protected static final String CORRUPTED_CIPHERTEXT = Base64.getEncoder().encodeToString(new byte[64]);
+
+    protected String userApplicationUrl(String role, String appName) throws Exception {
+        Response bucket = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", role);
+        assertEquals(200, bucket.status());
+        return "applications/" + ProxyUtil.MAPPER.readTree(bucket.body()).get("bucket").asText() + "/" + appName;
+    }
+
+    protected String createPlainDynamicApp(String role, String appName) throws Exception {
+        String appUrl = userApplicationUrl(role, appName);
+        Response create = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {"endpoint": "http://localhost:7001/v1/x", "display_name": "Mgmt App"}
+                """, "authorization", role);
+        assertEquals(200, create.status(), create::body);
+        return appUrl;
+    }
+
+    /** The PKCE S256 challenge of {@code verifier}. */
+    protected static String s256(String verifier) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+    }
+
+    protected static Map<String, String> parseForm(String body) {
+        Map<String, String> form = new HashMap<>();
+        for (String pair : body.split("&")) {
+            String[] parts = pair.split("=", 2);
+            form.put(URLDecoder.decode(parts[0], StandardCharsets.UTF_8),
+                    parts.length > 1 ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8) : "");
+        }
+        return form;
+    }
+
+    protected String readStoredBlob(String url) {
+        return dial.getProxy().getResourceService().getResource(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService));
+    }
+
+    // Overwrites a stored toolset's secrets, bypassing the API's encrypt path, as a lost key or a copied blob would.
+    protected void corruptStoredToolSetSecrets(String url) {
+        corruptStoredAuthSettings(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService), "/auth_settings");
+    }
+
+    // Replaces an encrypted field of a stored config entity (model, key, route) with an envelope no key decrypts.
+    @SneakyThrows
+    protected void corruptStoredEnvelope(ResourceDescriptor descriptor, String parentPointer, String fieldName) {
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        JsonNode blob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ((ObjectNode) blob.at(parentPointer)).put(fieldName, "ENC[" + CORRUPTED_CIPHERTEXT + "]");
+        resourceService.putResource(descriptor, blob.toString(), EtagHeader.ANY, null, false);
+    }
+
+    // The same for the auth_settings object found at authSettingsPointer (a JSON pointer) in the stored blob.
+    @SneakyThrows
+    protected void corruptStoredAuthSettings(ResourceDescriptor descriptor, String authSettingsPointer) {
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        JsonNode blob = ProxyUtil.MAPPER.readTree(resourceService.getResource(descriptor));
+        ObjectNode authSettings = (ObjectNode) blob.at(authSettingsPointer);
+        authSettings.put("client_secret", CORRUPTED_CIPHERTEXT);
+        if (authSettings.has("code_verifier")) {
+            authSettings.put("code_verifier", CORRUPTED_CIPHERTEXT);
+        }
+        resourceService.putResource(descriptor, blob.toString(), EtagHeader.ANY, null, false);
+    }
+
+    /**
+     * The listing metadata the blob store holds for the file {@code name} directly under {@code folderUrl},
+     * read past the Redis cache. For a small resource it trails the cached document until the next sync.
+     */
+    protected ResourceItemMetadata storedBlobMetadata(String folderUrl, String name) {
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromAnyUrl(folderUrl, encryptionService);
+        // recursive, as the metadata listing itself lists the blob store: it returns blobs only
+        ResourceFolderMetadata listing = dial.getProxy().getResourceService().getFolderMetadata(folder, null, 1000, true);
+        assertNotNull(listing, folderUrl);
+        return listing.getItems().stream()
+                .filter(item -> name.equals(item.getDescriptor().getName())
+                        && folder.getUrl().equals(item.getDescriptor().getParent().getUrl()))
+                .map(ResourceItemMetadata.class::cast)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(name + " is not stored under " + folderUrl));
+    }
+
+    /**
+     * Rewrites a complex resource's marker document without {@code createdAt} / {@code updatedAt}, as markers
+     * written before they carried timestamps. The write goes to the Redis cache; the marker blob is left as is.
+     */
+    @SneakyThrows
+    protected void stripMarkerTimestamps(ResourceDescriptor marker) {
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ObjectNode document = (ObjectNode) ProxyUtil.MAPPER.readTree(resourceService.getResource(marker));
+        document.remove(List.of("createdAt", "updatedAt"));
+        resourceService.putResource(marker, document.toString(), EtagHeader.ANY, null, false);
+    }
+
+    /**
+     * The item with {@code url} in a metadata listing response.
+     */
+    @SneakyThrows
+    protected static JsonNode listedItem(Response listing, String url) {
+        for (JsonNode item : ProxyUtil.MAPPER.readTree(listing.body()).get("items")) {
+            if (url.equals(item.get("url").asText())) {
+                return item;
+            }
+        }
+        throw new AssertionError(url + " is not listed in " + listing.body());
+    }
+
+    /**
+     * A timestamp field of a metadata JSON item, or null when the item has none.
+     */
+    protected static Long timestamp(JsonNode item, String field) {
+        JsonNode value = item.get(field);
+        return value == null || value.isNull() ? null : value.asLong();
+    }
+
+    /**
+     * Spins until the wall clock moves past the current millisecond, so the next write gets a later timestamp
+     * than every write before it.
+     */
+    protected static void awaitNextMillisecond() {
+        long now = System.currentTimeMillis();
+        while (System.currentTimeMillis() <= now) {
+            Thread.onSpinWait();
+        }
+    }
+
+    /**
+     * The analytics rows written so far, once there are at least {@code count}. Core writes a row after it has
+     * answered, so a test that reads rows right after its request waits for them, up to five seconds.
+     */
+    List<AnalyticsLogContext> awaitAnalyticsRows(int count) {
+        awaitCondition(() -> analyticsRows.size() >= count);
+        return List.copyOf(analyticsRows);
+    }
+
+    /**
+     * Waits up to five seconds for {@code condition}, and fails the test when it does not hold by then.
+     */
+    @SneakyThrows
+    static void awaitCondition(BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("The condition did not hold within five seconds");
+            }
+            Thread.sleep(10);
+        }
+    }
+
     /**
      * Override in subclasses to inject additional settings overrides before {@code dial.start()}.
      * Default returns an empty JsonObject. Merged into the runtime settings via {@code mergeIn(true)}.
      */
     protected JsonObject additionalSettingsOverrides() {
         return new JsonObject();
+    }
+
+    /**
+     * Shares {@code url}, which "admin" owns, with "user" through an accepted invitation link.
+     */
+    protected void shareWithUser(String url, String permissions) {
+        Response response = send(HttpMethod.POST, "/v1/ops/resource/share/create", null, """
+                {"invitationType": "link", "resources": [{"url": "%s", "permissions": %s}]}
+                """.formatted(url, permissions), "authorization", "admin");
+        verify(response, 200);
+        InvitationLink link = ProxyUtil.convertToObject(response.body(), InvitationLink.class);
+        verify(send(HttpMethod.GET, link.invitationLink(), "accept=true", null, "authorization", "user"), 200);
     }
 
     static void verify(Response response, int status) {
@@ -617,5 +817,37 @@ public class ResourceBaseTest {
 
             return expected.equals(actual) ? 0 : -1;
         }
+    }
+
+    /** Runs {@code action} and returns the resource-dependency audit events it emitted for {@code appUrl}. */
+    protected static List<String> captureAuditEvents(String appUrl, Runnable action) {
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("DIAL_RESOURCE_DEPS_AUDIT");
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        auditLogger.addAppender(appender);
+        try {
+            action.run();
+        } finally {
+            auditLogger.detachAppender(appender);
+        }
+        return appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .filter(message -> message.startsWith("event=resource_dependency_")
+                        && message.contains("application_id=" + appUrl + " "))
+                .toList();
+    }
+
+    /** The admin-consent POST body an administrator sends after reviewing {@code appUrl}'s current declaration. */
+    protected String reviewedResources(String appUrl) {
+        Response app = send(HttpMethod.GET, "/v1/" + appUrl, null, "", "authorization", "admin");
+        verify(app, 200);
+        JsonArray resources = new JsonArray();
+        for (Object dependency : new JsonObject(app.body()).getJsonArray("resource_dependencies")) {
+            JsonObject declared = (JsonObject) dependency;
+            resources.add(new JsonObject()
+                    .put("url", declared.getJsonObject("target").getString("url"))
+                    .put("access", declared.getJsonArray("access")));
+        }
+        return new JsonObject().put("resources", resources).encode();
     }
 }

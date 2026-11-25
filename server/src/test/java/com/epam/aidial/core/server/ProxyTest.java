@@ -55,6 +55,7 @@ import java.util.regex.Pattern;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_API_KEY;
 import static com.epam.aidial.core.server.Proxy.HEALTH_CHECK_PATH;
+import static com.epam.aidial.core.server.Proxy.OPENAPI_PATH;
 import static com.epam.aidial.core.storage.blobstore.Storage.DEFAULT_MAX_UPLOADED_FILE_SIZE_BYTES;
 import static com.epam.aidial.core.storage.http.HttpStatus.BAD_REQUEST;
 import static com.epam.aidial.core.storage.http.HttpStatus.HTTP_VERSION_NOT_SUPPORTED;
@@ -66,6 +67,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -185,6 +187,22 @@ public class ProxyTest {
     }
 
     @Test
+    public void testHandle_SystemImportSkipsBodySizeLimit() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.POST);
+        when(request.path()).thenReturn("/v1/admin/system-import");
+        when(request.getHeader(eq(HttpHeaders.CONTENT_TYPE))).thenReturn("application/zip");
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+        when(headers.get(eq(HttpHeaders.CONTENT_LENGTH))).thenReturn(Long.toString(1L << 30));
+
+        proxy.handle(request);
+
+        verify(response, never()).setStatusCode(REQUEST_ENTITY_TOO_LARGE.getCode());
+        verify(request).pause();
+    }
+
+    @Test
     public void testHandle_HealthCheck() {
         when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
         when(request.method()).thenReturn(HttpMethod.GET);
@@ -195,6 +213,22 @@ public class ProxyTest {
         proxy.handle(request);
 
         verify(healthCheckController).handle(request);
+    }
+
+    @Test
+    public void testHandle_OpenApiSpecIsServedWithoutCredentials() {
+        when(request.version()).thenReturn(HttpVersion.HTTP_1_1);
+        when(request.method()).thenReturn(HttpMethod.GET);
+        when(request.path()).thenReturn(OPENAPI_PATH);
+        MultiMap headers = mock(MultiMap.class);
+        when(request.headers()).thenReturn(headers);
+
+        proxy.handle(request);
+
+        verify(response).setStatusCode(OK.getCode());
+        verify(response).putHeader(HttpHeaders.CONTENT_TYPE.toString(), "application/yaml; charset=utf-8");
+        verify(response).end(startsWith("openapi:"));
+        verify(request, never()).pause(); // authorization pauses the request, so it was not started
     }
 
     @Test
