@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.function.enhancement;
 
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
@@ -10,8 +9,6 @@ import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Resolves the upstream config id encoded into an incoming Responses API request's echoed encrypted content
@@ -28,27 +25,13 @@ public class ResolveEncryptedContentAffinityFn extends BaseRequestFunction<Reque
 
     @Override
     public Boolean apply(RequestObject request) {
-        if (!EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
+        if (!(request instanceof ResponsesApiRequest responsesRequest) || !(context.getDeployment() instanceof Model model)) {
             return false;
         }
-        if (!(request instanceof ResponsesApiRequest responsesRequest)) {
-            return false;
+        String upstreamId = responsesRequest.resolveAndUnwrapEncryptedContentAffinity(model);
+        if (upstreamId != null) {
+            request.setEncryptedUpstreamId(upstreamId);
         }
-        Model model = (Model) context.getDeployment();
-        Set<String> configuredUpstreamIds = model.getUpstreams().stream()
-                .map(Upstream::getId)
-                .collect(Collectors.toSet());
-        EncryptedContentAffinityUtil.Resolution resolution = responsesRequest.resolveAndUnwrapEncryptedContentAffinity(configuredUpstreamIds);
-        if (resolution.upstreamId() == null) {
-            return false;
-        }
-        for (String deploymentName : resolution.deploymentNames()) {
-            if (!deploymentName.equals(model.getName())) {
-                log.warn("Deployment mismatch: encrypted content was produced by '{}' but current deployment is '{}'",
-                        deploymentName, model.getName());
-            }
-        }
-        request.setEncryptedUpstreamId(resolution.upstreamId());
         return false;
     }
 }

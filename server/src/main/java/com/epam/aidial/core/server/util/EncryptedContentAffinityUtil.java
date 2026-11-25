@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.Upstream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 /**
@@ -35,16 +37,6 @@ public class EncryptedContentAffinityUtil {
 
     private record ResolvedAffinity(@Nullable String upstreamId, @Nullable String deploymentName) {
         private static final ResolvedAffinity EMPTY = new ResolvedAffinity(null, null);
-    }
-
-    /**
-     * The outcome of {@link #resolveAndUnwrap}.
-     *
-     * @param upstreamId      the upstream config id to route to; {@code null} if no kept item is stamped
-     * @param deploymentNames the deployment names recorded in the stamps of the kept items
-     */
-    public record Resolution(@Nullable String upstreamId, Set<String> deploymentNames) {
-        public static final Resolution NONE = new Resolution(null, Set.of());
     }
 
     public boolean hasConfiguredUpstreams(Deployment deployment) {
@@ -108,11 +100,14 @@ public class EncryptedContentAffinityUtil {
      * a turn, so that turn is routed to an arbitrary upstream whose reasoning is then echoed together with the earlier
      * turns' reasoning, or when an upstream was removed from the model. One warning is logged per request.
      *
-     * @param configuredUpstreamIds the ids of the model's current {@code upstreams}
-     * @return the upstream to route to and the deployment names of the kept stamps; {@link Resolution#NONE} if
-     *     no kept item is stamped
+     * @param model the model the request is for; its {@code upstreams} are the configured upstream ids
+     * @return the upstream config id to route to; {@code null} if no kept item is stamped
      */
-    public Resolution resolveAndUnwrap(ArrayNode input, Set<String> configuredUpstreamIds) {
+    @Nullable
+    public String resolveAndUnwrap(ArrayNode input, Model model) {
+        Set<String> configuredUpstreamIds = model.getUpstreams().stream()
+                .map(Upstream::getId)
+                .collect(Collectors.toSet());
         Set<String> deploymentNames = new LinkedHashSet<>();
         Set<String> droppedUpstreamIds = new LinkedHashSet<>();
         String winningUpstreamId = null;
@@ -146,7 +141,13 @@ public class EncryptedContentAffinityUtil {
             log.warn("Dropped {} reasoning item(s) stamped by upstreams {}: the request is routed to upstream '{}', which cannot decrypt them",
                     dropped, droppedUpstreamIds, winningUpstreamId);
         }
-        return winningUpstreamId == null ? Resolution.NONE : new Resolution(winningUpstreamId, Set.copyOf(deploymentNames));
+        for (String deploymentName : deploymentNames) {
+            if (!deploymentName.equals(model.getName())) {
+                log.warn("Deployment mismatch: encrypted content was produced by '{}' but current deployment is '{}'",
+                        deploymentName, model.getName());
+            }
+        }
+        return winningUpstreamId;
     }
 
     private void addIfNotNull(Set<String> set, @Nullable String value) {
