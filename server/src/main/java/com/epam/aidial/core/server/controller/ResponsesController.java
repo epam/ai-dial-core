@@ -170,7 +170,9 @@ public class ResponsesController extends BaseDeploymentPostController {
                     @ApiHeader(name = "x-codex-secondary-reset-at", description = "When the secondary cap resets, Unix seconds")
             })
     @ApiResponse(code = 400)
-    @ApiResponse(code = 403)
+    @ApiResponse(code = 403, description = "Access denied; or, with enforced budgets, no budget for the model: an error with "
+            + "`error.code` `no_budget` naming the model and the cost object, `x-should-retry: false` and no `retry-after`",
+            body = @ApiSchema(implementation = ErrorData.class))
     @ApiResponse(code = 404)
     @ApiResponse(code = 415)
     @ApiResponse(code = 429, description = "DIAL limit reached. A reached day/week/month spend cap, or with enforced budgets "
@@ -178,8 +180,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             + "`usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the "
             + "`x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error "
             + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`; "
-            + "with enforced budgets, no budget for the model gives an error naming the model and the cost object, "
-            + "with `x-should-retry: false` and no `retry-after`",
+            + "a used-up budget without a cap to report gives an error with `error.code` `budget_exhausted` and `retry-after`",
             body = @ApiSchema(implementation = ErrorData.class))
     @ApiResponse(code = 500)
     @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class))

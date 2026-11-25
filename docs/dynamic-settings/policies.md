@@ -79,9 +79,11 @@ The paying budget is the one the check before the call picked: the first budget 
 priority, that covers the model and has room. The call's cost is charged to it after the call, in `shadow` mode as in
 `enforce` mode. `user.id` is the user's hash; `spending_limits` does not carry the user.
 
-In `enforce` mode a call with `no_budget` or `exhausted` is refused with 429, and Core writes no analytics row for
-a refused call. Those two outcomes therefore appear in `shadow` mode only, where the call goes through. The metric
-`dial_budget_rejections_total` counts refusals in both modes.
+In `enforce` mode a call with `no_budget` is refused with 403 and error code `no_budget`, and a call with
+`exhausted` with 429, `retry-after` and error code `budget_exhausted`. Core writes no analytics row for a refused
+call, so those two outcomes appear in `shadow` mode only, where the call goes through. The metric
+`dial_budget_rejections_total` counts refusals in both modes, with `reason` set to the error code (`no_budget` or
+`budget_exhausted`) and `mode` to `spendingLimits.mode`.
 
 A row has no `spending_limits` when:
 

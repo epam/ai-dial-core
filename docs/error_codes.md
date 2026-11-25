@@ -22,6 +22,7 @@ User is authenticated by Core but doesn't have insufficient permissions to a res
 - a required resource dependency of the application is not accessible to the user or not approved by an administrator
 - only administrators can manage an application's admin consent, and only for an application they can read in the config, the public or review bucket, or their own bucket
 - a user changes an application's resource dependencies while `applications.allowUserAuthoredDependencies` is off
+- with `spendingLimits.mode: enforce`, no budget of the caller's cost object covers the model: the error body has `code` `no_budget` and a `message` that names the model and the cost object, and no `retry-after`. On the Messages and Responses routes the answer also carries `x-should-retry: false`. Only an admin adding a budget makes the call pass
 
 #### 404 NOT FOUND
 
@@ -83,7 +84,7 @@ On the Anthropic-compatible routes (`/anthropic/*`) the response body has the An
 
 On the Responses routes (`/openai/v1/responses`, `/openai/responses`) a reached day, week or month spend cap gives an error of type `usage_limit_reached` with `resets_at` and `limit_window_minutes` and `x-codex-primary-*` headers, which Codex CLI shows as a usage-limit message; see [Codex spend limits](codex-spend-limits.md).
 
-With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these spend-cap answers on both routes when the budgets that cover the model are used up, and a 429 with the DIAL error body that names the model and the cost object, `x-should-retry: false` and no `retry-after` when no budget covers the model.
+With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these spend-cap answers on both routes when the budgets that cover the model are used up. Where the answer has the DIAL error body instead (every other route, and a used-up budget whose cap is not reported), its `code` is `budget_exhausted` and `retry-after` says when the budget can pay again. A call that no budget covers gets 403 with `code` `no_budget`; see 403 above.
 
 #### 500 INTERNAL SERVER ERROR
 

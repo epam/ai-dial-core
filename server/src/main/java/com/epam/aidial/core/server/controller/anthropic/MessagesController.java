@@ -129,7 +129,9 @@ public class MessagesController extends MessagesBaseController {
                                             @ApiHeader(name = "anthropic-ratelimit-unified-overage-reset", description = "Same value as `anthropic-ratelimit-unified-reset`")
                                     }),
                             @ApiResponse(code = 400),
-                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 403, description = "Access denied; or, with enforced budgets, no budget for the model: the DIAL error body "
+                                    + "with `error.code` `no_budget` naming the model and the cost object, `x-should-retry: false` and no `retry-after`",
+                                    body = @ApiSchema(implementation = ErrorData.class)),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 415),
                             @ApiResponse(code = 429, description = "DIAL limit reached, with an Anthropic-format error body "
@@ -139,8 +141,7 @@ public class MessagesController extends MessagesBaseController {
                                     + "an unreadable spend counter of a caller with a cost limit gives `billing_error` with only `x-should-retry: false` and "
                                     + "`anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`; "
                                     + "a token, request or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only; "
-                                    + "with enforced budgets, no budget for the model gives the DIAL error body naming the model and the cost object, "
-                                    + "with `x-should-retry: false` and no `retry-after`",
+                                    + "a used-up budget without a cap to report gives the DIAL error body with `error.code` `budget_exhausted` and `retry-after`",
                                     body = @ApiSchema(implementation = AnthropicErrorData.class)),
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),

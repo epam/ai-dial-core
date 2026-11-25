@@ -93,6 +93,7 @@ class BudgetEnforcerTest {
         RateLimitResult result = enforcer.check(context, model, NOW, SCHEDULE).result();
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals("budget_exhausted", result.errorCode());
     }
 
     @Test
@@ -120,8 +121,10 @@ class BudgetEnforcerTest {
 
         RateLimitResult result = enforcer.check(context, model, NOW, SCHEDULE).result();
 
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(HttpStatus.FORBIDDEN, result.status());
+        assertEquals("no_budget", result.errorCode());
         assertEquals(-1, result.replyAfterSeconds());
+        assertFalse(result.isClientRetryDisabled());
     }
 
     @Test
@@ -130,7 +133,7 @@ class BudgetEnforcerTest {
         when(context.getUserProject()).thenReturn("projA");
         index(Map.of("p", policy(1, "1", null)), Map.of("ORG/a", assignment("p")));
 
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, enforcer.check(context, model, NOW, SCHEDULE).result().status());
+        assertEquals(HttpStatus.FORBIDDEN, enforcer.check(context, model, NOW, SCHEDULE).result().status());
     }
 
     @Test
@@ -163,7 +166,7 @@ class BudgetEnforcerTest {
         tokens.setQuantity(PolicyQuantity.TOKENS);
         index(Map.of("p", tokens), Map.of("ORG/a", assignment("p")));
 
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, enforcer.check(context, model, NOW, SCHEDULE).result().status());
+        assertEquals(HttpStatus.FORBIDDEN, enforcer.check(context, model, NOW, SCHEDULE).result().status());
     }
 
     @Test
@@ -358,7 +361,9 @@ class BudgetEnforcerTest {
 
         RateLimitResult result = enforcer.checkWithSpendCaps(context, model, NOW, SCHEDULE).result();
 
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(HttpStatus.FORBIDDEN, result.status());
+        assertEquals("no_budget", result.errorCode());
+        assertTrue(result.isClientRetryDisabled());
         assertNull(result.spendCaps());
         assertEquals(-1, result.replyAfterSeconds());
     }

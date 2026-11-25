@@ -13,10 +13,12 @@ import javax.annotation.Nullable;
 /**
  * @param isClientRetryDisabled the rejection tells the client not to retry ({@code x-should-retry: false}); Core's
  *                              own retry rules still treat it like any other status
+ * @param errorCode             the {@code error.code} of the DIAL error body; null for the status number
  */
 public record RateLimitResult(
         HttpStatus status, String errorMessage, String displayErrorMessage, long replyAfterSeconds,
-        @Nullable LimitBreach breach, @Nullable SpendCaps spendCaps, boolean isClientRetryDisabled) {
+        @Nullable LimitBreach breach, @Nullable SpendCaps spendCaps, boolean isClientRetryDisabled,
+        @Nullable String errorCode) {
     public static final RateLimitResult SUCCESS = new RateLimitResult(HttpStatus.OK, null, null, -1);
 
     public RateLimitResult(HttpStatus status, String errorMessage, String displayErrorMessage, long replyAfterSeconds) {
@@ -25,21 +27,22 @@ public record RateLimitResult(
 
     public RateLimitResult(HttpStatus status, String errorMessage, String displayErrorMessage, long replyAfterSeconds,
                            @Nullable LimitBreach breach, @Nullable SpendCaps spendCaps) {
-        this(status, errorMessage, displayErrorMessage, replyAfterSeconds, breach, spendCaps, false);
+        this(status, errorMessage, displayErrorMessage, replyAfterSeconds, breach, spendCaps, false, null);
     }
 
     public RateLimitResult withSpendCaps(@Nullable SpendCaps spendCaps) {
         if (spendCaps == null) {
             return this;
         }
-        return new RateLimitResult(status, errorMessage, displayErrorMessage, replyAfterSeconds, breach, spendCaps, isClientRetryDisabled);
+        return new RateLimitResult(status, errorMessage, displayErrorMessage, replyAfterSeconds, breach, spendCaps, isClientRetryDisabled,
+                errorCode);
     }
 
     public void throwIfError() {
         if (status != HttpStatus.OK) {
             // Returning an error similar to the Azure format.
             ErrorData rateLimitError = new ErrorData();
-            rateLimitError.getError().setCode(String.valueOf(status.getCode()));
+            rateLimitError.getError().setCode(errorCode != null ? errorCode : String.valueOf(status.getCode()));
             rateLimitError.getError().setMessage(errorMessage);
             rateLimitError.getError().setDisplayMessage(displayErrorMessage);
 

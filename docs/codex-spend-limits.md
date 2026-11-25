@@ -69,10 +69,10 @@ instead of by the role `costLimit` (see the `spendingLimits` row in the README).
   limit` or `You've exceeded your monthly cost limit`. It names the used-up window and the reset of the budget that
   can pay again first, the first by priority on a tie. This holds with one budget or several, and wins over a token
   or request limit.
-- **No budget for the model.** 429 with the DIAL error body, whose `message` names the model and the cost object,
-  with `x-should-retry: false`, no `retry-after` and no `x-codex-*` header, also through an alias. Only an admin
-  adding a budget can make the call pass; clients built on the OpenAI SDKs do not retry it. Whether Codex CLI reads
-  `x-should-retry` has not been checked.
+- **No budget for the model.** 403 with the DIAL error body, whose `code` is `no_budget` and whose `message` names
+  the model and the cost object, with `x-should-retry: false`, no `retry-after` and no `x-codex-*` header, also
+  through an alias. A router in decision mode is not asked again. Only an admin adding a budget can make the call
+  pass; clients built on the OpenAI SDKs do not retry a 403.
 - **Counter unreadable.** A token or request limit that rejects decides the answer. Otherwise the request gets the
   "could not read your spend limit" 429 below when a budget below 2^53 covers the model, and the usual 500 when
   none does.

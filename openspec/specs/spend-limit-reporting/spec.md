@@ -256,13 +256,28 @@ Under the first requirement, for a deployment that is not translated, when no bu
 - **THEN** Core answers with the spend-cap 429
 
 ### Requirement: No budget for the model
-Under the first requirement, for a deployment that is not translated, when no budget of the caller's cost object covers the model, Core SHALL reject the request before contacting the upstream with 429, a DIAL error body that names the model and the cost object, no `retry-after` and no spend header.
+Under the requirement "Budgets decide the caps in enforce mode", for a deployment that is not translated, when no budget of the caller's cost object covers the model, Core SHALL answer with the `no_budget` 403 of the spending-refusals capability, with `x-should-retry: false` and no spend header. Through an alias, also one that a router in decision mode chose, the client SHALL get the same answer, and Core SHALL NOT ask the router again.
 
 #### Scenario: Budget for another model only
 - **WHEN** a caller's only budget in their cost object covers only `claude-opus` and they send a Messages request
   for another model
-- **THEN** Core answers 429 without calling the upstream, with an `error.message` that names that model and the
-  cost object, and with no `anthropic-ratelimit-unified-*` header
+- **THEN** Core answers 403 without calling the upstream, with `error.code` `no_budget`, an `error.message` that
+  names that model and the cost object, `x-should-retry: false`, and no `retry-after` and no
+  `anthropic-ratelimit-unified-*` header
+
+#### Scenario: Budget for another model only, Responses
+- **WHEN** a caller's only budget in their cost object covers only `gpt-opus` and they send a Responses request for
+  another model to `POST /openai/v1/responses` or to `POST /openai/responses`
+- **THEN** Core answers 403 without calling the upstream, with `error.code` `no_budget`, an `error.message` that
+  names that model and the cost object, `x-should-retry: false`, and no `retry-after` and no `x-codex-*` header
+
+#### Scenario: No budget, through an alias and a router
+- **WHEN** `spendingLimits.mode` is `enforce`, a JWT caller whose only budget covers only `claude-opus` sends
+  `POST /anthropic/v1/messages` or `POST /openai/v1/responses` with `"model": "strong"`, an alias of the router `r1`
+  in decision mode, and `r1` answers `{"candidates": ["alias-m1"]}` to every decide request
+- **THEN** `r1` is asked once, and Core answers 403 with `error.code` `no_budget`, an `error.message` that names `m1`
+  and the cost object, `x-should-retry: false`, no `retry-after` and no `anthropic-ratelimit-unified-*` or `x-codex-*`
+  header, and the upstream of `m1` is not called
 
 ### Requirement: Unreadable budget counter
 Under the first requirement, for a deployment that is not translated, when Core cannot read the counter of a budget it needs to check the call, a token or request limit that rejects SHALL decide the answer. Otherwise Core SHALL reject the request before contacting the upstream with the route's "spend limit could not be read" 429 when the caller has a budget for the model with a window below 2^53, and with 500 when it has none.
