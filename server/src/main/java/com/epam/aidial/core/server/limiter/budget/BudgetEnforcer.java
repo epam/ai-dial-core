@@ -43,16 +43,10 @@ public class BudgetEnforcer {
     private final BudgetCounterStore store;
 
     /**
-     * The project of the root caller, or the configured default when the call carries none.
+     * The cost object of the root caller, or the configured default when the call carries none.
      */
     public static String resolveCostObject(ProxyContext context, SpendingLimits settings) {
-        if (context.getUserProject() != null) {
-            return context.getUserProject();
-        }
-        if (context.getKey() != null && context.getKey().getProject() != null) {
-            return context.getKey().getProject();
-        }
-        return settings.getDefaultCostObject();
+        return CostObject.resolve(context.getUserProject(), context.getKey(), () -> settings).id();
     }
 
     /**

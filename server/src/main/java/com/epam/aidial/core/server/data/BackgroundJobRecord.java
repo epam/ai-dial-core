@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.data;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.limiter.budget.CostObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
@@ -25,6 +26,9 @@ public record BackgroundJobRecord(
         String spanId,
         String parentSpanId,
         String project,
+        // absent from a record an older Core wrote
+        String costObject,
+        CostObject.Source costObjectSource,
         String userHash,
         String conversationId,
         String sessionId,
@@ -56,6 +60,8 @@ public record BackgroundJobRecord(
                 .spanId(context.getSpanId())
                 .parentSpanId(context.getParentSpanId())
                 .project(context.getProject())
+                .costObject(context.getCostObject())
+                .costObjectSource(context.getCostObjectSource())
                 .userHash(context.getUserHash())
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
                 .sessionId(GenAiTraceAttributes.resolveConversationId(context))
