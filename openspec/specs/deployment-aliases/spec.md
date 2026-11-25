@@ -163,7 +163,7 @@ pass, under the target's name, to the user who started the request, on every int
 - **THEN** a call of `assistant` answers `429`
 
 ### Requirement: The alias relays the target's answer
-Core SHALL answer an alias call with the status and body of the target pass, SHALL NOT retry the target pass, and SHALL NOT let the status of one call affect other calls of the alias. The one exception is the no-budget refusal on `POST /openai/v1/responses` and `POST /openai/responses`, which the requirement "No budget through an alias" in `spend-limit-reporting` states.
+Core SHALL answer an alias call with the status and body of the target pass, SHALL NOT retry the target pass, and SHALL NOT let the status of one call affect other calls of the alias. The one exception is the no-budget refusal on `POST /openai/v1/responses`, `POST /openai/responses` and `POST /anthropic/v1/messages`, which the requirement "No budget through an alias" in `spend-limit-reporting` states.
 
 #### Scenario: Error of one caller
 - **WHEN** the target pass answers `429` to one caller of `assistant` because that caller's limit is used up

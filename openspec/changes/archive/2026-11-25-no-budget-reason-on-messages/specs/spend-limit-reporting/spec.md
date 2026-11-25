@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: No budget for the model
-Under the requirement "Budgets decide the caps in enforce mode", for a deployment that is not translated, when no budget of the caller's cost object covers the model, Core SHALL reject the request before contacting the upstream. The message SHALL be `No DIAL spend limit is assigned for <model> in project <cost object>. Ask your DIAL admin to assign one.` The answer SHALL carry `x-should-retry: false`, no `retry-after` and no spend header. On Messages its status and body SHALL be as the requirement "No budget on the Messages route" states.
+Under the requirement "Budgets decide the caps in enforce mode", for a deployment that is not translated, when no budget of the caller's cost object covers the model, Core SHALL reject the request before contacting the upstream. The message SHALL be `No DIAL spend limit is assigned for <model> in project <cost object>. Ask your DIAL admin to assign one.` The answer SHALL carry `x-should-retry: false`, no `retry-after` and no spend header.
 
 #### Scenario: Budget for another model only
 - **WHEN** a caller's only budget in their cost object covers only `claude-opus` and they send a Messages request
@@ -55,7 +55,7 @@ Through an alias, the client SHALL get the no-budget answer of a direct call of 
 - **THEN** once `r1` has been asked three times, Core answers the same 400, and the upstream of `m1` is not called
 
 ### Requirement: The no-budget mark stays inside Core
-On `POST /openai/v1/responses`, `POST /openai/responses`, `POST /anthropic/v1/messages` and `POST /anthropic/v1/messages/count_tokens`, Core SHALL send `X-DIAL-REFUSAL` to no caller outside Core: not to a client, and not to an application's, interceptor's or translator's call. An `X-DIAL-REFUSAL` header in an answer from outside Core SHALL NOT change Core's answer. This covers an answer from a model's upstream, an application or an interceptor. Core SHALL remove the header from that answer before relaying it.
+On the Responses routes, `POST /anthropic/v1/messages` and its `count_tokens`, Core SHALL send `X-DIAL-REFUSAL` to no caller outside Core: not to a client, and not to an application's, interceptor's or translator's call. The header in an answer from a model's upstream, an application or an interceptor SHALL NOT change Core's answer, and Core SHALL remove it before relaying that answer.
 
 #### Scenario: Header from an interceptor behind an alias
 - **WHEN** a caller with a budget that covers `m-icpt` sends `POST /openai/v1/responses` with
