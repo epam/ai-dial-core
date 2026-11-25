@@ -142,7 +142,7 @@ public class BaseDeploymentPostController {
     protected void respondNoBudget(NoBudgetException rejection, Consumer<NoBudgetException> clientAnswer) {
         if (context.isOriginalRequest()) {
             clientAnswer.accept(rejection);
-        } else if (context.getApiKeyData().isAliasTargetKey()) {
+        } else if (context.getApiKeyData().isMadeByAliasPass()) {
             Map<String, String> headers = new HashMap<>(rejection.getHeaders());
             headers.put(Proxy.HEADER_DIAL_REFUSAL, NO_BUDGET_REFUSAL);
             respond(new HttpException(rejection.getStatus(), rejection.getMessage(), headers));
@@ -170,7 +170,7 @@ public class BaseDeploymentPostController {
      * sent it.
      */
     protected void removeRefusalMark(MultiMap headers) {
-        if (!(context.getDeployment() instanceof AliasPass) || !context.getApiKeyData().isAliasTargetKey()) {
+        if (!(context.getDeployment() instanceof AliasPass) || !context.getApiKeyData().isMadeByAliasPass()) {
             headers.remove(Proxy.HEADER_DIAL_REFUSAL);
         }
     }

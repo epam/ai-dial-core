@@ -39,12 +39,12 @@ class ApiKeyDataTest {
         // a Core without the field rejects a stored key that has it, during a rollout and after a rollback, so a flagged
         // key is stored as an unflagged one, and a target pass reached over HTTP reads it without the flag
         ApiKeyData key = new ApiKeyData();
-        key.setAliasTargetKey(true);
+        key.setMadeByAliasPass(true);
 
         String json = ProxyUtil.convertToString(key);
 
-        assertFalse(json.contains("aliasTargetKey"), json);
-        assertFalse(ProxyUtil.convertToObject(json, ApiKeyData.class).isAliasTargetKey());
+        assertFalse(json.contains("madeByAliasPass"), json);
+        assertFalse(ProxyUtil.convertToObject(json, ApiKeyData.class).isMadeByAliasPass());
     }
 
     @Test
@@ -53,7 +53,7 @@ class ApiKeyDataTest {
         ApiKeyData aliasKey = new ApiKeyData();
         aliasKey.setPerRequestKey("alias-key");
         aliasKey.setLentDeployment("m1");
-        aliasKey.setAliasTargetKey(true);
+        aliasKey.setMadeByAliasPass(true);
         aliasKey.setExecutionPath(List.of("alias-m1"));
         Deployment target = mock(Deployment.class);
         when(target.getName()).thenReturn("m1");
@@ -63,7 +63,7 @@ class ApiKeyDataTest {
         ApiKeyData.initFromContext(key, context);
 
         assertEquals("m1", key.getLentDeployment());
-        assertFalse(key.isAliasTargetKey());
+        assertFalse(key.isMadeByAliasPass());
     }
 
     private static ProxyContext contextOf(Deployment deployment, ApiKeyData apiKeyData) {

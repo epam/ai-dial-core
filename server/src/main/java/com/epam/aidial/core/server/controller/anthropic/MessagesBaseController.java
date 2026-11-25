@@ -185,7 +185,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
         // on /messages the target pass is served in process and gets this very object; nothing reads the flag on count_tokens
-        proxyApiKeyData.setAliasTargetKey(context.getDeployment() instanceof AliasPass);
+        proxyApiKeyData.setMadeByAliasPass(context.getDeployment() instanceof AliasPass);
 
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that

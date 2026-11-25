@@ -413,7 +413,7 @@ public class ResponsesController extends BaseDeploymentPostController {
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
         // the target pass served in process gets this very object; one reached over HTTP reads the key without the flag
-        proxyApiKeyData.setAliasTargetKey(context.getDeployment() instanceof AliasPass);
+        proxyApiKeyData.setMadeByAliasPass(context.getDeployment() instanceof AliasPass);
 
         context.setStreamingRequest(request.isStreaming());
         context.setStoreResponse(request.isStore());
