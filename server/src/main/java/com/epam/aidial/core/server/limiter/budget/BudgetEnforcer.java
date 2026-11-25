@@ -50,15 +50,23 @@ public class BudgetEnforcer {
     }
 
     /**
-     * Whether budgets cover the call when they are on: a JWT caller's call to a model. API key callers and calls to
-     * anything but a model stay on the legacy cost limit whatever the mode.
+     * Whether budgets check the call when they are on: a JWT caller's call to a model. A JWT caller's call to anything
+     * else is not checked against budgets: the models it calls are.
      */
     public static boolean isApplicable(ProxyContext context, RoleBasedEntity entity) {
         return context.getExtractedClaims() != null && entity instanceof Model;
     }
 
     public static boolean isEnforced(ProxyContext context, RoleBasedEntity entity) {
-        return context.getConfig().getSpendingLimits().getMode() == SpendingLimitMode.ENFORCE && isApplicable(context, entity);
+        return isRoleCostLimitSkipped(context) && isApplicable(context, entity);
+    }
+
+    /**
+     * Whether the legacy role cost limit is off for the call: in {@code enforce} mode, for a JWT caller, whatever the
+     * deployment. API key callers keep it in every mode, as no budget reaches them.
+     */
+    public static boolean isRoleCostLimitSkipped(ProxyContext context) {
+        return context.getConfig().getSpendingLimits().getMode() == SpendingLimitMode.ENFORCE && context.getExtractedClaims() != null;
     }
 
     /**
