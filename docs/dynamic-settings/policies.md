@@ -98,3 +98,19 @@ failed after the check, such as on an upstream error, has `outcome` `paid` with 
 
 `project.id` is the token's project claim, so it is empty when the token has none, while
 `spending_limits.cost_object` then holds the default cost object.
+
+# Cost object in the analytics log
+
+Every row also carries a `cost_object` object: the cost object of the caller that started the call chain, and where it
+came from. It follows `spending_limits`, or `project` when the row has none:
+
+```json
+"project": { "id": "project-a" },
+"spending_limits": { "mode": "enforce", "cost_object": "project-a", "outcome": "paid", "policy": "engineering-pro" },
+"cost_object": { "id": "project-a", "source": "claim" },
+```
+
+`source` is `claim` (the token's claim at `identityProviders.*.costObjectPath`), `key` (the API key's project) or
+`default` (`spendingLimits.defaultCostObject`). `project` stays in the row while consumers move to `cost_object`. The
+row a background Responses job writes when it ends carries the cost object of the request that started the job; a job
+started before an upgrade to this version has no `cost_object`.

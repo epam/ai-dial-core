@@ -48,6 +48,8 @@ public class UserInfoController implements Controller {
                 response.put("project", context.getUserProject());
             }
         }
+        response.put("costObject", context.getCostObject());
+        response.put("costObjectSource", context.getCostObjectSource().toValue());
         String userDisplayName = context.getUserDisplayName();
         if (userDisplayName != null) {
             response.put("userDisplayName", userDisplayName);

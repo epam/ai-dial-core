@@ -54,8 +54,8 @@ instead of by the role `costLimit` (see the `spendingLimits` row in the README).
 429s then describe a budget.
 
 - **Which budget.** DIAL looks at the budgets of the user's cost object: the project in the token's project claim
-  (`identityProviders.<idp>.projectPath`), or `spendingLimits.defaultCostObject` when the token has none. Set
-  `projectPath` to the claim that holds the project, for example `project` for the identity provider the `dial`
+  (`identityProviders.<idp>.costObjectPath`), or `spendingLimits.defaultCostObject` when the token has none. Set
+  `costObjectPath` to the claim that holds the project, for example `project` for the identity provider the `dial`
   launcher uses. The `aud` or `azp` of the sample settings would make the OAuth client id the cost object.
 - **Reported only with one budget.** DIAL reports a budget only when the user has exactly one unexpired budget in
   that cost object, whatever models it covers. With several, or none, a 200 answer carries no `x-codex-*` header,
