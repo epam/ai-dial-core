@@ -193,4 +193,29 @@ class ApiKeyDataTest {
         when(context.getConfig()).thenReturn(config);
         return context;
     }
+
+    @Test
+    void flagIsNeverStored() {
+        // a Core without the field rejects a stored key that has it, during a rollout and after a rollback, so a flagged
+        // key is stored as an unflagged one, and a target pass reached over HTTP reads it without the flag
+        ApiKeyData key = new ApiKeyData();
+        key.setMadeByAliasPass(true);
+
+        String json = ProxyUtil.convertToString(key);
+
+        assertFalse(json.contains("madeByAliasPass"), json);
+        assertFalse(ProxyUtil.convertToObject(json, ApiKeyData.class).isMadeByAliasPass());
+    }
+
+    @Test
+    void initFromContextDoesNotCopyTheFlag() {
+        // the target pass hands its call on, to an interceptor in front of it or as its own callback
+        ApiKeyData aliasKey = perRequestKey();
+        aliasKey.setMadeByAliasPass(true);
+
+        ApiKeyData key = new ApiKeyData();
+        ApiKeyData.initFromContext(key, context(aliasKey, aliasPass("res-alias", RESOURCE_TARGET), null));
+
+        assertFalse(key.isMadeByAliasPass());
+    }
 }

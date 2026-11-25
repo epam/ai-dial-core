@@ -6,12 +6,17 @@ DIAL Core server cannot or will not process the request due to something that is
  - Resource URL is malformed
  - Both API key and Authorization headers are provided
  - Folder can't be downloaded
+ - With `spendingLimits.mode: enforce`, no budget covers the model on the Responses routes (`/openai/v1/responses`, `/openai/responses`): the client's own request gets the message as `text/plain`, with `x-should-retry: false`, because Codex CLI shows the message of a 400 and hides that of a 429. This holds directly and through an alias, but not for a background request through an alias, which gets the 429 below, as a call made with a per-request key does. With an interceptor in front of the model, global interceptors included, the refusal is made on the interceptor's call, and the client gets what the interceptor answers.
 
 #### 401 UNAUTHORIZED
 
 User credentials are not valid:
  - Bad Authorization header
  - Unknown API key
+
+#### 402 PAYMENT REQUIRED
+
+With `spendingLimits.mode: enforce`, no budget covers the model on the Anthropic Messages route (`/anthropic/v1/messages`): the client's own request gets the Anthropic error body of type `billing_error` with a message that names the model and the cost object, `x-should-retry: false` and no `retry-after`, streaming or not, directly and through an alias. Claude Code prints the message of a 402 at once; it calls a 429 of this kind a temporary server limit when it runs against a gateway. A call made with a per-request key gets the 429 below.
 
 #### 403 FORBIDDEN
 
@@ -83,7 +88,7 @@ On the Anthropic-compatible routes (`/anthropic/*`) the response body has the An
 
 On the Responses routes (`/openai/v1/responses`, `/openai/responses`) a reached day, week or month spend cap gives an error of type `usage_limit_reached` with `resets_at` and `limit_window_minutes` and `x-codex-primary-*` headers, which Codex CLI shows as a usage-limit message; see [Codex spend limits](codex-spend-limits.md).
 
-With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these spend-cap answers on both routes when the budgets that cover the model are used up, and a 429 with the DIAL error body that names the model and the cost object, `x-should-retry: false` and no `retry-after` when no budget covers the model.
+With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these spend-cap answers on both routes when the budgets that cover the model are used up. When no budget covers the model, a call made with a per-request key gets a 429 with the DIAL error body that names the model and the cost object, `x-should-retry: false` and no `retry-after`. A client's own request gets the 402 above on the Anthropic routes, and the 400 above on the Responses routes.
 
 #### 500 INTERNAL SERVER ERROR
 
