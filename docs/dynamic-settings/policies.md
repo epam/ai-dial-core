@@ -79,15 +79,19 @@ The paying budget is the one the check before the call picked: the first budget 
 priority, that covers the model and has room. The call's cost is charged to it after the call, in `shadow` mode as in
 `enforce` mode. `user.id` is the user's hash; `spending_limits` does not carry the user.
 
-In `enforce` mode a call with `no_budget` or `exhausted` is refused with 429, and Core writes no analytics row for
-a refused call. Those two outcomes therefore appear in `shadow` mode only, where the call goes through. The metric
-`dial_budget_rejections_total` counts refusals in both modes.
+In `enforce` mode a call with `exhausted` is refused with 429, `retry-after` and error code `budget_exhausted`, and a
+call with `no_budget` with 403 and error code `no_budget`, except on the Messages and Responses routes:
 
-Two exceptions to the 429, for a client's own request with `no_budget`, also through an alias. On the Anthropic
-Messages route it is refused with a 402 with the Anthropic `billing_error` body. On the Responses routes it is refused
-with a 400 whose body is the message as `text/plain`; a background request through an alias still gets the 429. With an interceptor in front of the model, global interceptors included, the refusal is made on the
-interceptor's call, so the client gets what the interceptor answers (see
-[Codex spend limits](../codex-spend-limits.md)).
+- On the Anthropic Messages route a client's own request gets a 402 with the Anthropic `billing_error` body, and on
+  the Responses routes a 400 whose body is the message as `text/plain`, also through an alias. A background Responses
+  request through an alias, and a call made with a per-request key, get a 429 with error code `no_budget`. Inside Core
+  the refusal stays a 429 on these routes, so an alias candidate and a router still fall back on it.
+- With an interceptor in front of the model, global interceptors included, the refusal is made on the interceptor's
+  call, so the client gets what the interceptor answers (see [Codex spend limits](../codex-spend-limits.md)).
+
+Core writes no analytics row for a refused call, so `no_budget` and `exhausted` appear in `shadow` mode only, where
+the call goes through. The metric `dial_budget_rejections_total` counts refusals in both modes, with `reason` set to
+the error code (`no_budget` or `budget_exhausted`) and `mode` to `spendingLimits.mode`.
 
 A row has no `spending_limits` when:
 

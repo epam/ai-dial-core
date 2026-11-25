@@ -77,7 +77,7 @@ instead of by the role `costLimit` (see the `spendingLimits` row in the README).
   - A background request (`"background": true`) through an alias gets the 429 below: its target pass runs over HTTP
     to Core's own address, where the alias pass cannot mark it.
   - A call made with a per-request key (an application's, an interceptor's, a translator's) gets a 429 with the DIAL
-    error body and the same message instead. Inside Core the refusal stays a 429 until the pass that answers the
+    error body, `code` `no_budget` and the same message instead. Inside Core the refusal stays a 429 until the pass that answers the
     client, so an alias candidate and a router still fall back on it.
   - When an interceptor runs in front of the model, global interceptors included, the refusal is made on the
     interceptor's call, so Codex gets what the interceptor answers: the 429 if it passes the answer on.

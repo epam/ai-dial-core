@@ -93,7 +93,7 @@ usage endpoint on `/anthropic/*` then describe a budget.
   through an alias. Only an admin adding a budget can make the call pass, so Claude Code shows
   `API Error: 402 <message>` at once instead of retrying it; a 429 would read as `Server is temporarily limiting
   requests (not your usage limit)` in Claude Code running against a gateway. A call made with a per-request key, an
-  application's, gets the 429 with the DIAL error body and the same message.
+  application's, gets the 429 with the DIAL error body, `code` `no_budget` and the same message.
 - **Counter unreadable.** A token or request limit that rejects decides the answer. Otherwise the request gets the
   `fetch_error` 429 below when a budget below 2^53 covers the model, and the 500 with `x-should-retry: true` when
   none does. The usage endpoint answers its 500.
