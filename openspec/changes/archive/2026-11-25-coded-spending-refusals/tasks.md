@@ -7,8 +7,7 @@
 - [x] 1.2 Tests first. `BudgetSpendCapsApiTest`: "No budget on chat completions" and "No budget in enforce mode"
       (`testNoBudgetOnChatCompletions`), "Budget used up on chat completions" (`testBudgetUsedUpOnChatCompletions`),
       "No budget in shadow mode" (`testShadowNoBudgetDoesNotReject`), "Used up in shadow mode"
-      (`testShadowExhaustedBudgetsDoNotReject`); `assertNoBudgetAnswer` expects 403 and `no_budget` for "Budget for
-      another model only", its Responses scenario, and "No budget, through an alias and a router" (one decide request).
+      (`testShadowExhaustedBudgetsDoNotReject`); `assertNoBudgetAnswer` (the per-request-key 429 of #2360) expects `error.code` `no_budget`.
       `BudgetEnforcerTest`: the no-budget results are 403 with code `no_budget`, the exhausted ones 429 with
       `budget_exhausted`
 - [x] 1.3 Implement D1: the refusal-code enum with every M2 code and its status; `RateLimitResult` carries the code and

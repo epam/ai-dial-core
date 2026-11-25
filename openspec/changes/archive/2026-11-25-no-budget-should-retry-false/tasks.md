@@ -25,14 +25,14 @@
       `docs/codex-spend-limits.md`, the 429 paragraph of `docs/error_codes.md`, and the 429 `@ApiResponse`
       descriptions on `MessagesController.handle` and `ResponsesController.handle` say the answer carries
       `x-should-retry: false` and no `retry-after`; each reads the same as the requirement
-- [ ] 1.6 Claude Code calling a model that no budget of the project covers shows the error on the first request,
-      with no retries (deferred: needs a dev environment with this build and budgets in enforce mode)
+- [x] 1.6 Claude Code calling a model that no budget of the project covers shows the error on the first request,
+      with no retries (checked with Claude Code 2.1.332 against Core run locally in enforce mode, on the answer
+      `no-budget-reason-on-messages` gives the client's own request since)
 - [x] 1.7 `./gradlew checkstyleMain checkstyleTest` and
       `./gradlew :server:test --tests "*BudgetSpendCapsApiTest" --tests "*BudgetEnforcerTest" --tests "*RateLimiterTest" --tests "*SpendCapCheckTest" --tests "*MessagesControllerLimitTest" --tests "*ResponsesControllerTest" --tests "*MessagesSpendLimitApiTest" --tests "*ResponsesSpendLimitApiTest"`,
       then `npx -y @fission-ai/openspec@1.14.3 validate no-budget-should-retry-false --strict`
 
 ## Workflow follow-up
 
-- Write `review.md`, archive with `npx -y @fission-ai/openspec@1.14.3 archive no-budget-should-retry-false -y`, then
-  `npx -y @fission-ai/openspec@1.14.3 validate --specs --strict`.
-- One local commit, staging explicit paths. No push and no PR until the owner has reviewed it.
+- Write `review.md`, archive with `npx -y @fission-ai/openspec@1.14.3 archive no-budget-should-retry-false -y --skip-specs`
+  (the later changes carry its requirement text), then `npx -y @fission-ai/openspec@1.14.3 validate --specs --strict`.

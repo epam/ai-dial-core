@@ -1,19 +1,19 @@
 # Review
 
 ## What shipped
-In #2349: the "no budget for the model" rejection on `POST /anthropic/v1/messages`, `POST /openai/v1/responses` and
-`POST /openai/responses` carries `x-should-retry: false`, directly and through an alias. Status, body, no
-`retry-after` and no spend header as before; chat completions and the other routes unchanged. Docs: the two
-spend-limit pages, `docs/error_codes.md`, the 429 `@ApiResponse` text of both controllers.
+
+The no-budget 429 on Messages and the Responses routes carries `x-should-retry: false` and no `retry-after`, directly and through an alias. Docs: `anthropic-spend-limits.md`, `codex-spend-limits.md`, `error_codes.md`, and the OpenAPI 429 text of both controllers.
 
 ## Verification
-Checkstyle and `BudgetSpendCapsApiTest`, `BudgetEnforcerTest`, `RateLimiterTest`, `SpendCapCheckTest`,
-`MessagesControllerLimitTest`, `ResponsesControllerTest`, `MessagesSpendLimitApiTest`, `ResponsesSpendLimitApiTest`
-pass. `validate no-budget-should-retry-false --strict` passes.
+
+- Checkstyle and `BudgetSpendCapsApiTest`, `BudgetEnforcerTest`, `RateLimiterTest`, `SpendCapCheckTest`, `MessagesControllerLimitTest`, `ResponsesControllerTest`, `MessagesSpendLimitApiTest`, `ResponsesSpendLimitApiTest`: green.
+- Claude Code 2.1.332 against Core run locally in enforce mode: the no-budget refusal shown after one request.
 
 ## Drift from design.md
+
 None.
 
 ## Not done
-1.6, Claude Code against a dev environment (deferred: needs this build with budgets enforced). The 429 status is
-superseded by `coded-spending-refusals`, archived right after this change.
+
+- The spec delta is not merged: `no-budget-400-on-responses` and `no-budget-reason-on-messages` modified the same requirement and carry this change's `x-should-retry: false` in their own text, so this change is archived with `--skip-specs`.
+- Since those changes, the client's own request gets 400 on Responses and 402 on Messages; the 429 with the header stays for a call made with a per-request key.

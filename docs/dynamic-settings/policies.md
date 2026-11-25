@@ -79,11 +79,19 @@ The paying budget is the one the check before the call picked: the first budget 
 priority, that covers the model and has room. The call's cost is charged to it after the call, in `shadow` mode as in
 `enforce` mode. `user.id` is the user's hash; `spending_limits` does not carry the user.
 
-In `enforce` mode a call with `no_budget` is refused with 403 and error code `no_budget`, and a call with
-`exhausted` with 429, `retry-after` and error code `budget_exhausted`. Core writes no analytics row for a refused
-call, so those two outcomes appear in `shadow` mode only, where the call goes through. The metric
-`dial_budget_rejections_total` counts refusals in both modes, with `reason` set to the error code (`no_budget` or
-`budget_exhausted`) and `mode` to `spendingLimits.mode`.
+In `enforce` mode a call with `exhausted` is refused with 429, `retry-after` and error code `budget_exhausted`, and a
+call with `no_budget` with 403 and error code `no_budget`, except on the Messages and Responses routes:
+
+- On the Anthropic Messages route a client's own request gets a 402 with the Anthropic `billing_error` body, and on
+  the Responses routes a 400 whose body is the message as `text/plain`, also through an alias. A background Responses
+  request through an alias, and a call made with a per-request key, get a 429 with error code `no_budget`. Inside Core
+  the refusal stays a 429 on these routes, so an alias candidate and a router still fall back on it.
+- With an interceptor in front of the model, global interceptors included, the refusal is made on the interceptor's
+  call, so the client gets what the interceptor answers (see [Codex spend limits](../codex-spend-limits.md)).
+
+Core writes no analytics row for a refused call, so `no_budget` and `exhausted` appear in `shadow` mode only, where
+the call goes through. The metric `dial_budget_rejections_total` counts refusals in both modes, with `reason` set to
+the error code (`no_budget` or `budget_exhausted`) and `mode` to `spendingLimits.mode`.
 
 A row has no `spending_limits` when:
 

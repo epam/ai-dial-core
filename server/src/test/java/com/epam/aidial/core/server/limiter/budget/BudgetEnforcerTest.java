@@ -361,8 +361,10 @@ class BudgetEnforcerTest {
 
         RateLimitResult result = enforcer.checkWithSpendCaps(context, model, NOW, SCHEDULE).result();
 
-        assertEquals(HttpStatus.FORBIDDEN, result.status());
+        // the Messages and Responses routes keep a 429 inside Core and answer their client in their own way
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
         assertEquals("no_budget", result.errorCode());
+        assertTrue(result.isNoBudget());
         assertTrue(result.isClientRetryDisabled());
         assertNull(result.spendCaps());
         assertEquals(-1, result.replyAfterSeconds());

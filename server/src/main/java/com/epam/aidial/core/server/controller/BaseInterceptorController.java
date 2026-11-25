@@ -18,6 +18,7 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
@@ -56,6 +57,13 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
     protected abstract CollectResponseAttachmentsFn createAttachmentFn(Proxy proxy, ProxyContext context);
 
     protected abstract BufferingReadStream.BaseEventListener createListener(Proxy proxy, ProxyContext context);
+
+    /**
+     * Removes from the interceptor's answer the headers that only Core may set on this route.
+     */
+    protected void removeCoreHeaders(MultiMap headers) {
+        // none by default
+    }
 
     public Future<?> handle() {
         List<String> interceptors = context.getInterceptors();
@@ -189,6 +197,7 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
 
         HttpServerResponse response = context.getResponse();
         ProxyUtil.handleChunkedResponse(response, proxyResponse);
+        removeCoreHeaders(response.headers());
 
         responseStream.pipe()
                 .endOnFailure(false)

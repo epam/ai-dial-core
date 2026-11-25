@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.limiter.SpendReadException;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import io.micrometer.core.instrument.Metrics;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
@@ -177,14 +178,19 @@ public class BudgetEnforcer {
      * tells nothing about other people's budgets.
      *
      * @param isWithSpendCaps the routes that report spend caps tell their client not to retry: only an admin adding
-     *                        a budget can make the call pass
+     *                        a budget can make the call pass. They also answer the refusal in their own way
      */
     private static RateLimitResult rejectNoBudget(SpendingLimits settings, ExtractedClaims claims, String costObject, Model model,
                                                   boolean isWithSpendCaps) {
+        // a user reads the message as it is, in Codex CLI and Claude Code; it keeps the model and the cost object for the admin
+        String message = "No DIAL spend limit is assigned for " + model.getName() + " in project " + costObject
+                + ". Ask your DIAL admin to assign one.";
         SpendingRefusal refusal = SpendingRefusal.NO_BUDGET;
+        // the Messages and Responses routes answer their client in their own way and keep a 429 inside Core, which
+        // an alias pass and a router fall back on; every other route answers the refusal's own status
+        HttpStatus status = isWithSpendCaps ? HttpStatus.TOO_MANY_REQUESTS : refusal.status();
         return reject(settings, refusal, claims.userId(), costObject, model, new RateLimitResult(
-                refusal.status(), "No budget covers " + model.getName() + " for cost object " + costObject,
-                "You have no budget for this model", -1, null, null, isWithSpendCaps, refusal.code()));
+                status, message, "You have no budget for this model", -1, null, null, isWithSpendCaps, true, refusal.code()));
     }
 
     private static RateLimitResult buildExhaustedResult(String costObject, @Nullable String displayMessage, Outcome outcome, long timestamp) {
@@ -192,7 +198,7 @@ public class BudgetEnforcer {
         long retryAfter = Math.max(1, Math.ceilDiv(outcome.earliestResetAt - timestamp, 1000L));
         SpendingRefusal refusal = SpendingRefusal.BUDGET_EXHAUSTED;
         return new RateLimitResult(refusal.status(), "Budget exhausted for cost object " + costObject,
-                displayMessage, retryAfter, null, null, false, refusal.code());
+                displayMessage, retryAfter, null, null, false, false, refusal.code());
     }
 
     /**

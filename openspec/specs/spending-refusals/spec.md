@@ -2,19 +2,28 @@
 
 ## Purpose
 How Core refuses a call that budgets cannot pay when `spendingLimits.mode` is `enforce`: each refusal has a code,
-written to `error.code` of the DIAL error body, and the status that fits it (403 when no budget can pay, 429 when a
-budget is used up until it resets). It also covers how `shadow` mode meters the refusals it does not make.
+written to `error.code` of the DIAL error body, and the status that fits it (403 when no budget can pay, on every route but
+the Messages and Responses ones, which answer in their own way; 429 when a budget is used up until it resets). It also covers how `shadow` mode meters the refusals it does not make.
 
 ## Requirements
 
 ### Requirement: No budget refused with 403
-With `spendingLimits.mode` `enforce`, when no budget of a JWT caller's cost object covers the model of a call to a deployment that is not translated, Core SHALL refuse the call before contacting the upstream with 403 and the DIAL error body `{"error":{"code":"no_budget","message":…,"display_message":…}}`. The message SHALL name only the model and the caller's own cost object, and the answer SHALL have no `retry-after`.
+With `spendingLimits.mode` `enforce`, when no budget of a JWT caller's cost object covers the model of a call to a deployment that is not translated, on any route but `POST /anthropic/v1/messages`, `POST /openai/v1/responses` and `POST /openai/responses`, Core SHALL refuse the call before contacting the upstream with 403 and the DIAL error body with `error.code` `no_budget`, the message of "No budget for the model" and no `retry-after`.
 
 #### Scenario: No budget on chat completions
 - **WHEN** a caller whose token carries project `projA` has a budget in `projA` only for another model and sends a
   chat completions request for `gpt-translated`
 - **THEN** Core answers 403 without calling the upstream, with `error.code` `no_budget`, `error.message`
-  `No budget covers gpt-translated for cost object projA`, and no `retry-after` and no `x-should-retry`
+  `No DIAL spend limit is assigned for gpt-translated in project projA. Ask your DIAL admin to assign one.`, and no
+  `retry-after` and no `x-should-retry`
+
+### Requirement: No budget code on the Messages and Responses routes
+On `POST /anthropic/v1/messages`, `POST /openai/v1/responses` and `POST /openai/responses` the no-budget answers of the spend-limit-reporting capability SHALL apply. Where one has the DIAL error body, its `error.code` SHALL be `no_budget`.
+
+#### Scenario: Responses call with a per-request key
+- **WHEN** a caller with no budget for `gpt-spend` calls an application, and the application calls `gpt-spend`
+  through `POST /openai/v1/responses` with its per-request key
+- **THEN** Core answers the application's call with 429 and the DIAL error body with `error.code` `no_budget`
 
 ### Requirement: Used-up budget refused with 429
 With `spendingLimits.mode` `enforce`, when every budget that covers the model is used up, Core SHALL refuse the call with 429 and `retry-after`. Where the route answers with the DIAL error body, `error.code` SHALL be `budget_exhausted`.
