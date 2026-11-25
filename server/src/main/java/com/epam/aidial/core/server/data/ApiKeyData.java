@@ -67,7 +67,7 @@ public class ApiKeyData {
     private int interceptorIndex = -1;
     // the deployment an alias pass lends its target pass the right to call
     private String lentDeployment;
-    // a Responses alias pass made this key for its target pass; a key made from this one does not copy it. Kept in memory
+    // a Responses or Messages alias pass made this key for its target pass; a key made from this one does not copy it. Kept in memory
     // only, for the target pass served in process: a Core without this field rejects a stored key that has it
     @JsonIgnore
     private boolean aliasTargetKey;

@@ -441,10 +441,103 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
         try (TestWebServer server = upstreams(upstreamCalls)) {
             Response response = postMessages("claude-spend", USER_A);
 
-            assertNoBudgetAnswer(response, "claude-spend");
+            assertNoBudgetMessagesAnswer(response, "claude-spend");
             assertEquals(0, upstreamCalls.get());
-            // the DIAL error body, not the Anthropic shape with its top-level "type"
-            assertNull(parse(response.body()).get("type"), response.body());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testNoBudgetOnStreamingMessages() {
+        budgetFor("projA/a1", 10, "10", null, List.of("claude-other"));
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            Response response = postStreamingMessages("claude-spend", USER_A);
+
+            assertNoBudgetMessagesAnswer(response, "claude-spend");
+            assertEquals(0, upstreamCalls.get());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testNoBudgetRouterCalledDirectlyOnMessages() {
+        budgetFor("projA/a1", 10, "10", null, List.of("claude-other"));
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            AtomicInteger decisions = decide(server, "m1");
+
+            Response response = postMessages("r1", USER_A);
+
+            assertNoBudgetMessagesAnswer(response, "m1");
+            assertEquals(3, decisions.get());
+            assertEquals(0, upstreamCalls.get());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testNoBudgetRouterCalledDirectlyChoosesAliasOnMessages() {
+        // the candidate alias pass runs in the client's own request, so it answers the 402 once no decision is left
+        budgetFor("projA/a1", 10, "10", null, List.of("claude-other"));
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            AtomicInteger decisions = decideAliasOfM1(server);
+
+            Response response = postMessages("r1", USER_A);
+
+            assertNoBudgetMessagesAnswer(response, "m1");
+            assertEquals(3, decisions.get());
+            assertEquals(0, upstreamCalls.get());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testNoBudgetThroughAliasOnMessages() {
+        budgetFor("projA/a1", 10, "10", null, List.of("claude-other"));
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            Response plain = postMessages("alias-m1", USER_A);
+            Response streaming = postStreamingMessages("alias-m1", USER_A);
+
+            assertNoBudgetMessagesAnswer(plain, "m1");
+            assertNoBudgetMessagesAnswer(streaming, "m1");
+            assertEquals(0, upstreamCalls.get());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testUpstreamRefusalHeaderRemovedOnMessages() throws IOException {
+        budget("projA/a1", 10, "10", null);
+        String sse = readFixture("anthropic-messages-sse.txt");
+        try (TestWebServer server = upstreams(null)) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                boolean isStreaming = request.getBody().readUtf8().contains("\"stream\":true");
+                MockResponse response = new MockResponse().setResponseCode(200).setHeader(REFUSAL, "no_budget");
+                return isStreaming
+                        ? response.setHeader("Content-Type", "text/event-stream").setChunkedBody(sse, 200)
+                        : response.setHeader("Content-Type", "application/json").setBody(MESSAGES_ANSWER);
+            });
+            server.map(HttpMethod.POST, MESSAGES_PATH + "/count_tokens", request -> TestWebServer.createResponse(200,
+                    "{\"input_tokens\":3}", "Content-Type", "application/json", REFUSAL, "no_budget"));
+
+            List<Response> answers = List.of(
+                    postMessages("claude-spend", USER_A),
+                    postStreamingMessages("claude-spend", USER_A),
+                    postMessages("alias-m1", USER_A),
+                    postStreamingMessages("alias-m1", USER_A),
+                    postMessages("app-claude", USER_A),
+                    postStreamingMessages("app-claude", USER_A),
+                    send(HttpMethod.POST, MESSAGES_PATH + "/count_tokens", null,
+                            "{\"model\":\"claude-spend\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                            "content-type", "application/json", "authorization", USER_A, "anthropic-version", "2023-06-01"));
+
+            for (Response answer : answers) {
+                assertEquals(200, answer.status(), answer.body());
+                assertNull(header(answer, REFUSAL), answer.headers().toString());
+            }
         }
     }
 
@@ -500,6 +593,7 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
         budgetFor("projA/a1", 10, "10", null, List.of("claude-other"));
         AtomicReference<Response> toModel = new AtomicReference<>();
         AtomicReference<Response> toAlias = new AtomicReference<>();
+        AtomicReference<Response> toMessages = new AtomicReference<>();
         try (TestWebServer server = upstreams(null)) {
             server.map(HttpMethod.POST, APP_CHAIN_PATH, request -> {
                 String key = request.getHeader("Api-Key");
@@ -507,6 +601,8 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
                         "content-type", "application/json", "api-key", key));
                 toAlias.set(send(HttpMethod.POST, RESPONSES_PATH, null, responsesBody("alias-m1"),
                         "content-type", "application/json", "api-key", key));
+                toMessages.set(send(HttpMethod.POST, MESSAGES_PATH, null, messagesBody("alias-m1"),
+                        "content-type", "application/json", "api-key", key, "anthropic-version", "2023-06-01"));
                 return TestWebServer.createResponse(200, CHAT_ANSWER, "Content-Type", "application/json");
             });
 
@@ -516,6 +612,7 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
             assertEquals(200, outer.status(), outer.body());
             assertNoBudgetAnswer(toModel.get(), "gpt-spend");
             assertNoBudgetAnswer(toAlias.get(), "m1");
+            assertNoBudgetAnswer(toMessages.get(), "m1");
         }
     }
 
@@ -558,7 +655,7 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
 
             Response response = postMessages("strong", USER_A);
 
-            assertNoBudgetAnswer(response, "m1");
+            assertNoBudgetMessagesAnswer(response, "m1");
             assertEquals(3, decisions.get());
             assertEquals(0, upstreamCalls.get());
         }
@@ -1390,6 +1487,11 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
                 + "\"messages\":[{\"role\":\"user\",\"content\":\"Knock, knock\"}]}";
     }
 
+    private Response postStreamingMessages(String model, String authorization) {
+        return send(HttpMethod.POST, MESSAGES_PATH, null, messagesBody(model).replace("\"stream\":false", "\"stream\":true"),
+                "content-type", "application/json", "authorization", authorization, "anthropic-version", "2023-06-01");
+    }
+
     private Response postResponses(String model, String authorization) {
         return send(HttpMethod.POST, RESPONSES_PATH, null, responsesBody(model),
                 "content-type", "application/json", "authorization", authorization);
@@ -1470,7 +1572,7 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
 
     /**
      * The no-budget 429 in the DIAL format: a client must not retry it, and there is no reset or cap to report. It is the
-     * answer on Messages, and on Responses to a caller outside Core with a per-request key.
+     * answer to a caller outside Core with a per-request key, on Messages and Responses.
      */
     private static void assertNoBudgetAnswer(Response response, String model) {
         assertEquals(429, response.status(), response.body());
@@ -1483,6 +1585,23 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
         assertNull(header(response, REFUSAL), response.headers().toString());
         assertFalse(hasHeaderWithPrefix(response, UNIFIED), response.headers().toString());
         assertFalse(hasHeaderWithPrefix(response, "x-codex-"), response.headers().toString());
+    }
+
+    /**
+     * The no-budget refusal a client's own Messages request gets: 402 with the Anthropic {@code billing_error} body, also
+     * for a streaming request.
+     */
+    private static void assertNoBudgetMessagesAnswer(Response response, String model) {
+        assertEquals(402, response.status(), response.body());
+        assertTrue(header(response, "content-type").startsWith("application/json"), response.headers().toString());
+        JsonNode body = parse(response.body());
+        assertEquals("error", body.get("type").asText(), response.body());
+        assertEquals("billing_error", body.get("error").get("type").asText(), response.body());
+        assertEquals(noBudgetMessage(model), body.get("error").get("message").asText());
+        assertEquals("false", header(response, "x-should-retry"), response.headers().toString());
+        assertNull(header(response, "retry-after"));
+        assertNull(header(response, REFUSAL), response.headers().toString());
+        assertFalse(hasHeaderWithPrefix(response, UNIFIED), response.headers().toString());
     }
 
     /**

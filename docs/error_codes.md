@@ -14,6 +14,10 @@ User credentials are not valid:
  - Bad Authorization header
  - Unknown API key
 
+#### 402 PAYMENT REQUIRED
+
+With `spendingLimits.mode: enforce`, no budget covers the model on the Anthropic Messages route (`/anthropic/v1/messages`): the client's own request gets the Anthropic error body of type `billing_error` with a message that names the model and the cost object, `x-should-retry: false` and no `retry-after`, streaming or not, directly and through an alias. Claude Code prints the message of a 402 at once; it calls a 429 of this kind a temporary server limit when it runs against a gateway. A call made with a per-request key gets the 429 below.
+
 #### 403 FORBIDDEN
 
 User is authenticated by Core but doesn't have insufficient permissions to a resource or action such that:
@@ -84,7 +88,7 @@ On the Anthropic-compatible routes (`/anthropic/*`) the response body has the An
 
 On the Responses routes (`/openai/v1/responses`, `/openai/responses`) a reached day, week or month spend cap gives an error of type `usage_limit_reached` with `resets_at` and `limit_window_minutes` and `x-codex-primary-*` headers, which Codex CLI shows as a usage-limit message; see [Codex spend limits](codex-spend-limits.md).
 
-With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these spend-cap answers on both routes when the budgets that cover the model are used up. When no budget covers the model, the answer is a 429 with the DIAL error body that names the model and the cost object, `x-should-retry: false` and no `retry-after`. That holds on the Anthropic routes, and on the Responses routes for a call made with a per-request key; a client's own Responses request gets the 400 above.
+With `spendingLimits.mode: enforce`, a caller signed in with a JWT gets these spend-cap answers on both routes when the budgets that cover the model are used up. When no budget covers the model, a call made with a per-request key gets a 429 with the DIAL error body that names the model and the cost object, `x-should-retry: false` and no `retry-after`. A client's own request gets the 402 above on the Anthropic routes, and the 400 above on the Responses routes.
 
 #### 500 INTERNAL SERVER ERROR
 

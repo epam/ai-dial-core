@@ -79,7 +79,6 @@ import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
 
-    private static final String NO_BUDGET_REFUSAL = "no_budget";
     private static final String TEXT_PLAIN = "text/plain; charset=utf-8";
     private static final String X_SHOULD_RETRY = "x-should-retry";
 
@@ -317,15 +316,11 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     /**
      * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
-     * An alias pass leaves the headers its target pass wrote. The refusal mark goes only from an alias's target pass to
-     * its alias pass, so every other answer loses it, whoever sent it.
+     * An alias pass leaves the headers its target pass wrote.
      */
     private void putLimitHeaders(HttpServerResponse response, ProxyResponse proxyResponse) {
-        boolean isAliasPass = context.getDeployment() instanceof AliasPass;
-        if (!isAliasPass || !context.getApiKeyData().isAliasTargetKey()) {
-            response.headers().remove(Proxy.HEADER_DIAL_REFUSAL);
-        }
-        if (isAliasPass) {
+        removeRefusalMark(response.headers());
+        if (context.getDeployment() instanceof AliasPass) {
             return;
         }
         CodexLimitResponses.stripUpstreamCodexHeaders(response.headers());
@@ -364,7 +359,7 @@ public class ResponsesController extends BaseDeploymentPostController {
             respond(HttpStatus.NOT_FOUND, error.getMessage());
             log.warn("Deployment not found {}", deploymentId, error);
         } else if (error instanceof NoBudgetException noBudget) {
-            respondNoBudget(noBudget);
+            respondNoBudget(noBudget, rejection -> respond(buildNoBudgetTextAnswer(rejection)));
             log.warn("Deployment error {}", deploymentId, error);
         } else if (error instanceof HttpException httpException) {
             respond(httpException);
@@ -379,30 +374,12 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     /**
      * Codex CLI shows the message of a 400 but hides that of a 429, so the client's own request gets the refusal as a
-     * 400 with the message as text. Inside Core it stays a 429, which an alias pass and a router fall back on; an
-     * alias's target pass marks it, so that its alias pass answers its client as this pass would.
+     * 400 with the message as text.
      */
-    private void respondNoBudget(NoBudgetException rejection) {
-        if (context.isOriginalRequest()) {
-            Map<String, String> headers = new HashMap<>(rejection.getHeaders());
-            headers.put(HttpHeaders.CONTENT_TYPE.toString(), TEXT_PLAIN);
-            respond(new HttpException(HttpStatus.BAD_REQUEST, rejection.getReason(), headers));
-        } else if (context.getApiKeyData().isAliasTargetKey()) {
-            Map<String, String> headers = new HashMap<>(rejection.getHeaders());
-            headers.put(Proxy.HEADER_DIAL_REFUSAL, NO_BUDGET_REFUSAL);
-            respond(new HttpException(rejection.getStatus(), rejection.getMessage(), headers));
-        } else {
-            respond(rejection);
-        }
-    }
-
-    /**
-     * An alias pass answering its client with the no-budget refusal its target pass marked.
-     */
-    private boolean isNoBudgetOfTarget(ProxyResponse proxyResponse) {
-        return context.getDeployment() instanceof AliasPass && context.isOriginalRequest()
-                && proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode()
-                && NO_BUDGET_REFUSAL.equals(proxyResponse.headers().get(Proxy.HEADER_DIAL_REFUSAL));
+    private static HttpException buildNoBudgetTextAnswer(NoBudgetException rejection) {
+        Map<String, String> headers = new HashMap<>(rejection.getHeaders());
+        headers.put(HttpHeaders.CONTENT_TYPE.toString(), TEXT_PLAIN);
+        return new HttpException(HttpStatus.BAD_REQUEST, rejection.getReason(), headers);
     }
 
     /**
@@ -410,8 +387,7 @@ public class ResponsesController extends BaseDeploymentPostController {
      * target pass's other headers.
      */
     private Future<Void> answerNoBudgetOfTarget(Buffer body) {
-        // only Core's own refusal is marked, and it always has the DIAL error body
-        Buffer text = Buffer.buffer(JsonUtil.tryParse(body.getBytes()).path("error").path("message").asText());
+        Buffer text = Buffer.buffer(readNoBudgetMessage(body));
         context.setResponseBody(text);
         context.setResponseBodyTimestamp(System.currentTimeMillis());
         HttpServerResponse response = context.getResponse();
