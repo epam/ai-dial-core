@@ -175,9 +175,9 @@ public class ResponsesController extends BaseDeploymentPostController {
                     @ApiHeader(name = "x-codex-secondary-window-minutes", description = "Window of the secondary cap, as `x-codex-primary-window-minutes`"),
                     @ApiHeader(name = "x-codex-secondary-reset-at", description = "When the secondary cap resets, Unix seconds")
             })
-    @ApiResponse(code = 400, description = "Bad request, as a `text/plain` message. With enforced budgets, no budget for the "
-            + "model gives the client's own request, directly or through an alias (not a background one), the message "
-            + "naming the model and the cost object, with `x-should-retry: false` and no `retry-after`; with an "
+    @ApiResponse(code = 400, description = "Bad request. With enforced budgets, no budget for the model gives the client's "
+            + "own request, directly or through an alias (not a background one), a `text/plain` message naming the model "
+            + "and the cost object, with `x-should-retry: false` and no `retry-after`; with an "
             + "interceptor in front of the model, global interceptors included, the client gets what the interceptor answers",
             body = @ApiSchema(implementation = String.class), contentTypes = {"text/plain"},
             headers = @ApiHeader(name = "x-should-retry", description = "`false` on the no-budget refusal"))

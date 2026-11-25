@@ -1560,7 +1560,7 @@ paths:
               schema:
                 type: string
         "400":
-          description: "Bad request, as a `text/plain` message. With enforced budgets, no budget for the model gives the client's own request, directly or through an alias (not a background one), the message naming the model and the cost object, with `x-should-retry: false` and no `retry-after`; with an interceptor in front of the model, global interceptors included, the client gets what the interceptor answers"
+          description: "Bad request. With enforced budgets, no budget for the model gives the client's own request, directly or through an alias (not a background one), a `text/plain` message naming the model and the cost object, with `x-should-retry: false` and no `retry-after`; with an interceptor in front of the model, global interceptors included, the client gets what the interceptor answers"
           content:
             application/json:
               schema:
@@ -1940,7 +1940,7 @@ paths:
               schema:
                 type: string
         "400":
-          description: "Bad request, as a `text/plain` message. With enforced budgets, no budget for the model gives the client's own request, directly or through an alias (not a background one), the message naming the model and the cost object, with `x-should-retry: false` and no `retry-after`; with an interceptor in front of the model, global interceptors included, the client gets what the interceptor answers"
+          description: "Bad request. With enforced budgets, no budget for the model gives the client's own request, directly or through an alias (not a background one), a `text/plain` message naming the model and the cost object, with `x-should-retry: false` and no `retry-after`; with an interceptor in front of the model, global interceptors included, the client gets what the interceptor answers"
           content:
             application/json:
               schema:
