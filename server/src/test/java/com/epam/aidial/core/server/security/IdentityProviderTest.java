@@ -908,6 +908,54 @@ public class IdentityProviderTest {
     }
 
     @Test
+    public void testCostObjectPath() throws JwkException {
+        settings.put("costObjectPath", "p0");
+        try (LogContext logs = LogContext.create()) {
+            assertEquals("project1", extractCostObject(Map.of("p0", "project1")));
+            assertEquals(List.of(), logs.warnings());
+        }
+    }
+
+    @Test
+    public void testProjectPathIsDeprecated() throws JwkException {
+        settings.put("projectPath", "azp");
+        try (LogContext logs = LogContext.create()) {
+            assertEquals("project1", extractCostObject(Map.of("azp", "project1")));
+            assertEquals(List.of("Identity provider setting projectPath is deprecated, use costObjectPath"), logs.warnings());
+        }
+    }
+
+    @Test
+    public void testCostObjectPathWinsOverProjectPath() throws JwkException {
+        settings.put("costObjectPath", "p0");
+        settings.put("projectPath", "azp");
+        try (LogContext logs = LogContext.create()) {
+            assertEquals("projA", extractCostObject(Map.of("p0", "projA", "azp", "projB")));
+            assertEquals(List.of("Identity provider setting projectPath is ignored: costObjectPath is set"), logs.warnings());
+        }
+    }
+
+    private String extractCostObject(Map<String, String> claims) throws JwkException {
+        IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
+        Algorithm algorithm = Algorithm.RSA256((RSAPublicKey) keyPair.getPublic(), (RSAPrivateKey) keyPair.getPrivate());
+        var builder = JWT.create().withHeader(Map.of("kid", "kid1"));
+        claims.forEach(builder::withClaim);
+        String token = builder.sign(algorithm);
+
+        Jwk jwk = mock(Jwk.class);
+        when(jwk.getPublicKey()).thenReturn(keyPair.getPublic());
+        when(jwkProvider.get(eq("kid1"))).thenReturn(jwk);
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        Future<ExtractedClaims> result = identityProvider.extractClaimsFromJwt(JWT.decode(token));
+        assertTrue(result.succeeded());
+        return result.result().project();
+    }
+
+    @Test
     public void testExtractClaims_30() throws JwkException {
         settings.put("audience", "dial");
         IdentityProvider identityProvider = new IdentityProvider(settings, vertx, taskExecutor, client, url -> jwkProvider, factory, "DEBUG");
@@ -1258,6 +1306,13 @@ public class IdentityProviderTest {
                     .map(event -> "[" + event.getLevel() + "] " + event.getFormattedMessage())
                     .toList();
             assertEquals(List.of(expected), actual);
+        }
+
+        public List<String> warnings() {
+            return appender.list.stream()
+                    .filter(event -> event.getLevel() == Level.WARN)
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .toList();
         }
 
         public static LogContext create() {
