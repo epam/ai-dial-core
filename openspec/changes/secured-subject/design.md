@@ -69,7 +69,7 @@ was submitted, unlike its other submit-time fields.
 | | Today | After |
 |---|---|---|
 | Analytics row, empty subject (default) | Key flag read | Key flag read, then one list-is-empty check |
-| Analytics row, with rules | - | Each rule converted, then a JSON path read of the claims per claim rule (`roles`/`email` read fields) |
+| Analytics row, with rules | - | Each rule converted, then a JSON path read of the claims per claim rule (`roles`/`email` read fields), and a `Pattern.compile` per `REGEX` target, as the shared matcher does |
 | Redis / blob calls, body copies | - | None added |
 
 Not measured: the cost of a rule check is the cost the budget subject match already pays per model call.

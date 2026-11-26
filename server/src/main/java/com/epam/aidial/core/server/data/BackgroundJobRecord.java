@@ -33,7 +33,8 @@ public record BackgroundJobRecord(
         String conversationId,
         String sessionId,
         String jobTitle,
-        // the caller was secured at submit (a secured key or a secured role); the name is kept for stored records
+        // the caller was secured at submit (a secured key, or matching analytics.securedSubject); the name is kept for
+        // stored records
         boolean securedApiKey,
         String userId,
         List<String> userRoles,

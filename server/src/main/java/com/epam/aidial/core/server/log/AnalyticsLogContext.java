@@ -52,7 +52,7 @@ public class AnalyticsLogContext {
     private final String conversationId;
     private final String sessionId;
     private final String jobTitle;
-    // the caller is secured: a secured key or a secured role (see ProxyContext#isSecured)
+    // the caller is secured: a secured key, or a caller matching analytics.securedSubject (see ProxyContext#isSecured)
     private final boolean secured;
     // what the pre-call budget check found for a JWT caller's model call; null when budgets were not considered
     private final BudgetCheck budgetCheck;

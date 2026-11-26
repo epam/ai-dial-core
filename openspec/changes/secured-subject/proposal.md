@@ -49,4 +49,4 @@ None.
   name, so records stay readable across an upgrade both ways), and the settings singleton wiring.
 - Docs: the README dynamic-settings table and `docs/dynamic-settings/keys.md`.
 - Per request: with an empty subject, one list check per analytics row. With rules, one JSON path read of the claims per
-  claim rule per row. No Redis or blob calls.
+  claim rule and one pattern compile per `REGEX` target, per row. No Redis or blob calls.

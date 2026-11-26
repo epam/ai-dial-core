@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.AnalyticsConfig;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
@@ -300,14 +301,16 @@ public class ProxyContext {
 
     /**
      * Whether the caller's analytics rows are written without bodies: the original key is {@code secured}, or the caller
-     * matches {@code analytics.securedSubject} in the config in force now. An empty subject matches nobody.
+     * matches {@code analytics.securedSubject} in the config in force now. An empty subject matches nobody, and so does
+     * a file config with {@code "analytics": null}, which no validation rejects.
      */
     public boolean isSecured() {
         if (key != null && key.isSecured()) {
             return true;
         }
-        List<PolicySubjectRule> subject = getConfig().getAnalytics().getSecuredSubject();
-        return !subject.isEmpty() && RuleMatcher.match(this, RuleMatcher.toRules(subject));
+        AnalyticsConfig analytics = getConfig().getAnalytics();
+        List<PolicySubjectRule> subject = analytics == null ? null : analytics.getSecuredSubject();
+        return subject != null && !subject.isEmpty() && RuleMatcher.match(this, RuleMatcher.toRules(subject));
     }
 
     /**
