@@ -138,6 +138,8 @@ A row has the fields every row has and none that others lack:
 | `response.body`             | empty for an answer Core gave itself: the text is in the WARN line                             |
 | `token_usage`               | absent                                                                                         |
 | `response.upstream_uri`     | absent when the upstreams were used up, present for a connection that failed                   |
+| `request.body`              | empty for an answer given before the body is read (`403`, `404`, `415`, Core's `429`)          |
+| `execution_path`            | absent for an answer given before the per-request key exists (Core's `429`, `403`, `404`, `415`, `400`) |
 
 `response.status` is not the status the origin sent, which the row does not carry (the INFO line `Received header from origin` has
 it). Core never relays a retriable status. When no attempt is left it answers `503 Service is not available` if **every** upstream of
@@ -152,7 +154,7 @@ case even though the same answer logs `Responding with error`. A request that is
 
 These events still write **no** row, with the setting on or off: `401` and `413` (Core logs nothing for them), the call to an
 interceptor and the pass of a router that fails before it decides (their specs say no row), a stream that breaks on a feature call, an
-MCP request or a route (another code path), WebSocket and the polling of a background job, and an origin's error answer that Core relays. A consumer must not read
+MCP request or a route (another code path), WebSocket and the polling of a background job; an origin's error answer that Core relays gets no row beyond its one. A consumer must not read
 `analytics.errorRows` as "every failure has a row".
 
 An analytics consumer that sums requests from the rows counts these requests too, with a status of `4xx` or `5xx`. During an outage of

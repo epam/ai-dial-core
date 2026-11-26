@@ -250,6 +250,15 @@ abstract class BaseErrorRowsApiTest extends ResourceBaseTest {
             };
         }
 
+        /** The headers and a Responses {@code response.created} event, which carries the response id, then the connection closes. */
+        static Script breaksAfterResponseCreated() {
+            return out -> {
+                write(out, STREAM_HEADERS + chunk("event: response.created\ndata: {\"type\":\"response.created\","
+                        + "\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"in_progress\"}}\n\n"));
+                Thread.sleep(150);
+            };
+        }
+
         /** A healthy stream of ten events, 300 ms apart, ending with the usage: long enough for a client to leave in the middle. */
         static Script slowStream() {
             return out -> {

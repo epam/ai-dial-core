@@ -307,6 +307,21 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
         assertTrue(analyticsRows.stream().anyMatch(row -> row.getDecision() != null));
     }
 
+    @Test
+    @DialConfigLocation("dial-config/router-decision.json")
+    void testDecidedUnknownCandidate() {
+        // router-deployment "Decision failures": the chosen candidate is never resolved, so only the router's own rows are written
+        try (TestWebServer router = new TestWebServer(4848, request -> TestWebServer.createResponse(200,
+                "{\"candidates\": [\"no-such-model\"]}", "content-type", "application/json"))) {
+            verify(send(HttpMethod.POST, "/openai/deployments/r-two/chat/completions", null, CHAT_BODY,
+                    "content-type", "application/json"), 502);
+        }
+
+        sleep();
+        assertTrue(analyticsRows.stream().allMatch(row -> row.getDecision() != null), () -> "rows " + analyticsRows.stream()
+                .map(row -> row.getDeploymentName() + "/" + row.getResponseStatusCode()).toList());
+    }
+
     // "Error rows for answers Core gives itself": feature calls, the MCP proxy and routes
 
     @Test
@@ -637,6 +652,22 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
 
             // no event carried a response id, so no job was recorded and no poller writes a row: this pass writes it
             assertErrorRow(rows(1).get(0), "m-background", 200);
+        }
+    }
+
+    @Test
+    @SneakyThrows
+    void testBrokenStreamOfRecordedBackgroundJobWritesNoRow() {
+        try (RawOrigin origin = new RawOrigin(RAW_PORT, RawOrigin.breaksAfterResponseCreated())) {
+            putModel("m-background-job", adapterUrl("m-background-job"),
+                    ", \"responsesEndpoint\": \"http://localhost:" + RAW_PORT + "/openai/v1/responses\"");
+
+            ignoringFailure(() -> send(HttpMethod.POST, "/openai/v1/responses", null,
+                    "{\"model\":\"m-background-job\",\"input\":\"hi\",\"stream\":true,\"background\":true,\"store\":true}",
+                    "content-type", "application/json"));
+
+            // the first event carried the response id, so the job is recorded: its poller writes the terminal row, this pass none
+            rows(0);
         }
     }
 

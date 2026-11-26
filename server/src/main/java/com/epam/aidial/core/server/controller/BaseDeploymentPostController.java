@@ -145,11 +145,20 @@ public class BaseDeploymentPostController {
         }
     }
 
-    /** False for an interceptor call and an undecided decision-mode router: their specs say they write no error row. */
+    /**
+     * False for an interceptor call, an undecided decision-mode router, and a decided pass whose current candidate was not
+     * resolved (router-deployment "Decision failures"): their specs say they write no error row.
+     */
     protected boolean isErrorRowAllowed() {
         Deployment deployment = context.getDeployment();
-        return !(deployment instanceof Interceptor)
-                && !(deployment instanceof Router router && router.getMode() == Router.Mode.DECISION && context.getDecision() == null);
+        if (deployment instanceof Interceptor) {
+            return false;
+        }
+        RouterDecision decision = context.getDecision();
+        if (decision == null) {
+            return !(deployment instanceof Router router && router.getMode() == Router.Mode.DECISION);
+        }
+        return deployment != null && decision.current().equals(deployment.getName());
     }
 
     /**

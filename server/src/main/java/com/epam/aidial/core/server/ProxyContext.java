@@ -126,7 +126,7 @@ public class ProxyContext {
     private ServerWebSocket serverWebSocket;
     private boolean isStoreResponse;
     private boolean isBackgroundJob;
-    // set once the job record of a background request is being saved: from then on its poller writes the terminal row
+    // set once the job record of a streamed background request is being saved: from then on its poller writes the terminal row
     private boolean backgroundJobRecorded;
     // read from the log layout, which AsyncTaskExecutor may run on a virtual thread sharing this Vert.x context
     private final Map<String, Object> tracingAttributes = new ConcurrentHashMap<>();
