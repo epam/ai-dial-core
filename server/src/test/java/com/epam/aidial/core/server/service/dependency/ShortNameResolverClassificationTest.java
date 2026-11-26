@@ -1,8 +1,8 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.service.dependency;
 
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.ShortNameResolver.ClassifiedReference;
-import com.epam.aidial.core.server.service.ShortNameResolver.ReferenceForm;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolver.ClassifiedReference;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolver.ReferenceForm;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

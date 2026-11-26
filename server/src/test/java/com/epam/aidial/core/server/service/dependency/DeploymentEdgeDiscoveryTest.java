@@ -1,4 +1,4 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.service.dependency;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
@@ -7,8 +7,10 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.DiscoveredEdge.EdgeStatus;
-import com.epam.aidial.core.server.service.DiscoveryResult.DiscoveryIssue;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.dependency.DiscoveredEdge.EdgeStatus;
+import com.epam.aidial.core.server.service.dependency.DiscoveryResult.DiscoveryIssue;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.CollectionIssue;
 import com.epam.aidial.core.server.validation.CollectionIssueKind;

@@ -141,11 +141,11 @@ Class names are in `server/src/main/java/com/epam/aidial/core/server`.
 
 **New classes**
 - `controller/DependencyListController`: the route handler; chooses the policy, answers `403` for a per-request key, decides every status before the body.
-- `service/DependencyWalker`: the one exploration, the references of each examined resource, the list of each root.
-- `service/DependencyRequestParser` (`DependencyRequestBody`, `DependencyRoot`, `DependencyRequest`): the body, parsed with the `EncryptionService`.
-- `service/DependencyAccessPolicy`, `AdminAccessPolicy`, `InitiatorAccessPolicy`, `DependencyTypePolicy`: the two questions of D3 and the type rules.
-- `service/DependencyResource`, `DependencyRootEntry`, `DependencyListResponse`: the answer. A stored body is bound to its entity in `DependencyWalker.bindStored`.
-- Reference discovery: `DeploymentEdgeDiscovery`, `DiscoveredEdge`, `DiscoveryResult`, `ShortNameResolver`, `ShortNameResolution`, `SchemaReferenceResolver`, `FileConfigEntities`, `DependencyResourceNames`.
+- `service/dependency/DependencyWalker`: the one exploration, the references of each examined resource, the list of each root.
+- `service/dependency/DependencyRequestParser` (`DependencyRequestBody`, `DependencyRoot`, `DependencyRequest`): the body, parsed with the `EncryptionService`.
+- `service/dependency/DependencyAccessPolicy`, `AdminAccessPolicy`, `InitiatorAccessPolicy`, `DependencyTypePolicy`: the two questions of D3 and the type rules.
+- `service/dependency/DependencyResource`, `DependencyRootEntry`, `DependencyListResponse`: the answer. A stored body is bound to its entity in `DependencyWalker.bindStored`.
+- Reference discovery, also in `service/dependency`: `DeploymentEdgeDiscovery`, `DiscoveredEdge`, `DiscoveryResult`, `ShortNameResolver`, `ShortNameResolution`, `SchemaReferenceResolver`, `FileConfigEntities`, `DependencyResourceNames`.
 - Marker capture: `validation/MarkerRecorder`, `MarkerCollection`, `CollectionIssue`, `CollectionIssueKind`.
 
 **Existing classes, changed additively**

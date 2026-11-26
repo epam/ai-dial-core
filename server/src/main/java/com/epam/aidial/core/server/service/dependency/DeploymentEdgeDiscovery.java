@@ -1,16 +1,18 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.service.dependency;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.DiscoveredEdge.EdgeStatus;
-import com.epam.aidial.core.server.service.DiscoveryResult.DiscoveryIssue;
-import com.epam.aidial.core.server.service.SchemaReferenceResolver.SchemaResolution;
-import com.epam.aidial.core.server.service.ShortNameResolution.Origin;
-import com.epam.aidial.core.server.service.ShortNameResolver.ClassifiedReference;
-import com.epam.aidial.core.server.service.ShortNameResolver.ReferenceForm;
+import com.epam.aidial.core.server.service.ApplicationSchemaService;
+import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.dependency.DiscoveredEdge.EdgeStatus;
+import com.epam.aidial.core.server.service.dependency.DiscoveryResult.DiscoveryIssue;
+import com.epam.aidial.core.server.service.dependency.SchemaReferenceResolver.SchemaResolution;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolution.Origin;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolver.ClassifiedReference;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolver.ReferenceForm;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.CollectionIssue;
 import com.epam.aidial.core.server.validation.CollectionIssueKind;

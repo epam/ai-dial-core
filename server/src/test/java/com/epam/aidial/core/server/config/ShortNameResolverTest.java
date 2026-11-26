@@ -2,10 +2,10 @@ package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
-import com.epam.aidial.core.server.service.ShortNameResolution;
-import com.epam.aidial.core.server.service.ShortNameResolution.Origin;
-import com.epam.aidial.core.server.service.ShortNameResolution.Outcome;
-import com.epam.aidial.core.server.service.ShortNameResolver;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolution;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolution.Origin;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolution.Outcome;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolver;
 import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;

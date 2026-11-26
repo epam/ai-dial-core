@@ -1,7 +1,7 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.service.dependency;
 
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.DependencyRequestParser.DependencyRequest;
+import com.epam.aidial.core.server.service.dependency.DependencyRequestParser.DependencyRequest;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;

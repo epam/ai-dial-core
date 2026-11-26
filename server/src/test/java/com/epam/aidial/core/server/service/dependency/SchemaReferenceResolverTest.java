@@ -1,11 +1,11 @@
-package com.epam.aidial.core.server.service;
+package com.epam.aidial.core.server.service.dependency;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.config.MergedConfigStore;
-import com.epam.aidial.core.server.service.SchemaReferenceResolver.SchemaResolution;
-import com.epam.aidial.core.server.service.ShortNameResolution.Origin;
-import com.epam.aidial.core.server.service.ShortNameResolution.Outcome;
+import com.epam.aidial.core.server.service.dependency.SchemaReferenceResolver.SchemaResolution;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolution.Origin;
+import com.epam.aidial.core.server.service.dependency.ShortNameResolution.Outcome;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
