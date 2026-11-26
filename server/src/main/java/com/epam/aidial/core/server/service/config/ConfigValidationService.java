@@ -203,7 +203,10 @@ public class ConfigValidationService {
                     }
                 }
                 case AdminPackageManifest packageManifest -> {
-                    String error = PolicyAssignmentValidator.validatePackage(packageManifest.spec());
+                    String error = PolicyAssignmentValidator.validatePackageName(parsed.name().name());
+                    if (error == null) {
+                        error = PolicyAssignmentValidator.validatePackage(packageManifest.spec());
+                    }
                     if (error != null) {
                         return new ValidationResult(id, ValidationStatus.FAILED, error);
                     }

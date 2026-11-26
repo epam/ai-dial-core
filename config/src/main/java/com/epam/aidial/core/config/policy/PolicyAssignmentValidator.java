@@ -85,6 +85,13 @@ public class PolicyAssignmentValidator {
         return policy.getSubject() == null ? null : validateSubject(policy.getSubject());
     }
 
+    public static String validatePackageName(String name) {
+        if (name == null || name.isBlank() || name.contains("/") || name.contains(PolicyObjectSet.PACKAGE_PREFIX) || name.contains("%")) {
+            return "package name must be a single segment without '/', '@' or '%'";
+        }
+        return null;
+    }
+
     public static String validatePackage(PolicyPackage policyPackage) {
         List<String> deployments = policyPackage.getDeployments();
         if (deployments == null || deployments.isEmpty()) {

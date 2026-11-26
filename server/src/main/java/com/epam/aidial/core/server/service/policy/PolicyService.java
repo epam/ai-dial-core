@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 /**
@@ -291,6 +292,33 @@ public class PolicyService {
         if (!references.isEmpty()) {
             throw new HttpException(HttpStatus.CONFLICT, "Package '" + packageName + "' is referenced by " + references.size()
                     + " policy(ies), for example " + references.subList(0, Math.min(references.size(), MAX_REFERENCES_LISTED)));
+        }
+    }
+
+    /**
+     * Refuses a package write that would make budgets of the same priority cover the same calls, which a package
+     * edit can do to policies that were written apart; the caller holds the admin bucket locks.
+     */
+    public void requirePackageEditKeepsNoTie(String packageName, PolicyPackage updated) {
+        staged.packages.put(packageName, updated);
+        Map<String, Policy> naming = list(ResourceTypes.POLICY, null, PolicyRecordCodec::readPolicy).entrySet().stream()
+                .filter(entry -> entry.getValue().getObject() != null && entry.getValue().getObject().packageNames().contains(packageName))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        if (naming.isEmpty()) {
+            return;
+        }
+        Instances instances = new Instances(Map.of(), Map.of());
+        Map<String, PolicyAssignment> assignments = listAssignments(null);
+        for (Map.Entry<String, Policy> entry : naming.entrySet()) {
+            String path = entry.getKey();
+            if (entry.getValue().isSelfApplying() && folderOf(path) != null) {
+                instances.requireNoTie(folderOf(path), path);
+            }
+            for (Map.Entry<String, PolicyAssignment> assignment : assignments.entrySet()) {
+                if (path.equals(assignment.getValue().getPolicy()) && folderOf(assignment.getKey()) != null) {
+                    instances.requireNoTie(folderOf(assignment.getKey()), path);
+                }
+            }
         }
     }
 

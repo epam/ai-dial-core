@@ -97,7 +97,8 @@ When budgets of the caller's cost object cover a call at different positions of 
 earliest position, nearest the head of the chain, are candidates. A budget naming `strong` takes a call made through
 `strong` before a budget naming `m`, whatever their priorities, and when it has no money left the call is refused
 with `budget_exhausted`; it does not fall through to the model's budget. Budgets at the same position are walked by
-priority, as before.
+priority, as before. A budget with the object `"*"` counts as covering the call at the model, the last name of
+the chain: it ties by priority with budgets that name the model, and yields to a budget that names an earlier name.
 
 Two consequences to keep in mind:
 

@@ -32,6 +32,7 @@ public final class PolicyObjectSet {
 
     private final Set<String> terms;
     // a lone package reference written as a string, which reads back as a string
+    @EqualsAndHashCode.Exclude
     private final boolean isSingleReference;
 
     private PolicyObjectSet(Set<String> terms, boolean isSingleReference) {

@@ -56,7 +56,9 @@ public class EffectiveBudgets {
             if (instance.policy().getKind() != PolicyKind.BUDGET || isExpired(instance, now) || !isSubjectMatched(instance, claims)) {
                 continue;
             }
-            int position = instance.covered().indexOfFirstCovered(chain);
+            // "*" covers the call at the model, the last name of the chain, like a budget naming the model: it ties with
+            // such budgets by priority and yields to a budget naming an earlier name
+            int position = instance.covered().isAll() ? chain.size() - 1 : instance.covered().indexOfFirstCovered(chain);
             if (position >= 0) {
                 positions.put(instance, position);
                 earliest = Math.min(earliest, position);

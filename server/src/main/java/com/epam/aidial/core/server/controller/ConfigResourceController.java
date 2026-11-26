@@ -2101,7 +2101,7 @@ public class ConfigResourceController implements Controller {
                     } else if (entity instanceof Route route) {
                         checkRoute(route);
                     } else if (entity instanceof PolicyPackage policyPackage) {
-                        checkPackage(policyPackage);
+                        checkPackage(path, policyPackage);
                     }
                     ResourceTypes writeType = resourceType();
                     if (writeType == ResourceTypes.MODEL || writeType == ResourceTypes.INTERCEPTOR || writeType == ResourceTypes.ROUTER) {
@@ -2489,11 +2489,15 @@ public class ConfigResourceController implements Controller {
         rejectWithValidationWarnings(warnings);
     }
 
-    private static void checkPackage(PolicyPackage entity) {
-        String error = PolicyAssignmentValidator.validatePackage(entity);
+    private void checkPackage(String name, PolicyPackage entity) {
+        String error = PolicyAssignmentValidator.validatePackageName(name);
+        if (error == null) {
+            error = PolicyAssignmentValidator.validatePackage(entity);
+        }
         if (error != null) {
             throw new HttpException(HttpStatus.BAD_REQUEST, error);
         }
+        new PolicyService(resourceService).requirePackageEditKeepsNoTie(name, entity);
     }
 
     private void rejectWithValidationWarnings(List<ValidationWarning> warnings) {

@@ -183,7 +183,10 @@ public class ConfigApplyService {
             case AdminApplicationManifest application ->
                     applyApplication(application.spec(), id, parsed.name(), scratch, pending);
             case AdminPackageManifest policyPackage -> {
-                String error = PolicyAssignmentValidator.validatePackage(policyPackage.spec());
+                String error = PolicyAssignmentValidator.validatePackageName(parsed.name().name());
+                if (error == null) {
+                    error = PolicyAssignmentValidator.validatePackage(policyPackage.spec());
+                }
                 yield error != null
                         ? new EntityResult(id, AdminApplyStatus.FAILED, error)
                         : applyManagedEntity(policyPackage.spec(), id, parsed.name(), ResourceTypes.PACKAGE, scratch, pending);

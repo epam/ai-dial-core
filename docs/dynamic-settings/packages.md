@@ -21,7 +21,8 @@ Packages are API-managed records, like policies: they are not loaded from the dy
   A member cannot be another package (`@...`) or `*`; a policy covers every deployment with the object `"*"`.
 * `description`: optional free text.
 
-Any other field is rejected with `400`. The name is a single segment: packages are global and have no folders.
+Any other field is rejected with `400`. The name is a single segment: packages are global and have no folders. A name with `/`, `@` or `%` is rejected with `400`.
+A write that would make budgets of the same priority cover the same calls is rejected with `409`.
 
 `GET` answers the stored record with `name` and `status`, and `DELETE` removes it. Every method needs the admin
 role, as the rest of the Configuration API does.
