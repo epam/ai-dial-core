@@ -55,10 +55,6 @@ allprojects {
                 if (details.requested.group == 'io.grpc') {
                     details.useVersion('1.75.0')
                 }
-                if (details.requested.group == 'org.jetbrains.kotlin'
-                        && (details.requested.name.startsWith('kotlin-stdlib') || details.requested.name == 'kotlin-reflect')) {
-                    details.useVersion(kotlin_version)
-                }
             }
             // Keep the whole netty graph on one patched version; netty-tcnative-* is intentionally
             // absent, it has its own 2.0.x version line.
@@ -111,10 +107,10 @@ allprojects {
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
         components {
-            withModule('org.jetbrains.kotlin:kotlin-stdlib') {
-                allVariants {
+            withModule('org.jetbrains.kotlin:kotlin-stdlib') { stdlib ->
+                stdlib.allVariants {
                     withDependencies {
-                        add("org.jetbrains.kotlin:kotlin-reflect:${kotlin_version}")
+                        add("org.jetbrains.kotlin:kotlin-reflect:${stdlib.id.version}")
                     }
                 }
             }
