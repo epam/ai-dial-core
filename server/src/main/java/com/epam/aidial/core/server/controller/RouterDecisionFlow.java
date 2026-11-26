@@ -61,7 +61,7 @@ public class RouterDecisionFlow {
      * {@code type}, and stores it on the context. True when it decided: the caller then serves
      * {@code context.getDecision().current()} through its own resolve, as if the client had called it.
      *
-     * @param body the client's body bytes, read only when the router asks for them or the pass has no bytes of its own
+     * @param body the client's body bytes, read only when the router asks for them
      * @param tree the client's body as the caller parsed it, not yet changed by any candidate; null where the caller
      *             parses only after the decision (deployments-POST)
      * @param reenter serves the decision's current candidate from the start of the caller's flow, the resolve
@@ -92,9 +92,8 @@ public class RouterDecisionFlow {
         if (path != null && path.contains(router.getName())) {
             return Future.failedFuture(new HttpException(HttpStatus.BAD_GATEWAY, "Router %s re-entered".formatted(router.getName())));
         }
-        boolean bytesNeeded = RouterDecisionClient.withBody(router) || inProcessCall(tree);
         // the span first: calls the router makes with the decide key roll up into it, and the candidate's pass re-enters it
-        return (bytesNeeded ? body : Future.<Buffer>succeededFuture(null))
+        return (RouterDecisionClient.withBody(router) ? body : Future.<Buffer>succeededFuture(null))
                 .compose(bytes -> proxy.getTokenStatsTracker().startSpan(context)
                         .compose(ignore -> proxy.getTaskExecutor().submit(() -> prepare(router, type, bytes, tree)))
                         .compose(prepared -> decide(router, type, prepared, reenter)));
@@ -110,18 +109,27 @@ public class RouterDecisionFlow {
 
     /**
      * What the first decide request carries, made off the event loop before any candidate changes the client's tree.
-     * An in-process call's tree is serialized once and stands in for the client's bytes from here on: the decide body,
-     * and the bytes every fallback candidate is served from.
+     * An in-process call has no bytes of its own. When the router gets the body, its tree is serialized once and stands
+     * in for the client's bytes from here on: the decide body, and the bytes every fallback candidate is served from.
+     * Otherwise only a copy of the tree is kept, for a fallback candidate to start from: the serialization of a large
+     * body would be read only after a candidate failed.
      */
     @SneakyThrows
     private Prepared prepare(Router router, InterfaceType type, @Nullable Buffer read, @Nullable ObjectNode tree) {
+        boolean withBody = RouterDecisionClient.withBody(router);
         Buffer bytes = read;
+        ObjectNode clientTree = null;
         if (inProcessCall(tree) && (bytes == null || bytes.length() == 0)) {
-            bytes = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
-            context.setOriginalRequestBody(bytes);
+            if (withBody) {
+                bytes = Buffer.buffer(ProxyUtil.MAPPER.writeValueAsBytes(tree));
+                context.setOriginalRequestBody(bytes);
+            } else {
+                // values are immutable and shared: only the objects and arrays a candidate's chain may change are copied
+                clientTree = tree.deepCopy();
+            }
         }
-        if (!RouterDecisionClient.withBody(router)) {
-            return new Prepared(null, null, mintDecideKey(router, type, null));
+        if (!withBody) {
+            return new Prepared(null, null, mintDecideKey(router, type, null), clientTree);
         }
         // the caller's tree is still the client's here; deployments-POST has none yet and parses the bytes once
         ObjectNode parsed = tree != null ? tree : parse(bytes);
@@ -129,13 +137,14 @@ public class RouterDecisionFlow {
         boolean embedded = DeploymentEndpointUtil.resolvePlugin(router, type, context.getConfig().getTranslators()) != null;
         // the plugin's own copy, which it may change: the caller's tree is the one the candidate is served from
         ObjectNode pluginTree = !embedded ? null : tree != null ? tree.deepCopy() : parsed;
-        return new Prepared(bytes, pluginTree, key);
+        return new Prepared(bytes, pluginTree, key, null);
     }
 
     /**
-     * A decide request's body, the plugin's own copy of the parsed body when the router is embedded, and its key.
+     * A decide request's body, the plugin's own copy of the parsed body when the router is embedded, its key, and the
+     * client's tree a fallback candidate starts from when the pass has no bytes for that.
      */
-    private record Prepared(@Nullable Buffer body, @Nullable ObjectNode tree, ApiKeyData key) {
+    private record Prepared(@Nullable Buffer body, @Nullable ObjectNode tree, ApiKeyData key, @Nullable ObjectNode clientTree) {
     }
 
     private static ObjectNode parse(Buffer bytes) {
@@ -179,6 +188,7 @@ public class RouterDecisionFlow {
                 .map(candidates -> {
                     RouterDecision decision = new RouterDecision(router, type, candidates, System.currentTimeMillis() - start);
                     decision.setFirstDecideKey(prepared.key());
+                    decision.setClientTree(prepared.clientTree());
                     decision.setReenter(reenter);
                     decision.setHop(routerHop(router));
                     decision.setAnswerName(aliasCalled(router));
@@ -261,7 +271,7 @@ public class RouterDecisionFlow {
                     return Future.succeededFuture();
                 })
                 .compose(ignore -> proxy.getTaskExecutor().submit(() -> new Prepared(bytes, embedded ? parse(bytes) : null,
-                        mintKeyLike(decision.getFirstDecideKey(), router))))
+                        mintKeyLike(decision.getFirstDecideKey(), router), null)))
                 .compose(prepared -> askRouter(router, decision.getApi(), prepared.body(), prepared.tree(), prepared.key(),
                         decision.getAttempts()))
                 .onComplete(result -> {
@@ -340,8 +350,9 @@ public class RouterDecisionFlow {
             return error;
         }
         if (!context.getResponse().closed()) {
-            // as after a failed call; for an in-process call, the serialization, not the call's tree the refused
-            // candidate may have changed. Its budget check is not the next candidate's, which may be no model at all
+            // as after a failed call; for an in-process call, the client's tree as it was before the first candidate,
+            // not the call's tree the refused candidate may have changed. Its budget check is not the next candidate's,
+            // which may be no model at all
             resetCandidateOutcome();
             if (decision.hasNext()) {
                 log.warn("Candidate {} of router {} skipped: {}", decision.current(), decision.getRouterName(), error.getMessage());
@@ -418,14 +429,22 @@ public class RouterDecisionFlow {
 
     /**
      * Drops what the current candidate left for its row and its charge, its usage and its budget check, and starts
-     * the next candidate from the client's bytes. Every path that moves on to another candidate calls it, so none
-     * keeps the previous candidate's payer.
+     * the next candidate from the client's bytes, or from a copy of the client's tree when the pass is an in-process
+     * call without bytes. Every path that moves on to another candidate calls it, so none keeps the previous
+     * candidate's payer or its changes to the request.
      */
     private void resetCandidateOutcome() {
         context.setTokenUsage(null);
         context.setUsagePerModel(null);
         context.setBudgetCheck(null);
-        context.setRequestBody(context.getOriginalRequestBody());
+        ObjectNode clientTree = context.getDecision().getClientTree();
+        if (clientTree == null) {
+            context.setRequestBody(context.getOriginalRequestBody());
+        } else {
+            // with no body set, the next candidate's parse takes the call tree instead of parsing bytes
+            context.setRequestBody(null);
+            context.setCallTree(clientTree.deepCopy());
+        }
     }
 
     /**
