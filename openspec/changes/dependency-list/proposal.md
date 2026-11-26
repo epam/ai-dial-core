@@ -25,7 +25,8 @@ answer holds only what that caller may see. It is the single implementation of t
   rules) and the deployments their roles allow, and an element they may not see is left out without a trace. A caller that holds a per-request
   key gets `403`.
 - The walk takes no bucket lock. It reads the merged configuration and the skipped-entity records together, under the lock that every
-  configuration publication holds, so that short names resolve against one publication.
+  configuration publication holds, so that short names resolve against one publication. It therefore waits for a rebuild or an apply that is in
+  progress.
 - The answer never holds a body, a secret, an endpoint, a key, a role or an absolute storage path. A reference that is not followed is one
   server log record with the resource key, the JSON pointer and a reason, never the value.
 
@@ -66,6 +67,7 @@ deployment) and `resource-dependencies` (the initiator's reach). It does not cha
   schema download that only this feature sets) and `CatalogSchemaService.collectMarkerReferences`; `DialFileKeyword`,
   `DialResourceKeyKeyword` and `CatalogFileKeyword` call `MarkerRecorder.record`, which does nothing unless a recorder is registered.
   Request-time behavior of these classes is unchanged. `ControllerSelector`, `RouteTemplate` and the OpenAPI collector get the route.
-- Admin writes: none are blocked. The walk takes no bucket lock.
+- Admin writes: none waits for a bucket lock of the walk, because it takes none. A configuration write waits for the two reads that the walk makes
+  under the publication lock, and the walk waits for a rebuild or an apply that holds that lock.
 - Docs: `docs/dependency-list.md`, `docs/error_codes.md`, `docs/open_api_core.yaml` (generated). No setting is added.
 - Motivation: the need to see what an Application depends on before it is moved, copied or shared. This change covers the list and the reference discovery.

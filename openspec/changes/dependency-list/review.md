@@ -21,6 +21,9 @@ trace. A per-request key is `403`; a root is authorized before it is looked up. 
   (one per File), 3 policy calls (one per level), and no body kept after its references are found.
 - `DependencyListApiTest.testWalkDoesNotWaitForAnAdminWriteThatHoldsTheBucketLocks` runs a walk while the test holds the bucket locks of every admin write;
   it answers `200` without a lock wait.
+- `DependencyWalkerTest.testWalkWaitsForConfigurationPublicationThatHoldsTheLock` and `testPublicationLockIsHeldForTheTwoConfigurationReadsOnly`: the
+  walk queues on the publication lock while another thread holds it and answers after the release, and it holds the lock for the two configuration
+  reads only.
 - Task 4.1: an Application in a user bucket is read by URL through `ApplicationService.getApplication` (`ResourceService.getResourceWithMetadata`), the
   same stored body that the walker reads with `ResourceService.getResource`; recorded in the design Code map.
 

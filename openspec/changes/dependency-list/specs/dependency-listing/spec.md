@@ -356,8 +356,16 @@ An element SHALL NOT carry the body of a resource, a secret, an endpoint, an ups
 - **THEN** no field of the answer holds them
 
 ### Requirement: The walk takes no bucket lock
-Core SHALL NOT take a bucket lock for the walk, and a write of an administered resource SHALL NOT wait for it and SHALL NOT make it fail. The list is not a snapshot: a write that lands while it runs may or may not be in it.
+Core SHALL NOT take a bucket lock for the walk, so a write of an administered resource SHALL NOT wait for it on a bucket lock and SHALL NOT make it fail. Core SHALL read the merged configuration and the skipped-entity records together under the configuration publication lock, for those two reads only. The list is not a snapshot: a write that lands while it runs may or may not be in it.
 
 #### Scenario: Concurrent admin write
 - **WHEN** an admin write that takes the bucket locks runs while a walk is in progress
 - **THEN** neither waits for the other, and the walk answers `200`
+
+#### Scenario: Configuration publication in progress
+- **WHEN** a walk starts while a configuration publication (a rebuild, an apply, or the write or delete of one entity) holds the publication lock
+- **THEN** the walk waits for it to end, then answers `200`, and a publication that starts meanwhile waits only for the two reads of the walk
+
+#### Scenario: The lock covers two reads
+- **WHEN** a walk reads the merged configuration and the skipped-entity records
+- **THEN** it holds the publication lock for those two reads only, and has released it before it reads the file configuration or any resource

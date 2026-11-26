@@ -7,6 +7,7 @@ import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -30,6 +31,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -163,7 +168,13 @@ public class DependencyWalkerTest {
     }
 
     private DependencyWalker walker(Supplier<Config> configSource, Supplier<Config> fileConfigSource) {
-        return new DependencyWalker(new ReentrantLock(), Map::of, configSource, fileConfigSource, resourceService, schemaService,
+        return walker(new ReentrantLock(), Map::of, configSource, fileConfigSource);
+    }
+
+    private DependencyWalker walker(ReentrantLock publicationLock,
+                                    Supplier<Map<ResourceTypes, Map<String, InvalidEntityRecord>>> invalidEntitiesSource,
+                                    Supplier<Config> configSource, Supplier<Config> fileConfigSource) {
+        return new DependencyWalker(publicationLock, invalidEntitiesSource, configSource, fileConfigSource, resourceService, schemaService,
                 catalogSchemaService, encryptionService, complexResourceService);
     }
 
@@ -186,6 +197,59 @@ public class DependencyWalkerTest {
 
     private List<String> warnings() {
         return logs.list.stream().filter(event -> event.getLevel() == Level.WARN).map(ILoggingEvent::getFormattedMessage).toList();
+    }
+
+    @Test
+    void testWalkWaitsForConfigurationPublicationThatHoldsTheLock() throws Exception {
+        app("a");
+        ReentrantLock publicationLock = new ReentrantLock();
+        DependencyWalker walker = walker(publicationLock, Map::of, Config::new, () -> null);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        publicationLock.lock();
+        try {
+            Future<DependencyListResponse> walk = executor.submit(() -> walk(walker, ADMIN, "a"));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (!publicationLock.hasQueuedThreads() && System.nanoTime() < deadline) {
+                Thread.sleep(1);
+            }
+
+            assertTrue(publicationLock.hasQueuedThreads(), "the walk must queue on the publication lock");
+            assertFalse(walk.isDone(), "the walk must not answer while a publication holds the lock");
+
+            publicationLock.unlock();
+            assertEquals(1, walk.get(10, TimeUnit.SECONDS).roots().size());
+        } finally {
+            if (publicationLock.isHeldByCurrentThread()) {
+                publicationLock.unlock();
+            }
+            executor.shutdownNow();
+        }
+        assertFalse(publicationLock.isLocked());
+    }
+
+    @Test
+    void testPublicationLockIsHeldForTheTwoConfigurationReadsOnly() {
+        app("a");
+        ReentrantLock publicationLock = new ReentrantLock();
+        List<String> held = new ArrayList<>();
+        DependencyWalker walker = walker(publicationLock,
+                () -> {
+                    held.add("invalid=" + publicationLock.isHeldByCurrentThread());
+                    return Map.of();
+                },
+                () -> {
+                    held.add("merged=" + publicationLock.isHeldByCurrentThread());
+                    return new Config();
+                },
+                () -> {
+                    held.add("file=" + publicationLock.isHeldByCurrentThread());
+                    return null;
+                });
+
+        walk(walker, ADMIN, "a");
+
+        assertEquals(List.of("invalid=true", "merged=true", "file=false"), held);
+        assertFalse(publicationLock.isLocked());
     }
 
     @Test

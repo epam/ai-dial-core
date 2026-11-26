@@ -122,8 +122,12 @@ and a reason (`missing`, `unsupported`, `unresolved-short-name`, `origin-unknown
 | `404` | A selected Application does not exist (for a caller who is not an administrator, only one that they may read) |
 | `500` | The walk failed |
 
-Every status is decided before the body of the answer. The walk takes no bucket lock and does not wait for an administrative write, so the
-list is not a snapshot: a write that lands while it runs may or may not be in it.
+Every status is decided before the body of the answer. The walk takes no bucket lock, so it does not wait for an administrative write that
+holds the bucket locks, and such a write does not wait for it. It does take, for two reads, the lock that every configuration publication
+holds (the merged configuration and the skipped-entity records are read together, so that short names resolve against one publication). It
+therefore waits for any publication that is in progress: a configuration rebuild, an apply, or the write or delete of one configuration entity.
+A publication that starts meanwhile waits only for those two reads. The list is not a snapshot: a write that lands while it runs may or may not
+be in it.
 
 ## Remote application type schemas
 

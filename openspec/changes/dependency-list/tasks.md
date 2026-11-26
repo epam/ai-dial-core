@@ -46,6 +46,7 @@ The endpoint serves every authenticated caller. This group builds it and tests i
 ## 5. Concurrency and the whole change
 
 - [x] 5.1 Add an API test that runs a walk while an admin write that takes the bucket locks runs: neither waits for the other and the walk answers `200` (scenario: Concurrent admin write, `DependencyListApiTest`). Verify: the test passes without a lock-wait timeout.
+- [x] 5.1a Add `DependencyWalkerTest` tests of the publication lock: the walk queues on the lock while a publication holds it and answers after the release, and the lock is held for the two configuration reads only, not for the file configuration or any resource (scenarios: Configuration publication in progress, The lock covers two reads). Verify: the tests pass, and the first fails if the `lock()` call is removed from `DependencyWalker.walk`.
 - [x] 5.2 Write `review.md` in the change folder with the counts of 2.4, the result of 4.1 and the checks run. Verify: the file exists and each check in it names its command.
 - [x] 5.3 Final run: `./gradlew checkstyleMain checkstyleTest`, the test classes named in groups 1 to 4, and `npx -y @fission-ai/openspec@1.14.3 validate --all --strict`. (deferred: the full suite runs in CI after the push.)
 
