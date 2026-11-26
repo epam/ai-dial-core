@@ -33,10 +33,13 @@ import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
+import com.epam.aidial.core.server.util.FieldSelection;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.exception.ResourceNotFoundException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +52,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.controller.ModelController.createModel;
 
@@ -65,6 +69,7 @@ public class DeploymentController {
     private static final String TOOLSET_TYPE = "toolset";
     private static final String ROUTER_TYPE = "router";
     private static final Set<String> DEPLOYMENT_NAME_TYPES = Set.of(MODEL_TYPE, APPLICATION_TYPE, TOOLSET_TYPE, ROUTER_TYPE);
+    private static final Set<String> ALWAYS_LISTED_FIELDS = Set.of("id", "object");
     private final Proxy proxy;
     private final ProxyContext context;
     private final DeploymentService.DeploymentExtractor appExtractor;
@@ -152,7 +157,11 @@ public class DeploymentController {
                     @ApiParameter(name = "interface_type", in = ParameterIn.QUERY,
                             schema = String[].class,
                             description = OpenApiDescriptions.INTERFACE_TYPE,
-                            allowableValues = {"chat", "embedding", "mcp", "custom_ui", "all"})
+                            allowableValues = {"chat", "embedding", "mcp", "custom_ui", "all"}),
+                    @ApiParameter(name = "fields", in = ParameterIn.QUERY,
+                            schema = String.class,
+                            description = OpenApiDescriptions.DEPLOYMENT_FIELDS,
+                            example = "display_name,features(rate,tokenize)")
             },
             responses = {
                     @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = List.class, typeArguments = {DeploymentData.class})),
@@ -171,6 +180,14 @@ public class DeploymentController {
             return Future.succeededFuture();
         }
 
+        FieldSelection selection;
+        try {
+            selection = FieldSelection.parse(context.getRequest().getParam("fields"), ALWAYS_LISTED_FIELDS);
+        } catch (IllegalArgumentException e) {
+            context.respond(HttpStatus.BAD_REQUEST, e.getMessage());
+            return Future.succeededFuture();
+        }
+
         CompositeFuture future = execute(plan);
 
         future.onSuccess(result -> {
@@ -178,13 +195,38 @@ public class DeploymentController {
             for (int i = 0; i < result.size(); i++) {
                 deployments.addAll(result.resultAt(i));
             }
-            context.respond(HttpStatus.OK, deployments);
-        }).onFailure(error -> {
-            log.error("Error occurred on listing deployments", error);
-            context.respond(HttpStatus.INTERNAL_SERVER_ERROR, error.getMessage());
-        });
+            respondListing(deployments, selection);
+        }).onFailure(this::respondListingError);
 
         return Future.succeededFuture();
+    }
+
+    void respondListing(List<DeploymentData> deployments, @Nullable FieldSelection selection) {
+        if (selection == null) {
+            context.respond(HttpStatus.OK, deployments);
+            return;
+        }
+        try {
+            proxy.getTaskExecutor()
+                    .submit(() -> project(selection, deployments))
+                    .onSuccess(projected -> context.respond(HttpStatus.OK, projected))
+                    .onFailure(this::respondListingError);
+        } catch (Exception e) {
+            respondListingError(e);
+        }
+    }
+
+    private static ArrayNode project(FieldSelection selection, List<DeploymentData> deployments) {
+        ArrayNode projected = ProxyUtil.MAPPER.createArrayNode();
+        for (DeploymentData deployment : deployments) {
+            projected.add(selection.project(ProxyUtil.MAPPER.valueToTree(deployment)));
+        }
+        return projected;
+    }
+
+    private void respondListingError(Throwable error) {
+        log.error("Error occurred on listing deployments", error);
+        context.respond(error, "Internal error");
     }
 
 

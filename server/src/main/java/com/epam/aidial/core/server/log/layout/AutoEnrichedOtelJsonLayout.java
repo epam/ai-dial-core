@@ -8,6 +8,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.limiter.budget.CostObject;
 import com.epam.aidial.core.server.log.otl.OtelLogRecord;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -118,6 +119,11 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         ProxyContext proxyContext = ContextManager.getProxyContext();
         if (proxyContext != null) {
             attributes.put("user.project", proxyContext.getProject());
+            attributes.put("user.cost_object", proxyContext.getCostObject());
+            CostObject.Source costObjectSource = proxyContext.getCostObjectSource();
+            if (costObjectSource != null) {
+                attributes.put("user.cost_object.source", costObjectSource.toValue());
+            }
             attributes.put("user.id", proxyContext.getUserId());
             if (proxyContext.getRequest() != null) {
                 attributes.put("request.method", proxyContext.getRequest().method().name());

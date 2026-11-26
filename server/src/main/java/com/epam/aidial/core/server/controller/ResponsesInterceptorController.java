@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
+import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
 
@@ -78,5 +79,11 @@ public class ResponsesInterceptorController extends BaseInterceptorController {
     @Override
     protected InterfaceType interfaceType() {
         return InterfaceType.OPENAI_RESPONSES;
+    }
+
+    // an interceptor's answer must not pass as Core's own no-budget refusal to an alias pass
+    @Override
+    protected void removeCoreHeaders(MultiMap headers) {
+        headers.remove(Proxy.HEADER_DIAL_REFUSAL);
     }
 }

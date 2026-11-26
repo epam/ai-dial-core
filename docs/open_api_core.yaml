@@ -220,6 +220,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "402":
+          description: "With enforced budgets, no budget for the model, to the client's own request, directly or through an alias: `billing_error` with a message naming the model and the cost object, `x-should-retry: false` and no `retry-after`"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnthropicErrorData"
         "403":
           description: Forbidden
           content:
@@ -1554,11 +1560,20 @@ paths:
               schema:
                 type: string
         "400":
-          description: Bad request
+          description: "Bad request. With enforced budgets, no budget for the model gives the client's own request, directly or through an alias (not a background one), a `text/plain` message naming the model and the cost object, with `x-should-retry: false` and no `retry-after`; with an interceptor in front of the model, global interceptors included, the client gets what the interceptor answers"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+            text/plain:
+              schema:
+                type: string
+          headers:
+            x-should-retry:
+              description: '`false` on the no-budget refusal'
+              required: false
+              schema:
+                type: string
         "403":
           description: Forbidden
           content:
@@ -1578,7 +1593,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
         "429":
-          description: Rate limit exceeded
+          description: "DIAL limit reached. A reached day/week/month spend cap, or with enforced budgets used-up budgets for the model, gives an error of type `usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the `x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`; with enforced budgets, no budget for the model gives a call made with a per-request key an error naming the model and the cost object, with `x-should-retry: false` and no `retry-after`"
           content:
             application/json:
               schema:
@@ -1925,11 +1940,20 @@ paths:
               schema:
                 type: string
         "400":
-          description: Bad request
+          description: "Bad request. With enforced budgets, no budget for the model gives the client's own request, directly or through an alias (not a background one), a `text/plain` message naming the model and the cost object, with `x-should-retry: false` and no `retry-after`; with an interceptor in front of the model, global interceptors included, the client gets what the interceptor answers"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+            text/plain:
+              schema:
+                type: string
+          headers:
+            x-should-retry:
+              description: '`false` on the no-budget refusal'
+              required: false
+              schema:
+                type: string
         "401":
           description: Invalid Authentication
           content:
@@ -1960,7 +1984,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
         "429":
-          description: Rate limit reached.
+          description: "DIAL limit reached. A reached day/week/month spend cap, or with enforced budgets used-up budgets for the model, gives an error of type `usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the `x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`; with enforced budgets, no budget for the model gives a call made with a per-request key an error naming the model and the cost object, with `x-should-retry: false` and no `retry-after`"
           content:
             application/json:
               schema:
@@ -4274,6 +4298,7 @@ paths:
       tags:
       - External Services
       summary: "/v1/applications/{appId}/external-services/{id}"
+      description: "Creates or replaces an external service. An OAUTH service created (or switched to OAUTH) with auth_settings.discovery_url and without client_id and client_secret gets a client registered by DIAL Core (dynamic client registration) with redirect URIs from toolsets.security.allowedRedirectUris only; otherwise it needs client_id, client_secret, authorization_endpoint and token_endpoint. An update that stays OAUTH keeps the stored OAuth fields it omits. Reads never return client_secret or code_verifier."
       operationId: putExternalService
       parameters:
       - name: appId
@@ -5587,6 +5612,13 @@ paths:
             - mcp
             - custom_ui
             - all
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: "display_name,features(rate,tokenize)"
+        description: "Return only the listed fields of each deployment, as comma-separated names of the response. Top-level names are snake_case; names inside a nested object are the ones that object has, such as `rewritePath` inside each entry of `routes`. Parentheses select inside a field: `features(rate,tokenize)`. `*` stands for every member at its level: `routes(*(rewritePath))` keeps `rewritePath` of every route, and `*(en)` narrows every object member to `en`. A selection narrows objects, also inside arrays; any other value stays as it is, and an object left with no members is `{}`. `id` and `object` are always returned. A name that no field has is ignored. At most 1024 bytes and 5 levels. Without it, all fields are returned."
       responses:
         "200":
           description: Success
@@ -15397,6 +15429,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/user/budgets/default:
+    get:
+      tags:
+      - Limits
+      summary: /v1/user/budgets/default
+      operationId: getUserDefaultBudget
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefaultBudget"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    put:
+      tags:
+      - Limits
+      summary: /v1/user/budgets/default
+      operationId: putUserDefaultBudget
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DefaultBudget"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefaultBudget"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/user/info:
     get:
       summary: /v1/user/info
@@ -19378,6 +19483,11 @@ components:
       - GLOBAL
       - APPLICATION
       - USER
+    DefaultBudget:
+      type: object
+      properties:
+        budget:
+          type: string
     DeleteNotificationRequest:
       type: object
       properties:
@@ -21041,6 +21151,9 @@ components:
           readOnly: true
         resource:
           type: string
+        discovery_url:
+          type: string
+          description: "External services only (OAUTH): where DIAL Core reads OAuth metadata from to set up the client - an MCP server's URL, an API's URL that publishes protected resource metadata, or the authorization server's issuer URL. Never a traffic target. Absolute http or https URL; required to register a client automatically."
     ResourceAuthSettingsData:
       type: object
       properties:
@@ -21299,6 +21412,7 @@ components:
       - CODE_INTERPRETER_SESSION
       - USER_CONSENT
       - ADMIN_CONSENT
+      - USER_BUDGET_DEFAULT
       - TOOL_SET
       - CREDENTIALS
       - EXTERNAL_SERVICE
@@ -22236,7 +22350,7 @@ components:
             type: string
         project:
           type: string
-          description: Present only if authenticated via an API Key. Represents the target project scope.
+          description: The caller's project. For API key authentication it is the key's project. For user-based session authentication it is present only when the identity provider's configured projectPath resolves a string claim.
         userId:
           type: string
           description: The user id as DIAL resolves it from the identity provider configuration (not necessarily the token's sub claim). Present only for user-based session authentication. Use this value as owner_user_id when retrieving credentials on behalf of the user.
@@ -22251,6 +22365,16 @@ components:
         userDisplayName:
           type: string
           description: Human-readable caller name. For user-based session authentication it is resolved from the identity provider's configured userDisplayName claim path; for API key authentication it is the key's project name. Absent when not configured.
+        costObject:
+          type: string
+          description: The cost object the caller's calls are charged to.
+        costObjectSource:
+          type: string
+          description: "Where costObject came from - claim is the token's claim at the identity provider's costObjectPath, key is the API key's project, default is spendingLimits.defaultCostObject."
+          enum:
+          - claim
+          - key
+          - default
     UserLimitStats:
       type: object
       properties:

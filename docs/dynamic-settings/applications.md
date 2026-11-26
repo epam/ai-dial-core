@@ -53,6 +53,7 @@ An object containing parameters for each [application](#applications).
 * `defaultHeaders`: HTTP headers DIAL Core adds to a request that doesn't already carry them. Refer to [applications.<application_name>.defaultHeaders](#applicationsapplication_namedefaultheaders).
 * `interceptors`: A list of local interceptors to be triggered for the given application. Refer to [Interceptors](./interceptors.md) to learn more.
 * `mcp`: MCP configuration. Refer to [MCP](#applicationsapplication_namemcp) to learn more.
+* `externalServices`: Third-party services the application calls with credentials DIAL Core keeps for it. Refer to [applications.<application_name>.externalServices](#applicationsapplication_nameexternalservices).
 * `features`: A list of features supported by the application. Refer to [Features](#applicationsapplication_namefeatures) for more details.
 * `routes`: A list of registered routes in the application. Refer to [applications.<application_name>.routes](#applicationsapplication_nameroutes) for more details.
 
@@ -271,6 +272,44 @@ Supported configuration parameters:
     "allowedTools": ["tool1", "tool2"],
     "configDelivery": "meta",
     "forwardPerRequestKey": true
+}
+```
+
+#### applications.<application_name>.externalServices
+
+A map of the third-party services the application calls itself, keyed by service id (letters, digits, `-` and `_`). DIAL Core does not send the application's traffic to them: it keeps their sign-in settings and the users' or the application's credentials, and hands a credential to the application on request. In API requests and responses the field is named `external_services`; a single service is also managed through `/v1/applications/{deployment_id}/external-services/{id}`.
+
+Each service is an object with the following fields:
+
+* `display_name`, `description`: Shown to users.
+* `auth_settings`: How users sign in to the service. `authentication_type` is one of `OAUTH`, `API_KEY`, `DIAL_NATIVE` or `NONE`.
+
+For `OAUTH`, `auth_settings.discovery_url` is the URL DIAL Core reads OAuth metadata from: an MCP server's URL, an API's URL that publishes [protected resource metadata](https://www.rfc-editor.org/rfc/rfc9728), or the authorization server's issuer URL (most REST APIs: the identity provider publishes [authorization server metadata](https://www.rfc-editor.org/rfc/rfc8414) or OpenID configuration, the API publishes nothing). DIAL Core never sends traffic there. It discovers the same way as for a [toolset](./toolsets.md), so it sends one MCP `initialize` request to that URL when the service is saved; a URL that cannot be reached fails the save. The field is rejected on other authentication types and on toolsets.
+
+An `OAUTH` service gets its client in one of two ways when it is created, or when an existing service is switched to `OAUTH`:
+
+* **Registered by DIAL Core.** Send `discovery_url` and no `client_id` or `client_secret`. DIAL Core finds the authorization server and registers a client with it ([dynamic client registration](https://www.rfc-editor.org/rfc/rfc7591)), listing only the redirect URIs of the static setting `toolsets.security.allowedRedirectUris`, which must be set; the service's own `redirect_uri`, if any, must be one of them. It stores the returned client, the server's `authorization_endpoint` and `token_endpoint`, its scopes, and as `resource` only the one the protected resource metadata names. Such a request must not set `authorization_endpoint`, `token_endpoint`, `resource`, `scopes_supported` or the PKCE fields. Few providers offer open registration (MCP servers often do; Google, Microsoft Entra ID and Salesforce do not); a server that does not is rejected with `400`.
+* **Registered by hand.** Send `client_id`, `client_secret`, `authorization_endpoint` and `token_endpoint`. Without `discovery_url` the client is stored as sent and no request leaves DIAL Core. With it, DIAL Core fills a missing `code_challenge_method`, `scopes_supported` and `resource` from the metadata; metadata URLs answering with an error leave them unset, invalid metadata rejects the request with `400`.
+
+DIAL Core generates the [PKCE](https://www.rfc-editor.org/rfc/rfc7636) pair when the authorization server advertises `S256`, or when the request names a `code_challenge_method`, and sends the `code_verifier` in the sign-in token request. Reads return `code_challenge` and `code_challenge_method`; `client_secret` and `code_verifier` are stored encrypted and never returned. An update that keeps the service `OAUTH` keeps every stored OAuth field the request leaves out, so a client may send back what a `GET` returned; a blank `resource` or `discovery_url` clears it, a new `code_challenge_method` replaces the pair and a blank one removes it. A change of `authentication_type` keeps none of them.
+
+Services declared in a config file are never registered by DIAL Core: an `OAUTH` service there needs a complete client (`client_id`, `authorization_endpoint`, `token_endpoint`), or it is dropped with an error in the log.
+
+**Example**
+
+```json
+"externalServices": {
+    "crm": {
+        "display_name": "CRM",
+        "auth_settings": {
+            "authentication_type": "OAUTH",
+            "discovery_url": "https://login.example.com/realms/crm",
+            "client_id": "dial-crm",
+            "client_secret": "<secret>",
+            "authorization_endpoint": "https://login.example.com/realms/crm/protocol/openid-connect/auth",
+            "token_endpoint": "https://login.example.com/realms/crm/protocol/openid-connect/token"
+        }
+    }
 }
 ```
 
