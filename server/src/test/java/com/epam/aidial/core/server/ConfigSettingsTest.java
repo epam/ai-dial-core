@@ -219,6 +219,41 @@ public class ConfigSettingsTest extends ResourceBaseTest {
         assertEquals("UTC", body.get("rateLimitSchedule").get("timezone").asText());
         assertEquals("off", body.get("spendingLimits").get("mode").asText());
         assertEquals("ORG", body.get("spendingLimits").get("defaultCostObject").asText());
+        assertEquals(0, body.get("analytics").get("securedSubject").size());
+    }
+
+    @Test
+    @SneakyThrows
+    void testPutSecuredSubjectGetReturnsIt() {
+        verify(send(HttpMethod.PUT, SETTINGS_URL, null, """
+                {"analytics": {"securedSubject": [{"source": "user_name", "function": "EQUAL", "targets": ["test-user"]}]}}
+                """, "authorization", "admin"), 200);
+        JsonNode rule = ProxyUtil.MAPPER.readTree(send(HttpMethod.GET, SETTINGS_URL, null, "", "authorization", "admin").body())
+                .get("analytics").get("securedSubject").get(0);
+        assertEquals("user_name", rule.get("source").asText());
+        assertEquals("EQUAL", rule.get("function").asText());
+        assertEquals("test-user", rule.get("targets").get(0).asText());
+    }
+
+    @Test
+    void testPutSecuredSubjectWithInvalidPatternReturns400() {
+        verify(send(HttpMethod.PUT, SETTINGS_URL, null, """
+                {"analytics": {"securedSubject": [{"source": "user_name", "function": "REGEX", "targets": ["("]}]}}
+                """, "authorization", "admin"), 400);
+    }
+
+    @Test
+    void testPutSecuredSubjectRuleWithoutSourceReturns400() {
+        verify(send(HttpMethod.PUT, SETTINGS_URL, null, """
+                {"analytics": {"securedSubject": [{"function": "EQUAL", "targets": ["test-user"]}]}}
+                """, "authorization", "admin"), 400);
+    }
+
+    @Test
+    void testPutNullSecuredSubjectReturns400() {
+        verify(send(HttpMethod.PUT, SETTINGS_URL, null, """
+                {"analytics": {"securedSubject": null}}
+                """, "authorization", "admin"), 400);
     }
 
     @Test

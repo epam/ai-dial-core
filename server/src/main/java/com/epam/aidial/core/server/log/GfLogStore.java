@@ -121,12 +121,12 @@ public class GfLogStore implements LogStore {
     }
 
     /**
-     * Decides which row to queue. A secured key's row never writes its bodies, and while the bodies already waiting
+     * Decides which row to queue. A secured caller's row never writes its bodies, and while the bodies already waiting
      * reach the limit no row does, so those rows are queued without them. The bodies of the others are counted.
      */
     @VisibleForTesting
     AnalyticsLogContext admit(AnalyticsLogContext logContext) {
-        if (logContext.isSecuredApiKey()) {
+        if (logContext.isSecured()) {
             return logContext.withoutBodies();
         }
         long bytes = countBodyBytes(logContext);
@@ -182,7 +182,7 @@ public class GfLogStore implements LogStore {
 
     @VisibleForTesting
     void append(AnalyticsLogContext logContext, LogEntry entry) throws JsonProcessingException {
-        boolean withBodies = !logContext.isSecuredApiKey() && !logContext.isBodiesOmitted();
+        boolean withBodies = !logContext.isSecured() && !logContext.isBodiesOmitted();
 
         append(entry, "{\"apiType\":\"DialOpenAI\",\"chat\":{\"id\":\"", false);
         append(entry, logContext.getConversationId(), true);

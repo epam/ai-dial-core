@@ -102,16 +102,8 @@ public class EffectiveBudgets {
         if (subject == null) {
             return false;
         }
-        List<Rule> rules = subject.stream().map(EffectiveBudgets::toRule).toList();
+        List<Rule> rules = RuleMatcher.toRules(subject);
         return RuleMatcher.match(claims.userRoles(), claims.userEmail(), claims.userClaims(), rules);
-    }
-
-    private Rule toRule(PolicySubjectRule subjectRule) {
-        Rule rule = new Rule();
-        rule.setSource(subjectRule.getSource());
-        rule.setFunction(Rule.Function.valueOf(subjectRule.getFunction().name()));
-        rule.setTargets(subjectRule.getTargets());
-        return rule;
     }
 
     private void meterAmbiguousPriority(List<BudgetInstance> candidates, String costObject) {

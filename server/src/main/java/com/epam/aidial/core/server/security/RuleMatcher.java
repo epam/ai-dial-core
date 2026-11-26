@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.security;
 
+import com.epam.aidial.core.config.policy.PolicySubjectRule;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.Rule;
 import com.epam.aidial.core.server.util.JsonUtil;
@@ -65,6 +66,22 @@ public class RuleMatcher {
         }
 
         return false;
+    }
+
+    /**
+     * The rules of a subject as configured (a policy assignment's {@code subject}, {@code analytics.securedSubject}),
+     * in the form {@link #match} takes.
+     */
+    public List<Rule> toRules(List<PolicySubjectRule> subject) {
+        return subject.stream().map(RuleMatcher::toRule).toList();
+    }
+
+    private Rule toRule(PolicySubjectRule subjectRule) {
+        Rule rule = new Rule();
+        rule.setSource(subjectRule.getSource());
+        rule.setFunction(Rule.Function.valueOf(subjectRule.getFunction().name()));
+        rule.setTargets(subjectRule.getTargets());
+        return rule;
     }
 
     private List<String> extract(JsonNode claims, String path) {

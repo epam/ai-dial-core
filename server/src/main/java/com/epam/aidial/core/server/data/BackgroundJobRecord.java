@@ -33,6 +33,7 @@ public record BackgroundJobRecord(
         String conversationId,
         String sessionId,
         String jobTitle,
+        // the caller was secured at submit (a secured key or a secured role); the name is kept for stored records
         boolean securedApiKey,
         String userId,
         List<String> userRoles,
@@ -66,7 +67,7 @@ public record BackgroundJobRecord(
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
                 .sessionId(GenAiTraceAttributes.resolveConversationId(context))
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
-                .securedApiKey(context.isSecuredApiKey())
+                .securedApiKey(context.isSecured())
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
                 .userDisplayName(context.getUserDisplayName())

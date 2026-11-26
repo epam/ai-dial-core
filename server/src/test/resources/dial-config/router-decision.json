@@ -130,6 +130,9 @@
     },
     "plain": {}
   },
+  "analytics": {
+    "securedSubject": [{"source": "roles", "function": "EQUAL", "targets": ["legal"]}]
+  },
   "aliases": {
     "alias-m1": {
       "presentAs": "model",

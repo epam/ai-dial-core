@@ -1,0 +1,39 @@
+{
+  "models": {
+    "m": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m/chat/completions"
+    }
+  },
+  "applications": {
+    "app": {
+      "endpoint": "http://localhost:4848/openai/deployments/app/chat/completions"
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "p1",
+      "role": "default"
+    },
+    "legalKey": {
+      "project": "p1",
+      "role": "legal"
+    },
+    "devKey": {
+      "project": "p1",
+      "role": "dev"
+    }
+  },
+  "roles": {
+    "legal": {},
+    "dev": {}
+  },
+  "analytics": {
+    "securedSubject": [
+      {"source": "roles", "function": "EQUAL", "targets": ["legal"]},
+      {"source": "user_name", "function": "EQUAL", "targets": ["test-user"]},
+      {"source": "groups", "function": "CONTAIN", "targets": ["secure"]},
+      {"source": "c-level-management", "function": "EQUAL", "targets": ["true"]}
+    ]
+  }
+}

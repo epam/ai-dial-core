@@ -456,6 +456,7 @@ public class ConfigFileMigrateController {
         settings.setRetriableErrorCodes(fileConfig.getRetriableErrorCodes());
         settings.setRateLimitSchedule(fileConfig.getRateLimitSchedule());
         settings.setSpendingLimits(fileConfig.getSpendingLimits());
+        settings.setAnalytics(fileConfig.getAnalytics());
         JsonNode spec = ProxyUtil.MAPPER.valueToTree(settings);
         collect(new AdminManifest("Settings", canonicalId, spec), null, scratch, dryRun, toApply, results);
     }

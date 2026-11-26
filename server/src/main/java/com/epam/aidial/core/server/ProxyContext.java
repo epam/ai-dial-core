@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Route;
+import com.epam.aidial.core.config.policy.PolicySubjectRule;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.RouterDecision;
@@ -17,6 +18,7 @@ import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.proxy.embedded.EmbeddedServerRequest;
 import com.epam.aidial.core.server.proxy.embedded.VertxHostDelegate;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.security.RuleMatcher;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
@@ -296,8 +298,16 @@ public class ProxyContext {
         return userId != null ? userId : getProject();
     }
 
-    public boolean isSecuredApiKey() {
-        return key != null && key.isSecured();
+    /**
+     * Whether the caller's analytics rows are written without bodies: the original key is {@code secured}, or the caller
+     * matches {@code analytics.securedSubject} in the config in force now. An empty subject matches nobody.
+     */
+    public boolean isSecured() {
+        if (key != null && key.isSecured()) {
+            return true;
+        }
+        List<PolicySubjectRule> subject = getConfig().getAnalytics().getSecuredSubject();
+        return !subject.isEmpty() && RuleMatcher.match(this, RuleMatcher.toRules(subject));
     }
 
     /**

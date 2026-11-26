@@ -52,7 +52,7 @@ import java.util.Map;
  *
  * <p>Singleton settings: {@code GET /v1/admin/config/file/settings/global} returns the
  * file-defined (or schema-default) values for {@code globalInterceptors},
- * {@code retriableErrorCodes}, {@code rateLimitSchedule} and {@code spendingLimits} regardless
+ * {@code retriableErrorCodes}, {@code rateLimitSchedule}, {@code spendingLimits} and {@code analytics} regardless
  * of whether an API blob exists — this surface is the file/default view; the blob projection
  * lives on {@code /v1/settings/platform/global}.
  *
@@ -693,6 +693,7 @@ public class FileConfigController implements Controller {
         body.set("retriableErrorCodes", ProxyUtil.MAPPER.valueToTree(fileConfig.getRetriableErrorCodes()));
         body.set("rateLimitSchedule", ProxyUtil.MAPPER.valueToTree(fileConfig.getRateLimitSchedule()));
         body.set("spendingLimits", ProxyUtil.MAPPER.valueToTree(fileConfig.getSpendingLimits()));
+        body.set("analytics", ProxyUtil.MAPPER.valueToTree(fileConfig.getAnalytics()));
         body.put("name", SETTINGS_SINGLETON_NAME);
         body.put("status", "valid");
         context.respond(HttpStatus.OK, body);

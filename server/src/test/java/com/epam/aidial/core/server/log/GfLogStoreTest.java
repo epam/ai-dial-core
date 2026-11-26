@@ -724,7 +724,7 @@ public class GfLogStoreTest {
     @Test
     public void testSessionIsWrittenForSecuredApiKey() {
         AnalyticsLogContext context = mock(AnalyticsLogContext.class);
-        when(context.isSecuredApiKey()).thenReturn(true);
+        when(context.isSecured()).thenReturn(true);
         when(context.getSessionId()).thenReturn("session-1");
 
         JsonNode log = logOf(context);
@@ -746,11 +746,11 @@ public class GfLogStoreTest {
     }
 
     @Test
-    public void testSecuredKeyRowHasNoBodies() {
+    public void testSecuredRowHasNoBodies() {
         JsonNode log = logOf(row("model", "{\"q\":1}")
                 .responseBody(Buffer.buffer("{\"a\":2}"))
                 .assembledStreamingResponse("{\"assembled\":3}")
-                .securedApiKey(true)
+                .secured(true)
                 .build());
 
         assertFalse(log.get("request").has("body"));
@@ -883,7 +883,7 @@ public class GfLogStoreTest {
         AnalyticsLogContext secured = row("a", "x".repeat(2000))
                 .responseBody(Buffer.buffer("{}"))
                 .assembledStreamingResponse("{}")
-                .securedApiKey(true)
+                .secured(true)
                 .build();
 
         AnalyticsLogContext queued = store.admit(secured);
