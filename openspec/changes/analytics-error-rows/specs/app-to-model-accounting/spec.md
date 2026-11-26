@@ -3,16 +3,16 @@
 ## MODIFIED Requirements
 
 ### Requirement: Passes without an analytics row
-Except as "Error rows for answers Core gives itself" says, Core SHALL NOT write an analytics row for a pass that forwards to an interceptor, so usage an interceptor's body
-reports is not recorded, nor for these answers Core produces itself: a refusal, `No route`, `Service is not
-available`, a connect failure.
+Core SHALL NOT write an analytics row for a pass that forwards to an interceptor, so usage an interceptor's body
+reports is not recorded, nor, unless `analytics.errorRows` is on ("Error rows for answers Core gives itself"), for these
+answers Core produces itself: a refusal, `No route`, `Service is not available`, a connect failure.
 
 #### Scenario: Model behind interceptors
 - **WHEN** model `m` has interceptors `["i1", "i2"]` and a client calls `m`
 - **THEN** one row is written, for `m`, and none for `i1` or `i2`
 
 #### Scenario: No route
-- **WHEN** a model's only upstream answers `503` and `maxRetryAttempts` is 1
+- **WHEN** `analytics.errorRows` is off, a model's only upstream answers `503` and `maxRetryAttempts` is 1
 - **THEN** the client gets `502` and no row is written
 
 ### Requirement: Client gone from an application
@@ -23,7 +23,7 @@ minted (it expires with its TTL) or, for a root pass, delete the trace's token-s
 `deploymentStats.ttlMs`). A buffered non-streaming chat completion does not notice a failed write and ends as answered.
 
 #### Scenario: Client disconnects from an application
-- **WHEN** a client streams from root `app` and closes its connection mid-stream
+- **WHEN** `analytics.errorRows` is off and a client streams from root `app` and closes its connection mid-stream
 - **THEN** no `app` row is written, and the key Core sent `app` and `deployment_cost_stats_tmp:<traceId>` still
   exist in Redis
 
@@ -82,6 +82,11 @@ feature calls, its MCP proxy and routes: every answer with a status outside 200-
 - **WHEN** `analytics.errorRows` is on and a request exceeds the role's limit for the model
 - **THEN** the client gets `429` and one row is written with `deployment` the model and `response.status: "429"`
 
+#### Scenario: Rate limit of a child pass
+- **WHEN** `analytics.errorRows` is on, application `app` calls a model with the key Core sent it, and the request exceeds
+  the role's limit for the model
+- **THEN** `app` gets `429` and one row is written for the model, with `parent_deployment: "app"`
+
 #### Scenario: Forbidden deployment
 - **WHEN** `analytics.errorRows` is on and the key's role is not in the model's `userRoles`
 - **THEN** the client gets `403` and one row is written with `response.status: "403"`
@@ -107,6 +112,12 @@ feature calls, its MCP proxy and routes: every answer with a status outside 200-
 #### Scenario: Decided request fails
 - **WHEN** `analytics.errorRows` is on, router `r1`'s decision chooses `m1`, and `m1`'s only upstream answers `502`
 - **THEN** the client gets an error, the router row of `r1` is written as with the setting off, and one row is written for `m1`
+
+#### Scenario: Decided application with an encoded name
+- **WHEN** `analytics.errorRows` is on, a router's decision chooses application `applications/<bucket>/My App` by its
+  decoded url, and nothing listens at the application's endpoint
+- **THEN** the client gets `502` and one row is written for the application, with `deployment` its encoded url
+  `applications/<bucket>/My%20App`
 
 #### Scenario: Feature call whose origin refuses the connection
 - **WHEN** `analytics.errorRows` is on and a client calls `/v1/deployments/{id}/tokenize` of a model whose tokenize endpoint

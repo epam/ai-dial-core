@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.alias.AliasPass;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.RouterDecision;
@@ -128,7 +129,9 @@ public class AnalyticsLogContext {
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(context.getDecision() != null
                         ? context.getDecision().getRouterName()
-                        : getParentDeployment(context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
+                        // an answer Core gives before the pass's key exists (its own 429) takes the path that key would have had
+                        : getParentDeployment(context.getSourceDeployment(), context.getInterceptors(),
+                                context.getExecutionPath() != null ? context.getExecutionPath() : ApiKeyData.pathOf(context)))
                 .executionPath(context.getExecutionPath())
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
                 .requestMethod(context.getRequest().method().name())

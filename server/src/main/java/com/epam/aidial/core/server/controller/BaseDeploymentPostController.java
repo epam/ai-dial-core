@@ -41,6 +41,7 @@ import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -158,7 +159,12 @@ public class BaseDeploymentPostController {
         if (decision == null) {
             return !(deployment instanceof Router router && router.getMode() == Router.Mode.DECISION);
         }
-        return deployment != null && decision.current().equals(deployment.getName());
+        if (deployment == null) {
+            return false;
+        }
+        // a candidate names a resource deployment by its decoded url, and the deployment's name is the encoded one
+        String candidate = decision.current();
+        return candidate.equals(deployment.getName()) || candidate.equals(UrlUtil.tryDecodePath(deployment.getName()));
     }
 
     /**

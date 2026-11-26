@@ -138,8 +138,9 @@ A row has the fields every row has and none that others lack:
 | `response.body`             | empty for an answer Core gave itself: the text is in the WARN line                             |
 | `token_usage`               | absent                                                                                         |
 | `response.upstream_uri`     | absent when the upstreams were used up, present for a connection that failed                   |
-| `request.body`              | empty for an answer given before the body is read (`403`, `404`, `415`, Core's `429`)          |
-| `execution_path`            | absent for an answer given before the per-request key exists (Core's `429`, `403`, `404`, `415`, `400`) |
+| `request.body`              | empty for an answer given before the body is read: `403`, `404`, `415` and Core's `429` on `/openai/deployments/{id}/...`. `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages` read the body first, to find the model, so their rows have it |
+| `execution_path`            | absent for an answer given before the pass's per-request key exists: Core's `429`, `403`, `404` and `415`, and a `400` everywhere except `/openai/deployments/{id}/...`, which parses the body after the key exists |
+| `parent_deployment`         | as in any row; before the key exists it is the deployment whose key made the call, such as an application whose call to a model Core refuses with `429` |
 
 `response.status` is not the status the origin sent, which the row does not carry (the INFO line `Received header from origin` has
 it). Core never relays a retriable status. When no attempt is left it answers `503 Service is not available` if **every** upstream of

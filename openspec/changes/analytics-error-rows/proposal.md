@@ -54,7 +54,7 @@ None.
 ## Out of scope
 
 - `401` and `413`: they end before a `ProxyContext` exists and write no Monitoring record, so they are not an event of this task.
-- WebSocket and background jobs, and a stream that breaks on a feature call, an MCP request or a route. They log WARN through their own
+- WebSocket, the polling of a background job (the stream of a background request is covered), and a stream that breaks on a feature call, an MCP request or a route. They log WARN through their own
   paths, which the run did not exercise; each needs its own investigation.
 - The call to an interceptor, and the pass of a router in decision mode that fails before it decides. Existing specs say they write no row. Whether
   the change covers them is a review decision (design.md, D2 and D3); the default leaves them as they are.

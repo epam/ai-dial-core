@@ -27,6 +27,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
 
     private static final String MCP_BODY = "{\"payload\": \"foo\"}";
+    private static final String LIMITED_PATH = "/openai/deployments/gpt-3-turbo/chat/completions";
+    // gpt-3-turbo allows 100 tokens a minute: this answer reports 200 and uses it up
+    private static final String LIMIT_USED_UP = """
+            {"id":"c","object":"chat.completion","model":"mock",
+             "choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],
+             "usage":{"prompt_tokens":100,"completion_tokens":100,"total_tokens":200}}""";
 
     @Override
     boolean isErrorRowsOn() {
@@ -162,22 +168,41 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
     @Test
     @SneakyThrows
     void testRateLimit() {
-        // gpt-3-turbo allows 100 tokens a minute: the first answer reports 200 and uses it up
         try (TestWebServer limited = new TestWebServer(4848)) {
-            limited.map(HttpMethod.POST, "/chat/completions", 200, """
-                    {"id":"c","object":"chat.completion","model":"mock",
-                     "choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],
-                     "usage":{"prompt_tokens":100,"completion_tokens":100,"total_tokens":200}}""", "content-type", "application/json");
-            String path = "/openai/deployments/gpt-3-turbo/chat/completions";
+            limited.map(HttpMethod.POST, "/chat/completions", 200, LIMIT_USED_UP, "content-type", "application/json");
 
-            verify(send(HttpMethod.POST, path, null, CHAT_BODY, "content-type", "application/json"), 200);
-            awaitCondition(() -> send(HttpMethod.POST, path, null, CHAT_BODY, "content-type", "application/json").status() == 429);
+            verify(send(HttpMethod.POST, LIMITED_PATH, null, CHAT_BODY, "content-type", "application/json"), 200);
+            awaitCondition(() -> send(HttpMethod.POST, LIMITED_PATH, null, CHAT_BODY, "content-type", "application/json").status() == 429);
         }
 
         // the first call's row, and the row of the call that Core refused
         List<AnalyticsLogContext> rows = rows(2);
         assertEquals(200, rows.get(0).getResponseStatusCode());
         assertErrorRow(rows.get(1), "gpt-3-turbo", 429);
+    }
+
+    @Test
+    void testChildPassRateLimit() {
+        // Core refuses before the child pass has a key of its own, so its row takes the parent from the key the app called with
+        AtomicInteger childStatus = new AtomicInteger();
+        try (TestWebServer limited = new TestWebServer(4848)) {
+            limited.map(HttpMethod.POST, "/chat/completions", 200, LIMIT_USED_UP, "content-type", "application/json");
+            verify(send(HttpMethod.POST, LIMITED_PATH, null, CHAT_BODY, "content-type", "application/json"), 200);
+
+            putApplication("app-child", adapterUrl("app-child"));
+            adapter.map(HttpMethod.POST, adapterPath("app-child"), request -> {
+                childStatus.set(send(HttpMethod.POST, LIMITED_PATH, null, CHAT_BODY,
+                        "api-key", request.getHeader("api-key"), "content-type", "application/json").status());
+                return reply(200);
+            });
+
+            verify(chat("app-child"), 200);
+        }
+
+        assertEquals(429, childStatus.get());
+        AnalyticsLogContext refused = rows(3).stream().filter(row -> row.getResponseStatusCode() == 429).findFirst().orElseThrow();
+        assertErrorRow(refused, "gpt-3-turbo", 429);
+        assertEquals("app-child", refused.getParentDeployment());
     }
 
     @Test
@@ -320,6 +345,25 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
         sleep();
         assertTrue(analyticsRows.stream().allMatch(row -> row.getDecision() != null), () -> "rows " + analyticsRows.stream()
                 .map(row -> row.getDeploymentName() + "/" + row.getResponseStatusCode()).toList());
+    }
+
+    @Test
+    @DialConfigLocation("dial-config/router-decision.json")
+    void testDecidedCandidateWithAnEncodedName() {
+        // the router names the application by its decoded url; nothing listens at its endpoint, so Core answers itself
+        verify(send(HttpMethod.PUT, "/v1/applications/" + bucket + "/My%20App", null,
+                "{\"endpoint\": \"http://localhost:" + RAW_PORT + "/my-app/chat/completions\"}"), 200);
+        try (TestWebServer router = new TestWebServer(4848, request -> TestWebServer.createResponse(200,
+                "{\"candidates\": [\"applications/" + bucket + "/My App\"]}", "content-type", "application/json"))) {
+            verify(send(HttpMethod.POST, "/openai/deployments/r-two/chat/completions", null, CHAT_BODY,
+                    "content-type", "application/json"), 502);
+        }
+
+        sleep();
+        List<AnalyticsLogContext> candidateRows = analyticsRows.stream().filter(row -> row.getDecision() == null).toList();
+        assertEquals(1, candidateRows.size(), () -> "rows " + analyticsRows.stream()
+                .map(row -> row.getDeploymentName() + "/" + row.getResponseStatusCode()).toList());
+        assertErrorRow(candidateRows.get(0), "applications/" + bucket + "/My%20App", 502);
     }
 
     // "Error rows for answers Core gives itself": feature calls, the MCP proxy and routes

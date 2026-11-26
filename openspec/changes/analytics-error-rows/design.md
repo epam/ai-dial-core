@@ -60,7 +60,7 @@ Goals:
 
 Non-Goals:
 - a new field, a reason, the origin's status or an attempt count in the row;
-- WebSocket, background jobs, and a stream that breaks on a feature call, an MCP request or a route (`Can't send response to client` at
+- WebSocket, the polling of a background job (the stream of a background request is covered), and a stream that breaks on a feature call, an MCP request or a route (`Can't send response to client` at
   `DeploymentFeatureController.java:362`, `McpProxyController.java:547`, `RouteRequestBodyHandler.java:265`): other code paths, not covered;
 - changing the client's status or body, or any WARN line.
 
@@ -250,6 +250,9 @@ on, expecting the same count (deferred: needs Docker and Redis, as in the invest
 - **No marker.** → Decision 6; the row counts of the tests.
 - **A row for a decided request has `deployment` of the last candidate.** → It is the pass that answered.
 - **Volume during an outage.** → Same as any row; the setting is off by default.
+- **A background stream that breaks while its job is being saved, and a save that then fails, write no row.**
+  `backgroundJobRecorded` is set before the saves, so the break writes none, and the failed save leaves no job to write it. → Two
+  failures at once, within the time the two saves take; accepted.
 
 ## Migration Plan
 
