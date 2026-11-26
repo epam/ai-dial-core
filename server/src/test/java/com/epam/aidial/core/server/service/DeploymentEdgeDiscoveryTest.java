@@ -254,7 +254,10 @@ public class DeploymentEdgeDiscoveryTest {
 
     @Test
     public void testShortNameWhoseOriginCannotBeEstablishedIsListedAsOriginUnknown() {
-        merged.getModels().put("m", new Model());
+        // the merged entity differs from the file one, and no blob holds the name: it comes from nowhere that can be named
+        Model other = new Model();
+        other.setEndpoint("http://other.invalid");
+        merged.getModels().put("m", other);
         file.getModels().put("m", new Model());
 
         DiscoveredEdge edge = onlyEdgeOf(discover(new Application(), resourceMarker("/deployment_id", "m")));

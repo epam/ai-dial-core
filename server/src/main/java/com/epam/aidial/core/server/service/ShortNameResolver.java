@@ -135,20 +135,20 @@ public final class ShortNameResolver {
 
     /**
      * A valid platform blob wins over a file entity of the same type and name, whichever entity the merged map holds; the file
-     * configuration's instance is the origin only when no valid blob exists. Anything else leaves the origin unknown.
+     * configuration's entity is the origin only when no valid blob exists and the merged map holds an equal one. Anything else leaves the origin unknown.
      */
     private ShortNameResolution resolveHeld(ResourceTypes type, String name, Set<ResourceTypes> skipped) {
         if (fileConfig == null) {
             return newResolution(Outcome.ORIGIN_UNKNOWN, type, name, null);
         }
         Deployment fileEntity = DependencyTypePolicy.findDeployment(fileConfig, type, name);
-        boolean isFileInstance = fileEntity != null && fileEntity == DependencyTypePolicy.findDeployment(merged, type, name);
+        boolean isFileEntity = fileEntity != null && fileEntity.equals(DependencyTypePolicy.findDeployment(merged, type, name));
         boolean hasValidBlob = hasPlatformBlob(type, name) && !skipped.contains(type);
 
         if (hasValidBlob) {
             return newResolution(Outcome.FOUND, type, name, Origin.PLATFORM);
         }
-        if (isFileInstance) {
+        if (isFileEntity) {
             return newResolution(Outcome.FOUND, type, name, Origin.FILE);
         }
         return newResolution(Outcome.ORIGIN_UNKNOWN, type, name, null);

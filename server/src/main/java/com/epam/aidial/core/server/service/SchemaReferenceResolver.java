@@ -93,7 +93,7 @@ final class SchemaReferenceResolver {
                     ResourceDescriptor.PLATFORM_LOCATION, validBlobNames.get(0));
             return new SchemaResolution(Outcome.FOUND, descriptor, Origin.PLATFORM);
         }
-        if (validBlobNames.isEmpty() && fileBody != null && fileBody == mergedBody) {
+        if (validBlobNames.isEmpty() && fileBody != null && fileBody.equals(mergedBody)) {
             return new SchemaResolution(Outcome.FOUND, null, Origin.FILE);
         }
         return UNKNOWN;
