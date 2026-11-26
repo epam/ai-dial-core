@@ -116,8 +116,9 @@ public class AdminApplyController {
             }
         }
 
+        String author = context.getUserDisplayName();
         taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS,
-                () -> applyBatch(precheck, entries)))
+                () -> applyBatch(precheck, entries, author)))
                 .onSuccess(result -> context.respond(result.status(), result.body()))
                 .onFailure(error -> {
                     if (error instanceof HttpException ex) {
@@ -130,7 +131,7 @@ public class AdminApplyController {
                 });
     }
 
-    private ApplyResponse applyBatch(boolean precheck, List<AdminManifest> rawEntries) {
+    private ApplyResponse applyBatch(boolean precheck, List<AdminManifest> rawEntries, String author) {
         List<AdminManifest> entries = new ArrayList<>(rawEntries);
         entries.sort(ConfigManifestSupport.DEPENDENCY_ORDER_COMPARATOR);
 
@@ -161,7 +162,7 @@ public class AdminApplyController {
             scratch = ConfigManifestSupport.newScratch(mergedConfigStore);
         }
 
-        return buildResponse(HttpStatus.OK, applyService.applyEntries(entries, scratch));
+        return buildResponse(HttpStatus.OK, applyService.applyEntries(entries, scratch, author));
     }
 
     private static String locationOf(JsonProcessingException e) {

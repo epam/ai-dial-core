@@ -5,11 +5,15 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.resource.ResourceDescriptor;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -446,6 +450,76 @@ public class ToolSetApiTest extends ResourceBaseTest {
                 }
                  }
                 """);
+    }
+
+    @Test
+    void testToolSetAuthor() {
+        String resourceUrl = "/v1/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/";
+        String openAiUrl = "/openai/toolsets/toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/";
+        String id = "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/";
+        String withoutAuthor = """
+                {"endpoint": "http://toolset/v1/mcp", "transport": "HTTP", "allowedTools": [],
+                 "auth_settings": {"authentication_type": "NONE"}}
+                """;
+        String withAuthor = """
+                {"endpoint": "http://toolset/v1/mcp", "transport": "HTTP", "allowedTools": [], "author": "%s",
+                 "auth_settings": {"authentication_type": "NONE"}}
+                """;
+
+        // created with another author: stored as sent, the audit author of the resource is still the caller
+        Response response = send(HttpMethod.PUT, resourceUrl + "copy", null, withAuthor.formatted("original-dev"));
+        verify(response, 200);
+        assertEquals("EPM-RTC-GPT", new JsonObject(response.body()).getString("author"));
+        assertEquals("original-dev", authorOf(send(HttpMethod.GET, resourceUrl + "copy", null, "")));
+        assertEquals("original-dev", ownerOf(send(HttpMethod.GET, openAiUrl + "copy", null, "")));
+        assertEquals("original-dev", listedOwner(send(HttpMethod.GET, "/openai/toolsets"), id + "copy"));
+        assertEquals("original-dev", listedOwner(send(HttpMethod.GET, "/v1/deployments"), id + "copy"));
+
+        // created without author: the caller's name
+        verify(send(HttpMethod.PUT, resourceUrl + "plain", null, withoutAuthor), 200);
+        assertEquals("EPM-RTC-GPT", authorOf(send(HttpMethod.GET, resourceUrl + "plain", null, "")));
+
+        // created with an empty author: anonymous
+        verify(send(HttpMethod.PUT, resourceUrl + "anon", null, withAuthor.formatted("")), 200);
+        assertEquals("", authorOf(send(HttpMethod.GET, resourceUrl + "anon", null, "")));
+        assertEquals("", listedOwner(send(HttpMethod.GET, "/openai/toolsets"), id + "anon"));
+
+        // an update without author keeps it, an update with author replaces it
+        verify(send(HttpMethod.PUT, resourceUrl + "copy", null, withoutAuthor), 200);
+        assertEquals("original-dev", authorOf(send(HttpMethod.GET, resourceUrl + "copy", null, "")));
+        verify(send(HttpMethod.PUT, resourceUrl + "copy", null, withAuthor.formatted("team-y")), 200);
+        assertEquals("team-y", authorOf(send(HttpMethod.GET, resourceUrl + "copy", null, "")));
+    }
+
+    @Test
+    void testToolSetSavedBeforeBodyAuthorShowsAuditAuthor() {
+        String bucketUrl = "toolsets/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/";
+        String body = """
+                {"name": "%s", "endpoint": "http://toolset/v1/mcp", "transport": "HTTP", "allowedTools": [],
+                 "auth_settings": {"authentication_type": "NONE"}}
+                """;
+        ResourceDescriptor legacy = ResourceDescriptorFactory.fromAnyUrl(bucketUrl + "legacy", dial.getEncryptionService());
+        dial.getResourceService().putResource(legacy, body.formatted(bucketUrl + "legacy"), EtagHeader.ANY, "legacy-user", false);
+        ResourceDescriptor anonymous = ResourceDescriptorFactory.fromAnyUrl(bucketUrl + "nobody", dial.getEncryptionService());
+        dial.getResourceService().putResource(anonymous, body.formatted(bucketUrl + "nobody"), EtagHeader.ANY, null, false);
+
+        assertEquals("legacy-user", authorOf(send(HttpMethod.GET, "/v1/" + bucketUrl + "legacy", null, "")));
+        assertEquals("legacy-user", ownerOf(send(HttpMethod.GET, "/openai/toolsets/" + bucketUrl + "legacy", null, "")));
+        assertEquals("legacy-user", listedOwner(send(HttpMethod.GET, "/openai/toolsets"), bucketUrl + "legacy"));
+        assertNull(authorOf(send(HttpMethod.GET, "/v1/" + bucketUrl + "nobody", null, "")));
+    }
+
+    @SneakyThrows
+    private static String listedOwner(Response response, String id) {
+        verify(response, 200);
+        JsonNode body = ProxyUtil.MAPPER.readTree(response.body());
+        for (JsonNode deployment : body.isArray() ? body : body.get("data")) {
+            if (id.equals(deployment.path("id").asText())) {
+                JsonNode owner = deployment.get("owner");
+                return owner == null ? null : owner.asText();
+            }
+        }
+        throw new AssertionError(id + " is not listed in " + response.body());
     }
 
     @Test

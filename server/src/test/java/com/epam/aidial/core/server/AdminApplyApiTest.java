@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
@@ -1192,6 +1193,67 @@ public class AdminApplyApiTest extends ResourceBaseTest {
                 "authorization", "admin"), 200);
         verify(send(HttpMethod.GET, "/v1/toolsets/platform/apply-toolset-1", null, "",
                 "authorization", "admin"), 200);
+    }
+
+    @Test
+    void testApplyRecordsCallerAsAuthor() {
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Application",
+                      "name": "applications/public/apply-author-app",
+                      "spec": {"endpoint": "http://example.com/v1/completions", "display_name": "Apply Author App"}
+                    },
+                    {
+                      "kind": "ToolSet",
+                      "name": "toolsets/public/apply-author-toolset",
+                      "spec": {"transport": "http", "endpoint": "http://localhost:9876", "author": "team-x"}
+                    },
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-author-model",
+                      "spec": {"type": "chat", "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin"), 200);
+
+        // the business author: the caller's name when the manifest has none, the manifest's otherwise
+        assertEquals("admin user", authorOf(send(HttpMethod.GET, "/v1/applications/public/apply-author-app", null, "",
+                "authorization", "admin")));
+        assertEquals("team-x", authorOf(send(HttpMethod.GET, "/v1/toolsets/public/apply-author-toolset", null, "",
+                "authorization", "admin")));
+
+        // the audit author of every applied entity: the caller
+        assertEquals("admin user", authorOf(send(HttpMethod.GET, "/v1/metadata/models/platform/apply-author-model", null, "",
+                "authorization", "admin")));
+    }
+
+    @Test
+    void testApplyKeepsAuditAuthorOfStoredEntity() {
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(ResourceTypes.MODEL,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, "apply-author-stored");
+        dial.getProxy().getResourceService().putResource(descriptor, """
+                {"type": "chat", "endpoint": "http://localhost:7001/openai/deployments/test/chat/completions"}
+                """, EtagHeader.ANY, "first-admin", false);
+
+        String body = """
+                {
+                  "manifests": [
+                    {
+                      "kind": "Model",
+                      "name": "models/platform/apply-author-stored",
+                      "spec": {"type": "chat", "endpoint": "http://localhost:7001/openai/deployments/other/chat/completions"}
+                    }
+                  ]
+                }
+                """;
+        verify(send(HttpMethod.POST, "/v1/admin/apply", null, body, "authorization", "admin"), 200);
+
+        assertEquals("first-admin", authorOf(send(HttpMethod.GET, "/v1/metadata/models/platform/apply-author-stored", null, "",
+                "authorization", "admin")));
     }
 
     @Test

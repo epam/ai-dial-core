@@ -476,6 +476,21 @@ On approve Core SHALL set `"status":"APPROVED"`, drop it from `publications/publ
   `[{"function":"EQUAL","source":"roles","targets":["user"]}]`
 - **THEN** the review copy answers `404`, a JWT with role `user` gets `200` on the target, and `proxyKey1` gets `403`
 
+### Requirement: Author of a published application or toolset
+When a publication has `displayAuthor`, the published application or toolset SHALL have it as its `author`, as `GET` and
+`owner` of its listing entry report it. Without `displayAuthor` the copy SHALL keep the `author` of its source.
+
+#### Scenario: Published application shows the display author
+- **WHEN** a user saved an application with `"author": "original-dev"`, and an admin approves its publication with
+  `"displayAuthor": "dream-team"`
+- **THEN** `GET /v1/applications/public/<name>` has `author` `dream-team` and its entry in `GET /openai/applications`
+  has `owner` `dream-team`
+
+#### Scenario: Published toolset without a display author
+- **WHEN** a user saved a toolset with `"author": "original-dev"`, and an admin approves its publication without
+  `displayAuthor`
+- **THEN** `GET /v1/toolsets/public/<name>` has `author` `original-dev`
+
 ### Requirement: Rejecting a publication
 On reject with `{"url","comment"}` Core SHALL set `"status":"REJECTED"`, drop it from `publications/public/`, delete
 the review copies, notify the author `Your request has been rejected by admin[: <comment>]`, and answer `200` with the

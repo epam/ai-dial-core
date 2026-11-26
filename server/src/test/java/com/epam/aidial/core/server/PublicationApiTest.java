@@ -10,6 +10,7 @@ import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import okhttp3.mockwebserver.MockResponse;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -123,6 +124,47 @@ class PublicationApiTest extends ResourceBaseTest {
                 }
                 """.formatted(name, name + "-" + publishCredentials, owner, name, name + "-" + publishCredentials, name, publishCredentials),
                 "authorization", "user");
+    }
+
+    @Test
+    void testPublishedApplicationAndToolSetAuthor() {
+        verify(send(HttpMethod.PUT, "/v1/applications/%s/author-app".formatted(bucket), null, """
+                {"endpoint": "http://localhost:7001/v1/x", "display_name": "Author App", "author": "original-dev"}
+                """), 200);
+        verify(send(HttpMethod.PUT, "/v1/toolsets/%s/author-toolset".formatted(bucket), null, """
+                {"endpoint": "http://localhost:9876", "transport": "HTTP", "allowedTools": [], "author": "original-dev",
+                 "auth_settings": {"authentication_type": "NONE"}}
+                """), 200);
+
+        // with a display author: the published application shows it as author and owner
+        publishAndApprove("""
+                {"name": "app", "targetFolder": "public/folder1/", "displayAuthor": "dream-team",
+                 "resources": [{"action": "ADD", "sourceUrl": "applications/%s/author-app",
+                                "targetUrl": "applications/public/folder1/author-app"}],
+                 "rules": [{"source": "roles", "function": "TRUE"}]}
+                """.formatted(bucket));
+        assertEquals("dream-team", authorOf(send(HttpMethod.GET, "/v1/applications/public/folder1/author-app", null, "",
+                "authorization", "admin")));
+        assertEquals("dream-team", ownerOf(send(HttpMethod.GET, "/openai/applications/applications/public/folder1/author-app",
+                null, "", "authorization", "admin")));
+
+        // without one: the published toolset keeps the author of the source
+        publishAndApprove("""
+                {"name": "toolset", "targetFolder": "public/folder2/",
+                 "resources": [{"action": "ADD", "sourceUrl": "toolsets/%s/author-toolset",
+                                "targetUrl": "toolsets/public/folder2/author-toolset", "publishCredentials": false}],
+                 "rules": [{"source": "roles", "function": "TRUE"}]}
+                """.formatted(bucket));
+        assertEquals("original-dev", authorOf(send(HttpMethod.GET, "/v1/toolsets/public/folder2/author-toolset", null, "",
+                "authorization", "admin")));
+    }
+
+    private void publishAndApprove(String publication) {
+        Response created = send(HttpMethod.POST, "/v1/ops/publication/create", null, publication);
+        verify(created, 200);
+        String url = new JsonObject(created.body()).getString("url");
+        verify(send(HttpMethod.POST, "/v1/ops/publication/approve", null, "{\"url\":\"" + url + "\"}",
+                "authorization", "admin"), 200);
     }
 
     @Test

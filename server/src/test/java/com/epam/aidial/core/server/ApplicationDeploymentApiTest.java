@@ -85,6 +85,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "author" : "EPM-RTC-GPT",
                   "display_name" : "My App",
                   "display_version" : "1.0",
                   "icon_url" : "http://application1/icon.svg",
@@ -179,6 +180,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "author" : "EPM-RTC-GPT",
                   "display_name" : "My App",
                   "display_version" : "1.0",
                   "icon_url" : "http://application1/icon.svg",
@@ -424,6 +426,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "author" : "EPM-RTC-GPT",
                   "display_name" : "My App",
                   "display_version" : "1.0",
                   "icon_url" : "http://application1/icon.svg",
@@ -518,6 +521,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "author" : "EPM-RTC-GPT",
                   "display_name" : "My App",
                   "display_version" : "1.0",
                   "icon_url" : "http://application1/icon.svg",
@@ -608,6 +612,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "author" : "EPM-RTC-GPT",
                   "display_name" : "My App",
                   "display_version" : "1.0",
                   "icon_url" : "http://application1/icon.svg",
@@ -667,6 +672,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-app",
+                  "author" : "EPM-RTC-GPT",
                   "display_name" : "My App",
                   "display_version" : "1.0",
                   "icon_url" : "http://application1/icon.svg",
@@ -1749,6 +1755,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/public/my-app",
+                  "author" : "admin user",
                   "display_name" : "My App",
                   "display_version" : "1.0",
                   "icon_url" : "http://application1/icon.svg",
@@ -1847,6 +1854,7 @@ class ApplicationDeploymentApiTest extends ResourceBaseTest {
         verifyJsonNotExact(response, 200, """
                 {
                   "name" : "applications/public/my-app",
+                  "author" : "admin user",
                   "display_name" : "My App",
                   "display_version" : "1.0",
                   "icon_url" : "http://application1/icon.svg",

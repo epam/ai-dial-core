@@ -291,6 +291,30 @@ public class ConfigEntityWriteApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testToolSetAndApplicationPutWithoutAuthorStoreCallerName() {
+        String toolSet = """
+                {"endpoint": "http://localhost:9876", "transport": "HTTP", "allowedTools": [],
+                 "auth_settings": {"authentication_type": "NONE"}}
+                """;
+        verify(send(HttpMethod.PUT, "/v1/toolsets/platform/author-toolset", null, toolSet, "authorization", "admin"), 200);
+        assertEquals("admin user", authorOf(send(HttpMethod.GET, "/v1/toolsets/platform/author-toolset", null, "",
+                "authorization", "admin")));
+
+        verify(send(HttpMethod.PUT, "/v1/applications/platform/author-app", null, """
+                {"endpoint": "http://localhost:7003/chat"}
+                """, "authorization", "admin"), 200);
+        assertEquals("admin user", authorOf(send(HttpMethod.GET, "/v1/applications/platform/author-app", null, "",
+                "authorization", "admin")));
+
+        // an author in the body is stored as sent
+        verify(send(HttpMethod.PUT, "/v1/applications/platform/author-app", null, """
+                {"endpoint": "http://localhost:7003/chat", "author": "team-x"}
+                """, "authorization", "admin"), 200);
+        assertEquals("team-x", authorOf(send(HttpMethod.GET, "/v1/applications/platform/author-app", null, "",
+                "authorization", "admin")));
+    }
+
+    @Test
     void testApplicationPutWithDecisionModeRejected() {
         // decision mode is a router setting: no interface of any deployment kind takes it
         String body = """

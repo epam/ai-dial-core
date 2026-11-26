@@ -20,7 +20,7 @@ An object containing parameters for each [toolset](#toolsets).
 * `userRoles`: A specific claim value provided by a specific IDP in JWT or an API key role. If not defined, the toolset is available to all users. Refer to [IDP Configuration](https://github.com/epam/ai-dial/blob/main/docs/tutorials/2.devops/2.auth-and-access-control/3.configure-idps/0.overview.md) to view examples.
 * `descriptionKeywords`: A list of keywords describes the toolset, e.g. `code-gen`, `text2image`. 
 * `maxRetryAttempts`: A max retry attempts to route a single user request to the toolset's endpoint.
-* `author`: The toolset's developer.
+* `author`: The toolset's developer, listed as `owner` in the deployment listings. A toolset saved through the API without `author` gets the name of the caller: the display name of the user, or the project of the API key. An update without `author` keeps the stored one, and an empty string means the author is anonymous. The name of whoever first stored the toolset is not affected: `GET /v1/metadata/` reports it as `author`. A toolset saved before this field was kept shows that name instead.
 * `createdAt`: The date of the toolset creation. 
 * `updatedAt`: The date of the last toolset update. 
 * `transport`: A transport supported by MCP server. The available options are: `HTTP` or `SSE`.

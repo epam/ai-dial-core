@@ -49,7 +49,6 @@ public class ToolSetRepairService {
         if (toolSet == null) {
             throw new ResourceNotFoundException("ToolSet is not found: " + resourceUrl);
         }
-        toolSet.setAuthor(meta.getAuthor());
 
         ResourceAuthSettings authSettings = toolSet.getAuthSettings();
         if (authSettings == null || authSettings.getAuthenticationType() != AuthenticationType.OAUTH) {
@@ -69,7 +68,7 @@ public class ToolSetRepairService {
         ClientRegistration registration = registrationService.register(
                 resourceUrl, toolSet.getEndpoint(), authSettings, true, RegistrationPolicy.TOOLSET);
 
-        String author = toolSet.getAuthor();
+        String author = meta.getAuthor();
         // computeResource holds the distributed lock internally; an outer lock would deadlock against it.
         resourceService.computeResource(resource, EtagHeader.ANY, author, json -> {
             ToolSet stored = ProxyUtil.convertToObject(json, ToolSet.class);
