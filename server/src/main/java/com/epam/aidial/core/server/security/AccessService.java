@@ -66,8 +66,8 @@ public class AccessService {
             AccessService::getOwnResourcesAccess,
             this::getAdminAccess,
             this::getGlobalReaderAccess,
-            AccessService::getAutoSharedAccess,
-            AccessService::getPerRequestPermissions,
+            (resources, context) -> getAutoSharedAccess(resources, context.getApiKeyData()),
+            (resources, context) -> getPerRequestPermissions(resources, context.getApiKeyData()),
             AccessService::getAppResourceAccess,
             this::getReviewAccess,
             this::getPublicAccess,
@@ -136,8 +136,16 @@ public class AccessService {
      * that shares everything below it, child units included.
      */
     public boolean hasReadAccessBesidesUnitRoles(ResourceDescriptor resource, ProxyContext context) {
+        return hasReadAccessBesidesUnitRoles(resource, context, Set.of(ResourceAccessType.READ));
+    }
+
+    /**
+     * @param needed as in {@link #lookupPermissions(Set, ProxyContext, Set, List, Set)}; null where roles are tried next,
+     *               so that a caller who reads through a role does not read the master.
+     */
+    private boolean hasReadAccessBesidesUnitRoles(ResourceDescriptor resource, ProxyContext context, Set<ResourceAccessType> needed) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = lookupPermissions(Set.of(resource), context,
-                Set.of(ResourceAccessType.READ), permissionRulesBesidesUnitRoles);
+                Set.of(ResourceAccessType.READ), permissionRulesBesidesUnitRoles, needed);
         return permissions.get(resource).contains(ResourceAccessType.READ);
     }
 
@@ -145,7 +153,8 @@ public class AccessService {
      * Read access other than what a role in a unit below gives, which only lists a unit's folder on the way down.
      */
     public boolean hasReadAccessBesidesRolesBelow(ResourceDescriptor folder, ProxyContext context) {
-        return hasReadAccessBesidesUnitRoles(folder, context) || orgUnitGrants.readsWithoutRolesBelow(context, folder);
+        return hasReadAccessBesidesUnitRoles(folder, context, null) || orgUnitGrants.readsWithoutRolesBelow(context, folder)
+                || readable(getKeyAccessOnMaster(Set.of(folder), context), folder);
     }
 
     /**
@@ -181,11 +190,12 @@ public class AccessService {
         }
 
         Set<ResourceDescriptor> resources = Set.of(folder);
-        if (readable(getAutoSharedAccess(resources, context), folder) || readable(getPerRequestPermissions(resources, context), folder)) {
+        if (readable(getKeyAccess(resources, context.getApiKeyData()), folder)) {
             return true;
         }
         boolean folderReadable = orgUnitGrants.outsideUnits(resources).isEmpty() || !getPublicAccess(resources, context).isEmpty();
-        return folderReadable && orgUnitGrants.readsEveryUnitUnder(context, folder);
+        return (folderReadable && orgUnitGrants.readsEveryUnitUnder(context, folder))
+                || readable(getKeyAccessOnMaster(resources, context), folder);
     }
 
     private static boolean readable(Map<ResourceDescriptor, Set<ResourceAccessType>> access, ResourceDescriptor resource) {
@@ -197,7 +207,7 @@ public class AccessService {
      */
     public boolean hasWriteAccessBesidesUnitRoles(ResourceDescriptor resource, ProxyContext context) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = lookupPermissions(Set.of(resource), context,
-                Set.of(ResourceAccessType.WRITE), permissionRulesBesidesUnitRoles);
+                Set.of(ResourceAccessType.WRITE), permissionRulesBesidesUnitRoles, Set.of(ResourceAccessType.WRITE));
         return permissions.get(resource).contains(ResourceAccessType.WRITE);
     }
 
@@ -250,16 +260,28 @@ public class AccessService {
      */
     public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context) {
-        return lookupPermissions(resources, context, ResourceAccessType.ALL);
+        return lookupPermissions(resources, context, ResourceAccessType.ALL, permissionRules, Set.of());
+    }
+
+    /**
+     * All permissions on the resource, for a caller that refuses the request without {@code needed}.
+     */
+    public Set<ResourceAccessType> lookupPermissions(ResourceDescriptor resource, ProxyContext context, Set<ResourceAccessType> needed) {
+        return lookupPermissions(Set.of(resource), context, ResourceAccessType.ALL, permissionRules, needed).get(resource);
     }
 
     private Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context, Set<ResourceAccessType> toLookup) {
-        return lookupPermissions(resources, context, toLookup, permissionRules);
+        return lookupPermissions(resources, context, toLookup, permissionRules, toLookup);
     }
 
+    /**
+     * @param needed what the caller refuses the request without; empty when it only reports the permissions. A resource
+     *               left with none of the permissions, or without a needed one, is looked up once more in the master's
+     *               copy of the caller's per request key. Null when that copy must not count or is not worth a read.
+     */
     private Map<ResourceDescriptor, Set<ResourceAccessType>> lookupPermissions(Set<ResourceDescriptor> resources,
-            ProxyContext context, Set<ResourceAccessType> toLookup, List<PermissionRule> rules) {
+            ProxyContext context, Set<ResourceAccessType> toLookup, List<PermissionRule> rules, Set<ResourceAccessType> needed) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         Set<ResourceDescriptor> remainingResources = new HashSet<>(resources);
         for (PermissionRule permissionRule : rules) {
@@ -279,11 +301,38 @@ public class AccessService {
                 break;
             }
         }
+        if (needed != null) {
+            Set<ResourceDescriptor> refused = resources.stream()
+                    .filter(resource -> {
+                        Set<ResourceAccessType> permissions = result.getOrDefault(resource, Set.of());
+                        return permissions.isEmpty() || !permissions.containsAll(needed);
+                    })
+                    .collect(Collectors.toSet());
+            if (!refused.isEmpty()) {
+                getKeyAccessOnMaster(refused, context).forEach((resource, permissions) -> result.merge(resource, permissions, Sets::union));
+            }
+        }
         for (ResourceDescriptor resource : resources) {
             result.computeIfAbsent(resource, r -> Set.of());
         }
 
         return result;
+    }
+
+    /**
+     * What the caller's per request key grants as the Redis master holds it. The request is authenticated with a copy of
+     * the key that may come from a replica, which may be behind an attachment shared a moment ago (the key's own grants
+     * are fixed when it is built), so what the rules did not grant is looked up in the master's copy before it is refused.
+     */
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> getKeyAccessOnMaster(Set<ResourceDescriptor> resources, ProxyContext context) {
+        ApiKeyData apiKeyData = context.loadMasterApiKeyData();
+        return apiKeyData == null ? Map.of() : getKeyAccess(resources, apiKeyData);
+    }
+
+    private static Map<ResourceDescriptor, Set<ResourceAccessType>> getKeyAccess(Set<ResourceDescriptor> resources, ApiKeyData apiKeyData) {
+        Map<ResourceDescriptor, Set<ResourceAccessType>> accessByResource = new HashMap<>(getAutoSharedAccess(resources, apiKeyData));
+        getPerRequestPermissions(resources, apiKeyData).forEach((resource, permissions) -> accessByResource.merge(resource, permissions, Sets::union));
+        return accessByResource;
     }
 
     /**
@@ -294,7 +343,7 @@ public class AccessService {
     public Map<ResourceDescriptor, Set<ResourceAccessType>> lookupInitiatorPermissions(
             Set<ResourceDescriptor> resources, ProxyContext context) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions =
-                lookupPermissions(resources, context, ResourceAccessType.ALL, initiatorPermissionRules);
+                lookupPermissions(resources, context, ResourceAccessType.ALL, initiatorPermissionRules, null);
         permissions.replaceAll((resource, access) -> spansUnreadableUnit(resource, context) ? Set.of() : access);
         return permissions;
     }
@@ -351,8 +400,7 @@ public class AccessService {
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getAutoSharedAccess(
-            Set<ResourceDescriptor> resources, ProxyContext context) {
-        ApiKeyData apiKeyData = context.getApiKeyData();
+            Set<ResourceDescriptor> resources, ApiKeyData apiKeyData) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
             String resourceUrl = resource.getUrl();
@@ -396,8 +444,8 @@ public class AccessService {
     }
 
     private static Map<ResourceDescriptor, Set<ResourceAccessType>> getPerRequestPermissions(Set<ResourceDescriptor> resources,
-                                                                                             ProxyContext context) {
-        Map<String, PerRequestSharedData> perRequestSharedResources = context.getApiKeyData().getPerRequestSharedResources();
+                                                                                             ApiKeyData apiKeyData) {
+        Map<String, PerRequestSharedData> perRequestSharedResources = apiKeyData.getPerRequestSharedResources();
         Map<ResourceDescriptor, Set<ResourceAccessType>> result = new HashMap<>();
         for (ResourceDescriptor resource : resources) {
             Set<ResourceAccessType> permissions = findPermissions(perRequestSharedResources, resource.getUrl());
@@ -612,14 +660,14 @@ public class AccessService {
             for (MetadataBase item : items) {
                 resources.put(item, ResourceDescriptorFactory.fromPublicUrl(item.getUrl()));
             }
-            if (orgUnitGrants.outsideUnits(Set.of(descriptor)).isEmpty() && hasReadAccessBesidesUnitRoles(descriptor, context)) {
+            if (orgUnitGrants.outsideUnits(Set.of(descriptor)).isEmpty() && hasReadAccessBesidesUnitRoles(descriptor, context, null)) {
                 return;
             }
             Set<ResourceDescriptor> all = Set.copyOf(resources.values());
             Set<ResourceDescriptor> outside = orgUnitGrants.outsideUnits(all);
             Set<ResourceDescriptor> allowed = new HashSet<>();
             if (!outside.isEmpty()) {
-                if (outside.size() == all.size() && hasReadAccessBesidesUnitRoles(descriptor, context)) {
+                if (outside.size() == all.size() && hasReadAccessBesidesUnitRoles(descriptor, context, null)) {
                     ruleService.filterForbidden(context, descriptor, folder);
                     folder.getItems().forEach(item -> allowed.add(resources.get(item)));
                 } else {
