@@ -32,8 +32,10 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 public class DtoSchemaGenerator {
@@ -46,6 +48,7 @@ public class DtoSchemaGenerator {
 
     private final SchemaGenerator generator;
     private final Map<String, ObjectNode> schemas = new LinkedHashMap<>();
+    private final Set<Class<?>> polymorphicTypes = new LinkedHashSet<>();
     private final ExternalSchemaRegistry externalSchemaRegistry = new ExternalSchemaRegistry(schemas);
 
     public DtoSchemaGenerator() {
@@ -99,6 +102,7 @@ public class DtoSchemaGenerator {
     }
 
     public Map<String, ObjectNode> getSchemas() {
+        polymorphicTypes.forEach(clazz -> pinDiscriminators(clazz.getAnnotation(ApiSubTypes.class)));
         return new LinkedHashMap<>(schemas);
     }
 
@@ -125,6 +129,27 @@ public class DtoSchemaGenerator {
         ObjectNode fixedRoot = fixRefPaths(rootNode);
         String schemaName = resolveTypeName(type);
         schemas.putIfAbsent(schemaName, fixedRoot);
+    }
+
+    /**
+     * A {@code oneOf} of subtypes is only unambiguous for a plain JSON Schema validator (which ignores the
+     * {@code discriminator} keyword) if each subtype accepts just its own discriminator value. Otherwise a
+     * value valid for several subtypes fails {@code oneOf} ("valid under each of"). Applied in {@link #getSchemas()}
+     * so that polymorphic types reached only through a field or a generic argument are pinned too.
+     */
+    private void pinDiscriminators(ApiSubTypes subTypes) {
+        for (ApiSubType subtype : subTypes.value()) {
+            ObjectNode subtypeSchema = schemas.get(resolveTypeName(subtype.type()));
+            if (subtypeSchema == null) {
+                continue;
+            }
+            JsonNode existing = subtypeSchema.get("properties");
+            ObjectNode properties = existing instanceof ObjectNode node ? node : subtypeSchema.putObject("properties");
+            ObjectNode pinned = properties.objectNode();
+            pinned.put("type", "string");
+            pinned.putArray("enum").add(subtype.discriminatorValue());
+            properties.set(subTypes.discriminatorProperty(), pinned);
+        }
     }
 
     public String resolveTypeName(Type type) {
@@ -283,6 +308,7 @@ public class DtoSchemaGenerator {
             return new CustomDefinition(context.createDefinitionReference(implType));
         }
 
+        polymorphicTypes.add(clazz);
         ObjectNode schema = context.getGeneratorConfig().createObjectNode();
         schema.set("oneOf", createOneOf(subTypes, context));
         schema.set("required", createRequired(subTypes, context));
