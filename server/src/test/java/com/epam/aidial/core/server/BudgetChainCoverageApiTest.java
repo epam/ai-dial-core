@@ -120,6 +120,22 @@ class BudgetChainCoverageApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void testTierBudgetPaysBeforeBudgetForEveryDeployment() {
+        engineering("[\"weak\", \"medium\", \"strong\"]");
+        budget("projA/eng", 20, "\"@engineering\"", "10");
+        budget("projA/api", 10, "\"*\"", "10");
+        try (TestWebServer server = upstreams()) {
+            assertEquals(200, chat("strong").status());
+            assertEquals("projA/eng", payerOf("m"));
+
+            analyticsRows.clear();
+            assertEquals(200, chat("m").status());
+            assertEquals("projA/api", payerOf("m"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void testAliasBudgetPaysBeforeModelBudget() {
         budget("projA/alias", 20, "[\"strong\"]", "10");
         budget("projA/model", 10, "[\"m\"]", "10");

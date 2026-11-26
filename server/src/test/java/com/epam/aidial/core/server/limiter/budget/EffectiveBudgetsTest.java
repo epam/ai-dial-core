@@ -338,17 +338,21 @@ class EffectiveBudgetsTest {
     }
 
     @Test
-    void testBudgetForEveryDeploymentCoversTheHeadOfTheChain() {
+    void testBudgetForEveryDeploymentCoversAtTheModel() {
         Map<String, Policy> policies = Map.of(
                 "api", policy(10, PolicyObjectSet.all()),
-                "eng", policy(5, PolicyObjectSet.of(List.of("@engineering"))));
+                "eng", policy(20, PolicyObjectSet.of(List.of("@engineering"))),
+                "model-budget", policy(5, PolicyObjectSet.of(List.of("m"))));
         Map<String, PolicyAssignment> assignments = Map.of(
                 "projA/api", assignment("api", null, anyone()),
-                "projA/eng", assignment("eng", null, anyone()));
+                "projA/eng", assignment("eng", null, anyone()),
+                "projA/model", assignment("model-budget", null, anyone()));
         CostObjectIndex index = CostObjectIndex.build(policies, assignments, Map.of("engineering", engineering()));
 
-        assertEquals(List.of("projA/eng", "projA/api"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), ROUTED, NOW)));
-        assertEquals(List.of("projA/api"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), List.of("m"), NOW)));
+        // the tier budget names an earlier name than the model, where "*" covers the call
+        assertEquals(List.of("projA/eng"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), ROUTED, NOW)));
+        // at the model "*" ties with the budget naming the model, by priority
+        assertEquals(List.of("projA/model", "projA/api"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), List.of("m"), NOW)));
     }
 
     /**

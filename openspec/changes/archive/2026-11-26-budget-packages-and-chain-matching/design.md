@@ -65,7 +65,8 @@ routes; one helper keeps both in step.
 ### D5. Attribution narrows the candidates before the priority sort
 `EffectiveBudgets.resolve` takes the chain instead of the model name. For each budget that matches the caller, it
 finds the first chain position its set contains; it keeps the budgets at the smallest such position, then sorts them
-by priority and id as today. `"*"` covers position 0. The walk, the exhausted outcome and the ambiguous-priority
+by priority and id as today. `"*"` covers at the model, the last position, so it ties by priority with budgets naming
+the model and yields to a budget naming an earlier name, instead of shadowing every narrower budget. The walk, the exhausted outcome and the ambiguous-priority
 metric are unchanged, so a used-up alias budget refuses with `budget_exhausted` instead of falling through to a model
 budget further down the chain (Core design D13, "the first effective budget in the chain takes the call").
 **Rejected: walk all covering budgets in chain order, then priority** - grants arriving at a later position would

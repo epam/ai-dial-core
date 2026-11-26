@@ -64,8 +64,9 @@ cover the call SHALL NOT pay for it.
 
 ### Requirement: Earliest chain position takes the call
 When budgets that can pay cover a call at different positions of its coverage chain, the candidates SHALL be only
-the budgets covering the earliest position, nearest the head of the chain, that any of them covers. The priority walk
-SHALL run over those candidates as before.
+the budgets covering the earliest position, nearest the head of the chain, that any of them covers. A budget with
+`object` `"*"` SHALL count as covering the call at the model. The priority walk SHALL run over those candidates as
+before.
 
 #### Scenario: Alias budget and model budget
 - **WHEN** a caller has budget A with `object` `["strong"]` and priority 20 and budget B with `object` `["m"]` and
@@ -84,3 +85,8 @@ SHALL run over those candidates as before.
 #### Scenario: Direct call
 - **WHEN** the caller of the first scenario calls `m` directly
 - **THEN** the call is paid by B
+
+#### Scenario: Budget for every deployment and a tier budget
+- **WHEN** a caller has budget A with `object` `"@engineering"` and priority 20 and budget C with `object` `"*"` and
+  priority 10, and calls `strong`, which reaches `m`
+- **THEN** the call is paid by A, and a call of `m` directly is paid by C
