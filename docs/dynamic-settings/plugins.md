@@ -127,6 +127,8 @@ DIAL Core treats every group alike. By convention the DIAL Core image fills `bui
 
 Each plugin directory gets its own class loader. A plugin sees its own jars and DIAL Core's classes, not the jars of another plugin, so two plugins may bundle different versions of one library. DIAL Core's classes win: when a plugin bundles a library DIAL Core carries (the plugin API, Vert.x, Jackson and the rest of DIAL Core's classpath), the plugin gets DIAL Core's copy. Do not bundle those.
 
+Kotlin is one of those libraries, and both halves of it are Core's: `kotlin-stdlib` and `kotlin-reflect`, always of one version (`kotlin_version` in `gradle.properties`). A plugin that is written in Kotlin, or that uses a library that is (an SDK, Jackson's Kotlin module), needs `kotlin-reflect`. Kotlin finds its reflection implementation by a class name lookup from the class loader of `kotlin-stdlib`, which is Core's, and that lookup cannot see into a plugin's jar. With the stdlib from Core and `kotlin-reflect` from the plugin, the plugin fails at its first use of Kotlin reflection with `ClassCastException: kotlin.jvm.internal.ClassReference cannot be cast to kotlin.reflect.jvm.internal.KClassImpl`. So do not bundle `kotlin-stdlib` or `kotlin-reflect` either, and compile against Core's version.
+
 DIAL Core does not start when:
 
 * a jar lies directly in `plugins.dir` or directly in a group directory (the flat layout of earlier versions; the message names the jar);

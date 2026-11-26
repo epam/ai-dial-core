@@ -55,6 +55,11 @@ allprojects {
                 if (details.requested.group == 'io.grpc') {
                     details.useVersion('1.75.0')
                 }
+                // One Kotlin version for kotlin-stdlib and kotlin-reflect: plugins run on Core's copies of both
+                if (details.requested.group == 'org.jetbrains.kotlin'
+                        && (details.requested.name.startsWith('kotlin-stdlib') || details.requested.name == 'kotlin-reflect')) {
+                    details.useVersion(kotlin_version)
+                }
             }
             // Keep the whole netty graph on one patched version; netty-tcnative-* is intentionally
             // absent, it has its own 2.0.x version line.
