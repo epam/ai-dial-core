@@ -513,15 +513,16 @@ hand the plugin the answer as for any call. A call without a method or a uri, a 
 #### Scenario: Caller with an API key
 - **WHEN** a client with API key `proxyKey1` (project `EPM-RTC-GPT`, role `default`) sends a chat completion to `app`,
   served by plugin `p1`, and `p1` calls `GET /v1/user/info` through its host
-- **THEN** `p1` gets the answer `200` `{"roles":["default"],"project":"EPM-RTC-GPT","userDisplayName":"EPM-RTC-GPT"}`,
+- **THEN** `p1` gets the answer `200`
+  `{"roles":["default"],"project":"EPM-RTC-GPT","costObject":"EPM-RTC-GPT","costObjectSource":"key","userDisplayName":"EPM-RTC-GPT"}`,
   the one that client gets from `GET /v1/user/info` over HTTP
 
 #### Scenario: Caller with a JWT
 - **WHEN** a client authenticated by a JWT with user id `user`, role `user`, claim `title: "Manager"` and display name
   `user user` sends a chat completion to `app`, and `p1` calls `GET /v1/user/info` through its host
 - **THEN** `p1` gets the answer `200`
-  `{"roles":["user"],"userId":"user","userClaims":{"title":["Manager"]},"userDisplayName":"user user"}`, the one that
-  client gets from `GET /v1/user/info` over HTTP
+  `{"roles":["user"],"userId":"user","userClaims":{"title":["Manager"]},"costObject":"ORG","costObjectSource":"default","userDisplayName":"user user"}`,
+  the one that client gets from `GET /v1/user/info` over HTTP
 
 #### Scenario: User info after the plugin's pass ended
 - **WHEN** `p1`'s pass has ended and its analytics row is written, and `p1` then calls `GET /v1/user/info` through the

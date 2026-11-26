@@ -619,7 +619,7 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
                 "X-Test-Call", "/v1/user/info", "X-Test-Call-Method", "GET");
 
         verify(response, 200, """
-                {"roles":["default"],"project":"EPM-RTC-GPT","userDisplayName":"EPM-RTC-GPT"}""");
+                {"roles":["default"],"project":"EPM-RTC-GPT","costObject":"EPM-RTC-GPT","costObjectSource":"key","userDisplayName":"EPM-RTC-GPT"}""");
     }
 
     @Test
@@ -631,7 +631,8 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
                 "X-Test-Call", "/v1/user/info", "X-Test-Call-Method", "GET");
 
         verify(response, 200, """
-                {"roles":["user"],"userId":"user","userClaims":{"title":["Manager"]},"userDisplayName":"user user"}""");
+                {"roles":["user"],"userId":"user","userClaims":{"title":["Manager"]},"costObject":"ORG","costObjectSource":"default",\
+                "userDisplayName":"user user"}""");
     }
 
     @Test

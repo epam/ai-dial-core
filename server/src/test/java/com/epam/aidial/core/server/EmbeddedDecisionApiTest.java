@@ -288,7 +288,8 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
         TestOriginPluginProvider.DecideCall call = decided(0).calls().get(0);
         assertEquals("200 ended", call.outcome().get());
         assertEquals("""
-                {"roles":["default"],"project":"EPM-RTC-GPT","userDisplayName":"EPM-RTC-GPT"}""", call.body().toString());
+                {"roles":["default"],"project":"EPM-RTC-GPT","costObject":"EPM-RTC-GPT","costObjectSource":"key",\
+                "userDisplayName":"EPM-RTC-GPT"}""", call.body().toString());
         assertEquals(1, received.stream().filter(request -> isFor(request, "m1")).count());
     }
 

@@ -14,7 +14,8 @@ ones. The notice request carries no key, so calls made while answering it SHALL 
 #### Scenario: Plugin reads the caller while deciding
 - **WHEN** a client with API key `proxyKey1` (project `EPM-RTC-GPT`, role `default`) calls `r1`, and `p1`, on receiving
   the decide request, calls `GET /v1/user/info` through its host and then answers `{"candidates": ["m1"]}`
-- **THEN** the call's answer is `200` `{"roles":["default"],"project":"EPM-RTC-GPT","userDisplayName":"EPM-RTC-GPT"}`,
+- **THEN** the call's answer is `200`
+  `{"roles":["default"],"project":"EPM-RTC-GPT","costObject":"EPM-RTC-GPT","costObjectSource":"key","userDisplayName":"EPM-RTC-GPT"}`,
   and the client receives `m1`'s answer
 
 #### Scenario: Call after the decision
