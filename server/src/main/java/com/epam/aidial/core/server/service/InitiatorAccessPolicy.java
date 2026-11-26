@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.service;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -12,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 /**
@@ -31,15 +29,11 @@ public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
     private static final Set<ResourceTypes> ROLE_CHECKED_TYPES = Set.of(ResourceTypes.MODEL, ResourceTypes.APPLICATION);
 
     private final Function<Set<ResourceDescriptor>, Map<ResourceDescriptor, Set<ResourceAccessType>>> initiatorPermissions;
-    private final Supplier<Config> mergedConfigSource;
-    private final Supplier<Config> fileConfigSource;
     private final List<String> userRoles;
 
     public InitiatorAccessPolicy(Function<Set<ResourceDescriptor>, Map<ResourceDescriptor, Set<ResourceAccessType>>> initiatorPermissions,
-                                 Supplier<Config> mergedConfigSource, Supplier<Config> fileConfigSource, @Nullable List<String> userRoles) {
+                                 @Nullable List<String> userRoles) {
         this.initiatorPermissions = initiatorPermissions;
-        this.mergedConfigSource = mergedConfigSource;
-        this.fileConfigSource = fileConfigSource;
         this.userRoles = userRoles == null ? List.of() : userRoles;
     }
 
@@ -51,28 +45,11 @@ public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
 
     @Override
     public boolean isSupported(ResourceDescriptor target) {
-        if (target.isFolder()) {
-            return false;
-        }
-        ResourceTypes type = DependencyTypePolicy.resolveType(target);
-        if (DependencyTypePolicy.resolveContent(type) == null) {
-            return false;
-        }
-        if (FileConfigEntities.isFile(target)) {
-            return true;
-        }
-        String location = target.getBucketLocation();
-        if (ResourceDescriptor.PLATFORM_LOCATION.equals(location)) {
-            return DependencyTypePolicy.isBound(type, ResourceDescriptor.PLATFORM_BUCKET);
-        }
-        if (ResourceDescriptor.PUBLIC_LOCATION.equals(location)) {
-            return DependencyTypePolicy.isBound(type, ResourceDescriptor.PUBLIC_BUCKET);
-        }
-        return isUserBucket(location) && USER_BUCKET_TYPES.contains(type);
+        return DependencyTypePolicy.isSupported(target) || isUserBucketResource(target);
     }
 
     @Override
-    public Set<ResourceDescriptor> selectListable(Set<ResourceDescriptor> targets) {
+    public Set<ResourceDescriptor> selectListable(Set<ResourceDescriptor> targets, ConfigSnapshot configuration) {
         Set<ResourceDescriptor> byRight = new LinkedHashSet<>();
         Set<ResourceDescriptor> byConfiguration = new LinkedHashSet<>();
         for (ResourceDescriptor target : targets) {
@@ -86,7 +63,7 @@ public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
             allowed.addAll(selectReadable(byRight));
         }
         for (ResourceDescriptor target : byConfiguration) {
-            if (isAdmittedConfigurationEntity(target)) {
+            if (isAdmittedConfigurationEntity(target, configuration)) {
                 allowed.add(target);
             }
         }
@@ -114,6 +91,11 @@ public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
         return location.startsWith(USER_BUCKET_PREFIX) || location.startsWith(API_KEY_BUCKET_PREFIX);
     }
 
+    /** A file, a prompt, a skill or an Application in a user bucket or in the bucket of a project key. */
+    private static boolean isUserBucketResource(ResourceDescriptor target) {
+        return !target.isFolder() && isUserBucket(target.getBucketLocation()) && USER_BUCKET_TYPES.contains(DependencyTypePolicy.resolveType(target));
+    }
+
     private Set<ResourceDescriptor> selectReadable(Set<ResourceDescriptor> resources) {
         Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = initiatorPermissions.apply(resources);
         Set<ResourceDescriptor> readable = new HashSet<>();
@@ -126,12 +108,12 @@ public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
     }
 
     /** A Model or an Application of the configuration needs a role that admits the caller; an Interceptor and a schema are listed. */
-    private boolean isAdmittedConfigurationEntity(ResourceDescriptor target) {
+    private boolean isAdmittedConfigurationEntity(ResourceDescriptor target, ConfigSnapshot configuration) {
         if (!ROLE_CHECKED_TYPES.contains(DependencyTypePolicy.resolveType(target))) {
             return true;
         }
-        Deployment deployment = FileConfigEntities.isFile(target) ? FileConfigEntities.findDeployment(fileConfigSource.get(), target)
-                : DependencyTypePolicy.findDeployment(mergedConfigSource.get(), DependencyTypePolicy.resolveType(target), target.getName());
+        Deployment deployment = FileConfigEntities.isFile(target) ? FileConfigEntities.findDeployment(configuration.file(), target)
+                : DependencyTypePolicy.findDeployment(configuration.merged(), DependencyTypePolicy.resolveType(target), target.getName());
         return deployment != null && deployment.hasAccess(userRoles);
     }
 }

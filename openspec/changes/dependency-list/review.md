@@ -4,18 +4,17 @@
 explicit admin (`public/`, `platform/` and the file configuration, no role check) and for any other caller (own bucket, shared buckets and `public/`
 by the right to read, configuration Models and Applications by `user_roles`, Interceptors and schemas listed). The graph is explored once for all roots, each
 resource is read once and only its references are kept, the walk takes no bucket lock, and an element the caller may not see is left out without a
-trace. A per-request key is `403`; a root is authorized before it is looked up. Docs: `docs/dependency-list.md`, `docs/error_codes.md` and the generated
-`docs/open_api_core.yaml` (the diff holds this operation only).
+trace. A per-request key is `403`; a root is authorized before it is looked up. Docs: `docs/dependency-list.md` and `docs/error_codes.md`. `docs/open_api_core.yaml` is generated and committed by CI, so this branch does not change it.
 
 ## Verification
 
 - `./gradlew checkstyleMain checkstyleTest` passes.
 - `./gradlew :server:test` over the classes of groups 1 to 4 passes: `MarkerRecorderTest`, `RequestTimeCollectionCompatibilityTest`,
   `ApplicationSchemaServiceTest`, `CatalogSchemaServiceTest`, `ShortNameResolver*`, `SchemaReferenceResolverTest`, `DeploymentEdgeDiscoveryTest`,
-  `DependencyTypePolicyTest`, `DependencyNamesTest`, `DependencyAccessPolicyTest`, `DependencyEntityBinderTest`, `DependencyListResponseTest`,
+  `DependencyTypePolicyTest`, `DependencyNamesTest`, `DependencyAccessPolicyTest`, `DependencyListResponseTest`,
   `DependencyWalkerTest`, `DependencyRequestParserTest`, `DependencyListControllerSelectionTest`, `DependencyListApiTest`,
   `DependencyListRunnerFailureApiTest`, `DependencyListAccessApiTest`.
-- `./gradlew mergeOpenApiSpec replaceSpec lintMergedOpenApi`: no new lint warning.
+- `./gradlew mergeOpenApiSpec lintMergedOpenApi`: no new lint warning (the generated `docs/open_api_core.yaml` is left to CI).
 - `npx -y @fission-ai/openspec@1.14.3 validate --all --strict`: all items pass.
 - Measured in `DependencyWalkerTest` (two roots reaching 50 resources through a diamond and a cycle): 34 reads (one per Application), 16 existence checks
   (one per File), 3 policy calls (one per level), and no body kept after its references are found.

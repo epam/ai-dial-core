@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
@@ -47,26 +46,20 @@ public class DependencyListController implements Controller {
     private final EncryptionService encryptionService;
     private final AccessService accessService;
     private final Supplier<DependencyWalker> walkerSource;
-    private final Supplier<Config> mergedConfigSource;
-    private final Supplier<Config> fileConfigSource;
 
     public DependencyListController(Proxy proxy, ProxyContext context) {
         this(context, proxy.getConfigAuthService(), proxy.getTaskExecutor(), proxy.getEncryptionService(), proxy.getAccessService(),
-                () -> newWalker(proxy), () -> ((MergedConfigStore) proxy.getConfigStore()).get(),
-                () -> ((MergedConfigStore) proxy.getConfigStore()).getFileSourcedConfig());
+                () -> newWalker(proxy));
     }
 
     DependencyListController(ProxyContext context, ConfigAuthorizationService authorizationService, AsyncTaskExecutor taskExecutor,
-                             EncryptionService encryptionService, AccessService accessService, Supplier<DependencyWalker> walkerSource,
-                             Supplier<Config> mergedConfigSource, Supplier<Config> fileConfigSource) {
+                             EncryptionService encryptionService, AccessService accessService, Supplier<DependencyWalker> walkerSource) {
         this.context = context;
         this.authorizationService = authorizationService;
         this.taskExecutor = taskExecutor;
         this.encryptionService = encryptionService;
         this.accessService = accessService;
         this.walkerSource = walkerSource;
-        this.mergedConfigSource = mergedConfigSource;
-        this.fileConfigSource = fileConfigSource;
     }
 
     private static DependencyWalker newWalker(Proxy proxy) {
@@ -141,8 +134,7 @@ public class DependencyListController implements Controller {
     }
 
     private InitiatorAccessPolicy newInitiatorPolicy() {
-        return new InitiatorAccessPolicy(targets -> accessService.lookupInitiatorPermissions(targets, context), mergedConfigSource, fileConfigSource,
-                context.getUserRoles());
+        return new InitiatorAccessPolicy(targets -> accessService.lookupInitiatorPermissions(targets, context), context.getUserRoles());
     }
 
     private boolean hasPublicReadAccess(ResourceDescriptor descriptor) {

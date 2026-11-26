@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.server.service.DependencyAccessPolicy.ConfigSnapshot;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -31,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class DependencyAccessPolicyTest {
 
     private static final DependencyAccessPolicy READS_PUBLIC = new AdminAccessPolicy(resource -> true);
+    private static final ConfigSnapshot NO_CONFIG = new ConfigSnapshot(new Config(), null);
 
     private static ResourceDescriptor descriptor(ResourceTypes type, String bucket, String location, String path) {
         return ResourceDescriptorFactory.fromDecoded(type, bucket, location, path);
@@ -45,7 +47,11 @@ public class DependencyAccessPolicyTest {
     }
 
     private static Set<ResourceDescriptor> listed(DependencyAccessPolicy policy, ResourceDescriptor... targets) {
-        return policy.selectListable(new LinkedHashSet<>(List.of(targets)));
+        return listed(policy, NO_CONFIG, targets);
+    }
+
+    private static Set<ResourceDescriptor> listed(DependencyAccessPolicy policy, ConfigSnapshot configuration, ResourceDescriptor... targets) {
+        return policy.selectListable(new LinkedHashSet<>(List.of(targets)), configuration);
     }
 
     @Test
@@ -141,7 +147,12 @@ public class DependencyAccessPolicyTest {
                 Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = new HashMap<>();
                 targets.forEach(target -> permissions.put(target, readable.contains(target.getName()) ? ResourceAccessType.READ_ONLY : Set.of()));
                 return permissions;
-            }, () -> merged, () -> file, List.of(roles));
+            }, List.of(roles));
+        }
+
+        /** The configuration that a walk would hand to the policy. */
+        private ConfigSnapshot snapshot() {
+            return new ConfigSnapshot(merged, file);
         }
     }
 
@@ -174,7 +185,7 @@ public class DependencyAccessPolicyTest {
         ResourceDescriptor model = platform(ResourceTypes.MODEL, "m");
         ResourceDescriptor interceptor = platform(ResourceTypes.INTERCEPTOR, "i");
 
-        assertEquals(Set.of(model, interceptor), listed(setup.policy(), model, interceptor));
+        assertEquals(Set.of(model, interceptor), listed(setup.policy(), setup.snapshot(), model, interceptor));
         assertEquals(0, setup.lookups.get());
     }
 
@@ -198,8 +209,24 @@ public class DependencyAccessPolicyTest {
         ResourceDescriptor unknown = platform(ResourceTypes.MODEL, "unknown");
         Set<ResourceDescriptor> all = new LinkedHashSet<>(List.of(open, power, empty, fileOnly, application, unknown));
 
-        assertEquals(Set.of(open, fileOnly), setup.policy("user").selectListable(all), "no role of the caller, empty roles, or no entity");
-        assertEquals(Set.of(open, power, fileOnly, application), setup.policy("user", "power-user").selectListable(all));
+        assertEquals(Set.of(open, fileOnly), setup.policy("user").selectListable(all, setup.snapshot()),
+                "no role of the caller, empty roles, or no entity");
+        assertEquals(Set.of(open, power, fileOnly, application), setup.policy("user", "power-user").selectListable(all, setup.snapshot()));
+    }
+
+    @Test
+    public void testInitiatorDecidesOnTheGivenSnapshotNotOnLaterConfiguration() {
+        InitiatorSetup setup = new InitiatorSetup();
+        setup.merged.getModels().put("m", modelWithRoles("power-user"));
+        ConfigSnapshot admitting = setup.snapshot();
+        Config later = new Config();
+        later.setModels(new HashMap<>(Map.of("m", modelWithRoles("someone-else"))));
+        ConfigSnapshot refusing = new ConfigSnapshot(later, null);
+        ResourceDescriptor model = platform(ResourceTypes.MODEL, "m");
+        InitiatorAccessPolicy policy = setup.policy("power-user");
+
+        assertEquals(Set.of(model), listed(policy, admitting, model));
+        assertEquals(Set.of(), listed(policy, refusing, model), "the same policy, another publication: the roles of that one decide");
     }
 
     @Test
@@ -251,6 +278,6 @@ public class DependencyAccessPolicyTest {
         setup.file.getInterceptors().put("audit", new Interceptor());
         ResourceDescriptor interceptor = FileConfigEntities.newDescriptor(ResourceTypes.INTERCEPTOR, "audit");
 
-        assertEquals(Set.of(interceptor), listed(setup.policy(), interceptor));
+        assertEquals(Set.of(interceptor), listed(setup.policy(), setup.snapshot(), interceptor));
     }
 }

@@ -46,8 +46,7 @@ public class DependencyListControllerSelectionTest {
 
     @BeforeEach
     void setUp() {
-        controller = new DependencyListController(context, authorizationService, taskExecutor, encryptionService, accessService, () -> walker,
-                () -> null, () -> null);
+        controller = new DependencyListController(context, authorizationService, taskExecutor, encryptionService, accessService, () -> walker);
         lenient().when(context.getRequest()).thenReturn(httpRequest);
         lenient().when(context.getApiKeyData()).thenReturn(apiKeyData);
     }

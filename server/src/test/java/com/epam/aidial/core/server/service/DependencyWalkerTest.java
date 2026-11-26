@@ -9,6 +9,7 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.DependencyAccessPolicy.ConfigSnapshot;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.MarkerCollection;
@@ -41,6 +42,8 @@ import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -103,6 +106,8 @@ public class DependencyWalkerTest {
         private final DependencyAccessPolicy delegate = new AdminAccessPolicy(descriptor -> true);
         private final UnaryOperator<Set<ResourceDescriptor>> filter;
         private final Runnable onCall;
+        /** The configuration that every call of a level was given. */
+        private final List<ConfigSnapshot> snapshots = new ArrayList<>();
 
         private WrappedPolicy(UnaryOperator<Set<ResourceDescriptor>> filter, Runnable onCall) {
             this.filter = filter;
@@ -120,9 +125,10 @@ public class DependencyWalkerTest {
         }
 
         @Override
-        public Set<ResourceDescriptor> selectListable(Set<ResourceDescriptor> targets) {
+        public Set<ResourceDescriptor> selectListable(Set<ResourceDescriptor> targets, ConfigSnapshot configuration) {
             onCall.run();
-            return filter.apply(delegate.selectListable(targets));
+            snapshots.add(configuration);
+            return filter.apply(delegate.selectListable(targets, configuration));
         }
     }
 
@@ -294,6 +300,19 @@ public class DependencyWalkerTest {
     }
 
     @Test
+    void testRootWhoseBodyCannotBeBoundFailsWithTheResourceAndNoValue() {
+        for (String body : List.of("{ sk-abc123 not json", "[\"sk-abc123\"]", "\"sk-abc123\"", "{\"dependencies\":\"sk-abc123\"}")) {
+            stored.put("applications/platform/a", body);
+
+            IllegalStateException failure = assertThrows(IllegalStateException.class, () -> walk("a"), body);
+
+            assertTrue(failure.getMessage().endsWith("(resource=application:platform:a)"), failure.getMessage());
+            assertFalse(failure.getMessage().contains("sk-abc123"), "no value of the body in the message");
+            assertNull(failure.getCause(), "no cause, whose message can quote the body");
+        }
+    }
+
+    @Test
     void testCycleBetweenTwoApplicationsListsTheOtherOnceAndNotTheRoot() {
         app("a", "b");
         app("b", "a");
@@ -461,6 +480,26 @@ public class DependencyWalkerTest {
         assertEquals(1, warnings().size(), warnings().toString());
         assertTrue(warnings().get(0).contains("pointer=/catalog_properties/x reason=unresolved-short-name"), warnings().toString());
         assertFalse(warnings().get(0).contains("sk-abc123"), "the value never reaches the log");
+    }
+
+    @Test
+    void testPolicyIsGivenTheConfigurationThatTheWalkResolvedAgainst() {
+        app("a", "models/platform/m", "models/platform/n");
+        model("m", "models/platform/n");
+        model("n");
+        Config merged = new Config();
+        Config file = new Config();
+        Config laterMerged = new Config();
+        int[] configReads = {0};
+        WrappedPolicy policy = new WrappedPolicy(allowed -> allowed, () -> { });
+
+        walk(walker(() -> configReads[0]++ == 0 ? merged : laterMerged, () -> file), policy, "a");
+
+        assertFalse(policy.snapshots.isEmpty(), "the policy was asked");
+        for (ConfigSnapshot snapshot : policy.snapshots) {
+            assertSame(merged, snapshot.merged(), "the configuration that discovery used, not a later one");
+            assertSame(file, snapshot.file());
+        }
     }
 
     @Test

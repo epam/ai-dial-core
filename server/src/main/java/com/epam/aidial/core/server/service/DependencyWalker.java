@@ -5,13 +5,17 @@ import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.security.EncryptionService;
+import com.epam.aidial.core.server.service.DependencyAccessPolicy.ConfigSnapshot;
 import com.epam.aidial.core.server.service.DependencyTypePolicy.Content;
 import com.epam.aidial.core.server.service.DiscoveredEdge.EdgeStatus;
 import com.epam.aidial.core.server.service.DiscoveryResult.DiscoveryIssue;
+import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayDeque;
@@ -103,10 +107,11 @@ public final class DependencyWalker {
             publicationLock.unlock();
         }
         Config fileConfig = fileConfigSource.get();
+        ConfigSnapshot configuration = new ConfigSnapshot(merged, fileConfig);
         DeploymentEdgeDiscovery discovery = new DeploymentEdgeDiscovery(merged, invalidEntities, fileConfig, resourceService,
                 applicationSchemaService, catalogSchemaService, encryptionService, policy::isSupported);
         long begun = System.nanoTime();
-        Exploration exploration = new Exploration(discovery, fileConfig, policy);
+        Exploration exploration = new Exploration(discovery, configuration, policy);
         DependencyListResponse response = exploration.run(distinctRoots);
         log.info("Dependency list: roots={}, resources={}, duration={}ms", distinctRoots.size(), exploration.references.size(),
                 (System.nanoTime() - begun) / 1_000_000);
@@ -120,8 +125,8 @@ public final class DependencyWalker {
     /** The state of one walk. */
     private final class Exploration {
         private final DeploymentEdgeDiscovery discovery;
-        @Nullable
-        private final Config fileConfig;
+        /** What discovery resolved against; the policy decides on the same publication. */
+        private final ConfigSnapshot configuration;
         private final DependencyAccessPolicy policy;
         /** The resources that exist and were examined, each with the listed resources it refers to, in the order of its references. */
         private final Map<ResourceDescriptor, List<ResourceDescriptor>> references = new LinkedHashMap<>();
@@ -131,9 +136,9 @@ public final class DependencyWalker {
         /** The first reference that led to each target, for the log of a target that does not exist. */
         private final Map<ResourceDescriptor, Referrer> referrers = new HashMap<>();
 
-        private Exploration(DeploymentEdgeDiscovery discovery, @Nullable Config fileConfig, DependencyAccessPolicy policy) {
+        private Exploration(DeploymentEdgeDiscovery discovery, ConfigSnapshot configuration, DependencyAccessPolicy policy) {
             this.discovery = discovery;
-            this.fileConfig = fileConfig;
+            this.configuration = configuration;
             this.policy = policy;
         }
 
@@ -156,7 +161,7 @@ public final class DependencyWalker {
                         }
                     }
                 }
-                Set<ResourceDescriptor> listed = fresh.isEmpty() ? Set.of() : policy.selectListable(fresh);
+                Set<ResourceDescriptor> listed = fresh.isEmpty() ? Set.of() : policy.selectListable(fresh, configuration);
                 List<ResourceDescriptor> next = new ArrayList<>();
                 for (ResourceDescriptor target : fresh) {
                     if (listed.contains(target)) {
@@ -194,7 +199,7 @@ public final class DependencyWalker {
         private List<ResourceDescriptor> examineDeployment(ResourceDescriptor descriptor, String key, boolean isRoot) {
             Deployment entity;
             if (FileConfigEntities.isFile(descriptor)) {
-                entity = FileConfigEntities.findDeployment(fileConfig, descriptor);
+                entity = FileConfigEntities.findDeployment(configuration.file(), descriptor);
             } else {
                 String text = resourceService.getResource(descriptor);
                 entity = text == null ? null : bindStored(descriptor, key, text, isRoot);
@@ -223,18 +228,26 @@ public final class DependencyWalker {
             return List.copyOf(targets);
         }
 
-        /** A root whose body cannot be bound ends the walk; a dependency is listed with unknown references, and the log holds no cause. */
+        /**
+         * Binds the stored body to the entity of its type. A root whose body cannot be bound ends the walk; a dependency is listed with unknown
+         * references. A message and a log record name the resource only: no cause is kept, because the message of the parser or of the binder
+         * can quote a value of the body.
+         */
         @Nullable
         private Deployment bindStored(ResourceDescriptor descriptor, String key, String text, boolean isRoot) {
             try {
-                return DependencyEntityBinder.bind(descriptor, text);
-            } catch (IllegalStateException e) {
-                if (isRoot) {
-                    throw e;
+                JsonNode tree = ConfigEntityCodec.BLOB_MAPPER.readTree(text);
+                if (tree != null && tree.isObject()) {
+                    return ConfigEntityCodec.treeToEntity(tree, DependencyTypePolicy.resolveEntityClass(DependencyTypePolicy.resolveType(descriptor)));
                 }
-                log.warn("Dependency list: the references of {} are not read: the stored body cannot be bound", key);
-                return null;
+            } catch (JsonProcessingException | IllegalArgumentException e) {
+                // falls through to the refusal below, without the cause
             }
+            if (isRoot) {
+                throw new IllegalStateException("A stored body cannot be bound to its type (resource=" + key + ")");
+            }
+            log.warn("Dependency list: the references of {} are not read: the stored body cannot be bound", key);
+            return null;
         }
 
         /** A root that is gone ends the walk; a dependency that is gone is recorded and the walk goes on. */

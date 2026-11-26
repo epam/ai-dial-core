@@ -60,7 +60,7 @@ deployment) and `resource-dependencies` (the initiator's reach). It does not cha
 - API: `POST /v1/ops/dependency/list` (marked `x-preview`); `docs/open_api_core.yaml` is generated from the annotations. No existing
   route changes meaning.
 - New code in `server`: `DependencyListController`, `DependencyWalker`, `DependencyRequestParser`, `DependencyAccessPolicy` with an admin
-  and an initiator implementation, `DependencyEntityBinder`, `DependencyResource`, `DependencyRootEntry`, `DependencyListResponse`, `DependencyTypePolicy`,
+  and an initiator implementation, `DependencyResource`, `DependencyRootEntry`, `DependencyListResponse`, `DependencyTypePolicy`,
   `DependencyResourceNames`, `FileConfigEntities`, `DeploymentEdgeDiscovery`, `DiscoveredEdge`, `DiscoveryResult`, `ShortNameResolver`,
   `ShortNameResolution`, `SchemaReferenceResolver`, and the `validation` marker classes (`MarkerCollection`, `MarkerRecorder`, the issue types).
 - Existing code changed, additively: `ApplicationSchemaService` (`buildReferenceSchema`, `collectMarkerReferences`, a `quiet` flag on the
@@ -69,5 +69,5 @@ deployment) and `resource-dependencies` (the initiator's reach). It does not cha
   Request-time behavior of these classes is unchanged. `ControllerSelector`, `RouteTemplate` and the OpenAPI collector get the route.
 - Admin writes: none waits for a bucket lock of the walk, because it takes none. A configuration write waits for the two reads that the walk makes
   under the publication lock, and the walk waits for a rebuild or an apply that holds that lock.
-- Docs: `docs/dependency-list.md`, `docs/error_codes.md`, `docs/open_api_core.yaml` (generated). No setting is added.
+- Docs: `docs/dependency-list.md`, `docs/error_codes.md`; `docs/open_api_core.yaml` is generated and committed by CI. No setting is added.
 - Motivation: the need to see what an Application depends on before it is moved, copied or shared. This change covers the list and the reference discovery.

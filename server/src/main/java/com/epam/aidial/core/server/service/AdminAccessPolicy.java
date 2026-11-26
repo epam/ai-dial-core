@@ -1,7 +1,6 @@
 package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -26,39 +25,24 @@ public final class AdminAccessPolicy implements DependencyAccessPolicy {
 
     @Override
     public boolean isRootAllowed(ResourceDescriptor root) {
-        ResourceTypes type = DependencyTypePolicy.resolveType(root);
-        return !root.isFolder() && DependencyTypePolicy.isRoot(type) && DependencyTypePolicy.isSupportedDependency(type, root.getBucketLocation())
+        return DependencyTypePolicy.isRoot(DependencyTypePolicy.resolveType(root)) && !FileConfigEntities.isFile(root) && isSupported(root)
                 && isReadable(root);
     }
 
     @Override
     public boolean isSupported(ResourceDescriptor target) {
-        return !target.isFolder() && DependencyTypePolicy.isSupportedDependency(DependencyTypePolicy.resolveType(target), target.getBucketLocation());
+        return DependencyTypePolicy.isSupported(target);
     }
 
     @Override
-    public Set<ResourceDescriptor> selectListable(Set<ResourceDescriptor> targets) {
+    public Set<ResourceDescriptor> selectListable(Set<ResourceDescriptor> targets, ConfigSnapshot configuration) {
         Set<ResourceDescriptor> allowed = new LinkedHashSet<>();
         for (ResourceDescriptor target : targets) {
-            if (isListable(target)) {
+            if (isSupported(target) && isReadable(target)) {
                 allowed.add(target);
             }
         }
         return allowed;
-    }
-
-    private boolean isListable(ResourceDescriptor target) {
-        if (target.isFolder()) {
-            return false;
-        }
-        ResourceTypes type = DependencyTypePolicy.resolveType(target);
-        if (DependencyTypePolicy.resolveContent(type) == null) {
-            return false;
-        }
-        if (FileConfigEntities.isFile(target)) {
-            return true;
-        }
-        return DependencyTypePolicy.isSupportedDependency(type, target.getBucketLocation()) && isReadable(target);
     }
 
     private boolean isReadable(ResourceDescriptor resource) {

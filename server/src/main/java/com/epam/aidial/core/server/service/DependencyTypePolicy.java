@@ -71,6 +71,22 @@ final class DependencyTypePolicy {
     }
 
     /**
+     * Whether the walk may follow a resource: it is not a folder, its type has a content rule, and it is an entity of the file configuration or
+     * lies in {@code platform/} or {@code public/}, in a bucket that the configuration API allows for its type. A caller's own stores are not
+     * covered: the policy of a caller who is not an admin adds them.
+     */
+    static boolean isSupported(ResourceDescriptor target) {
+        if (target.isFolder()) {
+            return false;
+        }
+        ResourceTypes type = resolveType(target);
+        if (FileConfigEntities.isFile(target)) {
+            return resolveContent(type) != null;
+        }
+        return isSupportedDependency(type, target.getBucketLocation());
+    }
+
+    /**
      * Whether a resource of this type in this location is supported: the type has a content rule, the location is exactly {@code platform/} or
      * {@code public/}, and the bucket binding of the configuration API allows the type in that bucket.
      *
