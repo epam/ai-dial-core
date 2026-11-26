@@ -7,11 +7,14 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.impl.ContextInternal;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -20,6 +23,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
@@ -28,8 +32,9 @@ import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,6 +44,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class VertxHostDelegateTest {
+
+    private static final int MAX_BODY_SIZE = 64;
 
     private static Vertx vertx;
 
@@ -66,6 +73,12 @@ class VertxHostDelegateTest {
             dispatched.add(invocation.getArgument(0));
             return Future.succeededFuture();
         });
+        AsyncTaskExecutor executor = mock(AsyncTaskExecutor.class);
+        when(executor.submit(any())).thenAnswer(invocation -> Future.succeededFuture(invocation.<Callable<?>>getArgument(0).call()));
+        when(proxy.getTaskExecutor()).thenReturn(executor);
+        ResourceService resourceService = mock(ResourceService.class);
+        when(resourceService.getMaxSize()).thenReturn(MAX_BODY_SIZE);
+        when(proxy.getResourceService()).thenReturn(resourceService);
         ApiKeyData key = new ApiKeyData();
         key.setOriginalKey(new Key());
         key.setPerRequestKey("per-request-key");
@@ -96,12 +109,26 @@ class VertxHostDelegateTest {
     }
 
     @Test
-    void testCallOutsideTheCreateRoutesFails() {
-        ExecutionException error = assertThrows(ExecutionException.class,
-                () -> await(call("/v1/ops/resource/share/list", body())));
+    void testAliasHopServesTheCreateRoutesOnly() throws Exception {
+        VertxHostDelegate aliasHop = VertxHostDelegate.forAliasHop(proxy, parent, pluginContext);
 
-        assertInstanceOf(IllegalArgumentException.class, error.getCause());
-        verify(proxy, never()).dispatch(any());
+        assertThrows(ExecutionException.class, () -> await(on(pluginContext,
+                () -> aliasHop.call(new Call("/v1/toolset/search/mcp", MultiMap.caseInsensitiveMultiMap(), body())))));
+        on(pluginContext, () -> aliasHop.call(new Call("/openai/deployments/m/chat/completions", MultiMap.caseInsensitiveMultiMap(), body())));
+
+        awaitCondition(() -> dispatched.size() == 1);
+        assertEquals("/openai/deployments/m/chat/completions", dispatched.get(0).getRequest().path());
+    }
+
+    @Test
+    void testCallOutsideTheCreateRoutesTakesTheBodyAsBytes() throws Exception {
+        call(HttpMethod.PUT, "/v1/conversations/b/c", body());
+
+        awaitCondition(() -> dispatched.size() == 1);
+        ProxyContext child = dispatched.get(0);
+        assertNull(child.getCallTree());
+        assertEquals("application/json", child.getRequest().getHeader("content-type"));
+        assertEquals("{\"model\":\"m\"}", await(child.getRequest().body()).toString());
     }
 
     @Test
@@ -127,6 +154,8 @@ class VertxHostDelegateTest {
         assertEquals(16, child.getSpanId().length());
         assertNotEquals(dispatched.get(1).getSpanId(), child.getSpanId());
         assertEquals("/openai/deployments/m/chat/completions", child.getRequest().path());
+        assertNotNull(child.getCallTree());
+        assertEquals(0, await(child.getRequest().body()).length());
     }
 
     @Test
@@ -235,8 +264,95 @@ class VertxHostDelegateTest {
         assertEquals("done", read.get(5, TimeUnit.SECONDS));
     }
 
+    // deployment-origin "Core's API through the host"
+
+    @Test
+    void testUserInfoCallDispatchedAsChildPass() throws Exception {
+        call(HttpMethod.GET, "/v1/user/info", null);
+
+        awaitCondition(() -> dispatched.size() == 1);
+        ProxyContext child = dispatched.get(0);
+        assertEquals(HttpMethod.GET, child.getRequest().method());
+        assertEquals("/v1/user/info", child.getRequest().path());
+        assertTrue(child.isChildPass());
+        assertNull(child.getCallTree());
+    }
+
+    @Test
+    void testUserInfoCallPastTheDepthLimit() throws Exception {
+        parent.getProxyApiKeyData().setExecutionPath(Collections.nCopies(VertxHostDelegate.MAX_CALL_DEPTH, "app"));
+
+        Response answer = await(call(HttpMethod.GET, "/v1/user/info", null));
+
+        assertEquals(400, answer.statusCode());
+        verify(proxy, never()).dispatch(any());
+    }
+
+    @Test
+    void testCallWithoutMethodOrUriFails() {
+        assertThrows(ExecutionException.class, () -> await(call(null, "/openai/v1/chat/completions", body())));
+        assertThrows(ExecutionException.class, () -> await(call(HttpMethod.GET, null, null)));
+        verify(proxy, never()).dispatch(any());
+    }
+
+    @Test
+    void testAnyMethodAndRouteDispatched() throws Exception {
+        call(HttpMethod.GET, "/v1/user/limits", null);
+        call(HttpMethod.DELETE, "/v1/conversations/b/c", null);
+        call(HttpMethod.POST, "/v1/ops/resource/share/list", body());
+        call(HttpMethod.GET, "/v1/user/info", body());
+
+        awaitCondition(() -> dispatched.size() == 4);
+    }
+
+    @Test
+    void testCreateCallWithoutBodyFails() {
+        assertThrows(ExecutionException.class, () -> await(call("/openai/v1/chat/completions", null)));
+        verify(proxy, never()).dispatch(any());
+    }
+
+    @Test
+    void testBodyOverTheSizeLimitAnswers413() throws Exception {
+        ObjectNode large = body().put("text", "x".repeat(MAX_BODY_SIZE));
+
+        Response answer = await(call(HttpMethod.PUT, "/v1/conversations/b/c", large));
+
+        assertEquals(413, answer.statusCode());
+        verify(proxy, never()).dispatch(any());
+        // a create operation's tree is not measured
+        call("/openai/v1/chat/completions", large);
+        awaitCondition(() -> dispatched.size() == 1);
+    }
+
+    @Test
+    void testUploadOrWebSocketCallFails() {
+        MultiMap upload = MultiMap.caseInsensitiveMultiMap().add("Content-Type", "multipart/form-data; boundary=b");
+        MultiMap webSocket = MultiMap.caseInsensitiveMultiMap().add("Upgrade", "websocket");
+
+        assertThrows(ExecutionException.class, () -> await(on(pluginContext,
+                () -> host.call(new Call(HttpMethod.PUT, "/v1/files/b/f.txt", upload, null)))));
+        assertThrows(ExecutionException.class, () -> await(on(pluginContext,
+                () -> host.call(new Call(HttpMethod.GET, "/v1/route/r", webSocket, null)))));
+        verify(proxy, never()).dispatch(any());
+    }
+
+    // plugin-call-user-info design D5: the call's own fields first, then the closed host's 401
+
+    @Test
+    void testChecksAfterCloseKeepTheirOrder() throws Exception {
+        host.close();
+
+        assertThrows(ExecutionException.class, () -> await(call(null, "/v1/user/info", null)));
+        assertEquals(401, await(call(HttpMethod.GET, "/v1/user/limits", null)).statusCode());
+        verify(proxy, never()).dispatch(any());
+    }
+
     private Future<Response> call(String uri, ObjectNode body) {
-        return on(pluginContext, () -> host.call(new Call(uri, MultiMap.caseInsensitiveMultiMap(), body)));
+        return call(HttpMethod.POST, uri, body);
+    }
+
+    private Future<Response> call(HttpMethod method, String uri, ObjectNode body) {
+        return on(pluginContext, () -> host.call(new Call(method, uri, MultiMap.caseInsensitiveMultiMap(), body)));
     }
 
     private static ObjectNode body() {

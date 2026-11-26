@@ -270,7 +270,7 @@ without putting the raw address in the log.
 | resources.maxSize                       | 67108864 |    No    | Max allowed size in bytes for a resource.                                                          |
 | resources.maxSizeToCache                | 1048576  |    No    | Max size in bytes for a resource to cache in Redis.                                                |
 | resources.syncPeriod                    |  60000   |    No    | Period in milliseconds, how frequently check for resources to sync.                                |
-| resources.syncDelay                     |  120000  |    No    | Delay in milliseconds for a resource to be written back in object storage after last modification. |
+| resources.syncDelay                     |  120000  |    No    | Delay in milliseconds for a resource to be written back in object storage after last modification. A rate-limit counter is written back this long after its first change since the last write-back. |
 | resources.syncBatch                     |   4096   |    No    | How many resources to sync in one go.                                                              |
 | resources.cacheExpiration               |  300000  |    No    | Expiration in milliseconds for synced resources in Redis.                                          |
 | resources.compressionMinSize            |   256    |    No    | Compress a resource with gzip if its size in bytes more or equal to this value.                    |

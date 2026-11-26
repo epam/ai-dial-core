@@ -8,6 +8,7 @@ import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.MultiMap;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
 import okhttp3.mockwebserver.MockResponse;
@@ -200,20 +201,17 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     }
 
     @Test
-    void testCallOutsideTheCreateOperations() {
+    void testBackgroundResponseCallRefused() {
         servedApp();
         servedModel("m2", "openaiResponses");
 
-        Response list = chat("/openai/deployments/app/chat/completions", CHAT_BODY, "X-Test-Call", "/v1/ops/resource/share/list");
         Response background = chat("/openai/deployments/app/chat/completions",
                 "{\"background\":true,\"input\":\"hi\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
                 "X-Test-Call", "/openai/v1/responses", "X-Test-Call-Model", "m2");
 
-        for (Response response : List.of(list, background)) {
-            assertEquals(502, response.status(), response.body());
-            assertTrue(response.body().contains("No route"), response.body());
-        }
-        assertEquals(2, TestOriginPluginProvider.REQUESTS.size());
+        assertEquals(502, background.status(), background.body());
+        assertTrue(background.body().contains("No route"), background.body());
+        assertEquals(1, TestOriginPluginProvider.REQUESTS.size());
         analyticsRows.forEach(row -> assertEquals("app", row.getDeploymentName()));
     }
 
@@ -611,6 +609,76 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
         assertEquals("projA", caller.project());
     }
 
+    // deployment-origin "Core's API through the host"
+
+    @Test
+    void testUserInfoOfCallerWithApiKey() {
+        servedApp();
+
+        Response response = chat("/openai/deployments/app/chat/completions", CHAT_BODY,
+                "X-Test-Call", "/v1/user/info", "X-Test-Call-Method", "GET");
+
+        verify(response, 200, """
+                {"roles":["default"],"project":"EPM-RTC-GPT","costObject":"EPM-RTC-GPT","costObjectSource":"key","userDisplayName":"EPM-RTC-GPT"}""");
+    }
+
+    @Test
+    void testUserInfoOfCallerWithJwt() {
+        servedApp();
+
+        Response response = send(HttpMethod.POST, "/openai/deployments/app/chat/completions", null, CHAT_BODY,
+                "content-type", "application/json", "authorization", "user",
+                "X-Test-Call", "/v1/user/info", "X-Test-Call-Method", "GET");
+
+        verify(response, 200, """
+                {"roles":["user"],"userId":"user","userClaims":{"title":["Manager"]},"costObject":"ORG","costObjectSource":"default",\
+                "userDisplayName":"user user"}""");
+    }
+
+    @Test
+    @SneakyThrows
+    void testUserInfoAfterThePluginsPassEnded() {
+        servedApp();
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY), 200);
+        // Core saves the row and ends the pass in one task, so the pass has ended once the row is there
+        awaitAnalyticsRows(1);
+
+        TestOriginPluginProvider.Host kept = TestOriginPluginProvider.HOSTS.get(0);
+        CompletableFuture<String> answer = new CompletableFuture<>();
+        kept.context().runOnContext(ignored -> kept.host()
+                .call(new Call(HttpMethod.GET, "/v1/user/info", MultiMap.caseInsensitiveMultiMap(), null))
+                .onComplete(result -> {
+                    if (result.failed()) {
+                        answer.completeExceptionally(result.cause());
+                        return;
+                    }
+                    Buffer body = Buffer.buffer();
+                    result.result().body().handler(body::appendBuffer).exceptionHandler(answer::completeExceptionally)
+                            .endHandler(end -> answer.complete(result.result().statusCode() + " " + body));
+                }));
+
+        assertEquals("401 Unknown api key", answer.get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void testWriteReadAndDeleteThroughTheHost() {
+        servedApp();
+        // the per-request key of app's pass may write the caller's appdata folder of app
+        String conversation = "/v1/conversations/" + bucket + "/appdata/app/c1";
+
+        verify(chat("/openai/deployments/app/chat/completions", CONVERSATION_BODY,
+                "X-Test-Call", conversation, "X-Test-Call-Method", "PUT", "X-Test-Call-With-Body", "true"), 200);
+        verify(send(HttpMethod.GET, conversation), 200, CONVERSATION_BODY);
+
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY,
+                "X-Test-Call", conversation, "X-Test-Call-Method", "GET"), 200, CONVERSATION_BODY);
+
+        verify(chat("/openai/deployments/app/chat/completions", CHAT_BODY,
+                "X-Test-Call", conversation, "X-Test-Call-Method", "DELETE"), 200);
+        verify(send(HttpMethod.GET, conversation), 404);
+        assertEquals(3, TestOriginPluginProvider.REQUESTS.size());
+    }
+
     @BeforeEach
     void resetTestOrigin() {
         TestOriginPluginProvider.reset();
@@ -621,6 +689,9 @@ public class EmbeddedCallApiTest extends ResourceBaseTest {
     // the shared test config gives role default token limits on this model
     private static final String LIMITED_MODEL = "chat-gpt-35-turbo";
     private static final String CHAT_BODY = "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+    // a chat completion that is a conversation too, for a plugin that writes its request's body as one
+    private static final String CONVERSATION_BODY = "{\"id\":\"c1\",\"folderId\":\"f\",\"name\":\"c1\",\"prompt\":\"\","
+            + "\"temperature\":1,\"model\":{\"id\":\"m\"},\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String STREAM_BODY = "{\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
     private static final String GREETING_P2 = "{\"greeting\": \"from-p2\"}";
     private static final String INLINE_TRANSLATOR = "{\"out\": \"openaiChatCompletions\", \"baseUrl\": \"dial-plugin://p1\"}";
