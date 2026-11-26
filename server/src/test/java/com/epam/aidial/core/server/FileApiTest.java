@@ -134,7 +134,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url":"files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType":"FOLDER",
                                       "resourceType":"FILE",
-                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                       "items":[]
                                     }
                                     """, response.body());
@@ -163,7 +163,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url":"files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType":"FOLDER",
                                       "resourceType":"FILE",
-                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                       "items":[]
                                     }
                                     """, response.body());
@@ -357,7 +357,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                       "items" : [ ]
                                     }
                                     """, response.body());
@@ -411,7 +411,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                       "items" : [ ]
                                     }
                                     """, response.body());
@@ -486,7 +486,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                       "items" : [ {
                                         "name" : "файл.txt",
                                         "parentPath" : null,
@@ -494,7 +494,7 @@ public class FileApiTest extends ResourceBaseTest {
                                         "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/%D1%84%D0%B0%D0%B9%D0%BB.txt",
                                         "nodeType" : "ITEM",
                                         "resourceType" : "FILE",
-                                        "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                        "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                         "updatedAt" : "@ignore",
                                         "contentLength" : 0,
                                         "contentType" : "text/custom"
@@ -936,7 +936,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                       "items" : [ {
                                         "name" : "file.txt",
                                         "parentPath" : "appdata/EPM-RTC-RAIL",
@@ -944,7 +944,7 @@ public class FileApiTest extends ResourceBaseTest {
                                         "url" : "files/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/appdata/EPM-RTC-RAIL/file.txt",
                                         "nodeType" : "ITEM",
                                         "resourceType" : "FILE",
-                                        "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                        "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                         "updatedAt" : "@ignore",
                                         "contentLength" : 0,
                                         "contentType" : "text/custom"
@@ -1194,7 +1194,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                       "items" : [ ]
                                     }
                                     """, response.body());
@@ -1286,7 +1286,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                       "items" : [ {
                                         "name" : "file.txt",
                                         "parentPath" : null,
@@ -1294,7 +1294,7 @@ public class FileApiTest extends ResourceBaseTest {
                                         "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/file.txt",
                                         "nodeType" : "ITEM",
                                         "resourceType" : "FILE",
-                                        "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                        "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                         "updatedAt" : "@ignore",
                                         "contentLength" : 0,
                                         "contentType" : "text/custom"
@@ -1305,7 +1305,7 @@ public class FileApiTest extends ResourceBaseTest {
                                         "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/folder1/",
                                         "nodeType" : "FOLDER",
                                         "resourceType" : "FILE",
-                                        "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                        "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                         "items" : null
                                       } ]
                                     }
@@ -1338,7 +1338,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                       "items" : [ ]
                                     }
                                     """, response.body());
@@ -1397,7 +1397,7 @@ public class FileApiTest extends ResourceBaseTest {
                                       "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/",
                                       "nodeType" : "FOLDER",
                                       "resourceType" : "FILE",
-                                      "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                      "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                       "items" : [ {
                                         "name" : "image.png",
                                         "parentPath" : null,
@@ -1405,7 +1405,7 @@ public class FileApiTest extends ResourceBaseTest {
                                         "url" : "files/7G9WZNcoY26Vy9D7bEgbv6zqbJGfyDp9KZyEbJR4XMZt/image.png",
                                         "nodeType" : "ITEM",
                                         "resourceType" : "FILE",
-                                        "permissions" : [ "READ", "WRITE", "SHARE" ],
+                                        "permissions" : [ "READ", "WRITE", "SHARE", "SHARE_LIST" ],
                                         "updatedAt" : "@ignore",
                                         "contentLength" : 0,
                                         "contentType" : "image/png"
