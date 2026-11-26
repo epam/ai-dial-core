@@ -22,6 +22,8 @@ public enum ResourceTypes implements ResourceType {
     USER_CONSENT("user_consent", true, TimeUnit.MINUTES.toMillis(5)),
     // not mapped in of(): no Resource API path can address an admin-consent record
     ADMIN_CONSENT("admin_consent", true, TimeUnit.DAYS.toMillis(30)),
+    // not mapped in of(): only the user, through /v1/user/budgets/default, reads or writes their default budget
+    USER_BUDGET_DEFAULT("user_budget_default", true, TimeUnit.MINUTES.toMillis(5)),
     TOOL_SET("toolsets", true, TimeUnit.DAYS.toMillis(30)),
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
     EXTERNAL_SERVICE("external_services", true, TimeUnit.MINUTES.toMillis(5)),

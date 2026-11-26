@@ -15705,6 +15705,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorData"
       x-preview: true
+  /v1/user/budgets/default:
+    get:
+      tags:
+      - Limits
+      summary: /v1/user/budgets/default
+      operationId: getUserDefaultBudget
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefaultBudget"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+    put:
+      tags:
+      - Limits
+      summary: /v1/user/budgets/default
+      operationId: putUserDefaultBudget
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DefaultBudget"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DefaultBudget"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "401":
+          description: Invalid Authentication
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/user/info:
     get:
       summary: /v1/user/info
@@ -19697,6 +19770,11 @@ components:
       - GLOBAL
       - APPLICATION
       - USER
+    DefaultBudget:
+      type: object
+      properties:
+        budget:
+          type: string
     DeleteNotificationRequest:
       type: object
       properties:
@@ -21632,6 +21710,7 @@ components:
       - CODE_INTERPRETER_SESSION
       - USER_CONSENT
       - ADMIN_CONSENT
+      - USER_BUDGET_DEFAULT
       - TOOL_SET
       - CREDENTIALS
       - EXTERNAL_SERVICE
