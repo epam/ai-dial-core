@@ -136,11 +136,11 @@ A row has the fields every row has and none that others lack:
 |-----------------------------|------------------------------------------------------------------------------------------------|
 | `response.status`           | the status the **client** got; for a broken stream, the `200` Core had set                     |
 | `response.body`             | empty for an answer Core gave itself: the text is in the WARN line                             |
-| `token_usage`               | absent                                                                                         |
+| `token_usage`               | absent, except for a broken `/anthropic/v1/messages` stream: it keeps the usage of the events Core had already relayed |
 | `response.upstream_uri`     | absent when the upstreams were used up, present for a connection that failed                   |
 | `request.body`              | empty for an answer given before the body is read: `403`, `404`, `415` and Core's `429` on `/openai/deployments/{id}/...`. `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages` read the body first, to find the model, so their rows have it |
 | `execution_path`            | absent for an answer given before the pass's per-request key exists: Core's `429`, `403`, `404` and `415`, and a `400` everywhere except `/openai/deployments/{id}/...`, which parses the body after the key exists |
-| `parent_deployment`         | as in any row; before the key exists it is the deployment whose key made the call, such as an application whose call to a model Core refuses with `429` |
+| `parent_deployment`         | as in any row, and also when Core refuses a deployment it resolved before the pass's key exists (its own `429`): the deployment whose key made the call, such as an application that calls a model |
 
 `response.status` is not the status the origin sent, which the row does not carry (the INFO line `Received header from origin` has
 it). Core never relays a retriable status. When no attempt is left it answers `503 Service is not available` if **every** upstream of
@@ -148,13 +148,15 @@ the model is at `429`, and `502 No route` otherwise, so an origin `502`, `503` o
 gives `503` only when no other upstream of the model failed with something else.
 
 A broken stream is a row with status `200` and no tokens, like the row of a client that left a `Model` mid-stream. It is told apart
-only by having no tokens.
+only by having no tokens. A broken Messages stream is the exception: it keeps the usage its relayed events reported, so its tokens do
+not tell it apart.
 
 An origin's error answer that Core relays keeps its one row, on every surface: the setting adds none. On the MCP proxy that is the
 case even though the same answer logs `Responding with error`. A request that is not a POST writes no row, as for every row.
 
 These events still write **no** row, with the setting on or off: `401` and `413` (Core logs nothing for them), the call to an
-interceptor and the pass of a router that fails before it decides (their specs say no row), a stream that breaks on a feature call, an
+interceptor, the pass of a router that fails before it decides, and a decided pass whose chosen candidate does not resolve, such as
+`502` for an unknown deployment (their specs say no row), a stream that breaks on a feature call, an
 MCP request or a route (another code path), WebSocket and the polling of a background job; an origin's error answer that Core relays gets no row beyond its one. A consumer must not read
 `analytics.errorRows` as "every failure has a row".
 

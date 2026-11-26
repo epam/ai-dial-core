@@ -121,7 +121,10 @@ class LogStoreTest {
 
     private static ProxyContext context(int responseStatus, HttpMethod method) {
         ApiKeyData apiKeyData = new ApiKeyData();
-        apiKeyData.setOriginalKey(new Key());
+        Key key = new Key();
+        // a key with a project names the cost object, so building the row needs no config
+        key.setProject("p");
+        apiKeyData.setOriginalKey(key);
         ProxyContext context = new ProxyContext(null, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null,
                 "11111111111111111111111111111111", "3333333333333333", "01");
         HttpServerRequest request = context.getRequest();

@@ -15,7 +15,7 @@ public interface LogStore {
     default void saveErrorRow(ProxyContext context) {
         // only POST requests write rows, which GfLogStore.save checks too, but only after the row is built
         if (isErrorRowsEnabled() && "POST".equals(context.getRequest().method().name())) {
-            save(AnalyticsLogContext.from(context, null));
+            save(AnalyticsLogContext.fromError(context));
         }
     }
 

@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.config.ConfigStore;
 import com.epam.aidial.core.server.controller.HealthCheckController;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ApiKeyValidation;
+import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.security.AccessTokenValidator;
@@ -63,6 +64,7 @@ import static com.epam.aidial.core.storage.http.HttpStatus.METHOD_NOT_ALLOWED;
 import static com.epam.aidial.core.storage.http.HttpStatus.OK;
 import static com.epam.aidial.core.storage.http.HttpStatus.REQUEST_ENTITY_TOO_LARGE;
 import static com.epam.aidial.core.storage.http.HttpStatus.UNAUTHORIZED;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -126,6 +128,8 @@ public class ProxyTest {
         when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD)).thenReturn(null);
         when(request.getHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS)).thenReturn(null);
         when(response.setStatusCode(anyInt())).thenReturn(response);
+        // a static route answers only after its rate limit passes
+        when(rateLimiter.limit(any(), any())).thenReturn(Future.succeededFuture(RateLimitResult.SUCCESS));
         HttpConnection httpConnection = mock(HttpConnection.class);
         when(request.connection()).thenReturn(httpConnection);
 

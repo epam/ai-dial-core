@@ -348,6 +348,24 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
     }
 
     @Test
+    @DialConfigLocation("dial-config/aliases.json")
+    void testRelayedErrorOfAnInProcessPassHasOneRow() {
+        // the alias's target pass is served in process; its origin's text body fails the attachment scan after the answer is relayed
+        try (TestWebServer origin = new TestWebServer(4848)) {
+            for (String path : List.of("/openai/v1/responses", "/openai/responses")) {
+                origin.map(HttpMethod.POST, path, 404, "not found", "content-type", "text/plain");
+            }
+            verify(send(HttpMethod.POST, "/openai/v1/responses", null, "{\"model\":\"multi-alias\",\"store\":false,\"input\":\"hello\"}",
+                    "api-key", "default-key", "content-type", "application/json"), 404);
+        }
+
+        // the alias pass's row and the target pass's: no error row for the answer already relayed
+        List<AnalyticsLogContext> rows = rows(2);
+        assertTrue(rows.stream().allMatch(row -> row.getResponseStatusCode() == 404), () -> "rows " + rows.stream()
+                .map(row -> row.getDeploymentName() + "/" + row.getResponseStatusCode()).toList());
+    }
+
+    @Test
     @DialConfigLocation("dial-config/router-decision.json")
     void testDecidedCandidateWithAnEncodedName() {
         // the router names the application by its decoded url; nothing listens at its endpoint, so Core answers itself

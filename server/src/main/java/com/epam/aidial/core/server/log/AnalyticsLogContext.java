@@ -129,9 +129,7 @@ public class AnalyticsLogContext {
                 .deploymentName(context.getDeployment() != null ? context.getDeployment().getName() : null)
                 .parentDeployment(context.getDecision() != null
                         ? context.getDecision().getRouterName()
-                        // an answer Core gives before the pass's key exists (its own 429) takes the path that key would have had
-                        : getParentDeployment(context.getSourceDeployment(), context.getInterceptors(),
-                                context.getExecutionPath() != null ? context.getExecutionPath() : ApiKeyData.pathOf(context)))
+                        : getParentDeployment(context.getSourceDeployment(), context.getInterceptors(), context.getExecutionPath()))
                 .executionPath(context.getExecutionPath())
                 .requestProtocol(context.getRequest().version().alpnName().toUpperCase())
                 .requestMethod(context.getRequest().method().name())
@@ -187,6 +185,20 @@ public class AnalyticsLogContext {
                 .tokenUsage(result == null ? null : result.usage())
                 .usagePerModel(usagePerModel)
                 .operationDurationMs(operationDurationMs(record))
+                .build();
+    }
+
+    /**
+     * The row of a pass that ended in an error. When Core refused a resolved deployment before the pass had its key (its own
+     * {@code 429}), the parent comes from the path that key would have had.
+     */
+    public static AnalyticsLogContext fromError(ProxyContext context) {
+        AnalyticsLogContext row = from(context, null);
+        if (context.getDecision() != null || context.getExecutionPath() != null || context.getDeployment() == null) {
+            return row;
+        }
+        return row.toBuilder()
+                .parentDeployment(getParentDeployment(context.getSourceDeployment(), context.getInterceptors(), ApiKeyData.pathOf(context)))
                 .build();
     }
 

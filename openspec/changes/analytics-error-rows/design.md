@@ -169,7 +169,11 @@ There is no `rowMark`. The guarantee comes from how a pass ends:
 - **B** writes on the failure of `endStreamFuture()`, where the success save writes on its success: two outcomes of one future.
 
 The limit of this argument: a later change that answered twice would double-write. The exact row counts in the tests (every scenario
-reads the count with `awaitAnalyticsRows`) are what would catch it.
+reads the count with `awaitAnalyticsRows`) are what would catch it. A pass served in process answers through
+`EmbeddedServerResponse`, whose `setStatusCode` does not reject a written head, so there a flow that answers after it relayed does
+write twice. Review found one: `ResponsesController.handleNonStreamingResponse` let a failed attachment scan reach
+`respond(502)` after the answer; it now ends its chain with `transform`, as `BaseChatCompletionController` does
+(`#testRelayedErrorOfAnInProcessPassHasOneRow`).
 
 ### 7. The write is not wrapped
 
@@ -268,7 +272,8 @@ None. The setting is off by default and every existing row is unchanged. To enab
 - **D3. The pass of a router in decision mode that fails before it decides.** `router-deployment` says it writes no row. Default here: keep that.
   Covering it modifies that requirement; the run did not exercise a router.
 - **D4. A mark on the row of a broken stream.** Its `response.status` is `200`, which looks like a delivered answer. With no new field
-  the only difference is that it has no tokens. A marker would add a field to the schema. Default here: no marker.
+  the only difference is that it has no tokens, and a Messages stream keeps the usage its relayed events reported, so it has not even
+  that. A marker would add a field to the schema. Default here: no marker.
 - **D5. `response.body` of a Core answer.** Empty today; the text of Core's own answer is in the WARN line. Default here: leave it empty.
 
 ## Superseded by this revision

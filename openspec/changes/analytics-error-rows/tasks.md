@@ -16,9 +16,11 @@ Notes from implementing (each is also in design.md where it changes a decision):
   (`#testRouterDecisionFails` uses `r-down`, `#testProxyModeRouterFails` uses `r2`, `#testDecidedRequestFails` uses `r-two`).
 - A `403` row has no `deployment`: Core checks the role before it puts the deployment on the pass (`#testForbiddenDeployment`).
 - `#testUnknownKeyWritesNoRow` and `#testBodyTooLargeWritesNoRow` need `resources.maxSize` 20000 in `BaseErrorRowsApiTest`.
-- From review: a2m "Rate limit of a child pass" is `#testChildPassRateLimit` (before the pass has a key, the row's parent comes
-  from `ApiKeyData.pathOf`), and "Decided application with an encoded name" is `#testDecidedCandidateWithAnEncodedName`
-  (`isErrorRowAllowed()` also compares the decoded name).
+- From review: a2m "Rate limit of a child pass" is `#testChildPassRateLimit` (before the pass has a key, the error row's parent
+  comes from `ApiKeyData.pathOf`, in `AnalyticsLogContext.fromError`, so no other row changes), "Decided application with an
+  encoded name" is `#testDecidedCandidateWithAnEncodedName` (`isErrorRowAllowed()` also compares the decoded name), and "Relayed
+  error of a pass served in process" is `#testRelayedErrorOfAnInProcessPassHasOneRow` (`ResponsesController` no longer answers
+  `502` after it relayed a non-streaming answer whose attachment scan failed: an in-process response does not reject it).
 
 ## 0. Take back the narrow implementation
 

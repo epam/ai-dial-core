@@ -221,6 +221,11 @@ Core SHALL write at most one analytics row for a pass. With `analytics.errorRows
 call to an interceptor, nor for the pass of a router in decision mode once the router is resolved and until a candidate it
 chose is resolved (router-deployment "Decision failures").
 
+#### Scenario: Relayed error of a pass served in process
+- **WHEN** `analytics.errorRows` is on, a client calls `/openai/v1/responses` with alias `a` of model `m`, and `m`'s origin
+  answers `404` with a `text/plain` body
+- **THEN** the client gets `404` and two rows are written, one for `a` and one for `m`, both with `response.status: "404"`
+
 #### Scenario: Retry that succeeds
 - **WHEN** `analytics.errorRows` is on, a model has two upstreams and `maxRetryAttempts: 2`, the first answers `502` and
   the second `200`
