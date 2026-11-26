@@ -1,0 +1,29 @@
+# Review
+
+## What shipped
+
+Without `decision.body`, a decision router reached by an in-process call (an origin plugin's call, or the target pass
+of an alias call such as a tier alias) no longer serializes the request tree. It keeps a copy of the tree taken before
+the first candidate, and each fallback candidate starts from a fresh copy as its call tree; its parse keeps the first
+parse's body timestamp, as a re-parse of saved bytes does. Messages no longer sets that timestamp again after the
+chain, so its `client_body_ms` is the body read, as on the other APIs. With `decision.body` the
+serialization stays as before. What the router, the candidates' origins and the analytics rows receive is unchanged.
+No docs change: no setting or API changed. Measured (task 1.5): `RouterDecisionFlow.prepare` 7.79 → 0.12 ms of Core
+CPU per user request through a tier alias (2,000 users, 650 KB mean body, same nodes, JFR).
+
+## Verification
+
+- `./gradlew checkstyleMain checkstyleTest`: passed.
+- `./gradlew :server:test` with `RouterDecisionApiTest`, `EmbeddedDecisionApiTest`, `AliasInProcessApiTest`,
+  `RouterDecisionTest`: all passed, the new `RouterDecisionApiTest.fallbackThroughAnAliasStartsFromTheClientsBody`
+  (Messages, a failed call) and `everyMoveToAnotherCandidateThroughAnAliasStartsFromTheClientsBody` (Chat
+  Completions: a refusal, a failed call, a new verdict) included; `chosenDeploymentTheCallerMayNotCallThroughAnAlias`
+  checks that a decision out of candidates writes only the alias's and the router's rows, without bodies.
+
+## Drift from design.md
+
+None.
+
+## Not done
+
+None.

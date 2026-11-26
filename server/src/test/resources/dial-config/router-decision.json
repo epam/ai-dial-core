@@ -87,6 +87,11 @@
       "baseUrl": "http://localhost:4848",
       "interfaces": {"openaiChatCompletions": {}, "anthropicMessages": {}}
     },
+    "m-defaults": {
+      "type": "chat",
+      "baseUrl": "http://localhost:4848",
+      "interfaces": {"openaiChatCompletions": {"defaults": {"temperature": 0.5}}, "anthropicMessages": {"defaults": {"temperature": 0.5}}}
+    },
     "m-int": {
       "type": "chat",
       "baseUrl": "http://localhost:4848",
