@@ -87,13 +87,15 @@ protected Future<?> respond(HttpStatus status, String errorMessage) {
 (`isErrorRowsEnabled()`) and the request is a POST, checked before the row is built. `saveErrorResponse(context)`
 calls it when the status of the response is outside 200-299, the condition under which `ProxyContext.respond` logs its WARN. The status
 is the one the helper just answered with, read from the response, so the row carries what the client got.
-`ProxyContext` is not touched, and no class or method outside `LogStore` writes the row. The two exclusions of Decision 2 are
+`ProxyContext` gains only the flag of a recorded background job (B), and no class or method outside `LogStore` writes the row. The two exclusions of Decision 2 are
 `isErrorRowAllowed()`; the three other controllers have none and call `saveErrorResponse` on its own.
 
 **B: `handleResponseError`**, where E9 occurs. For a `Model`, the row is saved when `responseStream.endStreamFuture()` fails (the
 existing code saves when it succeeds, so the two never both happen); for an application, after `context.getProxyRequest().reset()`.
-Both are `proxy.getLogStore().saveErrorRow(context)`, through one private method that applies `isErrorRowAllowed()` (Decision 2) and skips a background Responses job: the poller
-(`BackgroundJobService`) writes the terminal row of that job, and a second row for the same span would break the one-row guarantee.
+Both are `proxy.getLogStore().saveErrorRow(context)`, through one private method that applies `isErrorRowAllowed()` (Decision 2) and skips a background Responses job once its record is being saved
+(`ProxyContext.backgroundJobRecorded`, set at the start of `BackgroundJobService.saveJob`): the poller writes the terminal row of
+that job, and a second row for the same span would break the one-row guarantee. A stream that breaks before an event carried the
+response id has no job and no poller, so that pass writes its row.
 Both only with the setting on, and neither needs a status check: the row carries the status Core had set (200).
 
 **A2: the helpers of the other three controllers**, with the same call after `context.respond(...)`:

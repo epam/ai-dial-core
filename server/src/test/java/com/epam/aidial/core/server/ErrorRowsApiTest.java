@@ -481,6 +481,25 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
         assertErrorRow(rows(1).get(0), "m-500", 500);
     }
 
+    @Test
+    @DialConfigLocation("dial-config/budget-spend-caps.json")
+    void testMessagesNoBudget() {
+        // the user's only budget is for another model, so Core refuses claude-spend with the Anthropic 402 itself
+        verify(send(HttpMethod.PUT, "/v1/policies/platform/projA-a1", null, """
+                {"priority":10,"kind":"budget","quantity":"cost","object":["claude-other"],"per":["subject"],"cost":{"day":10}}""",
+                "authorization", "admin"), 200);
+        verify(send(HttpMethod.PUT, "/v1/policy_assignments/platform/projA/a1", null, """
+                {"policy":"projA-a1","costObject":"projA",
+                 "subject":[{"source":"title","function":"EQUAL","targets":["Manager"]}]}""",
+                "authorization", "admin"), 200);
+
+        verify(send(HttpMethod.POST, "/anthropic/v1/messages", null,
+                "{\"model\":\"claude-spend\",\"max_tokens\":100,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                "content-type", "application/json", "authorization", "user@projA", "anthropic-version", "2023-06-01"), 402);
+
+        assertErrorRow(rows(1).get(0), "claude-spend", 402);
+    }
+
     // "One row per pass, and the passes that keep none"
 
     @Test
@@ -499,15 +518,10 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
         putModel("m-interceptor", adapterUrl("m-interceptor"), ", \"interceptors\": [\"interceptor1\"]");
         serve("m-interceptor", 200);
 
-        try (TestWebServer interceptor = new TestWebServer(4088)) {
-            interceptor.map(HttpMethod.POST, "/api/v1/interceptor/handle", 502, "{\"error\":{\"message\":\"mock 502\"}}",
-                    "content-type", "application/json");
+        // nothing listens at the interceptor's endpoint: Core answers 502 itself, through the interceptor's respond helper
+        Response response = chat("m-interceptor");
 
-            Response response = chat("m-interceptor");
-
-            assertTrue(response.status() >= 500, response.body());
-        }
-
+        assertEquals(502, response.status(), response.body());
         rows(0);
     }
 
@@ -613,7 +627,7 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
 
     @Test
     @SneakyThrows
-    void testBrokenStreamOfBackgroundJobWritesNoRow() {
+    void testBrokenStreamOfBackgroundRequestBeforeItsJobIsRecorded() {
         try (RawOrigin origin = new RawOrigin(RAW_PORT, RawOrigin.breaksMidStream())) {
             putModel("m-background", adapterUrl("m-background"),
                     ", \"responsesEndpoint\": \"http://localhost:" + RAW_PORT + "/openai/v1/responses\"");
@@ -621,10 +635,8 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
             ignoringFailure(() -> send(HttpMethod.POST, "/openai/v1/responses", null,
                     "{\"model\":\"m-background\",\"input\":\"hi\",\"stream\":true,\"background\":true}", "content-type", "application/json"));
 
-            // the terminal row of a background job is the poller's, so this pass writes none
-            sleep();
-            assertEquals(0, analyticsRows.size(), () -> "rows: " + analyticsRows.stream()
-                    .map(row -> row.getDeploymentName() + "/" + row.getResponseStatusCode()).toList());
+            // no event carried a response id, so no job was recorded and no poller writes a row: this pass writes it
+            assertErrorRow(rows(1).get(0), "m-background", 200);
         }
     }
 

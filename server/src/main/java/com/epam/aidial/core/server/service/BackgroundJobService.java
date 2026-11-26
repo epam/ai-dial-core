@@ -109,6 +109,8 @@ public class BackgroundJobService {
     }
 
     public Future<Void> saveJob(String dialId, ProxyContext context) {
+        // before the save, so that a stream that breaks while it runs writes no second row
+        context.setBackgroundJobRecorded(true);
         return saveJobRecord(dialId, context)
                 .onSuccess(ignore -> scheduler.schedule(dialId, System.currentTimeMillis() + settings.getInitialPollIntervalMs()));
     }

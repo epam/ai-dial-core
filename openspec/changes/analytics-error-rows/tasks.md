@@ -110,7 +110,8 @@ Notes from implementing (each is also in design.md where it changes a decision):
 - [x] 3.2 In `handleResponseError`, with the setting on (`logStore.isErrorRowsEnabled()`), save the row with `logStore.save(AnalyticsLogContext.from(context, null))`: when `responseStream.endStreamFuture()` of a `Model` fails, and
   after `context.getProxyRequest().reset()` for an application (design D1, D6). Verify 3.1 passes, and `#testClientLeavesModel` still
   finds one row.
-  A Responses request with `background: true` writes no row here: its terminal row is the job's (`#testBrokenStreamOfBackgroundJobWritesNoRow`).
+  A Responses request with `background: true` writes no row here once its job is recorded (its terminal row is the job's), and
+  writes it here when the stream breaks before that (`#testBrokenStreamOfBackgroundRequestBeforeItsJobIsRecorded`).
 - [x] 3.3 Add the broken stream to `docs/tracing.md`: it is a row with the status Core had set, `200`, and no tokens (D4).
 - [x] 3.4 Run `./gradlew checkstyleMain checkstyleTest` and
   `./gradlew :server:test --tests "com.epam.aidial.core.server.ErrorRowsApiTest" --tests "com.epam.aidial.core.server.ErrorRowsDisabledApiTest" --tests "com.epam.aidial.core.server.EmbeddedCallApiTest"`;

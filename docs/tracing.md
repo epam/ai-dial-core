@@ -126,8 +126,9 @@ With the setting on, one row is written for:
   outside `200`-`299` that goes through their `respond(...)` helpers, which is every answer that logs `Responding with error`. That includes a request that used up its upstreams, a connection that could not be made (refused,
   DNS), an origin that sent no response headers, Core's own rate limit `429`, `403`, `404`, `415` and `400`;
 - a stream that breaks after its headers on the LLM surfaces: an origin that closes the connection, or an application whose relay
-  breaks (a `Model` whose origin breaks had no row; an application had none by design). A Responses request with `background: true`
-  is the exception: the row of a background job is written when the job ends.
+  breaks, which includes a client that leaves an application mid-stream (a `Model` whose origin breaks had no row; an application
+  had none by design). A Responses request with `background: true` is the exception once its job is recorded (the first event that
+  carries the response id): the row of the job is written when the job ends.
 
 A row has the fields every row has and none that others lack:
 
@@ -151,7 +152,7 @@ case even though the same answer logs `Responding with error`. A request that is
 
 These events still write **no** row, with the setting on or off: `401` and `413` (Core logs nothing for them), the call to an
 interceptor and the pass of a router that fails before it decides (their specs say no row), a stream that breaks on a feature call, an
-MCP request or a route (another code path), WebSocket and background jobs, and an origin's error answer that Core relays. A consumer must not read
+MCP request or a route (another code path), WebSocket and the polling of a background job, and an origin's error answer that Core relays. A consumer must not read
 `analytics.errorRows` as "every failure has a row".
 
 An analytics consumer that sums requests from the rows counts these requests too, with a status of `4xx` or `5xx`. During an outage of

@@ -176,8 +176,14 @@ answer, as for the row of a client that left a `Model`.
 - **THEN** one row is written for the application, and the key Core sent the application still exists in Redis
 
 #### Scenario: Background job
-- **WHEN** `analytics.errorRows` is on and the stream of a Responses request with `background: true` breaks
+- **WHEN** `analytics.errorRows` is on and the stream of a Responses request with `background: true` breaks after its job
+  was recorded
 - **THEN** this pass writes no row: the terminal row of a background job is written when the job ends
+
+#### Scenario: Background request before its job is recorded
+- **WHEN** `analytics.errorRows` is on and the stream of a Responses request with `background: true` breaks before an event
+  carried the response id, so no job was recorded
+- **THEN** one row is written for the pass
 
 #### Scenario: Setting off, the origin breaks
 - **WHEN** `analytics.errorRows` is off and a model's origin breaks its stream after the headers

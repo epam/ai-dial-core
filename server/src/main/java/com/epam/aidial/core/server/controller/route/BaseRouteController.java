@@ -84,9 +84,6 @@ abstract class BaseRouteController implements Controller {
                 }
                 context.setTraceOperation("Send request to %s route".formatted(route.getName()));
                 context.setUpstreamRoute(upstreamRoute);
-            } else {
-                context.getResponse().setStatusCode(response.getStatus());
-                context.setResponseBody(Buffer.buffer(response.getBody()));
             }
             return proxy.getRateLimiter().limit(context, context.getRoute())
                     .compose(rateLimitResult -> {
@@ -113,7 +110,9 @@ abstract class BaseRouteController implements Controller {
     }
 
     private Future<?> handleRateLimitSuccess() {
-        if (context.getResponseBody() == null) {
+        // a static response is put on the context only now, so that an error row before it carries no body
+        Route.Response response = context.getRoute().getResponse();
+        if (response == null) {
             return proxy.getTokenStatsTracker().startSpan(context)
                     .compose(ignore -> {
                         if (isWebSocketUpgrade(context.getRequest())) {
@@ -125,6 +124,8 @@ abstract class BaseRouteController implements Controller {
                         }
                     });
         } else {
+            context.getResponse().setStatusCode(response.getStatus());
+            context.setResponseBody(Buffer.buffer(response.getBody()));
             context.setResponseBodyTimestamp(System.currentTimeMillis());
             context.getResponse().send(context.getResponseBody());
             proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
