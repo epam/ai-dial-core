@@ -695,7 +695,7 @@ public class ResourceController extends AccessControlBaseController {
         } catch (IllegalArgumentException | ValidationException e) {
             throw new HttpException(BAD_REQUEST, String.format("Custom application validation failed %s", e.getMessage()), e);
         } catch (ApplicationTypeSchemaValidationException e) {
-            throw new HttpException(BAD_REQUEST, String.format("Custom application validation failed %s", e.validationMessages), e);
+            throw new HttpException(BAD_REQUEST, String.format("Custom application validation failed %s", e.getValidationMessages()), e);
         } catch (ApplicationTypeResourceException e) {
             throw new HttpException(FORBIDDEN, "Failed to access application resource " + e.getResourceUri(), e);
         } catch (ApplicationTypeSchemaProcessingException e) {
