@@ -25,6 +25,7 @@ public class SharedByMeDto {
     Map<String, Set<String>> readableResourceToUsers;
     Map<String, Set<String>> writableResourcesToUsers;
     Map<String, Set<String>> shareableResourcesToUsers;
+    Map<String, Set<String>> shareListResourcesToUsers;
     Map<String, String> userIdToDisplayName;
 
     @JsonCreator
@@ -37,11 +38,14 @@ public class SharedByMeDto {
             Map<String, ShareResourceLimit> limits,
             @JsonProperty("shareableResourcesToUsers")
             Map<String, Set<String>> shareableResourcesToUsers,
+            @JsonProperty("shareListResourcesToUsers")
+            Map<String, Set<String>> shareListResourcesToUsers,
             @JsonProperty("userIdToDisplayName")
             Map<String, String> userIdToDisplayName) {
         this.readableResourceToUsers = readableResourceToUsers;
         this.writableResourcesToUsers = Objects.requireNonNullElseGet(writableResourcesToUsers, HashMap::new);
         this.shareableResourcesToUsers = Objects.requireNonNullElseGet(shareableResourcesToUsers, HashMap::new);
+        this.shareListResourcesToUsers = Objects.requireNonNullElseGet(shareListResourcesToUsers, HashMap::new);
         this.userIdToDisplayName = Objects.requireNonNullElseGet(userIdToDisplayName, HashMap::new);
         this.limits = Objects.requireNonNullElseGet(limits, HashMap::new);
     }
@@ -91,10 +95,17 @@ public class SharedByMeDto {
         refreshDisplayNames();
     }
 
+    /**
+     * Removes the permissions from every user of the URL, and then SHARE and SHARE_LIST from the users left with neither READ nor WRITE.
+     */
     public void removePermissionsFromResource(String url, Set<ResourceAccessType> permissionsToRemove) {
-        for (ResourceAccessType permission : permissionsToRemove) {
-            Map<String, Set<String>> usersMap = getUserMapForPermission(permission);
-            usersMap.remove(url);
+        permissionsToRemove.forEach(permission -> getUserMapForPermission(permission).remove(url));
+        Set<String> usersWithAccess = collectUsersForPermissions(url, ResourceAccessType.READ_WRITE);
+        for (ResourceAccessType permission : EnumSet.of(ResourceAccessType.SHARE, ResourceAccessType.SHARE_LIST)) {
+            getUserMapForPermission(permission).computeIfPresent(url, (key, users) -> {
+                users.retainAll(usersWithAccess);
+                return users.isEmpty() ? null : users;
+            });
         }
         refreshDisplayNames();
     }
@@ -104,6 +115,7 @@ public class SharedByMeDto {
         allUsers.addAll(readableResourceToUsers.values().stream().flatMap(Set::stream).collect(Collectors.toSet()));
         allUsers.addAll(writableResourcesToUsers.values().stream().flatMap(Set::stream).collect(Collectors.toSet()));
         allUsers.addAll(shareableResourcesToUsers.values().stream().flatMap(Set::stream).collect(Collectors.toSet()));
+        allUsers.addAll(shareListResourcesToUsers.values().stream().flatMap(Set::stream).collect(Collectors.toSet()));
         userIdToDisplayName.keySet().retainAll(allUsers);
     }
 
@@ -159,6 +171,7 @@ public class SharedByMeDto {
             case READ -> readableResourceToUsers;
             case WRITE -> writableResourcesToUsers;
             case SHARE -> shareableResourcesToUsers;
+            case SHARE_LIST -> shareListResourcesToUsers;
         };
     }
 }

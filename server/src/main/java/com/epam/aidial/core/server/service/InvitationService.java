@@ -207,7 +207,7 @@ public class InvitationService {
                         updatedResources.add(sharedResource);
                     } else {
                         sharedResource.getPermissions().removeAll(permissions);
-                        if (!sharedResource.getPermissions().isEmpty()) {
+                        if (ResourceAccessType.hasReadOrWrite(sharedResource.getPermissions())) {
                             updatedResources.add(sharedResource);
                         }
                     }

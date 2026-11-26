@@ -2288,7 +2288,8 @@ public class ShareApiTest extends ResourceBaseTest {
                 "/v1/ops/resource/share/list",
                 "/v1/ops/resource/share/discard",
                 "/v1/ops/resource/share/revoke",
-                "/v1/ops/resource/share/copy");
+                "/v1/ops/resource/share/copy",
+                "/v1/ops/resource/share/list_shares");
 
         for (String endpoint : endpoints) {
             Response response = operationRequest(endpoint, "", "api-key", perRequestKey.getPerRequestKey());
@@ -2696,5 +2697,277 @@ public class ShareApiTest extends ResourceBaseTest {
         // user3 accepts - should fail (file limit exceeded: 1 >= 1)
         response = send(HttpMethod.GET, invitationLink.invitationLink(), "accept=true", null, "Api-key", "proxyKey3");
         verify(response, 400);
+    }
+
+    @Test
+    public void testOwnerPermissionsIncludeShareList() throws Exception {
+        String url = createConversation("/folder/conversation");
+
+        Response response = send(HttpMethod.GET, "/v1/metadata/" + url, "permissions=true", null);
+        verify(response, 200);
+        Assertions.assertEquals(ProxyUtil.MAPPER.readTree("[\"READ\", \"WRITE\", \"SHARE\", \"SHARE_LIST\"]"),
+                ProxyUtil.MAPPER.readTree(response.body()).get("permissions"));
+    }
+
+    @Test
+    public void testRecipientWithReadWriteShareCanStillMove() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\", \"WRITE\", \"SHARE\"]"), "Api-key", "proxyKey2");
+
+        Response response = operationRequest("/v1/ops/resource/move", """
+                {"sourceUrl": "%s", "destinationUrl": "conversations/%s/moved"}
+                """.formatted(url, bucketOf("Api-key", "proxyKey2")), "Api-key", "proxyKey2");
+        verify(response, 200);
+    }
+
+    @Test
+    public void testShareListWithoutReadOrWrite() {
+        String url = createConversation("/folder/conversation");
+
+        Response response = operationRequest("/v1/ops/resource/share/create", shareBody(url, "[\"SHARE\", \"SHARE_LIST\"]"));
+        verify(response, 400, "You're not allowed to share a resource with the permission SHARE_LIST without READ or WRITE");
+    }
+
+    @Test
+    public void testReShareShareListWithoutHoldingIt() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\", \"SHARE\"]"), "Api-key", "proxyKey2");
+
+        Response response = operationRequest("/v1/ops/resource/share/create", shareBody(url, "[\"READ\", \"SHARE_LIST\"]"),
+                "Api-key", "proxyKey2");
+        verify(response, 400, "Re-shared resource %s is not allowed to be shared with the permission SHARE_LIST".formatted(url));
+    }
+
+    @Test
+    public void testReShareShareListHeldThroughFolder() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare("conversations/" + bucket + "/folder/", "[\"READ\", \"SHARE\", \"SHARE_LIST\"]"), "Api-key", "proxyKey2");
+
+        accept(createShare(url, "[\"READ\", \"SHARE_LIST\"]", "Api-key", "proxyKey2"), "Api-key", "proxyKey3");
+
+        verify(listShares(url, "Api-key", "proxyKey3"), 200);
+    }
+
+    @Test
+    public void testListSharesOwnerListsRecipients() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\", \"WRITE\"]"), "Api-key", "proxyKey2");
+
+        verifyJsonNotExact(listShares(url), 200, """
+                {"url": "%s", "shares": [{"user": "EPM-RTC-RAIL", "bucket": "%s", "permissions": ["READ", "WRITE"]}]}
+                """.formatted(url, bucketOf("Api-key", "proxyKey2")));
+    }
+
+    @Test
+    public void testListSharesMergesSharesOfFolderAndItem() {
+        String url = createConversation("/folder/sub/conversation");
+        String folder = "conversations/" + bucket + "/folder/";
+        accept(createShare(folder, "[\"READ\"]"), "Api-key", "proxyKey2");
+        accept(createShare(url, "[\"READ\", \"WRITE\"]"), "Api-key", "proxyKey2");
+        accept(createShare(folder, "[\"READ\"]"), "Api-key", "proxyKey3");
+
+        verifyJsonNotExact(listShares(url), 200, """
+                {"url": "%s", "shares": [
+                  {"user": "EPM-RTC-DIAL", "bucket": "%s", "permissions": ["READ"]},
+                  {"user": "EPM-RTC-RAIL", "bucket": "%s", "permissions": ["READ", "WRITE"]}
+                ]}
+                """.formatted(url, bucketOf("Api-key", "proxyKey3"), bucketOf("Api-key", "proxyKey2")));
+    }
+
+    @Test
+    public void testListSharesOrdersByUserWithNamelessLast() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\"]"), "authorization", "azp:dave");
+        accept(createShare(url, "[\"READ\"]"), "Api-key", "proxyKey2");
+        accept(createShare(url, "[\"READ\"]"), "Api-key", "proxyKey3");
+
+        verifyJson(listShares(url), 200, """
+                {"url": "%s", "shares": [
+                  {"user": "EPM-RTC-DIAL", "bucket": "%s", "permissions": ["READ"]},
+                  {"user": "EPM-RTC-RAIL", "bucket": "%s", "permissions": ["READ"]},
+                  {"bucket": "%s", "permissions": ["READ"]}
+                ]}
+                """.formatted(url, bucketOf("Api-key", "proxyKey3"), bucketOf("Api-key", "proxyKey2"),
+                bucketOf("authorization", "azp:dave")));
+    }
+
+    @Test
+    public void testListSharesOmitsSharesUnderFolder() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\"]"), "Api-key", "proxyKey2");
+        String folder = "conversations/" + bucket + "/folder/";
+
+        verifyJson(listShares(folder), 200, """
+                {"url": "%s", "shares": []}
+                """.formatted(folder));
+    }
+
+    @Test
+    public void testListSharesOmitsPendingInvitation() {
+        String url = createConversation("/folder/conversation");
+        createShare(url, "[\"READ\"]");
+
+        verifyJson(listShares(url), 200, """
+                {"url": "%s", "shares": []}
+                """.formatted(url));
+    }
+
+    @Test
+    public void testListSharesIncludesReShareRecipients() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\", \"SHARE\"]"), "Api-key", "proxyKey2");
+        accept(createShare(url, "[\"READ\"]", "Api-key", "proxyKey2"), "Api-key", "proxyKey3");
+
+        verifyJsonNotExact(listShares(url), 200, """
+                {"url": "%s", "shares": [
+                  {"user": "EPM-RTC-DIAL", "bucket": "%s", "permissions": ["READ"]},
+                  {"user": "EPM-RTC-RAIL", "bucket": "%s", "permissions": ["READ", "SHARE"]}
+                ]}
+                """.formatted(url, bucketOf("Api-key", "proxyKey3"), bucketOf("Api-key", "proxyKey2")));
+    }
+
+    @Test
+    public void testListSharesByRecipientHoldingShareList() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\", \"SHARE_LIST\"]"), "Api-key", "proxyKey2");
+
+        verifyJsonNotExact(listShares(url, "Api-key", "proxyKey2"), 200, """
+                {"url": "%s", "shares": [{"user": "EPM-RTC-RAIL", "bucket": "%s", "permissions": ["READ", "SHARE_LIST"]}]}
+                """.formatted(url, bucketOf("Api-key", "proxyKey2")));
+    }
+
+    @Test
+    public void testListSharesByRecipientWithoutShareList() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\", \"SHARE\"]"), "Api-key", "proxyKey2");
+
+        verify(listShares(url, "Api-key", "proxyKey2"), 403, "You don't have an access to: " + url);
+    }
+
+    @Test
+    public void testListSharesAfterShareListRevoked() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\", \"SHARE_LIST\"]"), "Api-key", "proxyKey2");
+
+        Response response = operationRequest("/v1/ops/resource/share/revoke", """
+                {"resources": [{"url": "%s", "permissions": ["SHARE_LIST"]}]}
+                """.formatted(url));
+        verify(response, 200);
+
+        verify(listShares(url, "Api-key", "proxyKey2"), 403);
+        verify(send(HttpMethod.GET, "/v1/" + url, null, null, "Api-key", "proxyKey2"), 200);
+        verifyJsonNotExact(listShares(url), 200, """
+                {"url": "%s", "shares": [{"user": "EPM-RTC-RAIL", "bucket": "%s", "permissions": ["READ"]}]}
+                """.formatted(url, bucketOf("Api-key", "proxyKey2")));
+    }
+
+    @Test
+    public void testRevokeReadEndsReadAndShareShare() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\", \"SHARE\"]"), "Api-key", "proxyKey2");
+
+        verify(operationRequest("/v1/ops/resource/share/revoke", """
+                {"resources": [{"url": "%s", "permissions": ["READ"]}]}
+                """.formatted(url)), 200);
+
+        verify(send(HttpMethod.GET, "/v1/" + url, null, null, "Api-key", "proxyKey2"), 403);
+        verifyJson(operationRequest("/v1/ops/resource/share/list", """
+                {"resourceTypes": ["CONVERSATION"], "with": "me"}
+                """, "Api-key", "proxyKey2"), 200, """
+                {"resources": []}
+                """);
+        verifyJson(listShares(url), 200, """
+                {"url": "%s", "shares": []}
+                """.formatted(url));
+        verify(operationRequest("/v1/ops/resource/share/create", shareBody(url, "[\"READ\"]"), "Api-key", "proxyKey2"),
+                400, "Resource %s is not allowed to be shared by the user".formatted(url));
+    }
+
+    @Test
+    public void testRevokeReadKeepsWriteAndShare() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\", \"WRITE\", \"SHARE\"]"), "Api-key", "proxyKey2");
+
+        verify(operationRequest("/v1/ops/resource/share/revoke", """
+                {"resources": [{"url": "%s", "permissions": ["READ"]}]}
+                """.formatted(url)), 200);
+
+        verifyJsonNotExact(listShares(url), 200, """
+                {"url": "%s", "shares": [{"user": "EPM-RTC-RAIL", "bucket": "%s", "permissions": ["WRITE", "SHARE"]}]}
+                """.formatted(url, bucketOf("Api-key", "proxyKey2")));
+    }
+
+    @Test
+    public void testRevokeReadEndsReadAndShareListShare() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\", \"SHARE_LIST\"]"), "Api-key", "proxyKey2");
+
+        verify(operationRequest("/v1/ops/resource/share/revoke", """
+                {"resources": [{"url": "%s", "permissions": ["READ"]}]}
+                """.formatted(url)), 200);
+
+        verify(listShares(url, "Api-key", "proxyKey2"), 403);
+    }
+
+    @Test
+    public void testRevokeReadRemovesPendingReadAndShareInvitation() {
+        String url = createConversation("/folder/conversation");
+        createShare(url, "[\"READ\", \"SHARE\"]");
+
+        verify(operationRequest("/v1/ops/resource/share/revoke", """
+                {"resources": [{"url": "%s", "permissions": ["READ"]}]}
+                """.formatted(url)), 200);
+
+        verifyJson(send(HttpMethod.GET, "/v1/invitations"), 200, """
+                {"invitations": []}
+                """);
+    }
+
+    @Test
+    public void testListSharesRecipientWithoutDisplayName() {
+        String url = createConversation("/folder/conversation");
+        accept(createShare(url, "[\"READ\"]"), "authorization", "azp:dave");
+
+        verifyJsonNotExact(listShares(url), 200, """
+                {"url": "%s", "shares": [{"bucket": "%s", "permissions": ["READ"]}]}
+                """.formatted(url, bucketOf("authorization", "azp:dave")));
+    }
+
+    @Test
+    public void testListSharesWithoutUrl() {
+        verify(operationRequest("/v1/ops/resource/share/list_shares", "{}"), 400, "url must be provided");
+    }
+
+    private String createConversation(String path) {
+        verify(resourceRequest(HttpMethod.PUT, path, CONVERSATION_BODY_1), 200);
+        return "conversations/" + bucket + path;
+    }
+
+    private static String shareBody(String url, String permissions) {
+        return """
+                {"invitationType": "link", "resources": [{"url": "%s", "permissions": %s}]}
+                """.formatted(url, permissions);
+    }
+
+    private String createShare(String url, String permissions, String... sharerHeaders) {
+        Response response = operationRequest("/v1/ops/resource/share/create", shareBody(url, permissions), sharerHeaders);
+        verify(response, 200);
+        return ProxyUtil.convertToObject(response.body(), InvitationLink.class).invitationLink();
+    }
+
+    private void accept(String invitationLink, String... recipientHeaders) {
+        verify(send(HttpMethod.GET, invitationLink, "accept=true", null, recipientHeaders), 200);
+    }
+
+    private Response listShares(String url, String... headers) {
+        return operationRequest("/v1/ops/resource/share/list_shares", """
+                {"url": "%s"}
+                """.formatted(url), headers);
+    }
+
+    private String bucketOf(String... headers) {
+        Response response = send(HttpMethod.GET, "/v1/bucket", null, null, headers);
+        verify(response, 200);
+        return new JsonObject(response.body()).getString("bucket");
     }
 }
