@@ -19,6 +19,7 @@ public sealed interface AdminTypedManifest permits
         AdminModelManifest,
         AdminToolSetManifest,
         AdminApplicationManifest,
+        AdminPackageManifest,
         AdminPolicyManifest,
         AdminPolicyAssignmentManifest {
 

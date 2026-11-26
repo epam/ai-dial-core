@@ -1,11 +1,15 @@
 package com.epam.aidial.core.server.limiter.budget;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.RateLimitSchedule;
+import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.config.SpendingLimits;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.policy.BudgetInstance;
 import com.epam.aidial.core.config.policy.CostObjectIndex;
 import com.epam.aidial.core.config.policy.Policy;
@@ -16,11 +20,13 @@ import com.epam.aidial.core.config.policy.PolicyObjectSet;
 import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.config.policy.PolicySubjectRule;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.limiter.CalendarPeriod;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.limiter.SpendReadException;
+import com.epam.aidial.core.server.limiter.SpendingRefusal;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
@@ -69,6 +75,94 @@ class BudgetEnforcerTest {
         when(context.getExtractedClaims()).thenReturn(claims());
         model = new Model();
         model.setName("gpt");
+        when(context.getApiKeyData()).thenReturn(new ApiKeyData());
+        when(context.getDeployment()).thenReturn(model);
+    }
+
+    @Test
+    void testCoverageChainOfTierAliasThroughRouter() {
+        deployments();
+        incomingPath("strong", "r1", "claude-opus-vertex");
+
+        assertEquals(List.of("strong", "r1", "claude-opus-vertex", "gpt"), BudgetEnforcer.resolveCoverageChain(context));
+    }
+
+    @Test
+    void testCoverageChainStartsAfterApplication() {
+        deployments();
+        incomingPath("codemie", "strong", "r1", "claude-opus-vertex");
+
+        assertEquals(List.of("strong", "r1", "claude-opus-vertex", "gpt"), BudgetEnforcer.resolveCoverageChain(context));
+    }
+
+    @Test
+    void testCoverageChainStartsAfterApplicationResource() {
+        deployments();
+        incomingPath("applications/bucket/app", "strong");
+
+        assertEquals(List.of("strong", "gpt"), BudgetEnforcer.resolveCoverageChain(context));
+    }
+
+    @Test
+    void testInterceptorInFrontOfTheModelBreaksTheChain() {
+        deployments();
+        incomingPath("strong", "r1", "claude-opus-vertex", "icpt");
+
+        assertEquals(List.of("gpt"), BudgetEnforcer.resolveCoverageChain(context));
+    }
+
+    @Test
+    void testToolsetBreaksTheChain() {
+        deployments();
+        incomingPath("strong", "tools");
+
+        assertEquals(List.of("gpt"), BudgetEnforcer.resolveCoverageChain(context));
+    }
+
+    @Test
+    void testCoverageChainOfRouterInProxyMode() {
+        deployments();
+        incomingPath("strong", "r2");
+
+        assertEquals(List.of("strong", "r2", "gpt"), BudgetEnforcer.resolveCoverageChain(context));
+    }
+
+    @Test
+    void testCoverageChainOfDirectCall() {
+        deployments();
+
+        assertEquals(List.of("gpt"), BudgetEnforcer.resolveCoverageChain(context));
+    }
+
+    @Test
+    void testBudgetOfTheAliasPaysBeforeTheModelBudget() {
+        deployments();
+        incomingPath("strong", "r1", "claude-opus-vertex");
+        Policy aliasBudget = policy(20, "5", null);
+        aliasBudget.setObject(PolicyObjectSet.of(List.of("strong")));
+        Policy modelBudget = policy(10, "5", null);
+        modelBudget.setObject(PolicyObjectSet.of(List.of("gpt")));
+        index(Map.of("alias-budget", aliasBudget, "model-budget", modelBudget),
+                Map.of("ORG/a", assignment("alias-budget"), "ORG/b", assignment("model-budget")));
+        usage("ORG/a", "0", "0");
+        usage("ORG/b", "0", "0");
+
+        assertEquals(RateLimitResult.SUCCESS, enforcer.check(context, model, NOW, SCHEDULE).result());
+        ArgumentCaptorHolder.verifyPayer(context, "ORG/a", "ORG", "alice");
+    }
+
+    private void deployments() {
+        config.setApplications(Map.of("codemie", new Application()));
+        config.setInterceptors(Map.of("icpt", new Interceptor()));
+        config.setToolsets(Map.of("tools", new ToolSet()));
+        config.setRouters(Map.of("r1", new Router(), "r2", new Router()));
+    }
+
+    private void incomingPath(String... names) {
+        ApiKeyData incoming = new ApiKeyData();
+        incoming.setPerRequestKey("per-request-key");
+        incoming.setExecutionPath(List.of(names));
+        when(context.getApiKeyData()).thenReturn(incoming);
     }
 
     @Test
@@ -93,6 +187,7 @@ class BudgetEnforcerTest {
         RateLimitResult result = enforcer.check(context, model, NOW, SCHEDULE).result();
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(SpendingRefusal.BUDGET_EXHAUSTED, result.refusal());
     }
 
     @Test
@@ -120,8 +215,10 @@ class BudgetEnforcerTest {
 
         RateLimitResult result = enforcer.check(context, model, NOW, SCHEDULE).result();
 
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(HttpStatus.FORBIDDEN, result.status());
+        assertEquals(SpendingRefusal.NO_BUDGET, result.refusal());
         assertEquals(-1, result.replyAfterSeconds());
+        assertFalse(result.isClientRetryDisabled());
     }
 
     @Test
@@ -130,7 +227,7 @@ class BudgetEnforcerTest {
         when(context.getUserProject()).thenReturn("projA");
         index(Map.of("p", policy(1, "1", null)), Map.of("ORG/a", assignment("p")));
 
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, enforcer.check(context, model, NOW, SCHEDULE).result().status());
+        assertEquals(HttpStatus.FORBIDDEN, enforcer.check(context, model, NOW, SCHEDULE).result().status());
     }
 
     @Test
@@ -163,7 +260,7 @@ class BudgetEnforcerTest {
         tokens.setQuantity(PolicyQuantity.TOKENS);
         index(Map.of("p", tokens), Map.of("ORG/a", assignment("p")));
 
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, enforcer.check(context, model, NOW, SCHEDULE).result().status());
+        assertEquals(HttpStatus.FORBIDDEN, enforcer.check(context, model, NOW, SCHEDULE).result().status());
     }
 
     @Test
@@ -193,7 +290,7 @@ class BudgetEnforcerTest {
         assertFalse(BudgetEnforcer.isApplicable(context, model));
         when(context.getExtractedClaims()).thenReturn(claims());
 
-        assertFalse(BudgetEnforcer.isApplicable(context, new com.epam.aidial.core.config.Application()));
+        assertFalse(BudgetEnforcer.isApplicable(context, new Application()));
 
         config.getSpendingLimits().setMode(SpendingLimitMode.SHADOW);
         assertTrue(BudgetEnforcer.isApplicable(context, model));
@@ -358,7 +455,11 @@ class BudgetEnforcerTest {
 
         RateLimitResult result = enforcer.checkWithSpendCaps(context, model, NOW, SCHEDULE).result();
 
+        // the Messages and Responses routes keep a 429 inside Core and answer their client in their own way
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(SpendingRefusal.NO_BUDGET, result.refusal());
+        assertTrue(result.isNoBudget());
+        assertTrue(result.isClientRetryDisabled());
         assertNull(result.spendCaps());
         assertEquals(-1, result.replyAfterSeconds());
     }
@@ -400,7 +501,7 @@ class BudgetEnforcerTest {
         when(context.getDeployment()).thenReturn(model);
         assertTrue(BudgetEnforcer.isReadFromBudgets(context));
 
-        when(context.getDeployment()).thenReturn(new com.epam.aidial.core.config.Application());
+        when(context.getDeployment()).thenReturn(new Application());
         assertFalse(BudgetEnforcer.isReadFromBudgets(context));
         when(context.getDeployment()).thenReturn(model);
 
@@ -470,7 +571,7 @@ class BudgetEnforcerTest {
     }
 
     private void index(Map<String, Policy> policies, Map<String, PolicyAssignment> assignments) {
-        config.setCostObjectIndex(CostObjectIndex.build(policies, assignments));
+        config.setCostObjectIndex(CostObjectIndex.build(policies, assignments, Map.of()));
     }
 
     private void usage(String instanceId, String day, String month) {

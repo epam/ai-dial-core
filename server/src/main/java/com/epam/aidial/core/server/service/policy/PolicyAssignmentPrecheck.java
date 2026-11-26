@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.service.policy;
 
 import com.epam.aidial.core.config.policy.Policy;
 import com.epam.aidial.core.config.policy.PolicyAssignment;
+import com.epam.aidial.core.config.policy.PolicyPackage;
 import com.epam.aidial.core.storage.service.ResourceService;
 
 /**
@@ -21,6 +22,13 @@ public class PolicyAssignmentPrecheck {
     public void checkPolicy(String path, Policy policy) {
         service.validatePolicy(path, policy);
         staged.stage(path, policy);
+    }
+
+    /**
+     * Remembers a package of the batch, already checked on its own, so that a later policy of the batch can name it.
+     */
+    public void stagePackage(String name, PolicyPackage policyPackage) {
+        staged.stage(name, policyPackage);
     }
 
     public void checkAssignment(String path, PolicyAssignment assignment) {

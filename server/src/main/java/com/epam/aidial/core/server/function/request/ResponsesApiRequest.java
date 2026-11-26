@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.function.request;
 
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.data.cache.CachePrefixPath;
 import com.epam.aidial.core.server.util.ChatUtil;
 import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
@@ -128,13 +129,16 @@ public class ResponsesApiRequest implements RequestObject {
 
     /**
      * Resolves and unwraps the upstream config id encoded into any echoed encrypted content items in
-     * {@code input}, mutating them in place back to their provider-native shape.
+     * {@code input}, mutating them in place back to their provider-native shape and removing the items the
+     * resolved upstream cannot decrypt. Does nothing for a model without configured upstreams.
      *
-     * @return unique resolved affinities; empty if {@code input} is missing or carries no wrapped item
+     * @return the upstream config id to route to; {@code null} if the model has no upstreams, {@code input} is
+     *     missing, or it carries no kept wrapped item
      */
-    public List<EncryptedContentAffinityUtil.ResolvedAffinity> resolveAndUnwrapEncryptedContentAffinity() {
-        return tree.get("input") instanceof ArrayNode input
-                ? EncryptedContentAffinityUtil.resolveAndUnwrap(input)
-                : List.of();
+    @Nullable
+    public String resolveAndUnwrapEncryptedContentAffinity(Model model) {
+        return EncryptedContentAffinityUtil.hasConfiguredUpstreams(model) && tree.get("input") instanceof ArrayNode input
+                ? EncryptedContentAffinityUtil.resolveAndUnwrap(input, model)
+                : null;
     }
 }

@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
+import com.epam.aidial.core.server.limiter.budget.CostObject;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
@@ -997,6 +998,69 @@ public class GfLogStoreTest {
         List<String> fields = new ArrayList<>();
         log.fieldNames().forEachRemaining(fields::add);
         assertEquals(fields.indexOf("project") + 1, fields.indexOf("spending_limits"));
+    }
+
+    @Test
+    public void testCostObjectFollowsSpendingLimits() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getProject()).thenReturn("projA");
+        when(context.getCostObject()).thenReturn("pro\"jA");
+        when(context.getCostObjectSource()).thenReturn(CostObject.Source.CLAIM);
+        when(context.getBudgetCheck()).thenReturn(paid("projA", "projA-a1", "projA/a1", new PolicyAssignment()));
+
+        JsonNode log = logOf(context);
+
+        JsonNode costObject = log.get("cost_object");
+        assertEquals("pro\"jA", costObject.get("id").asText());
+        assertEquals("claim", costObject.get("source").asText());
+        assertEquals(2, costObject.size());
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(fields.indexOf("project") + 1, fields.indexOf("spending_limits"));
+        assertEquals(fields.indexOf("spending_limits") + 1, fields.indexOf("cost_object"));
+    }
+
+    @Test
+    public void testCostObjectFollowsProjectWithoutSpendingLimits() {
+        AnalyticsLogContext context = mock(AnalyticsLogContext.class);
+        when(context.getProject()).thenReturn("spend");
+        when(context.getCostObject()).thenReturn("spend");
+        when(context.getCostObjectSource()).thenReturn(CostObject.Source.KEY);
+
+        JsonNode log = logOf(context);
+
+        assertEquals("spend", log.get("cost_object").get("id").asText());
+        assertEquals("key", log.get("cost_object").get("source").asText());
+        List<String> fields = new ArrayList<>();
+        log.fieldNames().forEachRemaining(fields::add);
+        assertEquals(fields.indexOf("project") + 1, fields.indexOf("cost_object"));
+    }
+
+    @Test
+    public void testNoCostObjectWhenUnknown() {
+        assertFalse(logOf(mock(AnalyticsLogContext.class)).has("cost_object"));
+    }
+
+    @Test
+    public void testCostObjectFromBackgroundJobRecord() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .costObject("ORG")
+                .costObjectSource(CostObject.Source.DEFAULT)
+                .requestBody("{}")
+                .build();
+
+        AnalyticsLogContext row = AnalyticsLogContext.from(record, null, null);
+
+        assertEquals("ORG", row.getCostObject());
+        assertEquals(CostObject.Source.DEFAULT, row.getCostObjectSource());
+    }
+
+    @Test
+    public void testBackgroundJobRecordStoredWithoutCostObjectLoadsWithNone() {
+        BackgroundJobRecord record = ProxyUtil.convertToObject("{\"requestBody\":\"{}\"}", BackgroundJobRecord.class);
+
+        assertNull(record.costObject());
+        assertFalse(logOf(AnalyticsLogContext.from(record, null, null)).has("cost_object"));
     }
 
     @Test

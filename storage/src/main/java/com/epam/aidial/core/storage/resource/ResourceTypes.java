@@ -22,6 +22,8 @@ public enum ResourceTypes implements ResourceType {
     USER_CONSENT("user_consent", true, TimeUnit.MINUTES.toMillis(5)),
     // not mapped in of(): no Resource API path can address an admin-consent record
     ADMIN_CONSENT("admin_consent", true, TimeUnit.DAYS.toMillis(30)),
+    // not mapped in of(): only the user, through /v1/user/budgets/default, reads or writes their default budget
+    USER_BUDGET_DEFAULT("user_budget_default", true, TimeUnit.MINUTES.toMillis(5)),
     TOOL_SET("toolsets", true, TimeUnit.DAYS.toMillis(30)),
     CREDENTIALS("credentials", true, TimeUnit.MINUTES.toMillis(5)),
     EXTERNAL_SERVICE("external_services", true, TimeUnit.MINUTES.toMillis(5)),
@@ -38,6 +40,7 @@ public enum ResourceTypes implements ResourceType {
     PROJECT_KEY("project_keys", "keys", true, TimeUnit.DAYS.toMillis(30)),
     POLICY("policies", true, TimeUnit.DAYS.toMillis(30)),
     POLICY_ASSIGNMENT("policy_assignments", true, TimeUnit.DAYS.toMillis(30)),
+    PACKAGE("packages", true, TimeUnit.DAYS.toMillis(30)),
     ROUTE("routes", true, TimeUnit.DAYS.toMillis(30)),
     GLOBAL_SETTINGS("settings", true, TimeUnit.DAYS.toMillis(30)),
     RESPONSE_MAPPING("response_mappings", true, TimeUnit.MINUTES.toMillis(5)),
@@ -56,7 +59,7 @@ public enum ResourceTypes implements ResourceType {
     public static final Set<ResourceType> EVENT_TYPES = Set.of(
             FILE, CONVERSATION, PROMPT, APPLICATION, TOOL_SET,
             MODEL, APP_TYPE_SCHEMA, CATALOG_SCHEMA, INTERCEPTOR, ROUTER, TRANSLATOR, PLUGIN, ROLE, PROJECT_KEY, ROUTE, GLOBAL_SETTINGS,
-            POLICY, POLICY_ASSIGNMENT, SKILL, PROJECT, ALIAS);
+            POLICY, POLICY_ASSIGNMENT, PACKAGE, SKILL, PROJECT, ALIAS);
 
     private final String group;
     private final String urlSegment;
@@ -97,6 +100,7 @@ public enum ResourceTypes implements ResourceType {
             case "project_keys", "keys" -> PROJECT_KEY;
             case "policies" -> POLICY;
             case "policy_assignments" -> POLICY_ASSIGNMENT;
+            case "packages" -> PACKAGE;
             case "routes" -> ROUTE;
             case "settings" -> GLOBAL_SETTINGS;
             case "response_mappings" -> RESPONSE_MAPPING;

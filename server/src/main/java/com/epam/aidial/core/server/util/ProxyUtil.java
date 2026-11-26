@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.buffer.ByteBufInputStream;
@@ -32,7 +33,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 @UtilityClass
@@ -156,10 +156,14 @@ public class ProxyUtil {
         } catch (JsonProcessingException e) {
             log.warn("Failed to convert payload to the object", e);
             if (e instanceof MismatchedInputException mismatchedInputException && mismatchedInputException.getPath() != null && !mismatchedInputException.getPath().isEmpty()) {
-                String missingField = mismatchedInputException.getPath().stream()
-                        .map(JsonMappingException.Reference::getFieldName)
-                        .collect(Collectors.joining("."));
-                throw new IllegalArgumentException("Missing required property '%s'".formatted(missingField));
+                String property = pathOf(mismatchedInputException);
+                if (e instanceof UnrecognizedPropertyException) {
+                    throw new IllegalArgumentException("Unrecognized property '%s'".formatted(property));
+                }
+                if (mismatchedInputException.getOriginalMessage().startsWith("Missing required creator property")) {
+                    throw new IllegalArgumentException("Missing required property '%s'".formatted(property));
+                }
+                throw new IllegalArgumentException("Invalid value for property '%s'".formatted(property));
             }
             throw new IllegalArgumentException("Provided payload do not match required schema");
         }
@@ -175,6 +179,21 @@ public class ProxyUtil {
         } catch (IOException e) {
             throw new IllegalArgumentException(e);
         }
+    }
+
+    private static String pathOf(JsonMappingException e) {
+        StringBuilder path = new StringBuilder();
+        for (JsonMappingException.Reference reference : e.getPath()) {
+            if (reference.getFieldName() != null) {
+                if (!path.isEmpty()) {
+                    path.append('.');
+                }
+                path.append(reference.getFieldName());
+            } else if (reference.getIndex() >= 0) {
+                path.append('[').append(reference.getIndex()).append(']');
+            }
+        }
+        return path.toString();
     }
 
     @Nullable
@@ -293,12 +312,15 @@ public class ProxyUtil {
     /**
      * Parses the request's body at a controller's parse site, and sets it as the request's body. A pass Core serves
      * in process (an origin plugin's call, or an alias pass's to its target) already has the tree: it is taken as it
-     * is, and only the body's timestamp is set, as the chain sets the body when it serialises the tree.
+     * is, and only the body's timestamp is set, as the chain sets the body when it serialises the tree. As for bytes,
+     * the timestamp is the first parse's: a router's fallback candidate parsing a copy of the tree is not a second read.
      */
     public ObjectNode parseRequestBody(ProxyContext context, Buffer body) throws IOException {
         ObjectNode tree = context.getCallTree();
         if (tree != null) {
-            context.setRequestBodyTimestamp(System.currentTimeMillis());
+            if (context.getRequestBodyTimestamp() == 0) {
+                context.setRequestBodyTimestamp(System.currentTimeMillis());
+            }
             return tree;
         }
         context.setRequestBodyWithTimestamp(body);

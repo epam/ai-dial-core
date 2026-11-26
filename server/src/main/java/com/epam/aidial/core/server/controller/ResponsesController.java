@@ -15,6 +15,7 @@ import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.openapi.annotations.ParameterIn;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ErrorData;
 import com.epam.aidial.core.server.data.ResponseMapping;
@@ -34,6 +35,7 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequest
 import com.epam.aidial.core.server.function.enhancement.ResolveEncryptedContentAffinityFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.function.request.ResponsesApiRequest;
+import com.epam.aidial.core.server.limiter.NoBudgetException;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
@@ -67,13 +69,18 @@ import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import javax.annotation.Nullable;
 
 import static com.epam.aidial.core.server.Proxy.HEADER_CACHE_POLICY;
 
 @Slf4j
 public class ResponsesController extends BaseDeploymentPostController {
+
+    private static final String TEXT_PLAIN = "text/plain; charset=utf-8";
+    private static final String X_SHOULD_RETRY = "x-should-retry";
 
     /**
      * A reached spend cap answers in the shape Codex CLI reads; every other outcome keeps the DIAL answer.
@@ -168,7 +175,12 @@ public class ResponsesController extends BaseDeploymentPostController {
                     @ApiHeader(name = "x-codex-secondary-window-minutes", description = "Window of the secondary cap, as `x-codex-primary-window-minutes`"),
                     @ApiHeader(name = "x-codex-secondary-reset-at", description = "When the secondary cap resets, Unix seconds")
             })
-    @ApiResponse(code = 400)
+    @ApiResponse(code = 400, description = "Bad request. With enforced budgets, no budget for the model gives the client's "
+            + "own request, directly or through an alias (not a background one), a `text/plain` message naming the model "
+            + "and the cost object, with `x-should-retry: false` and no `retry-after`; with an "
+            + "interceptor in front of the model, global interceptors included, the client gets what the interceptor answers",
+            body = @ApiSchema(implementation = String.class), contentTypes = {"text/plain"},
+            headers = @ApiHeader(name = "x-should-retry", description = "`false` on the no-budget refusal"))
     @ApiResponse(code = 403)
     @ApiResponse(code = 404)
     @ApiResponse(code = 415)
@@ -177,7 +189,9 @@ public class ResponsesController extends BaseDeploymentPostController {
             + "`usage_limit_reached` with `resets_at` (Unix seconds) and `limit_window_minutes`, `retry-after` and the "
             + "`x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error "
             + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`; "
-            + "with enforced budgets, no budget for the model gives an error naming the model and the cost object",
+            + "with enforced budgets, no budget for the model gives a call made with a per-request key an error naming the "
+            + "model and the cost object, with `error.code` `no_budget`, `x-should-retry: false` and no `retry-after`; "
+            + "a used-up budget without a cap to report gives an error with `error.code` `budget_exhausted` and `retry-after`",
             body = @ApiSchema(implementation = ErrorData.class))
     @ApiResponse(code = 500)
     @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class))
@@ -240,7 +254,8 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private void reenterWithCandidate() {
-        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
+        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes,
+        // or, in an in-process call without them, from a copy of the call's tree taken before the first candidate
         serveCandidate(parseBody(context.getOriginalRequestBody()));
     }
 
@@ -303,8 +318,13 @@ public class ResponsesController extends BaseDeploymentPostController {
 
     /**
      * Must run before the first body write. Spend headers go on a 200 only and carry the state read before the request.
+     * An alias pass leaves the headers its target pass wrote.
      */
     private void putLimitHeaders(HttpServerResponse response, ProxyResponse proxyResponse) {
+        removeRefusalMark(response.headers());
+        if (context.getDeployment() instanceof AliasPass) {
+            return;
+        }
         CodexLimitResponses.stripUpstreamCodexHeaders(response.headers());
         if (proxyResponse.statusCode() == 200 && spendCaps != null) {
             CodexLimitResponses.putSpendHeaders(response.headers(), spendCaps);
@@ -340,6 +360,9 @@ public class ResponsesController extends BaseDeploymentPostController {
         } else if (error instanceof ResourceNotFoundException) {
             respond(HttpStatus.NOT_FOUND, error.getMessage());
             log.warn("Deployment not found {}", deploymentId, error);
+        } else if (error instanceof NoBudgetException noBudget) {
+            respondNoBudget(noBudget, rejection -> respond(buildNoBudgetTextAnswer(rejection)));
+            log.warn("Deployment error {}", deploymentId, error);
         } else if (error instanceof HttpException httpException) {
             respond(httpException);
             log.warn("Deployment error {}", deploymentId, error);
@@ -351,11 +374,48 @@ public class ResponsesController extends BaseDeploymentPostController {
         return null;
     }
 
+    /**
+     * Codex CLI shows the message of a 400 but hides that of a 429, so the client's own request gets the refusal as a
+     * 400 with the message as text.
+     */
+    private static HttpException buildNoBudgetTextAnswer(NoBudgetException rejection) {
+        Map<String, String> headers = new HashMap<>(rejection.getHeaders());
+        headers.put(HttpHeaders.CONTENT_TYPE.toString(), TEXT_PLAIN);
+        return new HttpException(HttpStatus.BAD_REQUEST, rejection.getReason(), headers);
+    }
+
+    /**
+     * Answers the client as a direct call of the target does: the 429's message as a 400 with text, and none of the
+     * target pass's other headers.
+     */
+    private Future<Void> answerNoBudgetOfTarget(Buffer body) {
+        Buffer text = Buffer.buffer(readNoBudgetMessage(body));
+        context.setResponseBody(text);
+        context.setResponseBodyTimestamp(System.currentTimeMillis());
+        HttpServerResponse response = context.getResponse();
+        response.setStatusCode(HttpStatus.BAD_REQUEST.getCode());
+        response.setChunked(false);
+        response.putHeader(HttpHeaders.CONTENT_TYPE, TEXT_PLAIN);
+        response.putHeader(X_SHOULD_RETRY, "false");
+        response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(text.length()));
+        return collectTokenUsage(text)
+                .transform(result -> {
+                    if (result.failed()) {
+                        log.warn("Failed to collect token usage", result.cause());
+                    }
+                    response.end(text);
+                    completeProxyResponse(null);
+                    return Future.<Void>succeededFuture();
+                });
+    }
+
     @SneakyThrows
     private Void handleRequestBody(RequestObject request) {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
+        // the target pass served in process gets this very object; one reached over HTTP reads the key without the flag
+        proxyApiKeyData.setMadeByAliasPass(context.getDeployment() instanceof AliasPass);
 
         context.setStreamingRequest(request.isStreaming());
         context.setStoreResponse(request.isStore());
@@ -439,6 +499,14 @@ public class ResponsesController extends BaseDeploymentPostController {
 
         context.setProxyResponse(proxyResponse);
         context.setProxyResponseTimestamp(System.currentTimeMillis());
+
+        if (isNoBudgetOfTarget(proxyResponse)) {
+            proxyResponse.body()
+                    .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
+                    .compose(this::answerNoBudgetOfTarget)
+                    .onFailure(this::handleProxyConnectionError);
+            return;
+        }
 
         if (!context.isStreamingRequest()) {
             // Read the entire response to replace the response ID with the DIAL ID

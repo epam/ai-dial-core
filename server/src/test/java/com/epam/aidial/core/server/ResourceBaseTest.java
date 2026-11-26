@@ -17,6 +17,8 @@ import com.epam.aidial.core.server.security.IdpNotFoundException;
 import com.epam.aidial.core.server.service.NotificationService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
+import com.epam.aidial.core.storage.data.ResourceFolderMetadata;
+import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
@@ -54,8 +56,10 @@ import org.slf4j.LoggerFactory;
 import redis.embedded.RedisServer;
 
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Comparator;
@@ -359,6 +363,37 @@ public class ResourceBaseTest {
     // Structurally valid Base64 that no key decrypts, standing in for a secret whose key is lost.
     protected static final String CORRUPTED_CIPHERTEXT = Base64.getEncoder().encodeToString(new byte[64]);
 
+    protected String userApplicationUrl(String role, String appName) throws Exception {
+        Response bucket = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", role);
+        assertEquals(200, bucket.status());
+        return "applications/" + ProxyUtil.MAPPER.readTree(bucket.body()).get("bucket").asText() + "/" + appName;
+    }
+
+    protected String createPlainDynamicApp(String role, String appName) throws Exception {
+        String appUrl = userApplicationUrl(role, appName);
+        Response create = send(HttpMethod.PUT, "/v1/" + appUrl, null, """
+                {"endpoint": "http://localhost:7001/v1/x", "display_name": "Mgmt App"}
+                """, "authorization", role);
+        assertEquals(200, create.status(), create::body);
+        return appUrl;
+    }
+
+    /** The PKCE S256 challenge of {@code verifier}. */
+    protected static String s256(String verifier) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+    }
+
+    protected static Map<String, String> parseForm(String body) {
+        Map<String, String> form = new HashMap<>();
+        for (String pair : body.split("&")) {
+            String[] parts = pair.split("=", 2);
+            form.put(URLDecoder.decode(parts[0], StandardCharsets.UTF_8),
+                    parts.length > 1 ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8) : "");
+        }
+        return form;
+    }
+
     protected String readStoredBlob(String url) {
         return dial.getProxy().getResourceService().getResource(ResourceDescriptorFactory.fromAnyUrl(url, encryptionService));
     }
@@ -388,6 +423,67 @@ public class ResourceBaseTest {
             authSettings.put("code_verifier", CORRUPTED_CIPHERTEXT);
         }
         resourceService.putResource(descriptor, blob.toString(), EtagHeader.ANY, null, false);
+    }
+
+    /**
+     * The listing metadata the blob store holds for the file {@code name} directly under {@code folderUrl},
+     * read past the Redis cache. For a small resource it trails the cached document until the next sync.
+     */
+    protected ResourceItemMetadata storedBlobMetadata(String folderUrl, String name) {
+        ResourceDescriptor folder = ResourceDescriptorFactory.fromAnyUrl(folderUrl, encryptionService);
+        // recursive, as the metadata listing itself lists the blob store: it returns blobs only
+        ResourceFolderMetadata listing = dial.getProxy().getResourceService().getFolderMetadata(folder, null, 1000, true);
+        assertNotNull(listing, folderUrl);
+        return listing.getItems().stream()
+                .filter(item -> name.equals(item.getDescriptor().getName())
+                        && folder.getUrl().equals(item.getDescriptor().getParent().getUrl()))
+                .map(ResourceItemMetadata.class::cast)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(name + " is not stored under " + folderUrl));
+    }
+
+    /**
+     * Rewrites a complex resource's marker document without {@code createdAt} / {@code updatedAt}, as markers
+     * written before they carried timestamps. The write goes to the Redis cache; the marker blob is left as is.
+     */
+    @SneakyThrows
+    protected void stripMarkerTimestamps(ResourceDescriptor marker) {
+        ResourceService resourceService = dial.getProxy().getResourceService();
+        ObjectNode document = (ObjectNode) ProxyUtil.MAPPER.readTree(resourceService.getResource(marker));
+        document.remove(List.of("createdAt", "updatedAt"));
+        resourceService.putResource(marker, document.toString(), EtagHeader.ANY, null, false);
+    }
+
+    /**
+     * The item with {@code url} in a metadata listing response.
+     */
+    @SneakyThrows
+    protected static JsonNode listedItem(Response listing, String url) {
+        for (JsonNode item : ProxyUtil.MAPPER.readTree(listing.body()).get("items")) {
+            if (url.equals(item.get("url").asText())) {
+                return item;
+            }
+        }
+        throw new AssertionError(url + " is not listed in " + listing.body());
+    }
+
+    /**
+     * A timestamp field of a metadata JSON item, or null when the item has none.
+     */
+    protected static Long timestamp(JsonNode item, String field) {
+        JsonNode value = item.get(field);
+        return value == null || value.isNull() ? null : value.asLong();
+    }
+
+    /**
+     * Spins until the wall clock moves past the current millisecond, so the next write gets a later timestamp
+     * than every write before it.
+     */
+    protected static void awaitNextMillisecond() {
+        long now = System.currentTimeMillis();
+        while (System.currentTimeMillis() <= now) {
+            Thread.onSpinWait();
+        }
     }
 
     /**

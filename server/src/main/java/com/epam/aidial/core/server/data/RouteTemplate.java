@@ -170,13 +170,13 @@ public enum RouteTemplate {
     ),
 
     CONFIG_RESOURCE(
-            "^/v1/(models|interceptors|translators|routers|plugins|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
+            "^/v1/(models|interceptors|translators|routers|plugins|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments|packages)"
                     + "/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/{resourceType}/{bucket}/{path}"
     ),
 
     CONFIG_RESOURCE_METADATA(
-            "^/v1/metadata/(models|interceptors|translators|routers|plugins|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments)"
+            "^/v1/metadata/(models|interceptors|translators|routers|plugins|roles|keys|routes|schemas|catalog_schemas|settings|policies|policy_assignments|packages)"
                     + "/(?<bucket>[a-zA-Z0-9_-]+)/(?<path>.*)$",
             "/v1/metadata/{resourceType}/{bucket}/{path}"
     ),
@@ -384,6 +384,10 @@ public enum RouteTemplate {
     USER_USAGE(
             "^/v1/user/usage$",
             "/v1/user/usage"
+    ),
+    USER_DEFAULT_BUDGET(
+            "^/v1/user/budgets/default$",
+            "/v1/user/budgets/default"
     ),
     // The caller's own offline credentials: status plus the parameters chat needs to start the flow.
     OFFLINE_CREDENTIALS(

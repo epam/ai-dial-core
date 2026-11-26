@@ -7,6 +7,7 @@ import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
+import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.data.ResourceEvent;
@@ -38,6 +39,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -45,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,6 +60,11 @@ class MergedConfigStorePolicyTest {
     private static final String ASSIGNMENT = """
             { "policy": "%s", "costObject": "%s",
               "subject": [ { "source": "sub", "function": "EQUAL", "targets": ["alice"] } ] }
+            """;
+
+    private static final String PACKAGE_GRANT = GRANT.replace("\"object\": \"*\"", "\"object\": \"@learning\"");
+    private static final String LEARNING = """
+            { "deployments": [%s], "description": "Learning" }
             """;
 
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
@@ -224,6 +232,72 @@ class MergedConfigStorePolicyTest {
 
         assertTrue(store.get().getPolicies().isEmpty());
         assertTrue(store.getInvalidEntities().get(ResourceTypes.POLICY).containsKey("policies/platform/loose"));
+    }
+
+    @Test
+    void testPolicyNamingMissingPackageIsSkippedAndItsAssignmentsDangle() {
+        stubStored(ResourceTypes.POLICY, "eng", PACKAGE_GRANT);
+        stubStored(ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-1", ASSIGNMENT.formatted("eng", "IMF"));
+
+        MergedConfigStore store = initStore(MergedConfigStore.MODE_SKIP);
+
+        assertTrue(store.get().getPolicies().isEmpty());
+        assertTrue(store.get().getPolicyAssignments().isEmpty());
+        InvalidEntityRecord record = store.getInvalidEntities().get(ResourceTypes.POLICY).get("policies/platform/eng");
+        assertNotNull(record);
+        assertEquals("Package 'learning' does not exist", record.getValidationWarnings().get(0).getMessage());
+    }
+
+    @Test
+    void testPolicyNamingMissingPackageAbortsRebuildInAbortMode() {
+        stubStored(ResourceTypes.POLICY, "eng", PACKAGE_GRANT);
+
+        InvalidEntityException error = assertThrows(InvalidEntityException.class, () -> initStore(MergedConfigStore.MODE_ABORT));
+
+        assertEquals(ResourceTypes.POLICY, error.getType());
+        assertEquals("eng", error.getMapKey());
+    }
+
+    @Test
+    void testInvalidPackageIsSkippedInSkipMode() {
+        stubStored(ResourceTypes.PACKAGE, "learning", "{ \"deployments\": [\"@other\"] }");
+
+        MergedConfigStore store = initStore(MergedConfigStore.MODE_SKIP);
+
+        assertTrue(store.get().getPackages().isEmpty());
+        assertTrue(store.getInvalidEntities().get(ResourceTypes.PACKAGE).containsKey("packages/platform/learning"));
+    }
+
+    @Test
+    void testPackageEditRescopesItsPolicies() {
+        MergedConfigStore store = initStore(MergedConfigStore.MODE_ABORT);
+        applyReplica(store, ResourceTypes.PACKAGE, "learning", ResourceEvent.Action.CREATE, LEARNING.formatted("\"weak\""));
+        applyReplica(store, ResourceTypes.POLICY, "eng", ResourceEvent.Action.CREATE, PACKAGE_GRANT);
+        applyReplica(store, ResourceTypes.POLICY_ASSIGNMENT, "IMF/a-1", ResourceEvent.Action.CREATE, ASSIGNMENT.formatted("eng", "IMF"));
+
+        BudgetInstance before = store.get().getCostObjectIndex().getInstances("IMF").get(0);
+        assertTrue(before.covered().contains("weak"));
+        assertFalse(before.covered().contains("medium"));
+        assertFalse(before.covered().contains("@learning"));
+
+        applyReplica(store, ResourceTypes.PACKAGE, "learning", ResourceEvent.Action.UPDATE, LEARNING.formatted("\"weak\", \"medium\""));
+
+        BudgetInstance after = store.get().getCostObjectIndex().getInstances("IMF").get(0);
+        assertTrue(after.covered().contains("medium"));
+        assertEquals("\"@learning\"", ProxyUtil.MAPPER.valueToTree(after.policy().getObject()).toString());
+        verify(vertx, never()).setTimer(anyLong(), any());
+    }
+
+    @Test
+    void testPackageWriteRequestsRebuildWhenPoliciesWereSkipped() {
+        stubStored(ResourceTypes.POLICY, "eng", PACKAGE_GRANT);
+        MergedConfigStore store = initStore(MergedConfigStore.MODE_SKIP);
+        assertTrue(store.get().getPolicies().isEmpty());
+
+        applyReplica(store, ResourceTypes.PACKAGE, "learning", ResourceEvent.Action.CREATE, LEARNING.formatted("\"weak\""));
+
+        assertTrue(store.get().getPackages().containsKey("learning"));
+        verify(vertx).setTimer(anyLong(), any());
     }
 
     @Test

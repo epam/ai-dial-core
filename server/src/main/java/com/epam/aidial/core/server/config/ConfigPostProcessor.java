@@ -30,6 +30,7 @@ import com.epam.aidial.core.config.UpstreamInterface;
 import com.epam.aidial.core.config.policy.Policy;
 import com.epam.aidial.core.config.policy.PolicyAssignment;
 import com.epam.aidial.core.config.policy.PolicyAssignmentValidator;
+import com.epam.aidial.core.config.policy.PolicyPackage;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsChangeMode;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
@@ -37,6 +38,7 @@ import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.alias.AliasTargets;
 import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
+import com.epam.aidial.core.server.service.ExternalServiceValidation;
 import com.epam.aidial.core.server.service.OrgUnitRoles;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.PathTemplateUtil;
@@ -142,6 +144,11 @@ public final class ConfigPostProcessor {
         processRouters(config, deploymentIds, onSkip);
         processAliases(config, deploymentIds, onSkip);
         OrgUnitRoles.validate(config.getOrgUnitRoles());
+        List<String> beyondAdmin = OrgUnitRoles.of(config).beyondAdmin();
+        if (!beyondAdmin.isEmpty()) {
+            log.warn("Org unit roles {} grant more than the admin role, so unit admins get 403 giving or removing them;"
+                    + " add those grants to admin to let them", beyondAdmin);
+        }
 
         if (apiKeyStore != null) {
             apiKeyStore.addProjectKeys(fileKeysBySecret, apiKeysByCanonicalId);
@@ -293,10 +300,13 @@ public final class ConfigPostProcessor {
     }
 
     /**
-     * Validates every policy and assignment of the rebuilt {@link Config}: policies first, so that an
-     * assignment of a policy dropped here is dropped as dangling.
+     * Validates every package, policy and assignment of the rebuilt {@link Config}, in that order, so that a policy
+     * naming a package dropped here, and an assignment of a policy dropped here, are dropped as dangling.
      */
     static void processPolicies(Config config, @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        for (String name : List.copyOf(config.getPackages().keySet())) {
+            validateSinglePackage(config, name, onSkip);
+        }
         for (String path : List.copyOf(config.getPolicies().keySet())) {
             validateSinglePolicy(config, path, onSkip);
         }
@@ -315,9 +325,58 @@ public final class ConfigPostProcessor {
         if (error == null && policy.isSelfApplying() && mapKey.indexOf('/') < 0) {
             error = "A policy that pins both subject and costObject applies by itself and must live in the folder of its cost object";
         }
+        if (error == null) {
+            error = findMissingPackage(config, policy);
+        }
         if (error != null) {
             rejectPolicyRecord(ResourceTypes.POLICY, config.getPolicies(), mapKey, error, onSkip);
         }
+    }
+
+    /**
+     * Besides the record's own checks, logs each member that names no deployment: deployments come and go, and a
+     * package must not break when a model is retired.
+     */
+    static void validateSinglePackage(Config config, String mapKey,
+                                      @Nullable BiConsumer<ResourceTypes, InvalidEntityException> onSkip) {
+        PolicyPackage policyPackage = config.getPackages().get(mapKey);
+        if (policyPackage == null) {
+            return;
+        }
+        policyPackage.setName(mapKey);
+        String error = PolicyAssignmentValidator.validatePackage(policyPackage);
+        if (error != null) {
+            rejectPolicyRecord(ResourceTypes.PACKAGE, config.getPackages(), mapKey, error, onSkip);
+            return;
+        }
+        for (String member : policyPackage.getDeployments()) {
+            if (!isDeploymentName(config, member)) {
+                log.warn("Package '{}' names '{}', which is not a deployment", mapKey, member);
+            }
+        }
+    }
+
+    static boolean hasPolicyNamingMissingPackage(Config config) {
+        return config.getPolicies().values().stream().anyMatch(policy -> findMissingPackage(config, policy) != null);
+    }
+
+    @Nullable
+    private static String findMissingPackage(Config config, Policy policy) {
+        if (policy.getObject() == null) {
+            return null;
+        }
+        return policy.getObject().packageNames().stream()
+                .filter(name -> !config.getPackages().containsKey(name))
+                .sorted()
+                .findFirst()
+                .map(name -> "Package '" + name + "' does not exist")
+                .orElse(null);
+    }
+
+    private static boolean isDeploymentName(Config config, String name) {
+        return config.getModels().containsKey(name) || config.getApplications().containsKey(name)
+                || config.getToolsets().containsKey(name) || config.getRouters().containsKey(name)
+                || config.getAliases().containsKey(name) || config.getInterceptors().containsKey(name);
     }
 
     /**
@@ -1002,7 +1061,9 @@ public final class ConfigPostProcessor {
                 continue;
             }
             try {
-                validator.validate(authSettings, ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES);
+                ExternalServiceValidation.validate(serviceId, service);
+                // The PKCE verifier is state Core generated on write, not input, and the validators forbid it.
+                validator.validate(authSettings.toBuilder().codeVerifier(null).build(), ResourceAuthSettingsChangeMode.NO_CLIENT_CHANGES);
             } catch (RuntimeException e) {
                 log.error("Dropping external service '{}' on application '{}': invalid auth_settings: {}",
                         serviceId, application.getName(), e.getMessage());

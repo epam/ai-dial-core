@@ -50,11 +50,80 @@ The label is not unique and must not be used as a budget identifier. Multiple as
 share its name. Updating only the display name at the same policy path changes subsequent responses without
 resetting spend or changing limits, priority order or enforcement. No locale selection is performed.
 
+## Default budget
+
+A user can pick one budget they hold as their **default budget**. Later versions use it to pay the user's calls that
+name no budget; in this version Core only stores it. Only the user picks it: an admin cannot set it, and neither an
+API key nor an application calling with a per-request key can read or set it (403).
+
+- `GET /v1/user/budgets/default` answers `{"budget": "<costObject>/<id>"}`, or `{"budget": null}` when no default is
+  set or the user no longer holds that budget (its assignment was withdrawn or has expired, or its subject no longer
+  matches them).
+- `PUT /v1/user/budgets/default` with `{"budget": "projA/engineering-alice"}` sets it, and answers with the same body.
+  The budget must be one the user holds now, one of those `GET /v1/user/limits` lists for them, in any cost object.
+  Otherwise the answer is 400, with the same message whether or not the budget exists.
+- `PUT /v1/user/budgets/default` with `{"budget": null}` clears it.
+
+The id is the path of the assignment that grants the budget, `<costObject>/<id>`, or the policy path of a
+self-applying policy. The default works in every `spendingLimits.mode`. Core keeps it as a private record in the
+user's bucket, which the files and resource APIs cannot reach. A default whose budget is withdrawn stays stored and
+reads as unset. It counts again if the same assignment is granted back.
+
 ## Rollout
 
 Existing policies require no migration and use the policy path as their label. Deploy supporting Core versions
 on all instances before configuring names: older versions reject unknown policy fields. Before rolling back,
 remove `displayName` from stored policy records while the supporting version is still running.
+
+# Packages in a policy's object
+
+A policy's `object` says what its budgets cover: `"*"` for every deployment, or a list of deployment names. It can
+also name a [package](packages.md) with `@`: a single package as a string, or packages mixed with deployment names in
+a list.
+
+```json
+{ "priority": 50, "kind": "budget", "quantity": "cost", "costObject": "IMF",
+  "object": "@engineering", "per": ["subject"], "cost": { "month": 1000 } }
+```
+
+```json
+"object": ["@engineering", "gpt-6-luna"]
+```
+
+Reads of the policy return `object` as written: a single package stays a string, a list is sorted. So do the
+`budgets[].object` entries of `GET /v1/user/limits` and `GET /v1/user/usage`: they never list the deployments inside a
+package. The policy field `packages` is reserved and still rejected; a package is named in `object` only.
+
+# Which budgets cover a call
+
+Budgets check and charge a call on the model, under the model's name, but a budget covers the call by any name it was
+reached through. The **coverage chain** of a model call is the model and, read back from the call's execution path,
+the aliases and routers before it, up to the first application, interceptor or toolset, which starts a call of its
+own. A budget covers the call when its policy's `object` is `"*"` or names, directly or through a package, any name on
+the chain.
+
+| Call | Coverage chain | `@engineering` = `["weak", "medium", "strong"]` | `"*"` |
+|---|---|---|---|
+| `strong` → router `r1` decides `claude-opus-vertex` → model `m` | `strong`, `r1`, `claude-opus-vertex`, `m` | covered | covered |
+| `m` called directly | `m` | not covered | covered |
+| `hi-end` → model `m2` | `hi-end`, `m2` | not covered | covered |
+| application `codemie` calls `strong` with its per-request key | `strong`, `r1`, `claude-opus-vertex`, `m` | covered | covered |
+
+So a budget naming the tier aliases pays for routed calls, and direct model access needs a budget that names the
+model or `"*"`. A model release retargets the routing-target alias; no package or policy changes.
+
+When budgets of the caller's cost object cover a call at different positions of the chain, only those covering the
+earliest position, nearest the head of the chain, are candidates. A budget naming `strong` takes a call made through
+`strong` before a budget naming `m`, whatever their priorities, and when it has no money left the call is refused
+with `budget_exhausted`; it does not fall through to the model's budget. Budgets at the same position are walked by
+priority, as before. A budget with the object `"*"` counts as covering the call at the model, the last name of
+the chain: it ties by priority with budgets that name the model, and yields to a budget that names an earlier name.
+
+Two consequences to keep in mind:
+
+* The chain follows the routing topology. Retargeting a router or an alias can change which budget pays.
+* An interceptor in front of a model starts the chain again at the model, so budgets that name only the tier aliases
+  do not cover that model. Add the model to the package when its calls should be covered.
 
 # Spending limits in the analytics log
 
@@ -79,9 +148,19 @@ The paying budget is the one the check before the call picked: the first budget 
 priority, that covers the model and has room. The call's cost is charged to it after the call, in `shadow` mode as in
 `enforce` mode. `user.id` is the user's hash; `spending_limits` does not carry the user.
 
-In `enforce` mode a call with `no_budget` or `exhausted` is refused with 429, and Core writes no analytics row for
-a refused call. Those two outcomes therefore appear in `shadow` mode only, where the call goes through. The metric
-`dial_budget_rejections_total` counts refusals in both modes.
+In `enforce` mode a call with `exhausted` is refused with 429, `retry-after` and error code `budget_exhausted`, and a
+call with `no_budget` with 403 and error code `no_budget`, except on the Messages and Responses routes:
+
+- On the Anthropic Messages route a client's own request gets a 402 with the Anthropic `billing_error` body, and on
+  the Responses routes a 400 whose body is the message as `text/plain`, also through an alias. A background Responses
+  request through an alias, and a call made with a per-request key, get a 429 with error code `no_budget`. Inside Core
+  the refusal stays a 429 on these routes, so an alias candidate and a router still fall back on it.
+- With an interceptor in front of the model, global interceptors included, the refusal is made on the interceptor's
+  call, so the client gets what the interceptor answers (see [Codex spend limits](../codex-spend-limits.md)).
+
+Core writes no analytics row for a refused call, so `no_budget` and `exhausted` appear in `shadow` mode only, where
+the call goes through. The metric `dial_budget_rejections_total` counts refusals in both modes, with `reason` set to
+the error code (`no_budget` or `budget_exhausted`) and `mode` to `spendingLimits.mode`.
 
 A row has no `spending_limits` when:
 
@@ -98,3 +177,19 @@ failed after the check, such as on an upstream error, has `outcome` `paid` with 
 
 `project.id` is the token's project claim, so it is empty when the token has none, while
 `spending_limits.cost_object` then holds the default cost object.
+
+# Cost object in the analytics log
+
+Every row also carries a `cost_object` object: the cost object of the caller that started the call chain, and where it
+came from. It follows `spending_limits`, or `project` when the row has none:
+
+```json
+"project": { "id": "project-a" },
+"spending_limits": { "mode": "enforce", "cost_object": "project-a", "outcome": "paid", "policy": "engineering-pro" },
+"cost_object": { "id": "project-a", "source": "claim" },
+```
+
+`source` is `claim` (the token's claim at `identityProviders.*.costObjectPath`), `key` (the API key's project) or
+`default` (`spendingLimits.defaultCostObject`). `project` stays in the row while consumers move to `cost_object`. The
+row a background Responses job writes when it ends carries the cost object of the request that started the job; a job
+started before an upgrade to this version has no `cost_object`.

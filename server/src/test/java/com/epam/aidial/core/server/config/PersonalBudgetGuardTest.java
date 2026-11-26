@@ -64,7 +64,7 @@ class PersonalBudgetGuardTest {
     private static Config config(SpendingLimitMode mode, Map<String, Policy> policies, Map<String, PolicyAssignment> assignments) {
         Config config = new Config();
         config.getSpendingLimits().setMode(mode);
-        config.setCostObjectIndex(CostObjectIndex.build(policies, assignments));
+        config.setCostObjectIndex(CostObjectIndex.build(policies, assignments, Map.of()));
         return config;
     }
 

@@ -12,11 +12,17 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.vertx.core.MultiMap;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * The container keeps data associated with API key.
@@ -67,6 +73,11 @@ public class ApiKeyData {
     private int interceptorIndex = -1;
     // the deployment an alias pass lends its target pass the right to call
     private String lentDeployment;
+    // a Responses or Messages alias pass made this key for its target pass. That pass then marks its no-budget 429, which by status
+    // and body its alias pass cannot tell from another limit's 429; to other callers it stays unmarked. A key made from this one does
+    // not copy it. Kept in memory only, for the target pass served in process: a Core without this field rejects a stored key with it
+    @JsonIgnore
+    private boolean madeByAliasPass;
     // deployment triggers interceptors
     private String initialDeployment;
     private String initialDeploymentApi;
@@ -78,6 +89,15 @@ public class ApiKeyData {
     // Map of resources are shared by per request API key.
     // A key is a resource ID and value - per request shared data
     private Map<String, PerRequestSharedData> perRequestSharedResources = new HashMap<>();
+    // the per request key this one was built from and the receivers whose permissions were copied from it, for the key
+    // store to copy them once more from the Redis master (see addCallerPermissions); never stored
+    @JsonIgnore
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
+    private String callerKey;
+    @JsonIgnore
+    @EqualsAndHashCode.Exclude
+    private List<String> callerReceivers = List.of();
 
     public ApiKeyData() {
     }
@@ -89,27 +109,39 @@ public class ApiKeyData {
         return proxyApiKeyData;
     }
 
+    /**
+     * The execution path of the key this pass mints: the incoming key's path (none for a root request), the router
+     * after its decision, then the called deployment or route.
+     */
+    public static List<String> pathOf(ProxyContext context) {
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        List<String> path = apiKeyData.getPerRequestKey() == null ? new ArrayList<>() : new ArrayList<>(apiKeyData.getExecutionPath());
+        if (context.getDecision() != null) {
+            // the deployment the client called, so the router is the parent of the one it chose
+            path.add(context.getDecision().getRouterName());
+        }
+        if (context.getDeployment() != null) {
+            path.add(context.getDeployment().getName());
+        } else if (context.getRoute() != null) {
+            path.add(context.getRoute().getName());
+        }
+        return path;
+    }
+
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
-        List<String> currentPath;
         proxyApiKeyData.setHttpHeaders(collectHttpHeaders(context));
 
         if (apiKeyData.getPerRequestKey() == null) {
             proxyApiKeyData.setOriginalKey(context.getKey());
             proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
             proxyApiKeyData.setTraceId(context.getTraceId());
-            currentPath = new ArrayList<>();
         } else {
             proxyApiKeyData.setOriginalKey(apiKeyData.getOriginalKey());
             proxyApiKeyData.setExtractedClaims(apiKeyData.getExtractedClaims());
             proxyApiKeyData.setTraceId(apiKeyData.getTraceId());
-            currentPath = new ArrayList<>(context.getApiKeyData().getExecutionPath());
         }
         String receiver = null;
-        if (context.getDecision() != null) {
-            // the deployment the client called, so the router is the parent of the one it chose
-            currentPath.add(context.getDecision().getRouterName());
-        }
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();
             if (context.getDeployment() instanceof AliasPass pass) {
@@ -129,11 +161,9 @@ public class ApiKeyData {
                     proxyApiKeyData.getAttachedDeployments().put(lent, attached);
                 }
             }
-            currentPath.add(receiver);
             proxyApiKeyData.setSourceDeployment(receiver);
         } else if (context.getRoute() != null) {
             receiver = context.getRoute().getName();
-            currentPath.add(receiver);
             proxyApiKeyData.setSourceDeployment(receiver);
         }
         if (apiKeyData.getPerRequestKey() != null) {
@@ -145,8 +175,14 @@ public class ApiKeyData {
             if (context.getInitialDeployment() != null) {
                 sharePerRequestPermissions(proxyApiKeyData, receivers, context.getInitialDeployment());
             }
+            List<String> callerReceivers = Stream.of(receiver, context.getInitialDeployment()).filter(Objects::nonNull).toList();
+            // a pass served in process has the caller's key from memory, not from a replica
+            if (!callerReceivers.isEmpty() && !context.isChildPass()) {
+                proxyApiKeyData.setCallerKey(apiKeyData.getPerRequestKey());
+                proxyApiKeyData.setCallerReceivers(callerReceivers);
+            }
         }
-        proxyApiKeyData.setExecutionPath(currentPath);
+        proxyApiKeyData.setExecutionPath(pathOf(context));
         proxyApiKeyData.setSpanId(context.getSpanId());
     }
 
@@ -168,6 +204,29 @@ public class ApiKeyData {
         if (resources != null) {
             proxyApiKeyData.getPerRequestSharedResources().putAll(resources);
         }
+    }
+
+    /**
+     * Adds the permissions that the caller's key holds for this key's receivers and this key does not have yet.
+     * {@link #initFromContext} copies them from the caller's key as the request was authenticated with it, which may
+     * be a copy from a Redis replica that is behind a grant made a moment ago.
+     *
+     * @param receivers the receivers of the caller's key as the Redis master holds them.
+     */
+    public void addCallerPermissions(Map<String, Map<String, PerRequestSharedData>> receivers) {
+        // built as initFromContext builds them, where for a resource granted to two receivers the later receiver's grant
+        // counts, then added to what the key holds: the copied grants share the map with those that dependencies add
+        // (ResolveResourceDependenciesFn), so the union keeps them, and with them a grant revoked within the replica lag
+        ApiKeyData onMaster = new ApiKeyData();
+        for (String receiver : callerReceivers) {
+            sharePerRequestPermissions(onMaster, receivers, receiver);
+        }
+        onMaster.getPerRequestSharedResources().forEach((url, granted) ->
+                perRequestSharedResources.merge(url, granted, (existing, added) -> {
+                    Set<ResourceAccessType> union = new HashSet<>(existing.permissions());
+                    union.addAll(added.permissions());
+                    return new PerRequestSharedData(union);
+                }));
     }
 
     @JsonIgnore

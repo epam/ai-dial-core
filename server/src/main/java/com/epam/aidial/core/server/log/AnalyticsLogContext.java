@@ -9,6 +9,7 @@ import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
+import com.epam.aidial.core.server.limiter.budget.CostObject;
 import com.epam.aidial.core.server.service.ResponsesApiClient;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -44,6 +45,9 @@ public class AnalyticsLogContext {
     private final String parentSpanId;
 
     private final String project;
+    // the cost object of the caller that started the chain, and where it came from
+    private final String costObject;
+    private final CostObject.Source costObjectSource;
     private final String userHash;
     private final String conversationId;
     private final String sessionId;
@@ -108,6 +112,8 @@ public class AnalyticsLogContext {
                 // the pass that asked the router is the router row's child
                 .parentSpanId(context.getDecision() != null ? context.getDecision().getHop().spanId() : context.getParentSpanId())
                 .project(context.getProject())
+                .costObject(context.getCostObject())
+                .costObjectSource(context.getCostObjectSource())
                 .userHash(context.getUserHash())
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
                 .sessionId(GenAiTraceAttributes.resolveConversationId(context))
@@ -152,6 +158,8 @@ public class AnalyticsLogContext {
                 .spanId(record.spanId())
                 .parentSpanId(record.routerHop() != null ? record.routerHop().spanId() : record.parentSpanId())
                 .project(record.project())
+                .costObject(record.costObject())
+                .costObjectSource(record.costObjectSource())
                 .userHash(record.userHash())
                 .conversationId(record.conversationId())
                 .sessionId(record.sessionId())

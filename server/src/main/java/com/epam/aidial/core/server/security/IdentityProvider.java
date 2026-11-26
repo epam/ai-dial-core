@@ -62,8 +62,8 @@ public class IdentityProvider {
     // path(s) to the claim of user roles in JWT
     private final List<String[]> rolePaths = new ArrayList<>();
 
-    // path to the claim containing Project identity
-    private final String[] projectPath;
+    // path to the claim containing the cost object
+    private final String[] costObjectPath;
 
     // Delimiter to split the roles if they are set as a single String
     private final String rolesDelimiter;
@@ -194,7 +194,7 @@ public class IdentityProvider {
             rolePaths.add(rolePath.split("\\."));
         }
 
-        projectPath = getClaimPath(settings, "projectPath", null);
+        costObjectPath = getCostObjectPath(settings);
         rolesDelimiter = settings.getString("rolesDelimiter");
 
         loggingKey = settings.getString("loggingKey");
@@ -225,6 +225,20 @@ public class IdentityProvider {
 
         long period = Math.min(negativeCacheExpirationMs, positiveCacheExpirationMs);
         vertx.setPeriodic(0, period, event -> evictExpiredJwks());
+    }
+
+    /**
+     * {@code costObjectPath}, or the deprecated {@code projectPath} when only that one is set.
+     */
+    private static String[] getCostObjectPath(JsonObject settings) {
+        if (settings.containsKey("projectPath")) {
+            if (settings.containsKey("costObjectPath")) {
+                log.warn("Identity provider setting projectPath is ignored: costObjectPath is set");
+            } else {
+                log.warn("Identity provider setting projectPath is deprecated, use costObjectPath");
+            }
+        }
+        return getClaimPath(settings, "costObjectPath", getClaimPath(settings, "projectPath", null));
     }
 
     private static String[] getClaimPath(JsonObject settings, String claimName, String[] defaultPath) {
@@ -494,7 +508,7 @@ public class IdentityProvider {
                 roles,
                 extractUserHash(userKey),
                 extractUserClaims(map),
-                extractStringClaim(map, projectPath),
+                extractStringClaim(map, costObjectPath),
                 extractStringClaim(map, userDisplayName),
                 extractStringClaim(map, userEmailPath));
     }

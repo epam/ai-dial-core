@@ -55,6 +55,15 @@ for such a model are enforced only by the inner call. When the inner call reject
 per-minute cost limit, or a cap crossed after the outer read), the client gets whatever error the translator
 returns, without `anthropic-ratelimit-unified-*` headers.
 
+A call through an [alias](dynamic-settings/aliases.md) reports the caps of the deployment that serves it, as a direct
+call of that deployment does. This is also true for an alias that a router in
+[decision mode](dynamic-settings/routers.md#decision-mode) chooses. The alias makes no limit check of its own: it reads
+no spend caps and checks no token, request or cost limit. The target checks them, and the alias passes the target's
+answer on with its `anthropic-ratelimit-*` headers as they are, on every status, so the spend-cap 429 below reaches
+the client unchanged. A JWT user in `enforce` mode who calls a model through an alias sees the budget. In decision
+mode, a 429 of the chosen alias's target makes Core try the router's next candidate, or ask the router again, while it
+has decisions left; the client gets the last answer.
+
 ## Budgets (`enforce` mode)
 
 When `spendingLimits.mode` is `enforce`, a user signed in with a JWT is limited by budgets on calls to models,
@@ -62,8 +71,8 @@ instead of by the role `costLimit` (see the `spendingLimits` row in the README).
 usage endpoint on `/anthropic/*` then describe a budget.
 
 - **Which budget.** DIAL looks at the budgets of the user's cost object: the project in the token's project claim
-  (`identityProviders.<idp>.projectPath`), or `spendingLimits.defaultCostObject` when the token has none. Set
-  `projectPath` to the claim that holds the project, for example `project` for the identity provider the `dial`
+  (`identityProviders.<idp>.costObjectPath`), or `spendingLimits.defaultCostObject` when the token has none. Set
+  `costObjectPath` to the claim that holds the project, for example `project` for the identity provider the `dial`
   launcher uses. The `aud` or `azp` of the sample settings would make the OAuth client id the cost object.
 - **Reported only with one budget.** DIAL reports a budget only when the user has exactly one unexpired budget in
   that cost object, whatever models it covers. With several, or none, a 200 answer carries no
@@ -77,16 +86,23 @@ usage endpoint on `/anthropic/*` then describe a budget.
   it goes upstream with the `billing_error` 429 below. It names the used-up window and the reset of the budget that
   can pay again first, the first by priority on a tie. This holds with one budget or several, and wins over a token
   or request limit.
-- **No budget for the model.** 429 with the DIAL error body, whose `message` names the model and the cost object,
-  with no `retry-after` and no `anthropic-ratelimit-unified-*` header.
+- **No budget for the model.** The client's own request gets 402 with `error.type` `billing_error`, whose `message`
+  names the model and the cost object
+  (`No DIAL spend limit is assigned for <model> in project <cost object>. Ask your DIAL admin to assign one.`),
+  with `x-should-retry: false`, no `retry-after` and no `anthropic-ratelimit-unified-*` header, also streaming and
+  through an alias. Only an admin adding a budget can make the call pass, so Claude Code shows
+  `API Error: 402 <message>` at once instead of retrying it; a 429 would read as `Server is temporarily limiting
+  requests (not your usage limit)` in Claude Code running against a gateway. A call made with a per-request key, an
+  application's, gets the 429 with the DIAL error body, `code` `no_budget` and the same message.
 - **Counter unreadable.** A token or request limit that rejects decides the answer. Otherwise the request gets the
   `fetch_error` 429 below when a budget below 2^53 covers the model, and the 500 with `x-should-retry: true` when
   none does. The usage endpoint answers its 500.
 - **Translated models** only read the budget. With one budget they get its headers, even when it covers other models
   only, and the `billing_error` 429 once it is used up. In every other case the request is forwarded without spend
   headers, and the translator's call back to DIAL is checked and charged.
-- **Applications** keep the role `costLimit`, so a Messages call to an application reports role caps while the usage
-  endpoint reports the budget.
+- **Applications** are not checked against the role `costLimit` or the budget; their own calls to models are checked
+  against the budget of the user who called them. A Messages call to an application reports no spend caps, while the
+  usage endpoint reports the budget. API key callers keep the role `costLimit` on every call.
 - **Charging.** In `shadow` and `enforce`, a call to a model is charged to the budget that pays for it, as on every
   other model route.
 - **`shadow` mode** keeps reporting and enforcing the role `costLimit`. Budgets are checked and charged but never

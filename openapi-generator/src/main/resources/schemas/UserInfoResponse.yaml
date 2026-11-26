@@ -7,12 +7,21 @@ properties:
         type: string
     project:
       type: string
-      description: Present only if authenticated via an API Key. Represents the target project scope.
+      description: The caller's project. For API key authentication it is the key's project. For user-based session authentication it is present only when the identity provider's configured projectPath resolves a string claim.
+    userId:
+      type: string
+      description: The user id as DIAL resolves it from the identity provider configuration (not necessarily the token's sub claim). Present only for user-based session authentication. Use this value as owner_user_id when retrieving credentials on behalf of the user.
+    costObject:
+      type: string
+      description: The cost object the caller's calls are charged to.
+    costObjectSource:
+      type: string
+      enum: [claim, key, default]
+      description: Where costObject came from - claim is the token's claim at the identity provider's costObjectPath, key is the API key's project, default is spendingLimits.defaultCostObject.
     userClaims:
       type: object
-      description: Normalized token claims. Present only for user-based session authentication.
-      additionalProperties:
-        type: array
-        description: Array representation of a specific claim value (normalized for backward compatibility)
-        items:
-          type: string
+      description: Token claims. Present only for user-based session authentication. String claims are wrapped into a one-element array of strings for backward compatibility; other claims (numbers, booleans, objects, arrays) are returned as they are, so a claim value is not always an array.
+      additionalProperties: true
+    userDisplayName:
+      type: string
+      description: Human-readable caller name. For user-based session authentication it is resolved from the identity provider's configured userDisplayName claim path; for API key authentication it is the key's project name. Absent when not configured.

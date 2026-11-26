@@ -1,0 +1,149 @@
+{
+  "spendingLimits": {
+    "mode": "enforce"
+  },
+  "models": {
+    "m": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m/chat/completions",
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    },
+    "m2": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m2/chat/completions",
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    },
+    "m-icpt": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m-icpt/chat/completions",
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      },
+      "interceptors": [
+        "icpt"
+      ]
+    },
+    "m-tr": {
+      "type": "chat",
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      },
+      "interfaces": {
+        "openaiChatCompletions": {
+          "base_url": "http://localhost:4848/m-tr"
+        },
+        "anthropicMessages": {
+          "mode": "translator",
+          "translator": {
+            "out": "openaiChatCompletions",
+            "baseUrl": "http://localhost:4848/tr"
+          }
+        }
+      }
+    }
+  },
+  "interceptors": {
+    "icpt": {
+      "endpoint": "http://localhost:4848/icpt/chat/completions"
+    }
+  },
+  "routers": {
+    "r1": {
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "interfaces": {
+        "openaiChatCompletions": {}
+      }
+    },
+    "r2": {
+      "baseUrl": "http://localhost:4848/r2",
+      "interfaces": {
+        "openaiChatCompletions": {}
+      }
+    }
+  },
+  "aliases": {
+    "strong": {
+      "presentAs": "model",
+      "target": {
+        "path": "routers/r1"
+      }
+    },
+    "hi-end": {
+      "presentAs": "model",
+      "target": {
+        "path": "models/m2"
+      }
+    },
+    "claude-opus-vertex": {
+      "presentAs": "model",
+      "target": {
+        "path": "models/m"
+      }
+    },
+    "strong-proxy": {
+      "presentAs": "model",
+      "target": {
+        "path": "routers/r2"
+      }
+    },
+    "strong-icpt": {
+      "presentAs": "model",
+      "target": {
+        "path": "models/m-icpt"
+      }
+    },
+    "weak": {
+      "presentAs": "model",
+      "target": {
+        "path": "models/m-tr"
+      }
+    }
+  },
+  "applications": {
+    "codemie": {
+      "endpoint": "http://localhost:4848/openai/deployments/codemie/chat/completions"
+    }
+  },
+  "roles": {
+    "user": {
+      "limits": {
+        "m": {},
+        "m2": {},
+        "m-icpt": {},
+        "m-tr": {},
+        "codemie": {},
+        "strong": {},
+        "hi-end": {},
+        "claude-opus-vertex": {},
+        "strong-proxy": {},
+        "strong-icpt": {},
+        "weak": {},
+        "icpt": {},
+        "r1": {},
+        "r2": {}
+      }
+    },
+    "default": {
+      "limits": {}
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "chain",
+      "role": "user"
+    }
+  }
+}

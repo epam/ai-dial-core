@@ -350,6 +350,13 @@ class RouterApiTest extends ResourceBaseTest {
         assertFalse(r2.has("base_url"), r2.toString());
         assertFalse(r2.has("endpoint"), r2.toString());
         assertNull(entry(ProxyUtil.MAPPER.readTree(response.body()), "r1"), "r1 is closed to the default role");
+
+        Response selected = send(HttpMethod.GET, "/v1/deployments", "fields=display_name", null, "api-key", "proxyKey2");
+        verify(selected, 200);
+        JsonNode selectedR2 = entry(ProxyUtil.MAPPER.readTree(selected.body()), "r2");
+        assertNotNull(selectedR2, selected.body());
+        assertEquals("router", selectedR2.get("object").asText());
+        assertFalse(selectedR2.has("interfaces"), selectedR2.toString());
     }
 
     @Test

@@ -6,6 +6,7 @@ import com.epam.aidial.core.config.policy.Policy;
 import com.epam.aidial.core.config.policy.PolicyAssignment;
 import com.epam.aidial.core.config.policy.PolicyKind;
 import com.epam.aidial.core.config.policy.PolicyObjectSet;
+import com.epam.aidial.core.config.policy.PolicyPackage;
 import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.config.policy.PolicySubjectRule;
 import com.epam.aidial.core.server.security.ExtractedClaims;
@@ -31,6 +32,7 @@ class EffectiveBudgetsTest {
 
     private static final Instant NOW = Instant.parse("2026-11-03T10:00:00Z");
     private static final String COST_OBJECT = "projA";
+    private static final List<String> ROUTED = List.of("strong", "r1", "claude-opus-vertex", "m");
     private static final String COUNTER = "dial_budget_ambiguous_priority_total";
 
     private SimpleMeterRegistry registry;
@@ -230,7 +232,7 @@ class EffectiveBudgetsTest {
                 "projC/g1", assignment("low", null, equal("sub", "bob")));
 
         List<BudgetInstance> all = EffectiveBudgets
-                .resolveAll(CostObjectIndex.build(policies, assignments), user("alice"), NOW);
+                .resolveAll(CostObjectIndex.build(policies, assignments, Map.of()), user("alice"), NOW);
 
         assertEquals(List.of("projA/g2", "projA/g1", "projB/g1"), ids(all));
     }
@@ -243,7 +245,7 @@ class EffectiveBudgetsTest {
         Map<String, PolicyAssignment> assignments = Map.of(
                 "projA/expired", assignment("cost", "2026-11-03T09:00:00Z", anyone()),
                 "projB/tokens", assignment("tokens", null, anyone()));
-        CostObjectIndex index = CostObjectIndex.build(policies, assignments);
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments, Map.of());
 
         assertTrue(EffectiveBudgets.resolveAll(index, user("alice"), NOW).isEmpty());
         assertTrue(EffectiveBudgets.resolveAll(index, null, NOW).isEmpty());
@@ -259,7 +261,7 @@ class EffectiveBudgetsTest {
                 "projA/g2", assignment("opus-only", null, anyone()));
 
         List<BudgetInstance> budgets = EffectiveBudgets
-                .resolveInCostObject(CostObjectIndex.build(policies, assignments), COST_OBJECT, user("alice"), NOW);
+                .resolveInCostObject(CostObjectIndex.build(policies, assignments, Map.of()), COST_OBJECT, user("alice"), NOW);
 
         assertEquals(List.of("projA/g2", "projA/g1"), ids(budgets));
         assertEquals(0, registry.counter(COUNTER).count());
@@ -275,7 +277,7 @@ class EffectiveBudgetsTest {
                 "projA/expired", assignment("cost", "2026-11-03T09:00:00Z", anyone()),
                 "projA/bob", assignment("cost", null, equal("sub", "bob")),
                 "projA/tokens", assignment("tokens", null, anyone()));
-        CostObjectIndex index = CostObjectIndex.build(policies, assignments);
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments, Map.of());
 
         assertEquals(List.of("projA/live"), ids(EffectiveBudgets.resolveInCostObject(index, COST_OBJECT, user("alice"), NOW)));
         assertTrue(EffectiveBudgets.resolveInCostObject(index, COST_OBJECT, null, NOW).isEmpty());
@@ -288,7 +290,7 @@ class EffectiveBudgetsTest {
                 "projA/g1", assignment("cost", null, anyone()),
                 "projB/g1", assignment("cost", null, anyone()),
                 "ORG/g1", assignment("cost", null, anyone()));
-        CostObjectIndex index = CostObjectIndex.build(policies, assignments);
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments, Map.of());
 
         assertEquals(List.of("projA/g1"), ids(EffectiveBudgets.resolveInCostObject(index, COST_OBJECT, user("alice"), NOW)));
         assertTrue(EffectiveBudgets.resolveInCostObject(index, "projZ", user("alice"), NOW).isEmpty());
@@ -305,9 +307,100 @@ class EffectiveBudgetsTest {
         assertEquals(expected, !resolve(policies, assignments, user("alice"), "gpt").isEmpty());
     }
 
+    @Test
+    void testBudgetOfTheEarliestChainPositionTakesTheCall() {
+        Map<String, Policy> policies = Map.of(
+                "alias-budget", policy(20, PolicyObjectSet.of(List.of("strong"))),
+                "model-budget", policy(10, PolicyObjectSet.of(List.of("m"))));
+        Map<String, PolicyAssignment> assignments = Map.of(
+                "projA/a", assignment("alias-budget", null, anyone()),
+                "projA/b", assignment("model-budget", null, anyone()));
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments, Map.of());
+
+        assertEquals(List.of("projA/a"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), ROUTED, NOW)));
+        assertEquals(List.of("projA/b"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), List.of("m"), NOW)));
+        assertTrue(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), List.of("hi-end", "m2"), NOW).isEmpty());
+    }
+
+    @Test
+    void testBudgetsAtTheSamePositionKeepThePriorityOrder() {
+        Map<String, Policy> policies = Map.of(
+                "first", policy(10, PolicyObjectSet.of(List.of("@engineering"))),
+                "second", policy(20, PolicyObjectSet.of(List.of("@engineering"))),
+                "model-budget", policy(5, PolicyObjectSet.of(List.of("m"))));
+        Map<String, PolicyAssignment> assignments = Map.of(
+                "projA/first", assignment("first", null, anyone()),
+                "projA/second", assignment("second", null, anyone()),
+                "projA/model", assignment("model-budget", null, anyone()));
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments, Map.of("engineering", engineering()));
+
+        assertEquals(List.of("projA/first", "projA/second"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), ROUTED, NOW)));
+    }
+
+    @Test
+    void testBudgetForEveryDeploymentCoversAtTheModel() {
+        Map<String, Policy> policies = Map.of(
+                "api", policy(10, PolicyObjectSet.all()),
+                "eng", policy(20, PolicyObjectSet.of(List.of("@engineering"))),
+                "model-budget", policy(5, PolicyObjectSet.of(List.of("m"))));
+        Map<String, PolicyAssignment> assignments = Map.of(
+                "projA/api", assignment("api", null, anyone()),
+                "projA/eng", assignment("eng", null, anyone()),
+                "projA/model", assignment("model-budget", null, anyone()));
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments, Map.of("engineering", engineering()));
+
+        // the tier budget names an earlier name than the model, where "*" covers the call
+        assertEquals(List.of("projA/eng"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), ROUTED, NOW)));
+        // at the model "*" ties with the budget naming the model, by priority
+        assertEquals(List.of("projA/model", "projA/api"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), List.of("m"), NOW)));
+    }
+
+    /**
+     * Measures resolve over a chain of ten names against a chain of the model alone, which is what resolve looked up
+     * before chains, with 100 budgets in the cost object. Prints the numbers; asserts only the results.
+     */
+    @Test
+    void testResolveCostWithLongChainAndManyBudgets() {
+        Map<String, Policy> policies = new LinkedHashMap<>();
+        Map<String, PolicyAssignment> assignments = new LinkedHashMap<>();
+        for (int i = 0; i < 100; i++) {
+            policies.put("p" + i, policy(i, PolicyObjectSet.of(List.of("model-" + i, "alias-" + i))));
+            assignments.put("projA/a" + i, assignment("p" + i, null, anyone()));
+        }
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments, Map.of());
+        List<String> longChain = List.of("alias-0", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "model-99");
+        List<String> modelOnly = List.of("model-99");
+
+        long modelOnlyNanos = time(() -> EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), modelOnly, NOW));
+        long longChainNanos = time(() -> EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), longChain, NOW));
+
+        System.out.printf("resolve, 100 budgets: model only %d ns/call, 10-name chain %d ns/call%n", modelOnlyNanos, longChainNanos);
+        assertEquals(List.of("projA/a99"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), modelOnly, NOW)));
+        assertEquals(List.of("projA/a0"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), longChain, NOW)));
+    }
+
+    private static long time(Runnable call) {
+        int warmup = 20_000;
+        int measured = 50_000;
+        for (int i = 0; i < warmup; i++) {
+            call.run();
+        }
+        long start = System.nanoTime();
+        for (int i = 0; i < measured; i++) {
+            call.run();
+        }
+        return (System.nanoTime() - start) / measured;
+    }
+
+    private static PolicyPackage engineering() {
+        PolicyPackage engineering = new PolicyPackage();
+        engineering.setDeployments(List.of("weak", "medium", "strong"));
+        return engineering;
+    }
+
     private static List<BudgetInstance> resolve(Map<String, Policy> policies, Map<String, PolicyAssignment> assignments,
                                                 ExtractedClaims claims, String model) {
-        return EffectiveBudgets.resolve(CostObjectIndex.build(policies, assignments), COST_OBJECT, claims, model, NOW);
+        return EffectiveBudgets.resolve(CostObjectIndex.build(policies, assignments, Map.of()), COST_OBJECT, claims, List.of(model), NOW);
     }
 
     private static List<String> ids(List<BudgetInstance> instances) {

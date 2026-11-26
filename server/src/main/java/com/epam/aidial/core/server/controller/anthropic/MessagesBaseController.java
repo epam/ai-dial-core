@@ -7,6 +7,7 @@ import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.controller.BaseDeploymentPostController;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.function.BaseRequestFunction;
@@ -18,6 +19,7 @@ import com.epam.aidial.core.server.function.enhancement.ApplyDefaultDeploymentSe
 import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequestFn;
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.limiter.NoBudgetException;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -102,7 +104,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     }
 
     private void reenterWithCandidate() {
-        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
+        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes,
+        // or, in an in-process call without them, from a copy of the call's tree taken before the first candidate
         serveCandidate(parseBody(context.getOriginalRequestBody()));
     }
 
@@ -182,6 +185,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         ApiKeyData proxyApiKeyData = new ApiKeyData();
         context.setProxyApiKeyData(proxyApiKeyData);
         ApiKeyData.initFromContext(proxyApiKeyData, context);
+        // on /messages the target pass is served in process and gets this very object; nothing reads the flag on count_tokens
+        proxyApiKeyData.setMadeByAliasPass(context.getDeployment() instanceof AliasPass);
 
         ProxyUtil.processChain(request, enhancementFunctions);
         // Enhancement functions update the api key, and it should be saved after that
@@ -196,7 +201,6 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                         dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.ANTHROPIC_MESSAGES,
                                 context.getConfig().getTranslators()), upstreamId);
 
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
     }
 
@@ -272,6 +276,13 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
         } else if (error instanceof ResourceNotFoundException) {
             respond(HttpStatus.NOT_FOUND, error.getMessage());
             log.warn("Deployment not found {}", deploymentId, error);
+        } else if (error instanceof NoBudgetException noBudget) {
+            respondNoBudget(noBudget, rejection -> {
+                finalizeRequest();
+                Buffer body = AnthropicLimitResponses.putNoBudget(context.getResponse().headers(), rejection.getReason());
+                context.respond(AnthropicLimitResponses.PAYMENT_REQUIRED, body);
+            });
+            log.warn("Deployment error {}", deploymentId, error);
         } else if (error instanceof HttpException httpException) {
             respond(httpException);
             log.warn("Deployment error {}", deploymentId, error);

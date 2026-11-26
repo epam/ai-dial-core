@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.limiter.budget.DefaultBudgetService;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.proxy.ProxyClient;
@@ -103,6 +104,7 @@ public class Proxy implements Handler<HttpServerRequest> {
 
     public static final String HEALTH_CHECK_PATH = "/health";
     public static final String VERSION_PATH = "/version";
+    public static final String OPENAPI_PATH = "/openapi.yaml";
     public static final String HEADER_DIAL_TRACE_ID = "X-DIAL-TRACE-ID";
     public static final String HEADER_DIAL_SPAN_ID = "X-DIAL-SPAN-ID";
     /**
@@ -151,6 +153,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_API = "X-DIAL-API";
     public static final String HEADER_ROUTER_ATTEMPTS = "X-DIAL-ROUTER-ATTEMPTS";
     public static final String HEADER_ROUTER_NOTICE = "X-DIAL-ROUTER-NOTICE";
+    // Core's own mark of a refusal, from an alias's target pass to its alias pass; on the Responses routes never relayed
+    // from outside Core
+    public static final String HEADER_DIAL_REFUSAL = "X-DIAL-REFUSAL";
 
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);
@@ -223,6 +228,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AdminSystemImportService adminSystemImportService;
     private final AdminSystemImportService.Settings adminSystemImportSettings;
     private final ProxyClient proxyClient;
+    private final DefaultBudgetService defaultBudgetService;
 
     @Override
     public void handle(HttpServerRequest request) {
@@ -310,6 +316,18 @@ public class Proxy implements Handler<HttpServerRequest> {
 
         if (request.method() == HttpMethod.GET && path.equals(VERSION_PATH)) {
             respond(request, HttpStatus.OK, version);
+            return;
+        }
+
+        if (request.method() == HttpMethod.GET && path.equals(OPENAPI_PATH)) {
+            String spec = OpenApiSpec.get();
+            if (spec == null) {
+                respond(request, HttpStatus.NOT_FOUND, "OpenAPI specification is not available");
+            } else {
+                respond(request, HttpStatus.OK, spec, Map.of(
+                        HttpHeaders.CONTENT_TYPE.toString(), "application/yaml; charset=utf-8",
+                        HttpHeaders.CACHE_CONTROL.toString(), "public, max-age=300"));
+            }
             return;
         }
 

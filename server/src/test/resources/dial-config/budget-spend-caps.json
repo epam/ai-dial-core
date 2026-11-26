@@ -107,6 +107,66 @@
           }
         }
       }
+    },
+    "m1": {
+      "type": "chat",
+      "interfaces": {
+        "anthropicMessages": {
+          "base_url": "http://localhost:4848"
+        },
+        "openaiResponses": {
+          "base_url": "http://localhost:4848"
+        }
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    },
+    "m-icpt": {
+      "type": "chat",
+      "interceptors": ["icpt"],
+      "interfaces": {
+        "openaiResponses": {
+          "base_url": "http://localhost:4848"
+        }
+      },
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    }
+  },
+  "interceptors": {
+    "icpt": {
+      "endpoint": "http://localhost:4848/openai/deployments/icpt/chat/completions",
+      "interfaces": {"openaiResponses": {"base_url": "http://localhost:4848/icpt"}}
+    }
+  },
+  "routers": {
+    "r1": {
+      "baseUrl": "http://localhost:4848",
+      "mode": "decision",
+      "interfaces": {
+        "anthropicMessages": {},
+        "openaiResponses": {}
+      }
+    }
+  },
+  "aliases": {
+    "alias-m1": {
+      "presentAs": "model",
+      "target": {"path": "models/m1"}
+    },
+    "strong": {
+      "presentAs": "model",
+      "target": {"path": "routers/r1"}
+    },
+    "alias-icpt": {
+      "presentAs": "model",
+      "target": {"path": "models/m-icpt"}
     }
   },
   "applications": {
@@ -116,6 +176,13 @@
     "app-claude": {
       "interfaces": {
         "anthropicMessages": {
+          "base_url": "http://localhost:4848"
+        }
+      }
+    },
+    "app-responses": {
+      "interfaces": {
+        "openaiResponses": {
           "base_url": "http://localhost:4848"
         }
       }
@@ -140,7 +207,14 @@
         "gpt-other": {},
         "gpt-translated": {},
         "app-chain": {},
-        "app-claude": {}
+        "app-claude": {},
+        "app-responses": {},
+        "m1": {},
+        "m-icpt": {},
+        "alias-icpt": {},
+        "alias-m1": {
+          "requestDay": 1
+        }
       },
       "costLimit": {
         "day": "10",

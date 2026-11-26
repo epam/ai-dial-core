@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,6 +9,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import java.util.regex.Pattern;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record UpstreamAuthConfig(UpstreamAuthType type, String headerName) {
     private static final Pattern HEADER_NAME_PATTERN = Pattern.compile("^[A-Za-z0-9!#$%&'*+.^_`|~-]+$");
     private static final ObjectMapper ENUM_MAPPER = JsonMapper.builder().enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS).build();
