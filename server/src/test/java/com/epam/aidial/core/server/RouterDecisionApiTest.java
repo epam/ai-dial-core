@@ -631,6 +631,7 @@ class RouterDecisionApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void chosenDeploymentTheCallerMayNotCallThroughAnAlias() {
+        List<AnalyticsLogContext> rows = captureRows();
         verdict.set("{\"candidates\": [\"private-model\"]}");
         try (TestWebServer server = server()) {
             verify(sendChat("strong"), 403);
@@ -640,6 +641,11 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertTrue(received.stream().allMatch(this::isDecide));
         assertTrue(received.stream().skip(1)
                 .allMatch(decide -> decide.getHeader("X-DIAL-ROUTER-ATTEMPTS").contains("\"reason\":\"forbidden\"")));
+        // out of candidates, the router's pass answers the refusal and writes no row of its own: the alias's and the
+        // router's rows carry no bodies by design
+        awaitRows(rows, 2);
+        assertEquals(List.of("r-tier", "strong"), rows.stream().map(AnalyticsLogContext::getDeploymentName).sorted().toList());
+        assertTrue(rows.stream().allMatch(row -> row.getRequestBody() == null));
     }
 
     @Test
@@ -1105,6 +1111,32 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         assertEquals("m2", served.getString("model"));
         assertEquals("hi", served.getJsonArray("messages").getJsonObject(0).getString("content"));
         assertEquals(16, served.getInteger("max_tokens"));
+        assertFalse(served.containsKey("temperature"));
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void everyMoveToAnotherCandidateThroughAnAliasStartsFromTheClientsBody() {
+        try (TestWebServer server = new TestWebServer(4848, request -> {
+            received.add(request);
+            if (isDecide(request)) {
+                // the first verdict, then the one asked for after both its candidates failed
+                String candidates = request.getHeader("X-DIAL-ROUTER-ATTEMPTS") == null ? "[\"private-model\", \"m-defaults\"]" : "[\"m2\"]";
+                return TestWebServer.createResponse(200, "{\"candidates\": " + candidates + "}", "content-type", "application/json");
+            }
+            if (request.getPath().contains("/m-defaults/")) {
+                return TestWebServer.createResponse(503, "{\"error\":{\"message\":\"busy\"}}", "content-type", "application/json");
+            }
+            return answer(request);
+        })) {
+            verify(sendChat("strong"), 200);
+        }
+        // private-model refused, m-defaults failed after its chain added its default, then m2 from a new verdict
+        assertEquals(2, received.stream().filter(this::isDecide).count());
+        RecordedRequest failed = single(request -> request.getPath().equals("/openai/deployments/m-defaults/chat/completions"));
+        assertEquals(0.5, new JsonObject(failed.getBody().readUtf8()).getDouble("temperature"));
+        JsonObject served = new JsonObject(single(request -> request.getPath().equals("/openai/deployments/m2/chat/completions")).getBody().readUtf8());
+        assertEquals("hi", served.getJsonArray("messages").getJsonObject(0).getString("content"));
         assertFalse(served.containsKey("temperature"));
     }
 

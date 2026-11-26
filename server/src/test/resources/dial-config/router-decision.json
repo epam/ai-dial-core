@@ -90,7 +90,7 @@
     "m-defaults": {
       "type": "chat",
       "baseUrl": "http://localhost:4848",
-      "interfaces": {"anthropicMessages": {"defaults": {"temperature": 0.5}}}
+      "interfaces": {"openaiChatCompletions": {"defaults": {"temperature": 0.5}}, "anthropicMessages": {"defaults": {"temperature": 0.5}}}
     },
     "m-int": {
       "type": "chat",

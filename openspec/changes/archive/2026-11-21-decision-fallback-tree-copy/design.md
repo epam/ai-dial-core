@@ -81,6 +81,7 @@ None.
   is set.
 - `ProxyUtil.java:parseRequestBody` - takes the call tree in place of parsing, and keeps the first parse's body
   timestamp, so a fallback candidate's parse of a copy is not a second read (as for saved bytes).
+- `MessagesBaseController.java:prepareUpstreamRoute` - no longer sets the body timestamp again after the chain.
 - `MessagesBaseController.java:reenterWithCandidate`, `ChatCompletionsController.java:reenterWithCandidate`,
   `ResponsesController.java:reenterWithCandidate` - unchanged; their parse takes the copy.
 - `DeploymentPostController.java:readRequestBody` - unchanged: deployments-POST still serializes the call tree for a
