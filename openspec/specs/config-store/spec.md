@@ -140,14 +140,15 @@ those types SHALL keep its file key (the key secret, the route name) and a blob 
 
 ### Requirement: Settings overlay
 When the blob `settings/platform/global` exists and parses, Core SHALL take `globalInterceptors`,
-`retriableErrorCodes`, `rateLimitSchedule` and `spendingLimits` from it, a missing field reading as empty
-(`rateLimitSchedule` defaulting to timezone `UTC`, `spendingLimits` to mode `off` and default cost object `ORG`),
-instead of from the file. Deleting the blob SHALL restore the file values.
+`retriableErrorCodes`, `rateLimitSchedule`, `spendingLimits` and `analytics` from it, a missing field reading as empty
+(`rateLimitSchedule` defaulting to timezone `UTC`, `spendingLimits` to mode `off` and default cost object `ORG`,
+`analytics` to `securedSubject: []`), instead of from the file. Deleting the blob SHALL restore the file values.
 
 #### Scenario: Empty settings blob
 - **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{}`
 - **THEN** `GET /v1/settings/platform/global` answers `globalInterceptors: []`, `retriableErrorCodes: []`,
-  `rateLimitSchedule.timezone: "UTC"` and `spendingLimits` with `mode: "off"` and `defaultCostObject: "ORG"`
+  `rateLimitSchedule.timezone: "UTC"`, `spendingLimits` with `mode: "off"` and `defaultCostObject: "ORG"`, and
+  `analytics.securedSubject: []`
 
 #### Scenario: Delete reverts to the file
 - **WHEN** an admin sends `DELETE /v1/settings/platform/global` after a `PUT`
@@ -167,6 +168,11 @@ instead of from the file. Deleting the blob SHALL restore the file values.
 #### Scenario: Delete restores the file's spending limits
 - **WHEN** the file sets `spendingLimits.mode` to `shadow`, the settings blob sets `enforce`, and the blob is deleted
 - **THEN** the effective mode is `shadow`
+
+#### Scenario: Secured subject from the blob
+- **WHEN** an admin sends `PUT /v1/settings/platform/global` with
+  `{"analytics": {"securedSubject": [{"source": "user_name", "function": "EQUAL", "targets": ["test-user"]}]}}`
+- **THEN** `GET /v1/settings/platform/global` answers `analytics.securedSubject` with that one rule
 
 ### Requirement: Write visible on return
 Core SHALL apply a successful Configuration API write or delete to the merged config before answering, so the
@@ -513,9 +519,9 @@ cannot be decrypted, which answers `400`.
 ### Requirement: Settings singleton URL
 `/v1/settings/platform/global` SHALL be the only settings entity: another name SHALL answer `404` on `GET`, `PUT` and
 `DELETE`, and `POST` SHALL answer `405`.
-`GET` SHALL answer `404` while no settings blob exists, else `200` with the four fields, `name: "global"` and
-`status: "valid"`. A `PUT` SHALL drop unknown fields and answer `400` on an invalid `rateLimitSchedule` or
-`spendingLimits`, writing nothing.
+`GET` SHALL answer `404` while no settings blob exists, else `200` with the five fields, `name: "global"` and
+`status: "valid"`. A `PUT` SHALL drop unknown fields and answer `400` on an invalid `rateLimitSchedule`,
+`spendingLimits` or `analytics` (see "Secured subject validation"), writing nothing.
 
 #### Scenario: Unknown field dropped
 - **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{"globalInterceptors": ["q"], "extraField": "ignored"}`
@@ -527,6 +533,25 @@ cannot be decrypted, which answers `400`.
 
 #### Scenario: Invalid default cost object
 - **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{"spendingLimits": {"defaultCostObject": "a/b"}}`
+- **THEN** Core answers `400`
+
+### Requirement: Secured subject validation
+A settings `PUT` SHALL treat `analytics.securedSubject` as invalid when it is `null`, or when a rule has no `source` or
+`function`, has empty targets for a function other than `TRUE` and `FALSE`, or has a `REGEX` target that doesn't
+compile. An empty list SHALL be valid.
+
+#### Scenario: Secured subject rule with an invalid pattern
+- **WHEN** an admin sends `PUT /v1/settings/platform/global` with
+  `{"analytics": {"securedSubject": [{"source": "user_name", "function": "REGEX", "targets": ["("]}]}}`
+- **THEN** Core answers `400`
+
+#### Scenario: Secured subject rule without a source
+- **WHEN** an admin sends `PUT /v1/settings/platform/global` with
+  `{"analytics": {"securedSubject": [{"function": "EQUAL", "targets": ["test-user"]}]}}`
+- **THEN** Core answers `400`
+
+#### Scenario: Null secured subject
+- **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{"analytics": {"securedSubject": null}}`
 - **THEN** Core answers `400`
 
 ### Requirement: Metadata listing

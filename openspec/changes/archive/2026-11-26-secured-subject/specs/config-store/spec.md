@@ -1,3 +1,24 @@
+## ADDED Requirements
+
+### Requirement: Secured subject validation
+A settings `PUT` SHALL treat `analytics.securedSubject` as invalid when it is `null`, or when a rule has no `source` or
+`function`, has empty targets for a function other than `TRUE` and `FALSE`, or has a `REGEX` target that doesn't
+compile. An empty list SHALL be valid.
+
+#### Scenario: Secured subject rule with an invalid pattern
+- **WHEN** an admin sends `PUT /v1/settings/platform/global` with
+  `{"analytics": {"securedSubject": [{"source": "user_name", "function": "REGEX", "targets": ["("]}]}}`
+- **THEN** Core answers `400`
+
+#### Scenario: Secured subject rule without a source
+- **WHEN** an admin sends `PUT /v1/settings/platform/global` with
+  `{"analytics": {"securedSubject": [{"function": "EQUAL", "targets": ["test-user"]}]}}`
+- **THEN** Core answers `400`
+
+#### Scenario: Null secured subject
+- **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{"analytics": {"securedSubject": null}}`
+- **THEN** Core answers `400`
+
 ## MODIFIED Requirements
 
 ### Requirement: Settings overlay
@@ -41,9 +62,7 @@ When the blob `settings/platform/global` exists and parses, Core SHALL take `glo
 `DELETE`, and `POST` SHALL answer `405`.
 `GET` SHALL answer `404` while no settings blob exists, else `200` with the five fields, `name: "global"` and
 `status: "valid"`. A `PUT` SHALL drop unknown fields and answer `400` on an invalid `rateLimitSchedule`,
-`spendingLimits` or `analytics`, writing nothing. `analytics.securedSubject` is invalid when it is `null`, or when a
-rule has no `source` or `function`, has empty targets for a function other than `TRUE` and `FALSE`, or has a `REGEX`
-target that doesn't compile; an empty list is valid.
+`spendingLimits` or `analytics` (see "Secured subject validation"), writing nothing.
 
 #### Scenario: Unknown field dropped
 - **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{"globalInterceptors": ["q"], "extraField": "ignored"}`
@@ -55,18 +74,4 @@ target that doesn't compile; an empty list is valid.
 
 #### Scenario: Invalid default cost object
 - **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{"spendingLimits": {"defaultCostObject": "a/b"}}`
-- **THEN** Core answers `400`
-
-#### Scenario: Secured subject rule with an invalid pattern
-- **WHEN** an admin sends `PUT /v1/settings/platform/global` with
-  `{"analytics": {"securedSubject": [{"source": "user_name", "function": "REGEX", "targets": ["("]}]}}`
-- **THEN** Core answers `400`
-
-#### Scenario: Secured subject rule without a source
-- **WHEN** an admin sends `PUT /v1/settings/platform/global` with
-  `{"analytics": {"securedSubject": [{"function": "EQUAL", "targets": ["test-user"]}]}}`
-- **THEN** Core answers `400`
-
-#### Scenario: Null secured subject
-- **WHEN** an admin sends `PUT /v1/settings/platform/global` with `{"analytics": {"securedSubject": null}}`
 - **THEN** Core answers `400`

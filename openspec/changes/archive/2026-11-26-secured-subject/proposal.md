@@ -36,7 +36,8 @@ None.
 
 - `analytics-log`: a new requirement, "Secured callers". "Bodies in the analytics row" and "No limit on bodies
   waiting to be logged by default" now apply to a secured caller, not only to a secured key.
-- `config-store`: "Settings overlay" and "Settings singleton URL" carry the fifth field, `analytics`.
+- `config-store`: "Settings overlay" and "Settings singleton URL" carry the fifth field, `analytics`; a new
+  requirement, "Secured subject validation", says which `analytics.securedSubject` values a `PUT` rejects.
 
 ## Impact
 
