@@ -49,8 +49,6 @@ dependencies {
     implementation("org.codehaus.janino:janino:${codehaus_janino_version}")
     implementation("org.glassfish:jakarta.el:${glassfish_jakarta_version}")
     implementation("org.hibernate.validator:hibernate-validator:${hibernate_validator_version}")
-    // For plugins: Kotlin finds its reflection through the stdlib's class loader, which is Core's, so a plugin cannot bring its own
-    implementation("org.jetbrains.kotlin:kotlin-reflect:${kotlin_version}")
     implementation("org.redisson:redisson:${redisson_version}")
     implementation("org.slf4j:slf4j-api:${slf4j_version}")
 
