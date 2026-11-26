@@ -124,6 +124,15 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 """);
         verify(response, 400, "Custom application validation failed [Custom application schema not found: http://unknown/schema/id]");
 
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/unknown-field-case", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "my_custom": "12345"
+                }
+                """);
+        verify(response, 400, "Unrecognized property 'my_custom'");
+
         // verify custom app creation fails if dependency is unknown
         response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
                 {
