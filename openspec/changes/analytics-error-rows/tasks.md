@@ -20,7 +20,11 @@ Notes from implementing (each is also in design.md where it changes a decision):
   comes from `ApiKeyData.pathOf`, in `AnalyticsLogContext.fromError`, so no other row changes), "Decided application with an
   encoded name" is `#testDecidedCandidateWithAnEncodedName` (`isErrorRowAllowed()` also compares the decoded name), and "Relayed
   error of a pass served in process" is `#testRelayedErrorOfAnInProcessPassHasOneRow` (`ResponsesController` no longer answers
-  `502` after it relayed a non-streaming answer whose attachment scan failed: an in-process response does not reject it).
+  `502` after it relayed a non-streaming answer whose attachment scan failed: an in-process response does not reject it). When the
+  job save of a non-streamed background request fails, that branch now calls `finalizeRequest()` itself, as the late helper did
+  before, since no poller ends the pass (`ResponsesControllerTest#testBackgroundJobRecordNotSavedFinalizesThePass`). The deltas of
+  `analytics-log` ("Rows without bodies for an alias pass", "Spending limits in the analytics row") and `router-deployment`
+  ("Decision record") say "no row" only with the setting off.
 
 ## 0. Take back the narrow implementation
 

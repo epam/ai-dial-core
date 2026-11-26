@@ -556,10 +556,12 @@ public class ResponsesController extends BaseDeploymentPostController {
                     if (context.isBackgroundJob() && dialId != null) {
                         return proxy.getBackgroundJobService().saveJob(dialId, context)
                                 .transform(result -> {
+                                    response.end(rewritten);
                                     if (result.failed()) {
                                         log.warn("Failed to save background job record", result.cause());
+                                        // no job was recorded, so no poller ends this pass
+                                        finalizeRequest();
                                     }
-                                    response.end(rewritten);
                                     return Future.<Void>succeededFuture();
                                 });
                     } else {

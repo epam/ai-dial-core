@@ -136,7 +136,7 @@ A row has the fields every row has and none that others lack:
 |-----------------------------|------------------------------------------------------------------------------------------------|
 | `response.status`           | the status the **client** got; for a broken stream, the `200` Core had set                     |
 | `response.body`             | empty for an answer Core gave itself: the text is in the WARN line                             |
-| `token_usage`               | absent, except for a broken `/anthropic/v1/messages` stream: it keeps the usage of the events Core had already relayed |
+| `token_usage`               | absent, except for a broken `/anthropic/v1/messages` stream: it keeps the usage of the events Core had already relayed, with no price, and limits are not charged for it |
 | `response.upstream_uri`     | absent when the upstreams were used up, present for a connection that failed                   |
 | `request.body`              | empty for an answer given before the body is read: `403`, `404`, `415` and Core's `429` on `/openai/deployments/{id}/...`. `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages` read the body first, to find the model, so their rows have it |
 | `execution_path`            | absent for an answer given before the pass's per-request key exists: Core's `429`, `403`, `404` and `415`, and a `400` everywhere except `/openai/deployments/{id}/...`, which parses the body after the key exists |
@@ -161,7 +161,9 @@ MCP request or a route (another code path), WebSocket and the polling of a backg
 `analytics.errorRows` as "every failure has a row".
 
 An analytics consumer that sums requests from the rows counts these requests too, with a status of `4xx` or `5xx`. During an outage of
-every upstream that is one row per failed request.
+every upstream that is one row per failed request. A client over its limit gets a `429` that costs Core little, each with a row, which on
+`/openai/v1/...` and `/anthropic/v1/messages` carries the request body: where bodies are logged, set
+`analytics.maxPendingBodyHeapPercent` too, so that waiting rows cannot fill the heap.
 
 ## Storage and rate-limit spans
 

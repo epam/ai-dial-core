@@ -49,7 +49,10 @@ None.
 - `app-to-model-accounting`: "Passes without an analytics row" and "Client gone from an application" gain the exceptions the
   setting makes (their text and scenarios stay for the setting off); new requirements say which answers and breaks write a row
   with the setting on, and which passes never do.
-- `analytics-log`: new requirements for the `analytics.errorRows` setting and for the fields of these rows.
+- `analytics-log`: new requirements for the `analytics.errorRows` setting and for the fields of these rows; "Rows without bodies
+  for an alias pass" and "Spending limits in the analytics row" say that a refusal writes no row only with the setting off.
+- `router-deployment`: "Decision record" says that only the router row is written when every candidate fails only with the
+  setting off.
 
 ## Out of scope
 
