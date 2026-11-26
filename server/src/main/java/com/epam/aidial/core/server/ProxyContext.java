@@ -32,12 +32,14 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.ServerWebSocket;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
@@ -156,6 +158,15 @@ public class ProxyContext {
 
     // the org units above those where the caller holds a role, read at most once per request
     private Set<String> unitsAboveHeldRoles;
+
+    // stands for "nothing to read" in masterApiKeyData, so a miss or a failed read is not repeated
+    private static final ApiKeyData NO_MASTER_COPY = new ApiKeyData();
+
+    // the caller's per request key as the Redis master holds it, read about once per request (two concurrent checks may
+    // both read it); null until read, NO_MASTER_COPY when there is nothing to read
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private volatile ApiKeyData masterApiKeyData;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -399,8 +410,35 @@ public class ProxyContext {
         return budgetCheck == null ? null : budgetCheck.payer();
     }
 
+    /**
+     * Returns the data of the caller's per request key as the Redis master holds it, or null if there is nothing to
+     * read: the caller has another kind of key, the key is gone, the master cannot be read, or the pass is served in
+     * process and has the key from memory. The request is authenticated with a copy that may come from a replica.
+     *
+     * <p>
+     *     The read is blocking, so on an event-loop thread the method reads nothing and returns null.
+     * </p>
+     */
+    public ApiKeyData loadMasterApiKeyData() {
+        if (apiKeyData.getPerRequestKey() == null || isChildPass() || Context.isOnEventLoopThread()) {
+            return null;
+        }
+        ApiKeyData data = masterApiKeyData;
+        if (data == null) {
+            data = Objects.requireNonNullElse(proxy.getApiKeyStore().getPerRequestKeyDataOnMaster(apiKeyData.getPerRequestKey()), NO_MASTER_COPY);
+            masterApiKeyData = data;
+        }
+        return data == NO_MASTER_COPY ? null : data;
+    }
+
+    /**
+     * Returns a context of the same request with other key data. It answers access checks from that data alone and
+     * never reads the key on the Redis master: the data is not the copy the request was authenticated with.
+     */
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
-        return new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+        ProxyContext copy = new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+        copy.masterApiKeyData = NO_MASTER_COPY;
+        return copy;
     }
 
     public boolean isOriginalRequest() {
