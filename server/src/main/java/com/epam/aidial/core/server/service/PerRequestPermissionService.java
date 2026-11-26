@@ -53,9 +53,8 @@ public class PerRequestPermissionService {
                 // global reader holds READ on every resource, and could otherwise pass the right to call any model on
                 throw new PermissionDeniedException("Access to resource is forbidden: " + resourcePermission.getUrl());
             }
-            Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.lookupPermissions(Set.of(resource), context);
-            Set<ResourceAccessType> actual = result.get(resource);
             Set<ResourceAccessType> expected = resourcePermission.getPermissions();
+            Set<ResourceAccessType> actual = accessService.lookupPermissions(resource, context, expected);
             if (!actual.containsAll(expected) || resource.isFolder() && !accessService.mayPassOnFolder(resource, context)) {
                 throw new PermissionDeniedException("Access to resource is forbidden: " + resourcePermission.getUrl());
             }

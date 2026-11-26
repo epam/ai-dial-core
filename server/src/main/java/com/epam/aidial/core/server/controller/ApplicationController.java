@@ -426,7 +426,7 @@ public class ApplicationController {
         }
 
         Map<String, Route> routes = application.getRoutes();
-        if (!hasWriteAccess(application) && routes != null) {
+        if (routes != null && !hasWriteAccess(application)) {
             routes = clearUpstreams(routes);
         }
         data.setRoutes(routes);
