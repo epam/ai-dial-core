@@ -122,7 +122,7 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "description": "My Custom Application Description"
                 }
                 """);
-        verify(response, 400);
+        verify(response, 400, "Custom application validation failed [Custom application schema not found: http://unknown/schema/id]");
 
         // verify custom app creation fails if dependency is unknown
         response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
