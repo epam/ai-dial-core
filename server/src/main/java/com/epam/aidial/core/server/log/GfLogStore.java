@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.log;
 
 import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
+import com.epam.aidial.core.server.limiter.budget.CostObject;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -55,6 +56,7 @@ public class GfLogStore implements LogStore {
     private static final String OUTCOME_KEY = ",\"outcome\":\"";
     private static final String POLICY_KEY = ",\"policy\":\"";
     private static final String ASSIGNMENT_KEY = ",\"assignment\":\"";
+    private static final String SOURCE_KEY = ",\"source\":\"";
 
     private static final String[] CONTROL_SYMBOLS = new String[0x1F + 1];
 
@@ -209,6 +211,15 @@ public class GfLogStore implements LogStore {
                 appendField(entry, POLICY_KEY, payer.instance().policyPath());
                 appendField(entry, ASSIGNMENT_KEY, payer.instance().assignmentPath());
             }
+            append(entry, "}", false);
+        }
+
+        if (logContext.getCostObject() != null) {
+            append(entry, ",\"cost_object\":{\"id\":\"", false);
+            append(entry, logContext.getCostObject(), true);
+            append(entry, "\"", false);
+            CostObject.Source source = logContext.getCostObjectSource();
+            appendField(entry, SOURCE_KEY, source == null ? null : source.toValue());
             append(entry, "}", false);
         }
 

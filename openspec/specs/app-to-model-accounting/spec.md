@@ -428,3 +428,18 @@ target's origin and an analytics row for the target, each kept and written as fo
 - **WHEN** the call completes
 - **THEN** two analytics rows are written: one for `app`, and one for `m` with `parent_deployment: app`,
   `execution_path` `["app", "m"]` and the trace id of `app`'s row
+
+### Requirement: Accepting consent refuses per-request keys
+Core SHALL answer `POST /v1/consent/{id}` from a per-request-key caller with `403` and body `User consent is not allowed
+for per-request keys`, before reading the body, and SHALL store nothing. A caller with a user's JWT or a project API
+key SHALL be served as before.
+
+#### Scenario: Application accepts consent with its key
+- **WHEN** an application called by user `u1` sends `POST /v1/consent/secured-app` with a valid consent body and the
+  per-request key it received
+- **THEN** Core answers `403` with body `User consent is not allowed for per-request keys`, and `GET
+  /v1/consent/secured-app` by `u1` still answers `accepted: false`
+
+#### Scenario: User accepts consent
+- **WHEN** user `u1` sends the same `POST /v1/consent/secured-app` with the user's JWT
+- **THEN** Core answers `200` and the call by `u1` to `secured-app` passes the consent check

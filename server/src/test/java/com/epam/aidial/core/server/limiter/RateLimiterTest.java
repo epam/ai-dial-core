@@ -69,12 +69,15 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -85,7 +88,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -559,6 +564,51 @@ public class RateLimiterTest {
         assertNotNull(checkLimitFuture.result());
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, checkLimitFuture.result().status());
 
+    }
+
+    /**
+     * The request counter is written without the resource lock: concurrent checks must still let exactly the limit through.
+     */
+    @Test
+    public void testLimit_ConcurrentRequestsPassExactlyTheLimit() throws Exception {
+        Config config = new Config();
+        Role role = new Role();
+        Limit limit = new Limit();
+        limit.setRequestHour(20);
+        role.setLimits(Map.of("model", limit));
+        config.getRoles().put("role", role);
+
+        Model model = new Model();
+        model.setName("model");
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+
+        int requests = 40;
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        try {
+            List<java.util.concurrent.Future<HttpStatus>> statuses = new ArrayList<>();
+            for (int i = 0; i < requests; i++) {
+                statuses.add(executor.submit(() -> {
+                    ProxyContext proxyContext = new ProxyContext(mockProxy(config), request, new ApiKeyData(),
+                            new ExtractedClaims("sub", List.of("role"), "user-hash",
+                                    ProxyUtil.MAPPER.createObjectNode(), null, null, null),
+                            "trace-id", "span-id", "01");
+                    proxyContext.setDeployment(model);
+                    return rateLimiter.limit(proxyContext, model).result().status();
+                }));
+            }
+            int passed = 0;
+            for (java.util.concurrent.Future<HttpStatus> status : statuses) {
+                if (status.get() == HttpStatus.OK) {
+                    passed++;
+                }
+            }
+            assertEquals(20, passed);
+        } finally {
+            executor.shutdown();
+        }
     }
 
     @Test
@@ -1289,7 +1339,8 @@ public class RateLimiterTest {
 
     private static long countRecordReads(ResourceService service) {
         return Mockito.mockingDetails(service).getInvocations().stream()
-                .filter(invocation -> invocation.getMethod().getName().equals("getResource") && invocation.getArguments().length == 1)
+                // every read ends in the three-argument form: the one-argument form delegates to it, the counters call it directly
+                .filter(invocation -> invocation.getMethod().getName().equals("getResource") && invocation.getArguments().length == 3)
                 .count();
     }
 
@@ -1562,7 +1613,15 @@ public class RateLimiterTest {
         assertEquals(count(off, "getResource"), count(shadow, "getResource"));
         assertTrue(count(enforce, "getResource") < count(off, "getResource"), checks.toString());
         assertEquals(count(off, "computeResource"), count(enforce, "computeResource"));
-        // after the call: the budget row besides the role records, in shadow and enforce alike
+        // the request counter, written without the lock, in every mode
+        assertEquals(1, count(off, "computeResourceWithoutLock"), checks.toString());
+        assertEquals(1, count(shadow, "computeResourceWithoutLock"));
+        assertEquals(1, count(enforce, "computeResourceWithoutLock"));
+        // after the call: the token, cost and deployment-cost counters in every mode, and the budget row besides
+        // them in shadow and enforce
+        for (SpendingLimitMode mode : SpendingLimitMode.values()) {
+            assertEquals(3, count(charges.get(mode), "computeResourceWithoutLock"), charges.toString());
+        }
         long offCharge = count(charges.get(SpendingLimitMode.OFF), "computeResource");
         long budgetCharge = count(charges.get(SpendingLimitMode.SHADOW), "computeResource");
         assertTrue(budgetCharge > offCharge, charges.toString());
@@ -1592,7 +1651,8 @@ public class RateLimiterTest {
         stubInlineExecutorReturningFailures();
         ResourceService resourceSpy = spy(resourceService);
         doThrow(new IllegalStateException("budget listing")).when(resourceSpy).listResources(any(ResourceDescriptor.class), any());
-        doThrow(new IllegalStateException("token record")).when(resourceSpy).getResource(any(ResourceDescriptor.class));
+        // the limit records are read without the lock
+        doThrow(new IllegalStateException("token record")).when(resourceSpy).getResource(any(ResourceDescriptor.class), any(), eq(false));
         RateLimiter limiter = new RateLimiter(taskExecutor, resourceSpy, mock(ConfigStore.class), BlockingCallTracer.NOOP);
         Config config = budgetConfig(SpendingLimitMode.ENFORCE, "ORG/a");
         ProxyContext context = userContext(config, List.of("role"), "alice");
@@ -1653,6 +1713,41 @@ public class RateLimiterTest {
     }
 
     /**
+     * A caller-wide cost update that gives up does not drop the deployment-scoped one, which runs in the same task.
+     */
+    @Test
+    public void testIncreaseWritesTheDeploymentCost_WhenTheCallerWideCostUpdateGivesUp() {
+        assertDeploymentCostWritten_WhenTheCallerWideCostUpdateFails(new IllegalStateException("Resource changed concurrently on every attempt"));
+    }
+
+    /**
+     * Nor does a failed blob read of the caller-wide record, which surfaces as a checked exception.
+     */
+    @Test
+    public void testIncreaseWritesTheDeploymentCost_WhenTheCallerWideCostBlobReadFails() {
+        assertDeploymentCostWritten_WhenTheCallerWideCostUpdateFails(new IOException("blob storage"));
+    }
+
+    private void assertDeploymentCostWritten_WhenTheCallerWideCostUpdateFails(Exception failure) {
+        stubInlineExecutorReturningFailures();
+        Model model = budgetConfig(SpendingLimitMode.OFF).getModels().get("model");
+        String bucket = BucketBuilder.USER_BUCKET_PATTERN.formatted("busy-hash");
+        ResourceDescriptor callerCosts = ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "costs");
+        ResourceService resourceSpy = spy(resourceService);
+        doAnswer(invocation -> {
+            throw failure;
+        }).when(resourceSpy).computeResourceWithoutLock(eq(callerCosts), any());
+        ConfigStore configStore = mock(ConfigStore.class);
+        when(configStore.get()).thenReturn(new Config());
+        RateLimiter limiter = new RateLimiter(taskExecutor, resourceSpy, configStore, BlockingCallTracer.NOOP);
+
+        assertNotNull(limiter.increase(model, bucket, pricedUsage(), null, null, InterfaceType.OPENAI_CHAT_COMPLETIONS, null).cause());
+
+        assertNull(resourceService.getResource(callerCosts));
+        assertNotNull(resourceService.getResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.LIMIT, bucket, bucket, "model/costs")));
+    }
+
+    /**
      * Shadow, with an unreadable budget counter: the check fails, and the call names the mode and its cost object
      * without an outcome.
      */
@@ -1693,6 +1788,56 @@ public class RateLimiterTest {
         // the budget's one day window of 1000, not the role's day, week and month caps of 100
         assertEquals(List.of(CalendarPeriod.DAY), result.spendCaps().windows().stream().map(SpendCap::period).toList());
         assertEquals(0, new BigDecimal("1000").compareTo(result.spendCaps().reported().total()));
+    }
+
+    /**
+     * A JWT caller's call to an application with the role cost limit used up: enforce lets it through, on both kinds
+     * of route, and reports no caps; shadow and an API key caller keep the role cost limit.
+     */
+    @Test
+    public void testRoleCostLimitOfApplicationCall() {
+        stubInlineExecutor();
+        Application application = new Application();
+        application.setName("app");
+
+        Config enforce = applicationBudgetConfig(SpendingLimitMode.ENFORCE);
+        ProxyContext user = userContext(enforce, List.of("role"), "app-enforce");
+        user.setDeployment(application);
+        seedCost(user, "100");
+
+        assertEquals(HttpStatus.OK, rateLimiter.limit(user, application).result().status());
+        RateLimitResult withCaps = rateLimiter.limitWithSpendCaps(user, application).result();
+        assertEquals(HttpStatus.OK, withCaps.status());
+        assertNull(withCaps.spendCaps());
+
+        Config shadow = applicationBudgetConfig(SpendingLimitMode.SHADOW);
+        ProxyContext shadowUser = userContext(shadow, List.of("role"), "app-shadow");
+        shadowUser.setDeployment(application);
+        seedCost(shadowUser, "100");
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, rateLimiter.limit(shadowUser, application).result().status());
+
+        Key key = new Key();
+        key.setRole("role");
+        key.setKey("app-key");
+        key.setProject("app-key");
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(key);
+        ProxyContext apiKey = new ProxyContext(mockProxy(enforce), request, apiKeyData, null, "trace-id", "span-id", "01");
+        apiKey.setDeployment(application);
+        seedCost(apiKey, "100");
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, rateLimiter.limit(apiKey, application).result().status());
+    }
+
+    private static Config applicationBudgetConfig(SpendingLimitMode mode) {
+        Config config = budgetConfig(mode, "ORG/a");
+        Role role = config.getRoles().get("role");
+        Limit limit = new Limit();
+        limit.setMinute(100_000);
+        limit.setDay(100_000);
+        role.setLimits(Map.of("model", role.getLimits().get("model"), "app", limit));
+        return config;
     }
 
     private static Config budgetConfig(SpendingLimitMode mode, String... assignmentIds) {
@@ -1752,7 +1897,7 @@ public class RateLimiterTest {
         Map<String, Long> calls = new TreeMap<>();
         for (Invocation invocation : mockingDetails(resourceSpy).getInvocations()) {
             String name = invocation.getMethod().getName();
-            if (Set.of("getResource", "listResources", "computeResource").contains(name)) {
+            if (Set.of("getResource", "listResources", "computeResource", "computeResourceWithoutLock").contains(name)) {
                 calls.merge(name, 1L, Long::sum);
             }
         }
