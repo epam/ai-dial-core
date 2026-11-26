@@ -129,6 +129,10 @@ public class MessagesController extends MessagesBaseController {
                                             @ApiHeader(name = "anthropic-ratelimit-unified-overage-reset", description = "Same value as `anthropic-ratelimit-unified-reset`")
                                     }),
                             @ApiResponse(code = 400),
+                            @ApiResponse(code = 402, description = "With enforced budgets, no budget for the model, to the client's own request, "
+                                    + "directly or through an alias: `billing_error` with a message naming the model and the cost object, "
+                                    + "`x-should-retry: false` and no `retry-after`",
+                                    body = @ApiSchema(implementation = AnthropicErrorData.class)),
                             @ApiResponse(code = 403),
                             @ApiResponse(code = 404),
                             @ApiResponse(code = 415),
@@ -139,8 +143,10 @@ public class MessagesController extends MessagesBaseController {
                                     + "an unreadable spend counter of a caller with a cost limit gives `billing_error` with only `x-should-retry: false` and "
                                     + "`anthropic-ratelimit-unified-overage-disabled-reason: fetch_error`; "
                                     + "a token, request or per-minute cost limit gives `rate_limit_error` with `retry-after`, and `x-should-retry: true` for rolling windows only; "
-                                    + "with enforced budgets, no budget for the model gives the DIAL error body naming the model and the cost object, "
-                                    + "with `x-should-retry: false` and no `retry-after`",
+                                    + "with enforced budgets, no budget for the model gives, to a call made with a per-request key, "
+                                    + "the DIAL error body naming the model and the cost object, with `error.code` `no_budget`, "
+                                    + "`x-should-retry: false` and no `retry-after`; "
+                                    + "a used-up budget without a cap to report gives the DIAL error body with `error.code` `budget_exhausted` and `retry-after`",
                                     body = @ApiSchema(implementation = AnthropicErrorData.class)),
                             @ApiResponse(code = 500),
                             @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class)),
@@ -190,6 +196,7 @@ public class MessagesController extends MessagesBaseController {
      * An alias pass leaves the headers its target pass wrote.
      */
     private void putLimitHeaders(HttpServerResponse response, ProxyResponse proxyResponse) {
+        removeRefusalMark(response.headers());
         if (context.getDeployment() instanceof AliasPass) {
             return;
         }
@@ -201,6 +208,13 @@ public class MessagesController extends MessagesBaseController {
 
     @Override
     protected void processResponse(ProxyResponse proxyResponse) {
+        if (isNoBudgetOfTarget(proxyResponse)) {
+            proxyResponse.body()
+                    .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
+                    .compose(this::answerNoBudgetOfTarget)
+                    .onFailure(this::handleProxyConnectionError);
+            return;
+        }
         if (!context.isStreamingRequest()) {
             proxyResponse.body()
                     .onSuccess(ignore -> context.setUpstreamBodyReceived(true))
@@ -236,6 +250,28 @@ public class MessagesController extends MessagesBaseController {
         putLimitHeaders(response, proxyResponse);
         response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
+        return collectTokenUsage(body)
+                .transform(result -> {
+                    if (result.failed()) {
+                        log.warn("Failed to collect token usage", result.cause());
+                    }
+                    completeProxyResponse(() -> response.end(body));
+                    return Future.<Void>succeededFuture();
+                });
+    }
+
+    /**
+     * Answers the client as a direct call of the target does: the 429's message as the 402, and none of the target pass's
+     * other headers.
+     */
+    private Future<Void> answerNoBudgetOfTarget(Buffer markedBody) {
+        HttpServerResponse response = context.getResponse();
+        Buffer body = AnthropicLimitResponses.putNoBudget(response.headers(), readNoBudgetMessage(markedBody));
+        context.setResponseBody(body);
+        context.setResponseBodyTimestamp(System.currentTimeMillis());
+        response.setStatusCode(AnthropicLimitResponses.PAYMENT_REQUIRED);
+        response.setChunked(false);
+        response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(body.length()));
         return collectTokenUsage(body)
                 .transform(result -> {
                     if (result.failed()) {

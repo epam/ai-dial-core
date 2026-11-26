@@ -18,6 +18,7 @@ import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.function.CollectResponseAttachmentsFn;
 import com.epam.aidial.core.server.function.RouterModelFn;
 import com.epam.aidial.core.server.function.request.RequestObject;
+import com.epam.aidial.core.server.limiter.NoBudgetException;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
@@ -55,9 +56,12 @@ import org.apache.commons.lang3.Strings;
 
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
@@ -66,6 +70,7 @@ import static com.epam.aidial.core.server.Proxy.HEADER_APPLICATION_PROPERTIES;
 
 @Slf4j
 public class BaseDeploymentPostController {
+    private static final String NO_BUDGET_REFUSAL = "no_budget";
     private static final Set<Integer> DEFAULT_RETRIABLE_HTTP_CODES = Set.of(HttpStatus.TOO_MANY_REQUESTS.getCode(),
             HttpStatus.BAD_GATEWAY.getCode(), HttpStatus.GATEWAY_TIMEOUT.getCode(),
             HttpStatus.SERVICE_UNAVAILABLE.getCode());
@@ -125,6 +130,49 @@ public class BaseDeploymentPostController {
     protected void respond(HttpStatus status, Object result) {
         finalizeRequest();
         context.respond(status, result);
+    }
+
+    /**
+     * Answers the no-budget refusal once no decision is left. Inside Core it stays a 429, which an alias pass and a router
+     * fall back on, and only the client's own request gets the route's answer. An alias's target pass marks its 429, so
+     * that its alias pass answers its client as this pass would.
+     *
+     * @param clientAnswer answers the client's own request, the route's way
+     */
+    protected void respondNoBudget(NoBudgetException rejection, Consumer<NoBudgetException> clientAnswer) {
+        if (context.isOriginalRequest()) {
+            clientAnswer.accept(rejection);
+        } else if (context.getApiKeyData().isMadeByAliasPass()) {
+            Map<String, String> headers = new HashMap<>(rejection.getHeaders());
+            headers.put(Proxy.HEADER_DIAL_REFUSAL, NO_BUDGET_REFUSAL);
+            respond(new HttpException(rejection.getStatus(), rejection.getMessage(), headers));
+        } else {
+            respond(rejection);
+        }
+    }
+
+    /**
+     * An alias pass answering its client with the no-budget refusal its target pass marked.
+     */
+    protected boolean isNoBudgetOfTarget(ProxyResponse proxyResponse) {
+        return context.getDeployment() instanceof AliasPass && context.isOriginalRequest()
+                && proxyResponse.statusCode() == HttpStatus.TOO_MANY_REQUESTS.getCode()
+                && NO_BUDGET_REFUSAL.equals(proxyResponse.headers().get(Proxy.HEADER_DIAL_REFUSAL));
+    }
+
+    /** Only Core's own refusal is marked, and it always has the DIAL error body. */
+    protected static String readNoBudgetMessage(Buffer markedBody) {
+        return JsonUtil.tryParse(markedBody.getBytes()).path("error").path("message").asText();
+    }
+
+    /**
+     * The refusal mark goes only from an alias's target pass to its alias pass, so every other answer loses it, whoever
+     * sent it.
+     */
+    protected void removeRefusalMark(MultiMap headers) {
+        if (!(context.getDeployment() instanceof AliasPass) || !context.getApiKeyData().isMadeByAliasPass()) {
+            headers.remove(Proxy.HEADER_DIAL_REFUSAL);
+        }
     }
 
     /**

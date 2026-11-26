@@ -152,6 +152,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_API = "X-DIAL-API";
     public static final String HEADER_ROUTER_ATTEMPTS = "X-DIAL-ROUTER-ATTEMPTS";
     public static final String HEADER_ROUTER_NOTICE = "X-DIAL-ROUTER-NOTICE";
+    // Core's own mark of a refusal, from an alias's target pass to its alias pass; on the Responses routes never relayed
+    // from outside Core
+    public static final String HEADER_DIAL_REFUSAL = "X-DIAL-REFUSAL";
 
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);

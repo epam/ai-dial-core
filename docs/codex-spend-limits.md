@@ -54,8 +54,8 @@ instead of by the role `costLimit` (see the `spendingLimits` row in the README).
 429s then describe a budget.
 
 - **Which budget.** DIAL looks at the budgets of the user's cost object: the project in the token's project claim
-  (`identityProviders.<idp>.projectPath`), or `spendingLimits.defaultCostObject` when the token has none. Set
-  `projectPath` to the claim that holds the project, for example `project` for the identity provider the `dial`
+  (`identityProviders.<idp>.costObjectPath`), or `spendingLimits.defaultCostObject` when the token has none. Set
+  `costObjectPath` to the claim that holds the project, for example `project` for the identity provider the `dial`
   launcher uses. The `aud` or `azp` of the sample settings would make the OAuth client id the cost object.
 - **Reported only with one budget.** DIAL reports a budget only when the user has exactly one unexpired budget in
   that cost object, whatever models it covers. With several, or none, a 200 answer carries no `x-codex-*` header,
@@ -69,18 +69,27 @@ instead of by the role `costLimit` (see the `spendingLimits` row in the README).
   limit` or `You've exceeded your monthly cost limit`. It names the used-up window and the reset of the budget that
   can pay again first, the first by priority on a tie. This holds with one budget or several, and wins over a token
   or request limit.
-- **No budget for the model.** 429 with the DIAL error body, whose `message` names the model and the cost object,
-  with `x-should-retry: false`, no `retry-after` and no `x-codex-*` header, also through an alias. Only an admin
-  adding a budget can make the call pass; clients built on the OpenAI SDKs do not retry it. Whether Codex CLI reads
-  `x-should-retry` has not been checked.
+- **No budget for the model.** 400 with the message as `text/plain`:
+  `No DIAL spend limit is assigned for <model> in project <cost object>. Ask your DIAL admin to assign one.` It
+  comes with `x-should-retry: false`, and no `retry-after` or `x-codex-*` header, also when the request asked for a
+  stream, and also through an alias or a router. Codex CLI prints the message of a 400 after one request, and hides
+  the message of a 429. Only an admin adding a budget can make the call pass.
+  - A background request (`"background": true`) through an alias gets the 429 below: its target pass runs over HTTP
+    to Core's own address, where the alias pass cannot mark it.
+  - A call made with a per-request key (an application's, an interceptor's, a translator's) gets a 429 with the DIAL
+    error body, `code` `no_budget` and the same message instead. Inside Core the refusal stays a 429 until the pass that answers the
+    client, so an alias candidate and a router still fall back on it.
+  - When an interceptor runs in front of the model, global interceptors included, the refusal is made on the
+    interceptor's call, so Codex gets what the interceptor answers: the 429 if it passes the answer on.
 - **Counter unreadable.** A token or request limit that rejects decides the answer. Otherwise the request gets the
   "could not read your spend limit" 429 below when a budget below 2^53 covers the model, and the usual 500 when
   none does.
 - **Translated deployments** only read the budget. With one budget they get its headers, even when it covers other
   models only, and the `usage_limit_reached` 429 once it is used up. In every other case the request is forwarded
   without `x-codex-*` headers, and the translator's call back to DIAL is checked and charged.
-- **Applications** keep the role `costLimit`. An application's own call to a model is checked against the budget of
-  the user who called the application.
+- **Applications** are not checked against the role `costLimit` or the budget, and a call to one carries no
+  `x-codex-*` header. An application's own call to a model is checked against the budget of the user who called the
+  application. API key callers keep the role `costLimit` on every call.
 - **Charging.** In `shadow` and `enforce`, a call to a model is charged to the budget that pays for it, as on every
   other model route.
 - **`shadow` mode** keeps reporting and enforcing the role `costLimit`. Budgets are checked and charged but never
