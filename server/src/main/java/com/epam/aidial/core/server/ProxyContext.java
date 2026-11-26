@@ -156,10 +156,14 @@ public class ProxyContext {
     // the org units above those where the caller holds a role, read at most once per request
     private Set<String> unitsAboveHeldRoles;
 
-    // the caller's per request key as the Redis master holds it, read at most once per request; null until then
+    // stands for "nothing to read" in masterApiKeyData, so a miss or a failed read is not repeated
+    private static final ApiKeyData NO_MASTER_COPY = new ApiKeyData();
+
+    // the caller's per request key as the Redis master holds it, read about once per request (two concurrent checks may
+    // both read it); null until read, NO_MASTER_COPY when there is nothing to read
     @Getter(AccessLevel.NONE)
     @Setter(AccessLevel.NONE)
-    private volatile Optional<ApiKeyData> masterApiKeyData;
+    private volatile ApiKeyData masterApiKeyData;
 
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
@@ -406,12 +410,12 @@ public class ProxyContext {
         if (apiKeyData.getPerRequestKey() == null || isChildPass() || Context.isOnEventLoopThread()) {
             return null;
         }
-        Optional<ApiKeyData> data = masterApiKeyData;
+        ApiKeyData data = masterApiKeyData;
         if (data == null) {
-            data = Optional.ofNullable(proxy.getApiKeyStore().getPerRequestKeyDataOnMaster(apiKeyData.getPerRequestKey()));
+            data = Objects.requireNonNullElse(proxy.getApiKeyStore().getPerRequestKeyDataOnMaster(apiKeyData.getPerRequestKey()), NO_MASTER_COPY);
             masterApiKeyData = data;
         }
-        return data.orElse(null);
+        return data == NO_MASTER_COPY ? null : data;
     }
 
     /**
@@ -420,7 +424,7 @@ public class ProxyContext {
      */
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
         ProxyContext copy = new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
-        copy.masterApiKeyData = Optional.empty();
+        copy.masterApiKeyData = NO_MASTER_COPY;
         return copy;
     }
 
