@@ -50,6 +50,25 @@ The label is not unique and must not be used as a budget identifier. Multiple as
 share its name. Updating only the display name at the same policy path changes subsequent responses without
 resetting spend or changing limits, priority order or enforcement. No locale selection is performed.
 
+## Default budget
+
+A user can pick one budget they hold as their **default budget**. Later versions use it to pay the user's calls that
+name no budget; in this version Core only stores it. Only the user picks it: an admin cannot set it, and neither an
+API key nor an application calling with a per-request key can read or set it (403).
+
+- `GET /v1/user/budgets/default` answers `{"budget": "<costObject>/<id>"}`, or `{"budget": null}` when no default is
+  set or the user no longer holds that budget (its assignment was withdrawn or has expired, or its subject no longer
+  matches them).
+- `PUT /v1/user/budgets/default` with `{"budget": "projA/engineering-alice"}` sets it, and answers with the same body.
+  The budget must be one the user holds now, one of those `GET /v1/user/limits` lists for them, in any cost object.
+  Otherwise the answer is 400, with the same message whether or not the budget exists.
+- `PUT /v1/user/budgets/default` with `{"budget": null}` clears it.
+
+The id is the path of the assignment that grants the budget, `<costObject>/<id>`, or the policy path of a
+self-applying policy. The default works in every `spendingLimits.mode`. Core keeps it as a private record in the
+user's bucket, which the files and resource APIs cannot reach. A default whose budget is withdrawn stays stored and
+reads as unset. It counts again if the same assignment is granted back.
+
 ## Rollout
 
 Existing policies require no migration and use the policy path as their label. Deploy supporting Core versions
