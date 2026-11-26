@@ -190,7 +190,8 @@ public class ResponsesController extends BaseDeploymentPostController {
             + "`x-codex-primary-*` headers at 100; an unreadable spend counter of a caller with a cost limit gives an error "
             + "without `retry-after`; a token, request or per-minute cost limit gives an error with `retry-after`; "
             + "with enforced budgets, no budget for the model gives a call made with a per-request key an error naming the "
-            + "model and the cost object, with `x-should-retry: false` and no `retry-after`",
+            + "model and the cost object, with `error.code` `no_budget`, `x-should-retry: false` and no `retry-after`; "
+            + "a used-up budget without a cap to report gives an error with `error.code` `budget_exhausted` and `retry-after`",
             body = @ApiSchema(implementation = ErrorData.class))
     @ApiResponse(code = 500)
     @ApiResponse(code = 502, description = "Bad Gateway - failed to connect to upstream server", body = @ApiSchema(implementation = ErrorData.class))

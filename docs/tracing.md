@@ -222,7 +222,9 @@ A deployment an origin plugin calls in process (see [plugins](dynamic-settings/p
 has no server span of its own, as no HTTP request comes into Core for it. Core writes no span attributes for it, so
 they do not land on the plugin's server span. Its HTTP origin requests keep their client spans, under the plugin's
 server span, and send a `traceparent` of the client's trace. Its analytics row and token-stats span carry the trace id
-of the plugin's request, a span id of their own and the plugin's span as the parent.
+of the plugin's request, a span id of their own and the plugin's span as the parent. A call through the plugin's host
+to a route other than a deployment's, such as the caller's user info, has no server span and writes no span
+attributes either, nor a row or a token-stats span.
 
 ## Target pass of an alias call
 

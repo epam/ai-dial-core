@@ -10,10 +10,14 @@ import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.opentelemetry.sdk.trace.IdGenerator;
 import io.vertx.core.Future;
+import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
+import io.vertx.core.http.HttpHeaders;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.tracing.opentelemetry.VertxContextStorageProvider;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.Strings;
 
 import java.util.HashSet;
 import java.util.List;
@@ -24,8 +28,8 @@ import javax.annotation.Nullable;
  * Serves the in-process calls a plugin makes while it answers one attempt of an embedded pass, and the target pass of
  * an alias call that Core serves in process through its built-in forward plugin ({@link #forAliasHop}). Each call is a
  * child pass: an in-memory request routed by Core's own controller selection, authenticated by the per-request key
- * record of the plugin's pass, so it is checked, limited, charged and logged as a request with that key, with no HTTP
- * request into Core and no key lookup.
+ * record of the plugin's pass, so it is served as that request sent to Core with that key (a create operation checked,
+ * limited, charged and logged), with no HTTP request into Core and no key lookup.
  *
  * <p>Calls run on the plugin's context, the one {@code Plugin.handle} was called on. Each child pass runs on a
  * duplicate of it, with its own locals but the plugin's OTel context, so the child's HTTP origin calls are traced
@@ -104,10 +108,10 @@ public final class VertxHostDelegate implements HostDelegate {
     }
 
     /**
-     * Whether a call to {@code path} (without the query) reaches a route an in-process call serves: the create
-     * operations.
+     * Whether a {@code POST} to {@code path} (without the query) reaches a create operation, whose pass takes the body
+     * as a tree; any other pass reads it as bytes.
      */
-    public static boolean servesCall(String path) {
+    public static boolean takesBodyTree(String path) {
         return CREATE_ROUTES.stream().anyMatch(route -> route.matches(path));
     }
 
@@ -118,8 +122,14 @@ public final class VertxHostDelegate implements HostDelegate {
 
     @Override
     public Future<Response> call(Call call) {
-        if (call == null || call.uri() == null || call.body() == null) {
-            return pluginContext.failedFuture(new IllegalArgumentException("A call needs a uri and a body"));
+        if (call == null || call.method() == null || call.uri() == null) {
+            return pluginContext.failedFuture(new IllegalArgumentException("A call needs a method and a uri"));
+        }
+        String path = pathOf(call.uri());
+        // a create operation's pass takes the body as a tree; any other pass reads its bytes, as over HTTP
+        boolean bodyAsTree = HttpMethod.POST.equals(call.method()) && takesBodyTree(path);
+        if (bodyAsTree && call.body() == null) {
+            return pluginContext.failedFuture(new IllegalArgumentException("A call to a create operation needs a body"));
         }
         ContextInternal childContext = pluginContext.duplicate();
         Object otelContext = pluginContext.getLocal(VertxContextStorageProvider.ACTIVE_CONTEXT);
@@ -131,12 +141,16 @@ public final class VertxHostDelegate implements HostDelegate {
             response.setStatusCode(HttpStatus.UNAUTHORIZED.getCode()).end("Unknown api key");
             return response.answer();
         }
-        String path = pathOf(call.uri());
-        if (!servesCall(path)) {
-            return pluginContext.failedFuture(new IllegalArgumentException("A call reaches the create operations only, not " + path));
+        if (aliasHop && !bodyAsTree) {
+            // an alias pass's request to its target: a toolset alias's chat completion names the toolset's MCP
+            // endpoint, and fails, as a chat completion to the toolset does
+            return pluginContext.failedFuture(new IllegalArgumentException("An alias hop serves the create operations only, not " + path));
         }
-        if (isResponses(path) && call.body().path("background").asBoolean(false)) {
+        if (bodyAsTree && isResponses(path) && call.body().path("background").asBoolean(false)) {
             return pluginContext.failedFuture(new IllegalArgumentException("A call cannot create a background response"));
+        }
+        if (isUploadOrWebSocket(call.headers())) {
+            return pluginContext.failedFuture(new IllegalArgumentException("A file upload or a WebSocket is not a call: send it over HTTP"));
         }
 
         ApiKeyData key = callKey != null ? callKey : parent.getProxyApiKeyData();
@@ -146,10 +160,11 @@ public final class VertxHostDelegate implements HostDelegate {
             return response.answer();
         }
 
-        EmbeddedServerRequest request = new EmbeddedServerRequest(call.uri(), call.headers(), response);
+        EmbeddedServerRequest request = new EmbeddedServerRequest(call.method(), call.uri(), call.headers(), call.body(),
+                bodyAsTree ? null : proxy.getTaskExecutor(), response);
         ProxyContext child = new ProxyContext(proxy, request, key, null, null,
                 IdGenerator.random().generateSpanId(), parent.getTraceFlags());
-        child.setCallTree(call.body());
+        child.setCallTree(bodyAsTree ? call.body() : null);
         child.setAliasTargetPass(aliasHop && writesOnAliasSpan(parent));
         responses.add(response);
         response.finished().onSuccess(ignored -> {
@@ -163,7 +178,17 @@ public final class VertxHostDelegate implements HostDelegate {
                 answer.cancel();
             }
         });
-        childContext.runOnContext(ignored -> {
+        // the bytes are read before the pass, on its context: over HTTP, Core answers a body over the size limit before
+        // any controller reads it; a tree is not measured, as no create operation's call ever was
+        childContext.runOnContext(ignored -> request.body().onComplete(bytes -> {
+            if (closed) {
+                // close() has cancelled the answer
+                return;
+            }
+            if (bytes.succeeded() && bytes.result().length() > proxy.getResourceService().getMaxSize()) {
+                response.setStatusCode(HttpStatus.REQUEST_ENTITY_TOO_LARGE.getCode()).end("Request body is too large");
+                return;
+            }
             Future<?> result;
             try {
                 result = proxy.dispatch(child);
@@ -171,8 +196,13 @@ public final class VertxHostDelegate implements HostDelegate {
                 result = Future.failedFuture(e);
             }
             result.onFailure(error -> proxy.handleError(error, request));
-        });
+        }));
         return response.answer();
+    }
+
+    private static boolean isUploadOrWebSocket(@Nullable MultiMap headers) {
+        return headers != null && (Strings.CI.startsWith(headers.get(HttpHeaders.CONTENT_TYPE), "multipart/")
+                || Strings.CI.contains(headers.get(HttpHeaders.UPGRADE), "websocket"));
     }
 
     /**

@@ -858,16 +858,47 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void testNoBudgetOnChatCompletionsHasNoShouldRetry() {
-        // the header is for the routes that report spend caps; chat completions keeps today's answer
+    void testNoBudgetOnChatCompletions() {
         budgetFor("projA/a1", 10, "10", null, List.of("claude-other"));
-        Response response = send(HttpMethod.POST, "/openai/deployments/gpt-translated/chat/completions", null,
-                "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}", "content-type", "application/json", "authorization", USER_A);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        Metrics.addRegistry(registry);
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            Response response = postChatCompletions("gpt-translated");
 
-        assertEquals(429, response.status(), response.body());
-        assertEquals(noBudgetMessage("gpt-translated"), parse(response.body()).get("error").get("message").asText());
-        assertNull(header(response, "x-should-retry"), response.headers().toString());
-        assertNull(header(response, "retry-after"));
+            assertEquals(403, response.status(), response.body());
+            JsonNode error = parse(response.body()).get("error");
+            assertEquals("no_budget", error.get("code").asText());
+            assertEquals(noBudgetMessage("gpt-translated"), error.get("message").asText());
+            // x-should-retry is for the routes that report spend caps
+            assertNull(header(response, "x-should-retry"), response.headers().toString());
+            assertNull(header(response, "retry-after"));
+            assertEquals(0, upstreamCalls.get());
+            assertEquals(1, registry.counter("dial_budget_rejections_total", "reason", "no_budget", "mode", "enforce").count());
+        } finally {
+            Metrics.removeRegistry(registry);
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testBudgetUsedUpOnChatCompletions() {
+        budget("projA/a1", 10, "10", null);
+        spend("projA/a1", "gpt-translated", "10");
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            Response response = postChatCompletions("gpt-translated");
+
+            assertEquals(429, response.status(), response.body());
+            assertEquals("budget_exhausted", parse(response.body()).get("error").get("code").asText());
+            assertRetryAfterWithin(response, expectedReset(CalendarPeriod.DAY));
+            assertEquals(0, upstreamCalls.get());
+        }
+    }
+
+    private Response postChatCompletions(String model) {
+        return send(HttpMethod.POST, "/openai/deployments/" + model + "/chat/completions", null,
+                "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}", "content-type", "application/json", "authorization", USER_A);
     }
 
     // --- Unreadable budget counter -----------------------------------------------------------------------------------------
@@ -1183,6 +1214,24 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
             assertEquals(200, response.status(), response.body());
             assertEquals(1, upstreamCalls.get());
             assertEquals(1, registry.counter("dial_budget_rejections_total", "reason", "budget_exhausted", "mode", "shadow").count());
+        } finally {
+            Metrics.removeRegistry(registry);
+        }
+    }
+
+    @Test
+    @DialConfigLocation(SHADOW_CONFIG)
+    void testShadowNoBudgetDoesNotReject() {
+        budgetFor("projA/a1", 10, "10", null, List.of("claude-other"));
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        Metrics.addRegistry(registry);
+        AtomicInteger upstreamCalls = new AtomicInteger();
+        try (TestWebServer server = upstreams(upstreamCalls)) {
+            Response response = postMessages("claude-spend", USER_A);
+
+            assertEquals(200, response.status(), response.body());
+            assertEquals(1, upstreamCalls.get());
+            assertEquals(1, registry.counter("dial_budget_rejections_total", "reason", "no_budget", "mode", "shadow").count());
         } finally {
             Metrics.removeRegistry(registry);
         }
@@ -1634,7 +1683,7 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
     private static void assertNoBudgetAnswer(Response response, String model) {
         assertEquals(429, response.status(), response.body());
         JsonNode error = parse(response.body()).get("error");
-        assertEquals("429", error.get("code").asText());
+        assertEquals("no_budget", error.get("code").asText());
         assertEquals(noBudgetMessage(model), error.get("message").asText());
         assertEquals("You have no budget for this model", error.get("display_message").asText());
         assertEquals("false", header(response, "x-should-retry"), response.headers().toString());
