@@ -22356,11 +22356,7 @@ components:
           description: The user id as DIAL resolves it from the identity provider configuration (not necessarily the token's sub claim). Present only for user-based session authentication. Use this value as owner_user_id when retrieving credentials on behalf of the user.
         userClaims:
           type: object
-          additionalProperties:
-            type: array
-            description: Array representation of a specific claim value (normalized for backward compatibility)
-            items:
-              type: string
+          additionalProperties: true
           description: Normalized token claims. Present only for user-based session authentication.
         userDisplayName:
           type: string
