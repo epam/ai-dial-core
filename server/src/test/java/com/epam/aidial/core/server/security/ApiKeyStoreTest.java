@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
+import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -17,12 +18,18 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.Redisson;
+import org.redisson.api.RBucket;
 import org.redisson.api.RKeys;
+import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.RedisTimeoutException;
+import org.redisson.client.codec.Codec;
+import org.redisson.client.codec.StringCodec;
 import org.redisson.config.ConfigSupport;
 import redis.embedded.RedisServer;
 
@@ -30,6 +37,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -40,9 +48,12 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -353,6 +364,136 @@ public class ApiKeyStoreTest {
         assertEquals(apiKeyData, res1.result());
 
         assertTrue(store.getApiKeyData("unknown-key", null).failed());
+    }
+
+    @Test
+    public void testGetApiKeyDataReadsMasterWhenReplicaMisses() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        ApiKeyData apiKeyData = new ApiKeyData();
+        store.assignPerRequestApiKey(apiKeyData);
+        ApiKeyStore laggingStore = new ApiKeyStore(taskExecutor, mockLaggingReplica(), null, new JsonObject(), BlockingCallTracer.NOOP);
+
+        assertEquals(apiKeyData, laggingStore.getApiKeyData(apiKeyData.getPerRequestKey(), null).result());
+
+        Future<ApiKeyData> unknown = laggingStore.getApiKeyData(ApiKeyGenerator.generateKey(), null);
+        assertTrue(unknown.failed());
+        assertEquals(HttpStatus.UNAUTHORIZED, ((HttpException) unknown.cause()).getStatus());
+    }
+
+    @Test
+    public void testMasterReadFailureKeepsReplicaAnswer() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        RedissonClient unreachableMaster = mock(RedissonClient.class);
+        when(unreachableMaster.getBucket(any(), any())).thenReturn(mock(RBucket.class));
+        when(unreachableMaster.getScript(StringCodec.INSTANCE)).thenReturn(mock(RScript.class, invocation -> {
+            throw new RedisTimeoutException("master timed out");
+        }));
+        ApiKeyStore unreachableStore = new ApiKeyStore(taskExecutor, unreachableMaster, null, new JsonObject(), BlockingCallTracer.NOOP);
+
+        Future<ApiKeyData> unknown = unreachableStore.getApiKeyData(ApiKeyGenerator.generateKey(), null);
+        assertTrue(unknown.failed());
+        assertEquals(HttpStatus.UNAUTHORIZED, ((HttpException) unknown.cause()).getStatus());
+        assertNull(unreachableStore.getPerRequestKeyDataOnMaster(ApiKeyGenerator.generateKey()));
+    }
+
+    @Test
+    public void testUpdateApiKeyReadsMasterWhenReplicaMisses() {
+        ApiKeyData apiKeyData = new ApiKeyData();
+        store.assignPerRequestApiKey(apiKeyData);
+        ApiKeyStore laggingStore = new ApiKeyStore(taskExecutor, mockLaggingReplica(), null, new JsonObject(), BlockingCallTracer.NOOP);
+        MutableObject<String> seen = new MutableObject<>();
+
+        laggingStore.updatePerRequestApiKey(apiKeyData.getPerRequestKey(), json -> {
+            seen.setValue(json);
+            return json;
+        });
+
+        assertEquals(apiKeyData, ProxyUtil.convertToObject(seen.getValue(), ApiKeyData.class));
+        assertThrows(IllegalArgumentException.class,
+                () -> laggingStore.updatePerRequestApiKey(ApiKeyGenerator.generateKey(), json -> json));
+    }
+
+    @Test
+    @Timeout(30)
+    public void testUpdateApiKeyReadsMasterWhenReplicaIsBehind() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        ApiKeyData apiKeyData = new ApiKeyData();
+        store.assignPerRequestApiKey(apiKeyData);
+        String key = apiKeyData.getPerRequestKey();
+        MutableObject<String> issued = new MutableObject<>();
+        store.updatePerRequestApiKey(key, json -> {
+            issued.setValue(json);
+            return attachFile(json, "a/first.txt");
+        });
+        // plain reads return the copy from before the first update; everything else goes to the real Redis
+        RedissonClient behindRedis = mock(RedissonClient.class);
+        when(behindRedis.getBucket(any(), any())).thenAnswer(invocation -> {
+            RBucket<String> real = redissonClient.getBucket(invocation.getArgument(0), (Codec) invocation.getArgument(1));
+            RBucket<String> bucket = mock(RBucket.class, delegatesTo(real));
+            lenient().doReturn(issued.getValue()).when(bucket).get();
+            return bucket;
+        });
+        when(behindRedis.getScript(StringCodec.INSTANCE)).thenReturn(redissonClient.getScript(StringCodec.INSTANCE));
+        ApiKeyStore behindStore = new ApiKeyStore(taskExecutor, behindRedis, null, new JsonObject(), BlockingCallTracer.NOOP);
+
+        behindStore.updatePerRequestApiKey(key, json -> attachFile(json, "a/second.txt"));
+
+        assertEquals(Set.of("a/first.txt", "a/second.txt"), store.getApiKeyData(key, null).result().getAttachedFiles().keySet());
+    }
+
+    private static String attachFile(String json, String path) {
+        ApiKeyData data = ProxyUtil.convertToObject(json, ApiKeyData.class);
+        data.getAttachedFiles().put(path, new AutoSharedData(ResourceAccessType.READ_ONLY));
+        return ProxyUtil.convertToString(data);
+    }
+
+    @Test
+    public void testAssignApiKeyAddsCallerPermissionsFromMaster() {
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        PerRequestSharedData read = new PerRequestSharedData(Set.of(ResourceAccessType.READ));
+        PerRequestSharedData write = new PerRequestSharedData(Set.of(ResourceAccessType.WRITE));
+        ApiKeyData caller = new ApiKeyData();
+        caller.getPerRequestReceivers().put("app", Map.of("files/bucket/granted.txt", read, "files/bucket/both.txt", read,
+                "files/bucket/two-receivers.txt", write));
+        caller.getPerRequestReceivers().put("initial-app", Map.of("files/bucket/two-receivers.txt", read));
+        caller.getPerRequestReceivers().put("another-app", Map.of("files/bucket/another.txt", read));
+        store.assignPerRequestApiKey(caller);
+        // built from a copy of the caller's key that had no grant for the receiver yet
+        ApiKeyData data = new ApiKeyData();
+        data.setCallerKey(caller.getPerRequestKey());
+        data.setCallerReceivers(List.of("app", "initial-app"));
+        data.getPerRequestSharedResources().put("files/bucket/both.txt", write);
+
+        store.assignPerRequestApiKey(data);
+
+        ApiKeyData stored = store.getApiKeyData(data.getPerRequestKey(), null).result();
+        assertNull(stored.getCallerKey(), "the caller's key must not be stored");
+        // for a resource granted to two receivers the later one's grant counts, as when the key is built
+        assertEquals(Map.of("files/bucket/granted.txt", read, "files/bucket/two-receivers.txt", read,
+                        "files/bucket/both.txt", new PerRequestSharedData(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE))),
+                stored.getPerRequestSharedResources());
+    }
+
+    /**
+     * A client whose plain reads find nothing, as a replica behind the master does, and whose scripts run on the real Redis.
+     */
+    private static RedissonClient mockLaggingReplica() {
+        RedissonClient laggingRedis = mock(RedissonClient.class);
+        when(laggingRedis.getBucket(any(), any())).thenReturn(mock(RBucket.class));
+        when(laggingRedis.getScript(StringCodec.INSTANCE)).thenReturn(redissonClient.getScript(StringCodec.INSTANCE));
+        return laggingRedis;
     }
 
     @Test

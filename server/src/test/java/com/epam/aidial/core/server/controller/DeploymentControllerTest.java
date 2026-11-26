@@ -1,0 +1,92 @@
+package com.epam.aidial.core.server.controller;
+
+import com.epam.aidial.core.server.Proxy;
+import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ModelData;
+import com.epam.aidial.core.server.util.FieldSelection;
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
+import com.fasterxml.jackson.databind.JsonNode;
+import io.vertx.core.Future;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.RejectedExecutionException;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
+
+public class DeploymentControllerTest {
+
+    private final Proxy proxy = mock(Proxy.class);
+    private final ProxyContext context = mock(ProxyContext.class);
+    private final AsyncTaskExecutor executor = mock(AsyncTaskExecutor.class);
+
+    private DeploymentController controller;
+
+    @BeforeEach
+    void setUp() {
+        when(proxy.getTaskExecutor()).thenReturn(executor);
+        controller = new DeploymentController(proxy, context);
+    }
+
+    @Test
+    void selectedFieldsAreProjectedOnTheExecutor() throws Exception {
+        when(executor.submit(any(Callable.class))).thenAnswer(invocation ->
+                Future.succeededFuture(((Callable<?>) invocation.getArgument(0)).call()));
+        ModelData model = new ModelData();
+        model.setId("m");
+        model.setDisplayVersion("1.0");
+
+        controller.respondListing(List.of(model), FieldSelection.parse("display_version", Set.of("id", "object")));
+
+        verify(executor).submit(any(Callable.class));
+        ArgumentCaptor<Object> body = ArgumentCaptor.forClass(Object.class);
+        verify(context).respond(eq(HttpStatus.OK), body.capture());
+        JsonNode expected = ProxyUtil.MAPPER.readTree("[{\"id\": \"m\", \"object\": \"model\", \"display_version\": \"1.0\"}]");
+        assertEquals(expected, body.getValue());
+        verifyNoMoreInteractions(context);
+    }
+
+    @Test
+    void failedProjectionAnswersInternalError() {
+        when(executor.submit(any(Callable.class))).thenReturn(Future.failedFuture(new IllegalStateException("boom")));
+
+        controller.respondListing(List.of(new ModelData()), FieldSelection.parse("display_name", Set.of("id")));
+
+        verify(context).respond(any(IllegalStateException.class), eq("Internal error"));
+        verify(context, never()).respond(eq(HttpStatus.OK), any(Object.class));
+    }
+
+    @Test
+    void failureWithItsOwnStatusIsPassedOn() {
+        HttpException forbidden = new HttpException(HttpStatus.FORBIDDEN, "no access");
+        when(executor.submit(any(Callable.class))).thenReturn(Future.failedFuture(forbidden));
+
+        controller.respondListing(List.of(new ModelData()), FieldSelection.parse("display_name", Set.of("id")));
+
+        verify(context).respond(same(forbidden), eq("Internal error"));
+    }
+
+    @Test
+    void rejectedSubmissionAnswersInternalError() {
+        when(executor.submit(any(Callable.class))).thenThrow(new RejectedExecutionException("closed"));
+
+        controller.respondListing(List.of(new ModelData()), FieldSelection.parse("display_name", Set.of("id")));
+
+        verify(context).respond(any(RejectedExecutionException.class), eq("Internal error"));
+    }
+}

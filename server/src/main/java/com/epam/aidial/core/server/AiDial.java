@@ -41,6 +41,7 @@ import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.http.HttpProxySelector;
 import com.epam.aidial.core.server.limiter.RateLimiter;
 import com.epam.aidial.core.server.limiter.budget.BudgetCounterSweepService;
+import com.epam.aidial.core.server.limiter.budget.DefaultBudgetService;
 import com.epam.aidial.core.server.log.AnalyticsSettings;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
@@ -305,8 +306,10 @@ public class AiDial {
                     tokenRefreshStrategyFactory, credentialEncryptionService, timeProvider, tokenService);
             ResourceAuthSettingsEncryptionService resourceAuthSettingsEncryptionService = new ResourceAuthSettingsEncryptionService(
                     credentialEncryptionService);
-            ExternalServiceService externalServiceService = new ExternalServiceService(
-                    resourceService, resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor);
+            ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
+                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
+            ExternalServiceService externalServiceService = new ExternalServiceService(resourceService,
+                    resourceAuthSettingsEncryptionService, resourceCredentialsService, secretFieldProcessor, resourceAuthSettingsService);
 
             // Before the config stores: they validate every plugins entry against the provider of its type
             PluginRegistry pluginRegistry = PluginRegistry.load(settings("plugins"));
@@ -341,8 +344,6 @@ public class AiDial {
                     resourceService, mergedConfigStore, complexResourceService, encryptionService, httpProxySelector);
             CatalogSchemaService catalogSchemaService = new CatalogSchemaService(resourceService, mergedConfigStore, encryptionService);
 
-            ResourceAuthSettingsService resourceAuthSettingsService = getResourceAuthSettingsService(
-                    resourceCredentialsService, tokenRefreshStrategyFactory, resourceRegistrationService);
             AuthorizationHeaderProvider authorizationHeaderProvider = new AuthorizationHeaderProvider(resourceCredentialsService);
             AuthSettingsResolver authSettingsResolver = new AuthSettingsResolver(
                     encryptionService, resourceAuthSettingsEncryptionService);
@@ -355,7 +356,7 @@ public class AiDial {
                     resourceRegistrationService, resourceAuthSettingsService);
 
             UserExternalServiceService userExternalServiceService = new UserExternalServiceService(
-                    resourceService, resourceAuthSettingsEncryptionService, encryptionService);
+                    resourceService, resourceAuthSettingsEncryptionService, encryptionService, externalServiceService);
             ApplicationService applicationService = new ApplicationService(vertx, taskExecutor, redis, apiKeyStore, encryptionService,
                     secretFieldProcessor, externalServiceService, resourceService, lockService, operatorService, applicationSchemaService,
                     catalogSchemaService, mergedConfigStore, generator, settings("applications"));
@@ -481,7 +482,8 @@ public class AiDial {
                     configAuthService, configApplyService, configValidationService,
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
                     adminSystemExportService, adminSystemExportSettings, orgUnitService,
-                    adminSystemImportService, adminSystemImportSettings, proxyClient);
+                    adminSystemImportService, adminSystemImportSettings, proxyClient,
+                    new DefaultBudgetService(resourceService));
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn

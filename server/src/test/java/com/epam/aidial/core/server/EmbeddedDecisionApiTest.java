@@ -280,6 +280,21 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void testPluginReadsTheCallerWhileDeciding() {
+        try (TestWebServer server = server(this::answer)) {
+            verify(chat("r1", CHAT_BODY, "X-Test-Decide", "m1",
+                    "X-Test-Decide-Call", "/v1/user/info", "X-Test-Decide-Call-Method", "GET"), 200);
+        }
+        TestOriginPluginProvider.DecideCall call = decided(0).calls().get(0);
+        assertEquals("200 ended", call.outcome().get());
+        assertEquals("""
+                {"roles":["default"],"project":"EPM-RTC-GPT","costObject":"EPM-RTC-GPT","costObjectSource":"key",\
+                "userDisplayName":"EPM-RTC-GPT"}""", call.body().toString());
+        assertEquals(1, received.stream().filter(request -> isFor(request, "m1")).count());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     @SneakyThrows
     void testCallAfterTheDecision() {
         // the chosen model answers slowly, so the pass is still serving it when the plugin calls: only the end of the
@@ -347,6 +362,12 @@ class EmbeddedDecisionApiTest extends ResourceBaseTest {
             streamIgnoringBreak("r1", "X-Test-Decide", "m1", "X-Test-Notice-Call", "/openai/deployments/m2/chat/completions");
             Decided notice = awaitDecided(1);
             awaitCondition(() -> !notice.calls().isEmpty() && "401 ended".equals(notice.calls().get(0).outcome().get()));
+
+            streamIgnoringBreak("r1", "X-Test-Decide", "m1",
+                    "X-Test-Notice-Call", "/v1/user/info", "X-Test-Notice-Call-Method", "GET");
+            Decided userInfoNotice = awaitDecided(3);
+            awaitCondition(() -> !userInfoNotice.calls().isEmpty() && "401 ended".equals(userInfoNotice.calls().get(0).outcome().get()));
+            assertEquals("Unknown api key", userInfoNotice.calls().get(0).body().toString());
         }
         assertEquals(0, received.stream().filter(request -> isFor(request, "m2")).count());
     }

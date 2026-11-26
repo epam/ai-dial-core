@@ -45,6 +45,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *   {@code X-Test-Call*} ones, so a plugin of this type serving the target does not call again;</li>
  *   <li>{@code X-Test-Call-Again} makes the call carry the {@code X-Test-Call*} headers too, so such a target calls again;</li>
  *   <li>{@code X-Test-Call-Model: <name>} sets {@code model} in the tree first;</li>
+ *   <li>{@code X-Test-Call-Method: <method>} makes the call with that method, without a body for a method other than
+ *   {@code POST} unless {@code X-Test-Call-With-Body} is set;</li>
  *   <li>{@code X-Test-Call-Cancel} cancels the call after its first chunk and answers a chat completion itself;</li>
  *   <li>{@code X-Test-Await-Cancel} answers nothing until the host says the request is cancelled, then counts it in
  *   {@link #TOLD_CANCELLED} and fails the call.</li>
@@ -60,7 +62,9 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <li>{@code X-Test-Decide-Strip} removes {@code messages} from its body tree first;</li>
  *   <li>{@code X-Test-Decide-Call: <path>} calls that path through the host and answers once the call's answer ended;
  *   {@code X-Test-Decide-Call-Stream: <path>} starts a streamed call and answers without waiting;</li>
- *   <li>on a notice, {@code X-Test-Notice-Call: <path>} calls that path through the host first.</li>
+ *   <li>on a notice, {@code X-Test-Notice-Call: <path>} calls that path through the host first;</li>
+ *   <li>{@code X-Test-Decide-Call-Method} and {@code X-Test-Notice-Call-Method: <method>} make those calls with that
+ *   method, without a body for a method other than {@code POST}.</li>
  * </ul>
  * {@code X-Test-Fail: call} and {@code X-Test-Await-Cancel} apply to a decide request too.
  * The setting {@code failCreate: true} makes {@link #create} throw, {@code createNull: true} return null,
@@ -251,7 +255,9 @@ public class TestOriginPluginProvider implements PluginProvider {
                 headers.add(header.getKey(), header.getValue());
             }
         });
-        Future<Response> answer = host.call(new Call(path, headers, body));
+        HttpMethod callMethod = method(request.headers(), "X-Test-Call-Method");
+        boolean withBody = callMethod.equals(HttpMethod.POST) || request.headers().contains("X-Test-Call-With-Body");
+        Future<Response> answer = host.call(new Call(callMethod, path, headers, withBody ? body : null));
         if (!request.headers().contains("X-Test-Call-Cancel")) {
             return answer.map(Relay::new);
         }
@@ -286,7 +292,8 @@ public class TestOriginPluginProvider implements PluginProvider {
         Context context = Vertx.currentContext();
         if (headers.contains("X-DIAL-ROUTER-NOTICE")) {
             String path = headers.get("X-Test-Notice-Call");
-            return (path == null ? Future.<Void>succeededFuture() : callThrough(host, path, false, decided)).map(ignored -> json(200, "{}"));
+            return (path == null ? Future.<Void>succeededFuture()
+                    : callThrough(host, method(headers, "X-Test-Notice-Call-Method"), path, false, decided)).map(ignored -> json(200, "{}"));
         }
         if ("call".equals(headers.get("X-Test-Fail"))) {
             return Future.failedFuture(new IllegalStateException("test-origin failed the decision"));
@@ -306,10 +313,11 @@ public class TestOriginPluginProvider implements PluginProvider {
         }
         String streamed = headers.get("X-Test-Decide-Call-Stream");
         if (streamed != null) {
-            callThrough(host, streamed, true, decided);
+            callThrough(host, HttpMethod.POST, streamed, true, decided);
         }
         String path = headers.get("X-Test-Decide-Call");
-        Future<Void> before = path == null ? Future.succeededFuture() : callThrough(host, path, false, decided);
+        Future<Void> before = path == null ? Future.succeededFuture()
+                : callThrough(host, method(headers, "X-Test-Decide-Call-Method"), path, false, decided);
         String delay = headers.get("X-Test-Decide-Delay-Ms");
         if (delay != null) {
             before = before.compose(ignored -> {
@@ -332,23 +340,25 @@ public class TestOriginPluginProvider implements PluginProvider {
     }
 
     /**
-     * Calls {@code path} through the host with a small chat body of its own, and records how the call's answer ended.
-     * The future completes when that answer has ended or failed.
+     * Calls {@code path} through the host with {@code method}, a {@code POST} with a small chat body of its own, and
+     * records how the call's answer ended and its body. The future completes when that answer has ended or failed.
      */
-    private static Future<Void> callThrough(HostDelegate host, String path, boolean stream, Decided decided) {
-        DecideCall call = new DecideCall(path, new AtomicReference<>("sent"));
+    private static Future<Void> callThrough(HostDelegate host, HttpMethod method, String path, boolean stream, Decided decided) {
+        DecideCall call = new DecideCall(path, new AtomicReference<>("sent"), new StringBuffer());
         decided.calls().add(call);
-        ObjectNode body;
-        try {
-            body = (ObjectNode) MAPPER.readTree(CALL_BODY);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-        if (stream) {
-            body.put("stream", true);
+        ObjectNode body = null;
+        if (method.equals(HttpMethod.POST)) {
+            try {
+                body = (ObjectNode) MAPPER.readTree(CALL_BODY);
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+            if (stream) {
+                body.put("stream", true);
+            }
         }
         Promise<Void> done = Promise.promise();
-        host.call(new Call(path, MultiMap.caseInsensitiveMultiMap(), body)).onComplete(result -> {
+        host.call(new Call(method, path, MultiMap.caseInsensitiveMultiMap(), body)).onComplete(result -> {
             if (result.failed()) {
                 call.outcome().set("failed: " + result.cause().getMessage());
                 done.complete();
@@ -362,10 +372,14 @@ public class TestOriginPluginProvider implements PluginProvider {
             }).endHandler(ignored -> {
                 call.outcome().set(answer.statusCode() + " ended");
                 done.tryComplete();
-            }).handler(chunk -> {
-            });
+            }).handler(chunk -> call.body().append(chunk.toString()));
         });
         return done.future();
+    }
+
+    private static HttpMethod method(MultiMap headers, String name) {
+        String method = headers.get(name);
+        return method == null ? HttpMethod.POST : HttpMethod.valueOf(method);
     }
 
     private static int status(MultiMap headers) {
@@ -444,9 +458,10 @@ public class TestOriginPluginProvider implements PluginProvider {
 
     /**
      * A call a deciding plugin made: {@code sent}, then the answer's status, then {@code <status> ended} or
-     * {@code <status> failed} as its body ended, or {@code failed: <message>} when the call itself failed.
+     * {@code <status> failed} as its body ended, or {@code failed: <message>} when the call itself failed; and the
+     * answer's body as it arrived.
      */
-    public record DecideCall(String path, AtomicReference<String> outcome) {
+    public record DecideCall(String path, AtomicReference<String> outcome, StringBuffer body) {
     }
 
     /**

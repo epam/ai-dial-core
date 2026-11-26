@@ -3,8 +3,7 @@ package com.epam.aidial.core.plugin;
 import io.vertx.core.Future;
 
 /**
- * Core, as one request of a plugin sees it. It serves the calls the plugin makes to other deployments while
- * it answers that request.
+ * Core, as one request of a plugin sees it. It serves the calls the plugin makes to Core while it answers that request.
  *
  * <p>Core creates one host per attempt to answer a request and hands it to {@link Plugin#handle} with that
  * request. It cannot be set up once for the plugin: it carries that request's per-request key, which authenticates
@@ -14,14 +13,21 @@ import io.vertx.core.Future;
 public interface HostDelegate {
 
     /**
-     * Calls a deployment in process, as a child pass of the request the plugin answers: Core checks, limits, charges
-     * and logs it as a request that deployment's per-request key sends to Core, with no HTTP request into Core.
+     * Serves a call in process, as a child pass of the request the plugin answers, with no HTTP request into Core: Core
+     * answers it as it answers that request sent over HTTP with the call's key. A call to a create operation calls a
+     * deployment, which Core checks, limits, charges and logs as a request that deployment's per-request key sends to
+     * Core; any other route, such as {@code GET /v1/user/info} or a resource's, is answered by its own controller, and
+     * a body longer than Core's {@code resources.maxSize} gets {@code 413}. A call reaches the routes Core serves once it
+     * has authenticated a request: not {@code OPTIONS}, {@code /health}, {@code /version}, {@code /openapi.yaml} or
+     * the MCP resource metadata, which Core answers before that.
      *
      * <p>Call it on the context {@link Plugin#handle} was called on. The future completes there with the answer
      * once its status and headers are known, and the answer's body emits there, as an {@link Response} of a
      * plugin does. An answer of any status, {@code 404} or {@code 429} included, completes the future; it fails only
-     * for a call Core cannot serve: a path outside the operations {@link Call#uri()} names, a Responses call
-     * with {@code background: true}, or an answer cut before its status.
+     * for a call Core cannot serve: a call without a method or a uri, a call to a create operation without a body, a
+     * Responses call with {@code background: true}, a file upload or a WebSocket (a multipart {@code Content-Type} or
+     * a WebSocket {@code Upgrade}), or an answer cut before its status. A file upload or a WebSocket goes to Core over
+     * HTTP with the {@code API-KEY} header of the request.
      *
      * <p>A call ends with the request it belongs to: once the plugin's request has ended, Core cancels the answers
      * still open and answers a later call {@code 401}.
@@ -29,8 +35,6 @@ public interface HostDelegate {
      * <p>On a router's {@code POST /decide} request, the calls carry the decide request's key instead, and they end
      * with the decide call: once the plugin's answer has been read, Core cancels the calls still open. A notice request
      * ({@code X-DIAL-ROUTER-NOTICE}) carries no key, so every call made while answering it is answered {@code 401}.
-     * In process a plugin can call only the operations {@link Call#uri()} names; {@code GET /v1/user/info} and
-     * file reads go to Core over HTTP with the {@code API-KEY} header of the request.
      */
     Future<Response> call(Call call);
 

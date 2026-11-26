@@ -6,6 +6,7 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
+import com.epam.aidial.core.server.proxy.embedded.EmbeddedServerRequest;
 import com.epam.aidial.core.server.token.CompletionTokensDetails;
 import com.epam.aidial.core.server.token.PromptTokensDetails;
 import com.epam.aidial.core.server.token.TokenUsage;
@@ -539,8 +540,29 @@ class GenAiTraceAttributesTest {
         }
     }
 
+    // plugin-call-user-info design D3: the pass of a plugin's user info call has no body tree, and writes nothing on
+    // its plugin's span either
+
+    @Test
+    void pluginCallPassWithoutBodyWritesNoSpanAttribute() {
+        HttpServerRequest request = mock(EmbeddedServerRequest.class, RETURNS_DEEP_STUBS);
+        when(request.getHeader("traceparent"))
+                .thenReturn("00-11111111111111111111111111111111-2222222222222222-01");
+        ProxyContext context = context(proxy(enabledSettings()), request);
+        try (var ignored = mockStatic(Span.class)) {
+            Span span = mock(Span.class);
+            when(span.isRecording()).thenReturn(true);
+            when(Span.current()).thenReturn(span);
+
+            GenAiTraceAttributes.initialize(context);
+
+            verifyNoInteractions(span);
+            assertEquals("2222222222222222", context.getTracingAttributes().get("dial.request.parent_span.id"));
+        }
+    }
+
     private static ProxyContext childContext(boolean aliasTarget) {
-        ProxyContext context = context(proxy(enabledSettings()));
+        ProxyContext context = context(proxy(enabledSettings()), mock(EmbeddedServerRequest.class, RETURNS_DEEP_STUBS));
         context.setCallTree(ProxyUtil.MAPPER.createObjectNode());
         context.setAliasTargetPass(aliasTarget);
         return context;

@@ -121,6 +121,7 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 | Span                                                     | Covers                                                                        | Attributes                                    |
 |----------------------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------|
 | `auth.api_key.lookup`                                    | Reading a per-request API key from Redis                                      |                                               |
+| `auth.api_key.lookup_master`                             | Reading a per-request API key from the Redis master: after a replica miss, before an access refusal, before building a nested call's key |                                               |
 | `auth.api_key.assign`                                    | Storing the per-request API key handed to the upstream deployment             |                                               |
 | `auth.jwks.fetch`                                        | Fetching an identity provider's signing key; once per key id while it is cached |                                             |
 | `deployment.resolve`                                     | Finding the requested deployment and checking access and user consent         |                                               |
@@ -128,7 +129,7 @@ executor) start no traces of their own. They do not depend on `genAiSpanAttribut
 | `rate_limit.read_spend`                                  | Reading the caller's spend caps, unchecked, for a translated Anthropic request |                                              |
 | `oauth.request`                                          | A call to an authorization server: token exchange, metadata discovery, registration | `http.request.method`, `server.address`, `http.response.status_code` |
 | `kms.encrypt`, `kms.decrypt`                             | A call to the configured AWS, Azure or GCP key management service             |                                               |
-| `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage) |
+| `resource.get`, `resource.compute`, `resource.put`, `resource.delete` | A `ResourceService` operation, including Redis access and lock waits | `dial.resource.type`; `resource.get` also has `dial.cache.hit` (`false` when the value was read from blob storage); a `resource.compute` of a rate-limit counter, which takes only a pod-local lock, also has `dial.resource.attempts` (`1` unless the first read, from a replica, missed the last write, or another writer changed the record, or it expired, between a read and its write) |
 | `cost_stats.get`, `cost_stats.update`, `cost_stats.delete` | Reading, creating or updating, or deleting the per-trace usage record kept in Redis only; `update` and `delete` include the lock wait |  |
 | `blob.<operation>`                                       | One blob storage call: `load`, `store`, `meta`, `exists`, `delete`, `copy`, `list`, and the multipart upload calls | `blob.load`: `dial.blob.found`; `blob.store`: `dial.blob.size` |
 
@@ -157,6 +158,9 @@ stays at 0 unless `analytics.maxPendingBodyHeapPercent` is set.
 | `dial_lock_wait{phase="redis"}`       | timer | Time `lock()` spends on the Redis lock: one round-trip, plus the backoff spin while another holder has the key |
 | `dial_lock_queue_size{phase="local"}` | gauge | Threads of this pod blocked in `lock()` until another thread of this pod releases the key                      |
 | `dial_lock_queue_size{phase="redis"}` | gauge | Threads of this pod spinning in `lock()` until another holder releases the Redis key                           |
+| `dial_lock_wait{phase="local_only"}`  | timer | Time `LockService.lockLocally()` (rate-limit counter updates) waits for other threads of this pod on the key   |
+| `dial_lock_queue_size{phase="local_only"}` | gauge | Threads of this pod blocked in `lockLocally()` until another thread of this pod releases the key       |
+| `dial_resource_compute_give_ups_total` | counter | Rate-limit counter updates that failed because other pods changed the counter on each of the 32 attempts  |
 | `dial_lock_hold`                      | timer | Time a lock taken with `lock()` is held                                                                        |
 | `dial_async_tasks_queued`             | gauge | `AsyncTaskExecutor` tasks submitted and not started yet                                                        |
 | `dial_async_task_start_delay`         | timer | Time from `AsyncTaskExecutor.submit()` until the task starts running                                           |
@@ -171,6 +175,8 @@ Locks:
 - `dial_lock_wait` is tagged with `outcome`: `success`, or `error` when the `redis` phase throws, e.g. while Redis is
   down. The `local` phase always succeeds.
   The waits are recorded when `lock()` returns or throws, the hold when the lock is released.
+- `lockLocally()` (rate-limit counter updates) waits only for threads of this pod. Its `local_only` wait is recorded
+  when it returns and always succeeds, and its hold is not measured.
 - A thread that takes a free lock is not queued. A thread waiting for the Redis key counts in
   `dial_lock_queue_size{phase="redis"}` while it spins, not during the first round-trip.
 - Locks taken with `tryLock()` (resource sync to blob storage, sweeps, application deployment, code interpreter
@@ -222,7 +228,9 @@ A deployment an origin plugin calls in process (see [plugins](dynamic-settings/p
 has no server span of its own, as no HTTP request comes into Core for it. Core writes no span attributes for it, so
 they do not land on the plugin's server span. Its HTTP origin requests keep their client spans, under the plugin's
 server span, and send a `traceparent` of the client's trace. Its analytics row and token-stats span carry the trace id
-of the plugin's request, a span id of their own and the plugin's span as the parent.
+of the plugin's request, a span id of their own and the plugin's span as the parent. A call through the plugin's host
+to a route other than a deployment's, such as the caller's user info, has no server span and writes no span
+attributes either, nor a row or a token-stats span.
 
 ## Target pass of an alias call
 

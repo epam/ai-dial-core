@@ -10,9 +10,11 @@ import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.data.cache.CacheBreakpointContext;
 import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
+import com.epam.aidial.core.server.limiter.budget.CostObject;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
+import com.epam.aidial.core.server.proxy.embedded.EmbeddedServerRequest;
 import com.epam.aidial.core.server.proxy.embedded.VertxHostDelegate;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -27,12 +29,14 @@ import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.ServerWebSocket;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
@@ -85,7 +89,8 @@ public class ProxyContext {
     private Deployment deployment;
     private String userId;
     private List<String> userRoles;
-    private String userProject;
+    // the cost object the identity provider resolved from the caller's token at costObjectPath
+    private String claimCostObject;
     // what the pre-call budget check found, for the analytics row and the charge; null when budgets were not considered
     private BudgetCheck budgetCheck;
     private String userHash;
@@ -151,6 +156,15 @@ public class ProxyContext {
     // the org units above those where the caller holds a role, read at most once per request
     private Set<String> unitsAboveHeldRoles;
 
+    // stands for "nothing to read" in masterApiKeyData, so a miss or a failed read is not repeated
+    private static final ApiKeyData NO_MASTER_COPY = new ApiKeyData();
+
+    // the caller's per request key as the Redis master holds it, read about once per request (two concurrent checks may
+    // both read it); null until read, NO_MASTER_COPY when there is nothing to read
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private volatile ApiKeyData masterApiKeyData;
+
     public ProxyContext(Proxy proxy, HttpServerRequest request, ApiKeyData apiKeyData,
                         ExtractedClaims extractedClaims, String traceId, String spanId, String traceFlags) {
         this.proxy = proxy;
@@ -182,7 +196,7 @@ public class ProxyContext {
             this.userRoles = extractedClaims.userRoles();
             this.userHash = extractedClaims.userHash();
             this.userId = extractedClaims.userId();
-            this.userProject = extractedClaims.project();
+            this.claimCostObject = extractedClaims.project();
             this.userDisplayName = extractedClaims.userDisplayName();
         } else {
             this.userRoles = Objects.requireNonNull(originalKey, "API key must be provided if user claims are missed")
@@ -249,11 +263,38 @@ public class ProxyContext {
         return proxy == null ? null : proxy.getTracingSettings();
     }
 
+    /**
+     * Transition name of {@code getClaimCostObject()}, kept until its callers move to the cost object.
+     */
+    public String getUserProject() {
+        return claimCostObject;
+    }
+
+    /**
+     * The token's cost object claim, or the API key's project; never the default cost object. Kept during the
+     * transition to the cost object for its callers that use the project as a client identifier.
+     */
     public String getProject() {
-        if (userProject != null) {
-            return userProject;
+        if (claimCostObject != null) {
+            return claimCostObject;
         }
         return key == null ? null : key.getProject();
+    }
+
+    /**
+     * The cost object the root caller's calls are charged to: the token's claim, the API key's project, or
+     * {@code spendingLimits.defaultCostObject} of the current config.
+     */
+    public String getCostObject() {
+        return resolveCostObject().id();
+    }
+
+    public CostObject.Source getCostObjectSource() {
+        return resolveCostObject().source();
+    }
+
+    private CostObject resolveCostObject() {
+        return CostObject.resolve(claimCostObject, key, () -> getConfig().getSpendingLimits());
     }
 
     /**
@@ -356,8 +397,35 @@ public class ProxyContext {
         return budgetCheck == null ? null : budgetCheck.payer();
     }
 
+    /**
+     * Returns the data of the caller's per request key as the Redis master holds it, or null if there is nothing to
+     * read: the caller has another kind of key, the key is gone, the master cannot be read, or the pass is served in
+     * process and has the key from memory. The request is authenticated with a copy that may come from a replica.
+     *
+     * <p>
+     *     The read is blocking, so on an event-loop thread the method reads nothing and returns null.
+     * </p>
+     */
+    public ApiKeyData loadMasterApiKeyData() {
+        if (apiKeyData.getPerRequestKey() == null || isChildPass() || Context.isOnEventLoopThread()) {
+            return null;
+        }
+        ApiKeyData data = masterApiKeyData;
+        if (data == null) {
+            data = Objects.requireNonNullElse(proxy.getApiKeyStore().getPerRequestKeyDataOnMaster(apiKeyData.getPerRequestKey()), NO_MASTER_COPY);
+            masterApiKeyData = data;
+        }
+        return data == NO_MASTER_COPY ? null : data;
+    }
+
+    /**
+     * Returns a context of the same request with other key data. It answers access checks from that data alone and
+     * never reads the key on the Redis master: the data is not the copy the request was authenticated with.
+     */
     public ProxyContext copyWith(ApiKeyData newApiKeyData) {
-        return new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+        ProxyContext copy = new ProxyContext(proxy, request, newApiKeyData, extractedClaims, traceId, spanId, traceFlags);
+        copy.masterApiKeyData = NO_MASTER_COPY;
+        return copy;
     }
 
     public boolean isOriginalRequest() {
@@ -404,10 +472,11 @@ public class ProxyContext {
 
     /**
      * Whether Core serves this pass in process, for an origin plugin's call or as the target pass of an alias call
-     * ({@link #isAliasTargetPass}).
+     * ({@link #isAliasTargetPass}). Only the host creates the in-memory request, and only a create operation's call has a
+     * body tree.
      */
     public boolean isChildPass() {
-        return callTree != null;
+        return request instanceof EmbeddedServerRequest;
     }
 
     /**
