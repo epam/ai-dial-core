@@ -175,7 +175,8 @@ public class ApiKeyStore {
         try {
             return blockingCallTracer.trace("auth.api_key.lookup_master", () -> readOnMaster(redisKey));
         } catch (RedisException e) {
-            log.warn("Can't read a per request key on the Redis master, the replica's answer stands: {}", e.toString());
+            // the class only: Redisson's message carries the command's params, and with them the key
+            log.warn("Can't read a per request key on the Redis master, the replica's answer stands: {}", e.getClass().getSimpleName());
             return null;
         }
     }

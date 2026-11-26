@@ -195,6 +195,23 @@ public class ProxyContextTest {
     }
 
     @Test
+    public void testMasterApiKeyDataMissIsReadOncePerRequest() {
+        // a key gone from the master, or a master that cannot be read: the store returns null, and the miss is kept
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        Proxy proxy = mock(Proxy.class);
+        when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(new Key());
+        apiKeyData.setPerRequestKey("per-request-key");
+        ProxyContext context = new ProxyContext(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null, "trace-id", "span-id", "01");
+
+        assertNull(context.loadMasterApiKeyData());
+        assertNull(context.loadMasterApiKeyData());
+
+        verify(apiKeyStore).getPerRequestKeyDataOnMaster("per-request-key");
+    }
+
+    @Test
     public void testMasterApiKeyDataIsNotReadInProcessOrOnTheEventLoop() throws Exception {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         Proxy proxy = mock(Proxy.class);
