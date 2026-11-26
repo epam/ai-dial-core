@@ -11611,6 +11611,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/ops/resource/share/list_shares:
+    post:
+      tags:
+      - Sharing
+      summary: /v1/ops/resource/share/list_shares
+      operationId: listResourceShares
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListSharesRequest"
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceSharesResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/ops/resource/share/revoke:
     post:
       tags:
@@ -20297,6 +20334,11 @@ components:
             $ref: "#/components/schemas/ResourceTypes"
         with:
           type: string
+    ListSharesRequest:
+      type: object
+      properties:
+        url:
+          type: string
     LocalizedValue:
       oneOf:
       - type: string
@@ -21109,6 +21151,7 @@ components:
       - READ
       - WRITE
       - SHARE
+      - SHARE_LIST
     ResourceAuthSettings:
       type: object
       properties:
@@ -21337,6 +21380,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ResourcePermission"
+    ResourceShare:
+      type: object
+      properties:
+        bucket:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAccessType"
+        user:
+          type: string
+    ResourceSharesResponse:
+      type: object
+      properties:
+        shares:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceShare"
+        url:
+          type: string
     ResourceSignInRequest:
       type: object
       properties:
