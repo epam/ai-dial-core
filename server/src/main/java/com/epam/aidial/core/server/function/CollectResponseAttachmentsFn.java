@@ -102,7 +102,7 @@ public abstract class CollectResponseAttachmentsFn extends BaseResponseFunction 
             Map<ResourceDescriptor, Set<ResourceAccessType>> result = AccessService.getAppResourceAccess(Set.of(resource),
                     context, context.getDeployment().getName());
             if (result.containsKey(resource)) {
-                permittedAttachments.put(resource.getUrl(), ResourceAccessType.ALL);
+                permittedAttachments.put(resource.getUrl(), ResourceAccessType.READ_WRITE);
             }
         } else {
             // build context with API key data of the target deployment

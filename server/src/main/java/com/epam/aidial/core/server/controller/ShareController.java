@@ -9,13 +9,17 @@ import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CopySharedAccessRequest;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.data.ListSharedResourcesRequest;
+import com.epam.aidial.core.server.data.ListSharesRequest;
 import com.epam.aidial.core.server.data.ResourceLinkCollection;
+import com.epam.aidial.core.server.data.ResourceSharesResponse;
 import com.epam.aidial.core.server.data.RevokeResourcesRequest;
 import com.epam.aidial.core.server.data.ShareResourcesRequest;
 import com.epam.aidial.core.server.data.SharedResource;
 import com.epam.aidial.core.server.data.SharedResourcesResponse;
+import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.InvitationService;
+import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.service.ShareService;
 import com.epam.aidial.core.server.util.BucketBuilder;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -44,10 +48,12 @@ public class ShareController {
     private final EncryptionService encryptionService;
     private final LockService lockService;
     private final InvitationService invitationService;
+    private final AccessService accessService;
 
     public ShareController(Proxy proxy, ProxyContext context) {
         this.proxy = proxy;
         this.context = context;
+        this.accessService = proxy.getAccessService();
         this.shareService = proxy.getShareService();
         this.encryptionService = proxy.getEncryptionService();
         this.lockService = proxy.getLockService();
@@ -119,6 +125,19 @@ public class ShareController {
                     @ApiResponse(code = 500)
             }
     )
+    @ApiOperation(
+            method = "POST",
+            path = "/v1/ops/resource/share/list_shares",
+            operationId = "listResourceShares",
+            requestBody = @ApiSchema(implementation = ListSharesRequest.class),
+            tags = {"Sharing"},
+            responses = {
+                    @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ResourceSharesResponse.class)),
+                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 403),
+                    @ApiResponse(code = 500)
+            }
+    )
     public Future<?> handle(Operation operation) {
         if (context.getApiKeyData().getPerRequestKey() != null) {
             context.respond(HttpStatus.FORBIDDEN, "The Share API is not allowed for per-request keys");
@@ -131,6 +150,7 @@ public class ShareController {
             case REVOKE -> revokeSharedResources();
             case DISCARD -> discardSharedResources();
             case COPY -> copySharedAccess();
+            case LIST_SHARES -> listShares();
             default ->
                     context.respond(HttpStatus.INTERNAL_SERVER_ERROR, "Operation %s is not supported".formatted(operation));
         }
@@ -273,9 +293,38 @@ public class ShareController {
                 .onFailure(this::handleServiceError);
     }
 
+    public void listShares() {
+        context.getRequest()
+                .body()
+                .compose(buffer -> {
+                    ListSharesRequest request;
+                    try {
+                        request = ProxyUtil.convertToObject(buffer, ListSharesRequest.class);
+                    } catch (Exception e) {
+                        log.warn("Invalid request body provided", e);
+                        throw new IllegalArgumentException("Can't list shares. Incorrect body provided");
+                    }
+                    if (request == null || request.url() == null) {
+                        throw new IllegalArgumentException("url must be provided");
+                    }
+                    ResourceDescriptor resource = ShareService.resourceFromUrl(request.url(), encryptionService);
+                    return proxy.getTaskExecutor().submit(() -> {
+                        Set<ResourceAccessType> permissions = accessService.lookupPermissions(Set.of(resource), context).get(resource);
+                        if (!permissions.contains(ResourceAccessType.SHARE_LIST)) {
+                            throw new PermissionDeniedException("You don't have an access to: " + resource.getUrl());
+                        }
+                        return shareService.listShares(resource);
+                    });
+                })
+                .onSuccess(response -> context.respond(HttpStatus.OK, response))
+                .onFailure(this::handleServiceError);
+    }
+
     private void handleServiceError(Throwable error) {
         if (error instanceof IllegalArgumentException) {
             context.respond(HttpStatus.BAD_REQUEST, error.getMessage());
+        } else if (error instanceof PermissionDeniedException) {
+            context.respond(HttpStatus.FORBIDDEN, error.getMessage());
         } else if (error instanceof HttpException httpException) {
             context.respond(httpException.getStatus(), httpException.getMessage());
         } else {
@@ -304,6 +353,6 @@ public class ShareController {
     }
 
     public enum Operation {
-        CREATE, LIST, DISCARD, REVOKE, COPY
+        CREATE, LIST, DISCARD, REVOKE, COPY, LIST_SHARES
     }
 }

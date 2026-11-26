@@ -712,6 +712,18 @@ public class ControllerSelectorTest {
     }
 
     @Test
+    public void testSelectPostShareControllerListShares() {
+        when(request.path()).thenReturn("/v1/ops/resource/share/list_shares");
+        when(request.method()).thenReturn(HttpMethod.POST);
+        Controller controller = ControllerSelector.select(request).build(proxy, context);
+        assertNotNull(controller);
+        SerializedLambda lambda = getSerializedLambda(controller);
+        assertNotNull(lambda);
+        assertInstanceOf(ShareController.class, lambda.getCapturedArg(0));
+        assertEquals(ShareController.Operation.LIST_SHARES, lambda.getCapturedArg(1));
+    }
+
+    @Test
     public void testSelectPostPublicationController() {
         when(request.path()).thenReturn("/v1/ops/publication/list");
         when(request.method()).thenReturn(HttpMethod.POST);
