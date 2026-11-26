@@ -10,9 +10,17 @@ import java.util.List;
  * @param policy     the policy as stored at {@code policyPath}
  * @param assignment the assignment, or {@code null} for a self-applying policy
  * @param subject    the subject rules, pinned by the policy or by the assignment
+ * @param covered    the policy's object with its package references replaced by the packages' members
  */
 public record BudgetInstance(String id, String policyPath, Policy policy, PolicyAssignment assignment,
-                             List<PolicySubjectRule> subject) {
+                             List<PolicySubjectRule> subject, PolicyObjectSet covered) {
+
+    /**
+     * An instance whose policy names no package, so that it covers its object as written.
+     */
+    public BudgetInstance(String id, String policyPath, Policy policy, PolicyAssignment assignment, List<PolicySubjectRule> subject) {
+        this(id, policyPath, policy, assignment, subject, policy.getObject());
+    }
 
     /**
      * The path of the assignment that grants the budget, {@code <costObject>/<id>}, or {@code null} for a

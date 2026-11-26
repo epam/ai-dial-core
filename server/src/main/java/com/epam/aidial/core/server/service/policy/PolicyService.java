@@ -4,8 +4,10 @@ import com.epam.aidial.core.config.policy.Policy;
 import com.epam.aidial.core.config.policy.PolicyAssignment;
 import com.epam.aidial.core.config.policy.PolicyAssignmentValidator;
 import com.epam.aidial.core.config.policy.PolicyObjectSet;
+import com.epam.aidial.core.config.policy.PolicyPackage;
 import com.epam.aidial.core.config.policy.PolicySubjectRule;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
+import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
 import com.epam.aidial.core.storage.http.HttpException;
@@ -15,6 +17,7 @@ import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.time.OffsetDateTime;
@@ -161,6 +164,11 @@ public class PolicyService {
     private void checkPolicy(String path, Policy policy, @Nullable Policy previous) {
         requireIdMatches(policy.getId(), path);
         reject(PolicyAssignmentValidator.validatePolicy(policy));
+        for (String packageName : policy.getObject().packageNames().stream().sorted().toList()) {
+            if (findPackage(packageName) == null) {
+                throw unprocessable("Package '" + packageName + "' does not exist");
+            }
+        }
         String folder = folderOf(path);
         if (policy.getCostObject() != null) {
             requireValidElement("costObject", policy.getCostObject());
@@ -270,6 +278,40 @@ public class PolicyService {
         return null;
     }
 
+    /**
+     * Refuses while a policy names the package in its object; the caller holds the admin bucket locks, so no policy
+     * naming it can be written meanwhile.
+     */
+    public void requirePackageUnreferenced(String packageName) {
+        List<String> references = list(ResourceTypes.POLICY, null, PolicyRecordCodec::readPolicy).entrySet().stream()
+                .filter(entry -> entry.getValue().getObject() != null && entry.getValue().getObject().packageNames().contains(packageName))
+                .map(Map.Entry::getKey)
+                .sorted()
+                .toList();
+        if (!references.isEmpty()) {
+            throw new HttpException(HttpStatus.CONFLICT, "Package '" + packageName + "' is referenced by " + references.size()
+                    + " policy(ies), for example " + references.subList(0, Math.min(references.size(), MAX_REFERENCES_LISTED)));
+        }
+    }
+
+    @Nullable
+    private PolicyPackage findPackage(String name) {
+        PolicyPackage policyPackage = staged.packages.get(name);
+        if (policyPackage != null) {
+            return policyPackage;
+        }
+        String body = resourceService.getResource(ResourceDescriptorFactory.fromDecoded(ResourceTypes.PACKAGE,
+                ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, name));
+        if (body == null) {
+            return null;
+        }
+        try {
+            return ConfigEntityCodec.treeToEntity(ConfigEntityCodec.BLOB_MAPPER.readTree(body), PolicyPackage.class);
+        } catch (JsonProcessingException e) {
+            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Stored package '" + name + "' is malformed");
+        }
+    }
+
     @Nullable
     private Policy findPolicy(String path) {
         Policy policy = staged.policies.get(path);
@@ -367,6 +409,7 @@ public class PolicyService {
         private final Map<String, PolicyAssignment> assignmentOverrides;
         private final Map<String, Map<String, Instance>> byCostObject = new HashMap<>();
         private final Map<String, Optional<Policy>> policiesByPath = new HashMap<>();
+        private final Map<String, PolicyPackage> packagesByName = new HashMap<>();
 
         Instances(Map<String, Policy> policyOverrides, Map<String, PolicyAssignment> assignmentOverrides) {
             this.policyOverrides = policyOverrides;
@@ -405,7 +448,7 @@ public class PolicyService {
             });
             policies.forEach((path, policy) -> {
                 if (policy.isSelfApplying()) {
-                    instances.put(path, new Instance(path, path, policy.getPriority(), policy.getObject(), policy.getSubject()));
+                    instances.put(path, new Instance(path, path, policy.getPriority(), covered(policy), policy.getSubject()));
                 }
             });
             Map<String, PolicyAssignment> assignments = listAssignments(costObject);
@@ -422,10 +465,25 @@ public class PolicyService {
                 Policy policy = policyOf(assignment.getPolicy());
                 if (policy != null) {
                     List<PolicySubjectRule> subject = policy.getSubject() != null ? policy.getSubject() : assignment.getSubject();
-                    instances.put(path, new Instance(path, assignment.getPolicy(), policy.getPriority(), policy.getObject(), subject));
+                    instances.put(path, new Instance(path, assignment.getPolicy(), policy.getPriority(), covered(policy), subject));
                 }
             });
             return instances;
+        }
+
+        /**
+         * The policy's object with its packages expanded, so that budgets naming a package and its members tie.
+         */
+        private PolicyObjectSet covered(Policy policy) {
+            for (String packageName : policy.getObject().packageNames()) {
+                if (!packagesByName.containsKey(packageName)) {
+                    PolicyPackage policyPackage = findPackage(packageName);
+                    if (policyPackage != null) {
+                        packagesByName.put(packageName, policyPackage);
+                    }
+                }
+            }
+            return policy.getObject().expand(packagesByName);
         }
 
         @Nullable

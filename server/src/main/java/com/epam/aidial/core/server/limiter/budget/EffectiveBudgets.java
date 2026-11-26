@@ -39,18 +39,33 @@ public class EffectiveBudgets {
             .register(Metrics.globalRegistry);
 
     /**
+     * Only the budgets covering the earliest position of the chain that any budget covers are candidates, so a budget
+     * of a tier alias takes a call before a budget of the model behind it.
+     *
      * @param claims claims of the root initiator, {@code null} for an API key caller, which no budget reaches
+     * @param chain  the names the call was reached through, from the head of the coverage chain to the model
      * @return the budgets that can pay, by policy priority (lower first) and then by id
      */
-    public List<BudgetInstance> resolve(CostObjectIndex index, String costObject, ExtractedClaims claims, String model, Instant now) {
+    public List<BudgetInstance> resolve(CostObjectIndex index, String costObject, ExtractedClaims claims, List<String> chain, Instant now) {
         if (claims == null) {
             return List.of();
         }
-        List<BudgetInstance> candidates = index.getInstances(costObject).stream()
-                .filter(instance -> instance.policy().getKind() == PolicyKind.BUDGET)
-                .filter(instance -> !isExpired(instance, now))
-                .filter(instance -> instance.policy().getObject().contains(model))
-                .filter(instance -> isSubjectMatched(instance, claims))
+        Map<BudgetInstance, Integer> positions = new HashMap<>();
+        int earliest = Integer.MAX_VALUE;
+        for (BudgetInstance instance : index.getInstances(costObject)) {
+            if (instance.policy().getKind() != PolicyKind.BUDGET || isExpired(instance, now) || !isSubjectMatched(instance, claims)) {
+                continue;
+            }
+            int position = instance.covered().indexOfFirstCovered(chain);
+            if (position >= 0) {
+                positions.put(instance, position);
+                earliest = Math.min(earliest, position);
+            }
+        }
+        int first = earliest;
+        List<BudgetInstance> candidates = positions.entrySet().stream()
+                .filter(entry -> entry.getValue() == first)
+                .map(Map.Entry::getKey)
                 .sorted(ORDER)
                 .toList();
         meterAmbiguousPriority(candidates, costObject);

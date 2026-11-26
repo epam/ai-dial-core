@@ -42,7 +42,7 @@ class CostObjectIndexTest {
         Policy global = policy(null, null);
         PolicyAssignment grant = assignment("grant", ALICE, "IMF");
 
-        CostObjectIndex index = CostObjectIndex.build(Map.of("grant", global), Map.of("IMF/a-1", grant));
+        CostObjectIndex index = CostObjectIndex.build(Map.of("grant", global), Map.of("IMF/a-1", grant), Map.of());
 
         List<BudgetInstance> instances = index.getInstances("IMF");
         assertEquals(1, instances.size());
@@ -56,7 +56,7 @@ class CostObjectIndexTest {
     @Test
     void testSubjectPinnedByPolicyWinsOverAssignment() {
         CostObjectIndex index = CostObjectIndex.build(Map.of("p", policy(EVERYONE, null)),
-                Map.of("IMF/a-1", assignment("p", null, "IMF")));
+                Map.of("IMF/a-1", assignment("p", null, "IMF")), Map.of());
 
         assertSame(EVERYONE, index.getInstances("IMF").get(0).subject());
     }
@@ -65,7 +65,7 @@ class CostObjectIndexTest {
     void testSelfApplyingPolicyIsAnInstanceOfItsFolder() {
         Policy selfApplying = policy(EVERYONE, "IMF");
 
-        CostObjectIndex index = CostObjectIndex.build(Map.of("IMF/default", selfApplying), Map.of());
+        CostObjectIndex index = CostObjectIndex.build(Map.of("IMF/default", selfApplying), Map.of(), Map.of());
 
         List<BudgetInstance> instances = index.getInstances("IMF");
         assertEquals(1, instances.size());
@@ -80,7 +80,7 @@ class CostObjectIndexTest {
 
         CostObjectIndex index = CostObjectIndex.build(Map.of("grant", global), Map.of(
                 "IMF/a-1", assignment("grant", ALICE, "IMF"),
-                "ORG/a-1", assignment("grant", ALICE, "ORG")));
+                "ORG/a-1", assignment("grant", ALICE, "ORG")), Map.of());
 
         assertEquals("IMF/a-1", index.getInstances("IMF").get(0).id());
         assertEquals("ORG/a-1", index.getInstances("ORG").get(0).id());
@@ -93,7 +93,7 @@ class CostObjectIndexTest {
 
         CostObjectIndex index = CostObjectIndex.build(Map.of("grant", global, "IMF/grant", project), Map.of(
                 "IMF/a-1", assignment("grant", ALICE, "IMF"),
-                "IMF/a-2", assignment("IMF/grant", ALICE, "IMF")));
+                "IMF/a-2", assignment("IMF/grant", ALICE, "IMF")), Map.of());
 
         Map<String, Policy> policyById = Map.of(
                 index.getInstances("IMF").get(0).id(), index.getInstances("IMF").get(0).policy(),
@@ -104,16 +104,32 @@ class CostObjectIndexTest {
 
     @Test
     void testAssignmentOfMissingPolicyIsNotAnInstance() {
-        CostObjectIndex index = CostObjectIndex.build(Map.of(), Map.of("IMF/a-1", assignment("gone", ALICE, "IMF")));
+        CostObjectIndex index = CostObjectIndex.build(Map.of(), Map.of("IMF/a-1", assignment("gone", ALICE, "IMF")), Map.of());
 
         assertTrue(index.getInstances("IMF").isEmpty());
     }
 
     @Test
     void testSelfApplyingPolicyWithoutFolderIsNotAnInstance() {
-        CostObjectIndex index = CostObjectIndex.build(Map.of("loose", policy(EVERYONE, "IMF")), Map.of());
+        CostObjectIndex index = CostObjectIndex.build(Map.of("loose", policy(EVERYONE, "IMF")), Map.of(), Map.of());
 
         assertTrue(index.getInstances("IMF").isEmpty());
+    }
+
+    @Test
+    void testInstancesCoverTheMembersOfTheirPackages() {
+        Policy policy = policy(null, null);
+        policy.setObject(PolicyObjectSet.of(List.of("@learning", "gpt-6-luna")));
+        PolicyPackage learning = new PolicyPackage();
+        learning.setDeployments(List.of("weak", "medium"));
+
+        BudgetInstance instance = CostObjectIndex.build(Map.of("grant", policy), Map.of("IMF/a-1", assignment("grant", ALICE, "IMF")),
+                Map.of("learning", learning)).getInstances("IMF").get(0);
+
+        assertTrue(instance.covered().contains("weak"));
+        assertTrue(instance.covered().contains("medium"));
+        assertTrue(instance.covered().contains("gpt-6-luna"));
+        assertSame(policy.getObject(), instance.policy().getObject());
     }
 
     @Test

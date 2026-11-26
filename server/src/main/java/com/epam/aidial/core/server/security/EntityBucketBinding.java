@@ -41,6 +41,7 @@ public class EntityBucketBinding {
             Map.entry("routes", Set.of(PLATFORM_BUCKET)),
             Map.entry(ResourceTypes.POLICY.group(), Set.of(PLATFORM_BUCKET)),
             Map.entry(ResourceTypes.POLICY_ASSIGNMENT.group(), Set.of(PLATFORM_BUCKET)),
+            Map.entry(ResourceTypes.PACKAGE.group(), Set.of(PLATFORM_BUCKET)),
             Map.entry("settings", Set.of(PLATFORM_BUCKET)),
             // admin-managed aliases live in public or platform storage; aliases in user buckets are not supported
             Map.entry(ResourceTypes.ALIAS.group(), Set.of(ResourceDescriptor.PUBLIC_BUCKET, PLATFORM_BUCKET)));

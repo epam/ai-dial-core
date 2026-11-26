@@ -85,6 +85,25 @@ public class PolicyAssignmentValidator {
         return policy.getSubject() == null ? null : validateSubject(policy.getSubject());
     }
 
+    public static String validatePackage(PolicyPackage policyPackage) {
+        List<String> deployments = policyPackage.getDeployments();
+        if (deployments == null || deployments.isEmpty()) {
+            return "deployments must be a non-empty list of deployment names";
+        }
+        for (String deployment : deployments) {
+            if (deployment == null || deployment.isBlank()) {
+                return "deployments must not hold a blank name";
+            }
+            if (PolicyObjectSet.ALL.equals(deployment)) {
+                return "deployments must not hold \"*\": a policy covers every deployment with the object \"*\"";
+            }
+            if (deployment.startsWith(PolicyObjectSet.PACKAGE_PREFIX)) {
+                return "deployments must not hold '" + deployment + "': a package cannot include another package";
+            }
+        }
+        return null;
+    }
+
     public static String validateAssignment(PolicyAssignment assignment) {
         if (assignment.getPolicy() == null || assignment.getPolicy().isBlank()) {
             return "policy is required";

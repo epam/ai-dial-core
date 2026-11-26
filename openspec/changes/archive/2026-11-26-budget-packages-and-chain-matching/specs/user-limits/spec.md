@@ -4,9 +4,8 @@
 
 ### Requirement: Budgets in the user stats
 `GET /v1/user/limits` and `GET /v1/user/usage` SHALL return `budgets[]`, one entry per budget that matches the caller,
-each with its `costObject`, `policy`, `displayName`, `priority`, `object` (what its policy covers as the policy API
-returns it: `"*"`, a package reference such as `"@engineering"`, or the sorted list of deployment names and package
-references; never the members of a package), and `day` and `month` as `{total, used, resetsAt}`,
+each with its `costObject`, `policy`, `displayName`, `priority`, `object` (as the policy API returns it: `"*"`, a
+package reference, or a sorted list of names and package references), and `day` and `month` as `{total, used, resetsAt}`,
 and SHALL list only budgets whose subject matches the caller's claims. The `deployments` and `*CostStats` fields SHALL
 NOT change.
 

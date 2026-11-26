@@ -15,6 +15,8 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.policy.PolicyAssignmentValidator;
+import com.epam.aidial.core.config.policy.PolicyPackage;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.util.UnreadableSecretMessage;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
@@ -50,6 +52,7 @@ import com.epam.aidial.core.server.service.ResourceAuthStatusEnricher;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.service.ToolSetService;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
+import com.epam.aidial.core.server.service.policy.PolicyService;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.util.UpstreamExtraDataMerger;
@@ -606,6 +609,83 @@ public class ConfigResourceController implements Controller {
                     },
                     extensions = { 
                             @ApiExtension(name = "x-preview", value = "true") 
+                    }),
+            // Packages
+            @ApiOperation(
+                    method = "GET",
+                    path = "/v1/packages/{bucket}/{path}",
+                    operationId = "getPackage",
+                    tags = {"Packages"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Package name"),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(allOf = {PolicyPackage.class, EntityMetadata.class}),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the package", required = true)
+                                    }),
+                            @ApiResponse(code = 304),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }),
+            @ApiOperation(
+                    method = "PUT",
+                    path = "/v1/packages/{bucket}/{path}",
+                    operationId = "savePackage",
+                    requestBody = @ApiSchema(implementation = PolicyPackage.class),
+                    tags = {"Packages"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Package name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH),
+                            @ApiParameter(name = "If-None-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_NONE_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 200, description = "Success", body = @ApiSchema(implementation = ConfigWriteResponse.class),
+                                    headers = {
+                                            @ApiHeader(name = "ETag", description = "Entity tag for the saved package", required = true)
+                                    }),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
+                    }),
+            @ApiOperation(
+                    method = "DELETE",
+                    path = "/v1/packages/{bucket}/{path}",
+                    operationId = "deletePackage",
+                    tags = {"Packages"},
+                    parameters = {
+                            @ApiParameter(name = "bucket", in = ParameterIn.PATH, required = true, description = OpenApiDescriptions.BUCKET),
+                            @ApiParameter(name = "path", in = ParameterIn.PATH, required = true, description = "Package name"),
+                            @ApiParameter(name = "If-Match", in = ParameterIn.HEADER, description = OpenApiDescriptions.IF_MATCH)
+                    },
+                    responses = {
+                            @ApiResponse(code = 204, description = "Success"),
+                            @ApiResponse(code = 400),
+                            @ApiResponse(code = 403),
+                            @ApiResponse(code = 404),
+                            @ApiResponse(code = 405),
+                            @ApiResponse(code = 409, description = "A policy names the package"),
+                            @ApiResponse(code = 412),
+                            @ApiResponse(code = 500)
+                    },
+                    extensions = {
+                            @ApiExtension(name = "x-preview", value = "true")
                     }),
             // Keys
             @ApiOperation(
@@ -1319,6 +1399,8 @@ public class ConfigResourceController implements Controller {
                     (key, plugin) -> projectItem(plugin, key));
             case ROLE -> handleSingleGetFromBlob(ResourceTypes.ROLE,
                     (key, role) -> projectItem(role, key));
+            case PACKAGE -> handleSingleGetFromBlob(ResourceTypes.PACKAGE,
+                    (key, policyPackage) -> projectItem(policyPackage, key));
             case PROJECT_KEY -> handleSingleGet(
                     config.getKeys(), ResourceTypes.PROJECT_KEY,
                     (key, value) -> projectItem(value, key));
@@ -1560,6 +1642,8 @@ public class ConfigResourceController implements Controller {
             case PLUGIN -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.PLUGIN,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case ROLE -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.ROLE,
+                    ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
+            case PACKAGE -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.PACKAGE,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
             case PROJECT_KEY -> ResourceDescriptorFactory.fromDecoded(ResourceTypes.PROJECT_KEY,
                     ResourceDescriptor.PLATFORM_BUCKET, ResourceDescriptor.PLATFORM_LOCATION, path);
@@ -2016,6 +2100,8 @@ public class ConfigResourceController implements Controller {
                         checkPlugin(plugin);
                     } else if (entity instanceof Route route) {
                         checkRoute(route);
+                    } else if (entity instanceof PolicyPackage policyPackage) {
+                        checkPackage(policyPackage);
                     }
                     ResourceTypes writeType = resourceType();
                     if (writeType == ResourceTypes.MODEL || writeType == ResourceTypes.INTERCEPTOR || writeType == ResourceTypes.ROUTER) {
@@ -2144,6 +2230,8 @@ public class ConfigResourceController implements Controller {
                         }
                     }
                 }
+            } else if (deleteType == ResourceTypes.PACKAGE) {
+                new PolicyService(resourceService).requirePackageUnreferenced(descriptor.getName());
             } else if (isSchema) {
                 String existing = resourceService.getResource(descriptor, EtagHeader.ANY, false);
                 if (existing != null) {
@@ -2267,6 +2355,7 @@ public class ConfigResourceController implements Controller {
             case TRANSLATOR -> new WriteSpec(descriptor, Translator.class, false, false);
             case PLUGIN -> new WriteSpec(descriptor, Plugin.class, false, false);
             case ROLE -> new WriteSpec(descriptor, Role.class, false, false);
+            case PACKAGE -> new WriteSpec(descriptor, PolicyPackage.class, false, false);
             case PROJECT_KEY -> new WriteSpec(descriptor, Key.class, true, true);
             case ROUTE -> new WriteSpec(descriptor, Route.class, true, false);
             case APP_TYPE_SCHEMA -> new WriteSpec(descriptor, null, false, false);
@@ -2400,6 +2489,13 @@ public class ConfigResourceController implements Controller {
         rejectWithValidationWarnings(warnings);
     }
 
+    private static void checkPackage(PolicyPackage entity) {
+        String error = PolicyAssignmentValidator.validatePackage(entity);
+        if (error != null) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, error);
+        }
+    }
+
     private void rejectWithValidationWarnings(List<ValidationWarning> warnings) {
         throw new HttpException(HttpStatus.UNPROCESSABLE_ENTITY, validationWarningsBody(warnings));
     }
@@ -2527,6 +2623,7 @@ public class ConfigResourceController implements Controller {
             case TRANSLATOR -> Translator.class;
             case PLUGIN -> Plugin.class;
             case ROLE -> Role.class;
+            case PACKAGE -> PolicyPackage.class;
             case PROJECT_KEY -> Key.class;
             case ROUTE -> Route.class;
             case APPLICATION -> Application.class;
