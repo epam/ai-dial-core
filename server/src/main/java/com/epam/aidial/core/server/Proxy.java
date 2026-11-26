@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.ApiKeyValidation;
 import com.epam.aidial.core.server.data.RouteTemplate;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.limiter.budget.DefaultBudgetService;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.proxy.ProxyClient;
@@ -152,6 +153,9 @@ public class Proxy implements Handler<HttpServerRequest> {
     public static final String HEADER_API = "X-DIAL-API";
     public static final String HEADER_ROUTER_ATTEMPTS = "X-DIAL-ROUTER-ATTEMPTS";
     public static final String HEADER_ROUTER_NOTICE = "X-DIAL-ROUTER-NOTICE";
+    // Core's own mark of a refusal, from an alias's target pass to its alias pass; on the Responses routes never relayed
+    // from outside Core
+    public static final String HEADER_DIAL_REFUSAL = "X-DIAL-REFUSAL";
 
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);
@@ -224,6 +228,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AdminSystemImportService adminSystemImportService;
     private final AdminSystemImportService.Settings adminSystemImportSettings;
     private final ProxyClient proxyClient;
+    private final DefaultBudgetService defaultBudgetService;
 
     @Override
     public void handle(HttpServerRequest request) {

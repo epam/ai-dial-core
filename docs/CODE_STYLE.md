@@ -110,6 +110,9 @@ already give. Never restate the signature, and never write a doc longer than the
 ## Documentation
 
 - **`docs/open_api_core.yaml` is generated and auto-committed by CI** (`./gradlew replaceSpec`
-  in `.github/workflows/pr.yml`). Never hand-edit it — change the controller annotations.
+  in `.github/workflows/pr.yml`). Never hand-edit it — change the controller annotations. The
+  one exception: the merge keeps a `description`, `summary`, `title` or example the file
+  already has over the annotation's, so changing one of those takes the same text in the file
+  too, in the same commit as the annotation.
 - **A new header, endpoint, or config flag is not done until it is documented** in the
   relevant `docs/*.md`.

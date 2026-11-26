@@ -10,6 +10,7 @@ import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.MultiMap;
+import io.vertx.core.buffer.Buffer;
 import lombok.experimental.UtilityClass;
 
 import java.math.BigDecimal;
@@ -28,6 +29,7 @@ class AnthropicLimitResponses {
     private static final String CONTENT_TYPE = "content-type";
     private static final String APPLICATION_JSON = "application/json";
     private static final String SHOULD_RETRY = "x-should-retry";
+    static final int PAYMENT_REQUIRED = 402;
     private static final BigDecimal WARNING_RATIO = new BigDecimal("0.75");
     private static final BigDecimal CRITICAL_RATIO = new BigDecimal("0.95");
     private static final BigDecimal MAX_ALLOWED_UTILIZATION = new BigDecimal("0.99");
@@ -81,6 +83,17 @@ class AnthropicLimitResponses {
                 SHOULD_RETRY, "false",
                 OVERAGE_PREFIX + "disabled-reason", "fetch_error",
                 CONTENT_TYPE, APPLICATION_JSON));
+    }
+
+    /**
+     * Writes the no-budget refusal as the client's own request gets it: 402 {@code billing_error}, which the Anthropic SDK
+     * does not retry and Claude Code prints with its message. Inside Core the refusal stays a 429, which an alias pass and
+     * a router fall back on. {@code HttpStatus} has no 402, so the caller sets the status itself.
+     */
+    Buffer putNoBudget(MultiMap headers, String message) {
+        headers.set(CONTENT_TYPE, APPLICATION_JSON);
+        headers.set(SHOULD_RETRY, "false");
+        return Buffer.buffer(errorBody("billing_error", message));
     }
 
     /**

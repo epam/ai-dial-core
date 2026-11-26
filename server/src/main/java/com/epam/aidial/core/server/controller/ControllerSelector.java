@@ -266,6 +266,10 @@ public class ControllerSelector {
             LimitController controller = new LimitController(proxy, context);
             return controller::getUserUsage;
         });
+        get(RouteTemplate.USER_DEFAULT_BUDGET, (proxy, context, pathMatcher) -> {
+            DefaultBudgetController controller = new DefaultBudgetController(proxy, context);
+            return controller::getDefault;
+        });
         get(RouteTemplate.OFFLINE_CREDENTIALS, (proxy, context, pathMatcher) -> {
             OfflineCredentialsController controller = new OfflineCredentialsController(proxy, context);
             return controller::getStatus;
@@ -658,6 +662,10 @@ public class ControllerSelector {
             return new ResponseItemController(proxy, context, id, ResponseItemController.Operation.DELETE);
         });
         // PUT routes
+        put(RouteTemplate.USER_DEFAULT_BUDGET, (proxy, context, pathMatcher) -> {
+            DefaultBudgetController controller = new DefaultBudgetController(proxy, context);
+            return controller::putDefault;
+        });
         put(RouteTemplate.FILES, (proxy, context, pathMatcher) -> {
             UploadFileController controller = new UploadFileController(proxy, context);
             String path = context.getRequest().path();

@@ -2,18 +2,18 @@ package com.epam.aidial.core.server.util;
 
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.server.data.ErrorData;
-import com.epam.aidial.core.storage.http.HttpException;
-import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.config.Upstream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Base64;
 import java.util.LinkedHashSet;
-import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 /**
@@ -24,8 +24,9 @@ import javax.annotation.Nullable;
  * {@link Model#getUpstreams()} entry's {@link com.epam.aidial.core.config.Upstream#getId()} ("upstream config
  * id" below - not to be confused with the provider's own response id string); incoming items are decoded back
  * to that id to force routing, then restored to their original, provider-native shape before forwarding
- * upstream.
+ * upstream. Reasoning items the winning upstream could not decrypt are dropped.
  */
+@Slf4j
 @UtilityClass
 public class EncryptedContentAffinityUtil {
 
@@ -34,8 +35,8 @@ public class EncryptedContentAffinityUtil {
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
 
-    public record ResolvedAffinity(@Nullable String upstreamId, @Nullable String deploymentName) {
-        public static final ResolvedAffinity EMPTY = new ResolvedAffinity(null, null);
+    private record ResolvedAffinity(@Nullable String upstreamId, @Nullable String deploymentName) {
+        private static final ResolvedAffinity EMPTY = new ResolvedAffinity(null, null);
     }
 
     public boolean hasConfiguredUpstreams(Deployment deployment) {
@@ -90,21 +91,69 @@ public class EncryptedContentAffinityUtil {
 
     /**
      * Unwraps every wrapped {@code id}/{@code encrypted_content} field found in {@code input}, mutating it in
-     * place back to the provider-native shape, and returns the unique resolved affinities (deduplicated by full
-     * record equality) found across all items.
+     * place back to the provider-native shape, and picks the upstream the request is routed to.
      *
-     * @return unique resolved affinities; empty if nothing wrapped was found
+     * <p>The winner is the upstream config id of the first kept item. A {@code reasoning} item is removed from
+     * {@code input} when the winning upstream could not decrypt it: it is stamped by an upstream that is not in
+     * {@code configuredUpstreamIds}, by an upstream other than the winner, or by two different upstreams (its
+     * {@code id} and its {@code encrypted_content} disagree). This happens when a client drops reasoning items from
+     * a turn, so that turn is routed to an arbitrary upstream whose reasoning is then echoed together with the earlier
+     * turns' reasoning, or when an upstream was removed from the model. One warning is logged per request.
+     *
+     * @param model the model the request is for; its {@code upstreams} are the configured upstream ids
+     * @return the upstream config id to route to; {@code null} if no kept item is stamped
      */
-    public List<ResolvedAffinity> resolveAndUnwrap(ArrayNode input) {
-        LinkedHashSet<ResolvedAffinity> resolved = new LinkedHashSet<>();
-        for (JsonNode item : input) {
-            if (!(item instanceof ObjectNode object) || !isReasoningItem(object)) {
+    @Nullable
+    public String resolveAndUnwrap(ArrayNode input, Model model) {
+        Set<String> configuredUpstreamIds = model.getUpstreams().stream()
+                .map(Upstream::getId)
+                .collect(Collectors.toSet());
+        Set<String> deploymentNames = new LinkedHashSet<>();
+        Set<String> droppedUpstreamIds = new LinkedHashSet<>();
+        String winningUpstreamId = null;
+        int dropped = 0;
+        for (int i = 0; i < input.size(); i++) {
+            if (!(input.get(i) instanceof ObjectNode object) || !isReasoningItem(object)) {
                 continue;
             }
-            resolved.add(unwrapId(object));
-            resolved.add(unwrapContent(object));
+            ResolvedAffinity byId = unwrapId(object);
+            ResolvedAffinity byContent = unwrapContent(object);
+            String idUpstream = byId.upstreamId();
+            String contentUpstream = byContent.upstreamId();
+            boolean consistent = idUpstream == null || contentUpstream == null || idUpstream.equals(contentUpstream);
+            String stamped = idUpstream != null ? idUpstream : contentUpstream;
+            boolean keep = consistent && (stamped == null
+                    || configuredUpstreamIds.contains(stamped) && (winningUpstreamId == null || winningUpstreamId.equals(stamped)));
+            if (!keep) {
+                dropped++;
+                addIfNotNull(droppedUpstreamIds, idUpstream);
+                addIfNotNull(droppedUpstreamIds, contentUpstream);
+                input.remove(i--);
+                continue;
+            }
+            if (stamped != null) {
+                winningUpstreamId = stamped;
+                addIfNotNull(deploymentNames, byId.deploymentName());
+                addIfNotNull(deploymentNames, byContent.deploymentName());
+            }
         }
-        return List.copyOf(resolved);
+        if (dropped > 0) {
+            log.warn("Dropped {} reasoning item(s) stamped by upstreams {}: the request is routed to upstream '{}', which cannot decrypt them",
+                    dropped, droppedUpstreamIds, winningUpstreamId);
+        }
+        for (String deploymentName : deploymentNames) {
+            if (!deploymentName.equals(model.getName())) {
+                log.warn("Deployment mismatch: encrypted content was produced by '{}' but current deployment is '{}'",
+                        deploymentName, model.getName());
+            }
+        }
+        return winningUpstreamId;
+    }
+
+    private void addIfNotNull(Set<String> set, @Nullable String value) {
+        if (value != null) {
+            set.add(value);
+        }
     }
 
     private ResolvedAffinity unwrapId(ObjectNode object) {
@@ -173,27 +222,5 @@ public class EncryptedContentAffinityUtil {
         return CONTENT_WRAP_PREFIX
                 + ENCODER.encodeToString(ProxyUtil.MAPPER.writeValueAsBytes(payload))
                 + ";" + originalContent;
-    }
-
-    @SneakyThrows
-    public HttpException conflictingAffinityException() {
-        ErrorData response = new ErrorData();
-        String message = "Conflicting encrypted content affinity across input items.";
-        response.getError().setMessage(message);
-        response.getError().setDisplayMessage(message);
-        response.getError().setCode("conflicting_encrypted_content_affinity");
-        response.getError().setType("invalid_request_error");
-        return new HttpException(HttpStatus.BAD_REQUEST, ProxyUtil.MAPPER.writeValueAsString(response));
-    }
-
-    @SneakyThrows
-    public HttpException upstreamUnavailableException(String encryptedUpstreamId) {
-        ErrorData response = new ErrorData();
-        String message = "Upstream '%s' referenced by encrypted content is no longer available.".formatted(encryptedUpstreamId);
-        response.getError().setMessage(message);
-        response.getError().setDisplayMessage(message);
-        response.getError().setCode("encrypted_content_upstream_unavailable");
-        response.getError().setType("invalid_request_error");
-        return new HttpException(HttpStatus.CONFLICT, ProxyUtil.MAPPER.writeValueAsString(response));
     }
 }
