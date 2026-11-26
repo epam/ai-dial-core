@@ -128,6 +128,13 @@ reachable on `localhost`. The second pass:
 * is not refused by `accessibleByPerRequestKey: false` on the target.
 
 The alias relays the target's answer, error statuses included, so an error of the target pass may name the target.
+The one exception is the no-budget refusal on the Responses routes and the Anthropic Messages route: the target pass
+answers its alias pass 429, and the alias pass answers the client what a direct call of the target gets, the 400 on
+Responses (see [Codex spend limits](../codex-spend-limits.md)) and the 402 on Messages (see
+[Anthropic spend limits](../anthropic-spend-limits.md)). A background Responses request, whose target pass runs over
+HTTP, keeps the 429. For that, the target pass marks its 429 with `X-DIAL-REFUSAL`, a header only Core sets: on these
+routes and on `count_tokens` Core removes it from what a model's upstream, an application or an interceptor sends,
+and sends it to no caller outside Core.
 On Messages and Responses the alias makes no limit check of its own: it reads no spend caps and checks no token,
 request or cost limit. It leaves the target's `anthropic-ratelimit-*` and `x-codex-*` headers as they are, on every
 status, so Claude Code and Codex see the caps of the deployment that serves the call, also when a router in decision

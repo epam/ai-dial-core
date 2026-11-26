@@ -6,6 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.proxy.embedded.EmbeddedServerRequest;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -130,7 +131,7 @@ public class ProxyContextTest {
 
     @Test
     public void testCallTreeUntilTheBodyIsSet() {
-        ProxyContext context = context(null);
+        ProxyContext context = context(null, mock(EmbeddedServerRequest.class, RETURNS_DEEP_STUBS));
         assertNull(context.getCallTree());
 
         ObjectNode tree = ProxyUtil.MAPPER.createObjectNode().put("model", "m");
@@ -165,6 +166,15 @@ public class ProxyContextTest {
     }
 
     @Test
+    public void testChildPassWithoutCallTree() {
+        // a GET of the user info through a plugin's host carries no body
+        ProxyContext context = context(null, mock(EmbeddedServerRequest.class, RETURNS_DEEP_STUBS));
+
+        assertTrue(context.isChildPass());
+        assertNull(context.getCallTree());
+    }
+
+    @Test
     public void testMasterApiKeyDataIsReadOncePerRequest() {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         Proxy proxy = mock(Proxy.class);
@@ -192,8 +202,7 @@ public class ProxyContextTest {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(new Key());
         apiKeyData.setPerRequestKey("per-request-key");
-        ProxyContext childPass = new ProxyContext(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null, "trace-id", "span-id", "01");
-        childPass.setCallTree(ProxyUtil.MAPPER.createObjectNode());
+        ProxyContext childPass = new ProxyContext(proxy, mock(EmbeddedServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null, "trace-id", "span-id", "01");
         assertNull(childPass.loadMasterApiKeyData());
 
         ProxyContext context = new ProxyContext(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, null, "trace-id", "span-id", "01");
@@ -222,9 +231,12 @@ public class ProxyContextTest {
     }
 
     private static ProxyContext context(ExtractedClaims claims) {
+        return context(claims, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS));
+    }
+
+    private static ProxyContext context(ExtractedClaims claims, HttpServerRequest request) {
         ApiKeyData apiKeyData = new ApiKeyData();
         apiKeyData.setOriginalKey(new Key());
-        HttpServerRequest request = mock(HttpServerRequest.class, RETURNS_DEEP_STUBS);
         return new ProxyContext(null, request, apiKeyData, claims, "trace-id", "span-id", "01");
     }
 }

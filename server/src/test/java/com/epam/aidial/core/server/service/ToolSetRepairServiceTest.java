@@ -9,6 +9,7 @@ import com.epam.aidial.core.credentials.data.registration.ClientRegistration;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsService;
 import com.epam.aidial.core.credentials.service.ResourceCredentialsService;
+import com.epam.aidial.core.credentials.service.registration.RegistrationPolicy;
 import com.epam.aidial.core.credentials.service.registration.ResourceRegistrationService;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.util.CredentialsLocatorFactory;
@@ -107,7 +108,7 @@ class ToolSetRepairServiceTest {
                 .tokenEndpoint("http://as.example.com/token")
                 .build();
 
-        when(registrationService.register(any(), any(), any(), anyBoolean()))
+        when(registrationService.register(any(), any(), any(), anyBoolean(), eq(RegistrationPolicy.TOOLSET)))
                 .thenReturn(registration);
 
         // Simulate storage: codeVerifier is encrypted (non-null value present).
@@ -166,7 +167,7 @@ class ToolSetRepairServiceTest {
         meta.setAuthor("test-author");
 
         when(registrationService.discoverMetadata(any(), any())).thenReturn(mock(AuthorizationServerMetadata.class));
-        when(registrationService.register(any(), any(), any(), anyBoolean()))
+        when(registrationService.register(any(), any(), any(), anyBoolean(), eq(RegistrationPolicy.TOOLSET)))
                 .thenReturn(ClientRegistration.builder().clientId("new-client-id").clientSecret("new-client-secret").build());
 
         ResourceAuthSettings storedAuthSettings = new ResourceAuthSettings();
@@ -266,7 +267,7 @@ class ToolSetRepairServiceTest {
         when(registrationService.discoverMetadata(any(), any()))
                 .thenReturn(mock(AuthorizationServerMetadata.class));
 
-        when(registrationService.register(any(), any(), any(), anyBoolean()))
+        when(registrationService.register(any(), any(), any(), anyBoolean(), eq(RegistrationPolicy.TOOLSET)))
                 .thenReturn(mock(ClientRegistration.class));
 
         when(resourceService.computeResource(eq(resource), eq(EtagHeader.ANY), eq("test-author"), any()))

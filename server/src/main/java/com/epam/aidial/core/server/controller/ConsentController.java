@@ -77,6 +77,10 @@ public class ConsentController {
             }
     )
     public Future<?> acceptConsent(String deploymentId) {
+        if (context.getApiKeyData().getPerRequestKey() != null) {
+            context.respond(HttpStatus.FORBIDDEN, "User consent is not allowed for per-request keys");
+            return Future.succeededFuture();
+        }
         context.getRequest()
                 .body()
                 .compose(buffer -> {

@@ -324,6 +324,98 @@ public class DeploymentApiTest extends ResourceBaseTest {
                 send(HttpMethod.GET, "/openai/deployments/gpt-5.4-mini")).get("interface_configs"));
     }
 
+    @DialConfigLocation("dial-config/deployment-interfaces-listing.json")
+    @Test
+    public void testListDeploymentsWithFields() throws JsonProcessingException {
+        Map<String, JsonNode> deploymentsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
+        assertEquals(5, deploymentsById.size());
+
+        // selecting everything gives the full answer
+        assertEquals(deploymentsById, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=*", null)));
+        // an empty value is no selection
+        assertEquals(deploymentsById, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=", null)));
+
+        Map<String, JsonNode> displayNamesById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=display_name", null));
+        assertEquals(deploymentsById.keySet(), displayNamesById.keySet());
+        // the selection does not reorder the deployments
+        assertEquals(listedIds(send(HttpMethod.GET, "/v1/deployments", null, null)),
+                listedIds(send(HttpMethod.GET, "/v1/deployments", "fields=display_name", null)));
+        for (Map.Entry<String, JsonNode> entry : displayNamesById.entrySet()) {
+            assertEquals(Set.of("id", "object", "display_name"), fieldNames(entry.getValue()));
+            assertEquals(deploymentsById.get(entry.getKey()).get("object"), entry.getValue().get("object"));
+        }
+        // a name no deployment has adds nothing
+        assertEquals(displayNamesById, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=display_name,descriptio", null)));
+
+        Map<String, JsonNode> severalFieldsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
+                "fields=display_name,display_version,features", null));
+        for (Map.Entry<String, JsonNode> entry : severalFieldsById.entrySet()) {
+            assertTrue(Set.of("id", "object", "display_name", "display_version", "features").containsAll(fieldNames(entry.getValue())));
+            assertEquals(deploymentsById.get(entry.getKey()).get("features"), entry.getValue().get("features"));
+        }
+
+        // id and object stay when they are not selected
+        for (JsonNode row : collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=features", null)).values()) {
+            assertEquals(Set.of("id", "object", "features"), fieldNames(row));
+        }
+
+        Map<String, JsonNode> nestedFeaturesById = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
+                "fields=display_name,features(rate,tokenize)", null));
+        for (JsonNode row : nestedFeaturesById.values()) {
+            assertEquals(Set.of("id", "object", "display_name", "features"), fieldNames(row));
+            assertEquals(Set.of("rate", "tokenize"), fieldNames(row.get("features")));
+        }
+
+        // a field of another kind of deployment is left out of the rest
+        Map<String, JsonNode> applicationPropertiesById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=application_properties", null));
+        assertEquals(Set.of("id", "object", "application_properties"), fieldNames(applicationPropertiesById.get("schema-app")));
+        assertEquals(Set.of("id", "object"), fieldNames(applicationPropertiesById.get("gpt-4")));
+        assertEquals(Set.of("id", "object"), fieldNames(applicationPropertiesById.get("git")));
+
+        // the selection narrows the fields, not the deployments of interface_type
+        Map<String, JsonNode> mcpDeploymentsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp&fields=display_name", null));
+        assertEquals(collectDeployments(send(HttpMethod.GET, "/v1/deployments", "interface_type=mcp", null)).keySet(), mcpDeploymentsById.keySet());
+        for (JsonNode row : mcpDeploymentsById.values()) {
+            assertEquals(Set.of("id", "object", "display_name"), fieldNames(row));
+        }
+
+        verify(send(HttpMethod.GET, "/v1/deployments", "fields=features(rate", null), 400);
+        verify(send(HttpMethod.GET, "/v1/deployments", "fields=id,,display_name", null), 400);
+        verify(send(HttpMethod.GET, "/v1/deployments", "fields=" + "a".repeat(1025), null), 400);
+        verify(send(HttpMethod.GET, "/v1/deployments", "fields=a(b(c(d(e(f)))))", null), 400);
+
+        // the single deployment endpoint does not read the parameter
+        assertEquals(readDeployment(send(HttpMethod.GET, "/v1/deployments/gpt-4")),
+                readDeployment(send(HttpMethod.GET, "/v1/deployments/gpt-4", "fields=display_name", null)));
+    }
+
+    @DialConfigLocation("dial-config/deployment-interface-configs.json")
+    @Test
+    public void testListDeploymentsWithFieldsSelectsInsideMaps() throws JsonProcessingException {
+        Map<String, JsonNode> deploymentsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments", null, null));
+        assertEquals(deploymentsById, collectDeployments(send(HttpMethod.GET, "/v1/deployments", "fields=*", null)));
+
+        Map<String, JsonNode> reasoningEffortsById = collectDeployments(send(HttpMethod.GET, "/v1/deployments",
+                "fields=interface_configs(*(features(reasoning_efforts)))", null));
+        JsonNode configs = reasoningEffortsById.get("gpt-5.4-mini").get("interface_configs");
+        assertEquals(fieldNames(deploymentsById.get("gpt-5.4-mini").get("interface_configs")), fieldNames(configs));
+        assertEquals(3, configs.size());
+        for (JsonNode config : configs) {
+            assertEquals(Set.of("features"), fieldNames(config));
+            assertEquals(Set.of("reasoning_efforts"), fieldNames(config.get("features")));
+        }
+        assertEquals(List.of("low", "medium", "high", "xhigh", "max"),
+                textValues(configs.get("anthropicMessages").get("features").get("reasoning_efforts")));
+
+        // naming every member keeps the whole listing through the pruned tree, with the bytes of the direct serialization
+        Set<String> allNames = new HashSet<>();
+        for (JsonNode deployment : deploymentsById.values()) {
+            allNames.addAll(fieldNames(deployment));
+        }
+        assertEquals(send(HttpMethod.GET, "/v1/deployments", null, null).body(),
+                send(HttpMethod.GET, "/v1/deployments", "fields=" + String.join(",", allNames), null).body());
+    }
+
     /**
      * Maps deployment id to its {@code features} object. Handles both the bare array returned by
      * {@code /v1/deployments} and the {@code {"data": [...]}} envelope of the legacy listings.
@@ -379,6 +471,15 @@ public class DeploymentApiTest extends ResourceBaseTest {
             result.put(deployment.get("id").asText(), deployment);
         }
         return result;
+    }
+
+    private static List<String> listedIds(Response response) throws JsonProcessingException {
+        verify(response, 200);
+        List<String> ids = new ArrayList<>();
+        for (JsonNode deployment : ProxyUtil.MAPPER.readTree(response.body())) {
+            ids.add(deployment.get("id").asText());
+        }
+        return ids;
     }
 
     private static Set<String> fieldNames(JsonNode object) {

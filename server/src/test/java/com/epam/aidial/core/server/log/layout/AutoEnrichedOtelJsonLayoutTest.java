@@ -10,6 +10,7 @@ import com.epam.aidial.core.credentials.exception.EncryptionException;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.RouteType;
+import com.epam.aidial.core.server.limiter.budget.CostObject;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -179,6 +180,8 @@ class AutoEnrichedOtelJsonLayoutTest {
         when(response.ended()).thenReturn(false); // Response not ended yet
         
         when(proxyContext.getProject()).thenReturn("proxy-project");
+        when(proxyContext.getCostObject()).thenReturn("ORG");
+        when(proxyContext.getCostObjectSource()).thenReturn(CostObject.Source.DEFAULT);
         when(proxyContext.getUserId()).thenReturn("proxy-user");
         when(proxyContext.getRequest()).thenReturn(request);
         when(proxyContext.getResponse()).thenReturn(response);
@@ -201,6 +204,8 @@ class AutoEnrichedOtelJsonLayoutTest {
         JsonNode attributes = jsonNode.get("Attributes");
         assertNotNull(attributes);
         assertEquals("proxy-project", attributes.get("user.project").asText());
+        assertEquals("ORG", attributes.get("user.cost_object").asText());
+        assertEquals("default", attributes.get("user.cost_object.source").asText());
         assertEquals("proxy-user", attributes.get("user.id").asText());
         assertEquals("/v1/chat/completions", attributes.get("request.uri").asText());
         assertEquals("POST", attributes.get("request.method").asText());
