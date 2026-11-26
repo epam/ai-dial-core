@@ -108,9 +108,10 @@ public class ConfigApplyService {
      * later entries in the same list see earlier ones, then flushes every in-memory change as a
      * single partial-update swap. Shared by the real-apply phase of {@code /v1/admin/apply} and by
      * {@code /v1/admin/config/file/migrate}, which builds its own entry list and scratch (with any
-     * shadowed file entries already removed) before calling this.
+     * shadowed file entries already removed) before calling this. {@code author} is the calling admin's display
+     * name: the audit author of what the batch creates and the default {@code author} of an application or toolset.
      */
-    public List<EntityResult> applyEntries(List<AdminManifest> entries, Config scratch) {
+    public List<EntityResult> applyEntries(List<AdminManifest> entries, Config scratch, String author) {
         List<EntityResult> results = new ArrayList<>();
         // Collect partial-update changes per applied entity; flush as one applyBatch
         // after the apply loop so the merged Config swap happens once, after all blobs are written.
@@ -122,7 +123,7 @@ public class ConfigApplyService {
             ConfigManifestSupport.ParsedManifest parsed = null;
             try {
                 parsed = ConfigManifestSupport.parseManifest(entry);
-                result = applySingle(parsed, scratch, pendingChanges);
+                result = applySingle(parsed, scratch, pendingChanges, author);
             } catch (Exception ex) {
                 result = new EntityResult(entry.name(), AdminApplyStatus.FAILED, ex.getMessage());
             }
@@ -156,38 +157,39 @@ public class ConfigApplyService {
         return results;
     }
 
-    private EntityResult applySingle(ConfigManifestSupport.ParsedManifest parsed, Config scratch, List<EntityChange> pending) {
+    private EntityResult applySingle(ConfigManifestSupport.ParsedManifest parsed, Config scratch, List<EntityChange> pending,
+                                     String author) {
         String id = parsed.manifest().name();
         return switch (parsed.manifest()) {
-            case AdminSettingsManifest settings -> applySettings(settings.spec(), id, parsed.name());
+            case AdminSettingsManifest settings -> applySettings(settings.spec(), id, parsed.name(), author);
             case AdminSchemaManifest schema ->
-                    applySchema(schema.spec(), id, parsed.name(), pending, ResourceTypes.APP_TYPE_SCHEMA, scratch);
+                    applySchema(schema.spec(), id, parsed.name(), pending, ResourceTypes.APP_TYPE_SCHEMA, scratch, author);
             case AdminCatalogSchemaManifest catalogSchema ->
-                    applySchema(catalogSchema.spec(), id, parsed.name(), pending, ResourceTypes.CATALOG_SCHEMA, scratch);
+                    applySchema(catalogSchema.spec(), id, parsed.name(), pending, ResourceTypes.CATALOG_SCHEMA, scratch, author);
             case AdminInterceptorManifest interceptor ->
-                    applyManagedEntity(interceptor.spec(), id, parsed.name(), ResourceTypes.INTERCEPTOR, scratch, pending);
+                    applyManagedEntity(interceptor.spec(), id, parsed.name(), ResourceTypes.INTERCEPTOR, scratch, pending, author);
             case AdminRouterManifest router ->
-                    applyManagedEntity(router.spec(), id, parsed.name(), ResourceTypes.ROUTER, scratch, pending);
+                    applyManagedEntity(router.spec(), id, parsed.name(), ResourceTypes.ROUTER, scratch, pending, author);
             case AdminTranslatorManifest translator ->
-                    applyTranslator(translator.spec(), id, parsed.name(), pending);
-            case AdminPluginManifest plugin -> applyPlugin(plugin.spec(), id, parsed.name(), pending);
+                    applyTranslator(translator.spec(), id, parsed.name(), pending, author);
+            case AdminPluginManifest plugin -> applyPlugin(plugin.spec(), id, parsed.name(), pending, author);
             case AdminRoleManifest role ->
-                    applyManagedEntity(role.spec(), id, parsed.name(), ResourceTypes.ROLE, scratch, pending);
+                    applyManagedEntity(role.spec(), id, parsed.name(), ResourceTypes.ROLE, scratch, pending, author);
             case AdminRouteManifest route ->
-                    applyManagedEntity(route.spec(), id, parsed.name(), ResourceTypes.ROUTE, scratch, pending);
-            case AdminKeyManifest key -> applyKey(key.spec(), id, parsed.name(), scratch, pending);
-            case AdminModelManifest model -> applyModel(model.spec(), id, parsed.name(), scratch, pending);
-            case AdminToolSetManifest toolSet -> applyToolSet(toolSet.spec(), id, parsed.name(), scratch, pending);
+                    applyManagedEntity(route.spec(), id, parsed.name(), ResourceTypes.ROUTE, scratch, pending, author);
+            case AdminKeyManifest key -> applyKey(key.spec(), id, parsed.name(), scratch, pending, author);
+            case AdminModelManifest model -> applyModel(model.spec(), id, parsed.name(), scratch, pending, author);
+            case AdminToolSetManifest toolSet -> applyToolSet(toolSet.spec(), id, parsed.name(), scratch, pending, author);
             case AdminApplicationManifest application ->
-                    applyApplication(application.spec(), id, parsed.name(), scratch, pending);
+                    applyApplication(application.spec(), id, parsed.name(), scratch, pending, author);
             case AdminPolicyManifest policy -> {
-                policyService.putPolicy(parsed.name().name(), policy.spec(), EtagHeader.ANY, null);
+                policyService.putPolicy(parsed.name().name(), policy.spec(), EtagHeader.ANY, author);
                 pending.add(new EntityChange(ResourceTypes.POLICY,
                         MergedConfigStore.resolveMapKeyFor(PolicyService.describe(ResourceTypes.POLICY, parsed.name().name())), policy.spec()));
                 yield new EntityResult(id, AdminApplyStatus.APPLIED, null);
             }
             case AdminPolicyAssignmentManifest assignment -> {
-                policyService.putAssignment(parsed.name().name(), assignment.spec(), EtagHeader.ANY, null);
+                policyService.putAssignment(parsed.name().name(), assignment.spec(), EtagHeader.ANY, author);
                 pending.add(new EntityChange(ResourceTypes.POLICY_ASSIGNMENT,
                         MergedConfigStore.resolveMapKeyFor(PolicyService.describe(ResourceTypes.POLICY_ASSIGNMENT, parsed.name().name())),
                         assignment.spec()));
@@ -196,7 +198,7 @@ public class ConfigApplyService {
         };
     }
 
-    private EntityResult applySettings(GlobalSettings settings, String id, ParsedName parsed) {
+    private EntityResult applySettings(GlobalSettings settings, String id, ParsedName parsed, String author) {
         if (!ConfigManifestSupport.SETTINGS_SINGLETON_NAME.equals(parsed.name())) {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Settings name must be 'global'");
         }
@@ -204,12 +206,12 @@ public class ConfigApplyService {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.GLOBAL_SETTINGS, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody = ConfigEntityCodec.serializeForBlob(settings);
-        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY, author);
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
     private EntityResult applySchema(JsonNode spec, String id, ParsedName parsed, List<EntityChange> pending,
-                                     ResourceTypes type, Config scratch) {
+                                     ResourceTypes type, Config scratch, String author) {
         String validationError = ConfigManifestSupport.validateSchema(spec, parsed, scratch, type, resourceService);
         if (validationError != null) {
             return new EntityResult(id, AdminApplyStatus.FAILED, validationError);
@@ -226,13 +228,13 @@ public class ConfigApplyService {
             return new EntityResult(id, AdminApplyStatus.FAILED, "Failed to serialize schema for " + id);
         }
         Map<String, String> eventMetadata = Map.of("$id", schemaId);
-        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY, null, true, eventMetadata);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY, author, true, eventMetadata);
         pending.add(new EntityChange(type, schemaId, spec));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
     private <T> EntityResult applyManagedEntity(T entity, String id, ParsedName parsed,
-                                                ResourceTypes type, Config scratch, List<EntityChange> pending) {
+                                                ResourceTypes type, Config scratch, List<EntityChange> pending, String author) {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 type, parsed.bucket(), parsed.location(), parsed.name());
         /// Deployment-id uniqueness only applies to INTERCEPTOR and ROUTER here — ROLE/ROUTE aren't deployments
@@ -267,14 +269,14 @@ public class ConfigApplyService {
         }
         secretFieldProcessor.encryptFields(entity, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(entity);
-        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY, author);
         // decrypt-in-place so partial-update receives plaintext upstream secrets.
         secretFieldProcessor.decryptFields(entity, descriptor);
         pending.add(new EntityChange(type, MergedConfigStore.resolveMapKeyFor(descriptor), entity));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyTranslator(Translator translator, String id, ParsedName parsed, List<EntityChange> pending) {
+    private EntityResult applyTranslator(Translator translator, String id, ParsedName parsed, List<EntityChange> pending, String author) {
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateTranslator(id, translator, warnings);
         if (!warnings.isEmpty()) {
@@ -283,12 +285,12 @@ public class ConfigApplyService {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.TRANSLATOR, parsed.bucket(), parsed.location(), parsed.name());
         String blobBody = ConfigEntityCodec.serializeForBlob(translator);
-        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY, author);
         pending.add(new EntityChange(ResourceTypes.TRANSLATOR, MergedConfigStore.resolveMapKeyFor(descriptor), translator));
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyPlugin(Plugin plugin, String id, ParsedName parsed, List<EntityChange> pending) {
+    private EntityResult applyPlugin(Plugin plugin, String id, ParsedName parsed, List<EntityChange> pending, String author) {
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validatePlugin(id, plugin, mergedConfigStore.getPluginRegistry(), true, warnings);
         // Without a provider the unknown type is the only warning: a dangling reference, soft-tolerable as a model's
@@ -298,12 +300,12 @@ public class ConfigApplyService {
         }
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.PLUGIN, parsed.bucket(), parsed.location(), parsed.name());
-        resourceService.putResource(descriptor, ConfigEntityCodec.serializeForBlob(plugin), EtagHeader.ANY);
+        resourceService.putResource(descriptor, ConfigEntityCodec.serializeForBlob(plugin), EtagHeader.ANY, author);
         pending.add(new EntityChange(ResourceTypes.PLUGIN, MergedConfigStore.resolveMapKeyFor(descriptor), plugin));
         return new EntityResult(id, softFailure ? AdminApplyStatus.APPLIED_INVALID : AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyKey(Key key, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
+    private EntityResult applyKey(Key key, String id, ParsedName parsed, Config scratch, List<EntityChange> pending, String author) {
         String validationError = KeyValidator.validateRequiredFields(key);
         if (validationError != null) {
             return new EntityResult(id, AdminApplyStatus.FAILED, validationError);
@@ -322,7 +324,7 @@ public class ConfigApplyService {
         }
         secretFieldProcessor.encryptFields(key, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(key);
-        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY, author);
         ApiKeyData data = new ApiKeyData();
         data.setOriginalKey(key);
         apiKeyStore.addOrUpdateKey(secret, data);
@@ -336,7 +338,7 @@ public class ConfigApplyService {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyModel(Model model, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
+    private EntityResult applyModel(Model model, String id, ParsedName parsed, Config scratch, List<EntityChange> pending, String author) {
         List<ValidationWarning> warnings = new ArrayList<>();
         ConfigPostProcessor.validateModelInvariants(model, scratch.getTranslators(), warnings);
         catalogSchemaService.validate(model, warnings);
@@ -354,7 +356,7 @@ public class ConfigApplyService {
         }
         secretFieldProcessor.encryptFields(model, descriptor);
         String blobBody = ConfigEntityCodec.serializeForBlob(model);
-        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY);
+        resourceService.putResource(descriptor, blobBody, EtagHeader.ANY, author);
         // decrypt-in-place so partial-update receives plaintext upstream secrets.
         secretFieldProcessor.decryptFields(model, descriptor);
         pending.add(new EntityChange(ResourceTypes.MODEL, MergedConfigStore.resolveMapKeyFor(descriptor), model));
@@ -362,7 +364,7 @@ public class ConfigApplyService {
     }
 
     private EntityResult applyApplication(Application application, String id, ParsedName parsed,
-                                          Config scratch, List<EntityChange> pending) {
+                                          Config scratch, List<EntityChange> pending, String author) {
         String dependencyError = ResourceDependencyValidator.findShapeError(application);
         if (dependencyError != null) {
             return new EntityResult(id, AdminApplyStatus.FAILED, dependencyError);
@@ -382,7 +384,7 @@ public class ConfigApplyService {
             }
         }
         // Bulk admin apply is always admin context — preserve forwardAuthToken if the manifest set it.
-        applicationService.putApplication(descriptor, EtagHeader.ANY, null, application, true,
+        applicationService.putApplication(descriptor, EtagHeader.ANY, author, application, true,
                 AdminManagedFieldsWriteMode.AUTHORITATIVE);
         if (platform) {
             Application decrypted = applicationService.getApplicationWithDecryptedSecrets(descriptor).getValue();
@@ -391,7 +393,8 @@ public class ConfigApplyService {
         return new EntityResult(id, AdminApplyStatus.APPLIED, null);
     }
 
-    private EntityResult applyToolSet(ToolSet toolSet, String id, ParsedName parsed, Config scratch, List<EntityChange> pending) {
+    private EntityResult applyToolSet(ToolSet toolSet, String id, ParsedName parsed, Config scratch, List<EntityChange> pending,
+                                      String author) {
         ResourceDescriptor descriptor = ResourceDescriptorFactory.fromDecoded(
                 ResourceTypes.TOOL_SET, parsed.bucket(), parsed.location(), parsed.name());
         // Same rationale as applyApplication above — only platform-bucket toolsets belong in
@@ -403,7 +406,7 @@ public class ConfigApplyService {
                 return new EntityResult(id, AdminApplyStatus.FAILED, dupError);
             }
         }
-        toolSetService.putToolSet(descriptor, EtagHeader.ANY, null, toolSet, true);
+        toolSetService.putToolSet(descriptor, EtagHeader.ANY, author, toolSet, true);
         if (platform) {
             ToolSet decrypted = toolSetService.getToolSetWithDecryptedAuthSettings(descriptor).getValue();
             pending.add(new EntityChange(ResourceTypes.TOOL_SET, MergedConfigStore.resolveMapKeyFor(descriptor), decrypted));

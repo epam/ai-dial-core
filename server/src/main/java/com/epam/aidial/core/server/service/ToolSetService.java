@@ -55,7 +55,9 @@ public class ToolSetService {
         ToolSet toolSet = result.getValue();
         ResourceItemMetadata meta = result.getKey();
 
-        toolSet.setAuthor(meta.getAuthor());
+        if (toolSet.getAuthor() == null) {
+            toolSet.setAuthor(meta.getAuthor());
+        }
         toolSet.setCreatedAt(meta.getCreatedAt());
         toolSet.setUpdatedAt(meta.getUpdatedAt());
 
@@ -97,7 +99,9 @@ public class ToolSetService {
         ToolSet toolSet = result.getValue();
         ResourceItemMetadata meta = result.getKey();
 
-        toolSet.setAuthor(meta.getAuthor());
+        if (toolSet.getAuthor() == null) {
+            toolSet.setAuthor(meta.getAuthor());
+        }
         toolSet.setCreatedAt(meta.getCreatedAt());
         toolSet.setUpdatedAt(meta.getUpdatedAt());
 
@@ -155,7 +159,9 @@ public class ToolSetService {
         if (toolSet == null) {
             throw new IllegalArgumentException("ToolSet content is missed");
         }
-        toolSet.setAuthor(meta.getAuthor());
+        if (toolSet.getAuthor() == null) {
+            toolSet.setAuthor(meta.getAuthor());
+        }
         toolSet.setCreatedAt(meta.getCreatedAt());
         toolSet.setUpdatedAt(meta.getUpdatedAt());
         return toolSet;
@@ -187,6 +193,9 @@ public class ToolSetService {
         BucketInfo bucketInfo = new BucketInfo(resource.getBucketName(), resource.getBucketLocation());
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             ToolSet existing = ProxyUtil.convertToObject(json, ToolSet.class);
+            if (toolSet.getAuthor() == null) {
+                toolSet.setAuthor(existing == null ? author : existing.getAuthor());
+            }
             if (inheritForwardAuthToken) {
                 toolSet.setForwardAuthToken(existing != null && existing.isForwardAuthToken());
             }
@@ -234,6 +243,8 @@ public class ToolSetService {
         ToolSet toolSet = result.getValue();
         if (author == null) {
             author = result.getKey().getAuthor();
+        } else {
+            toolSet.setAuthor(author);
         }
 
         EtagHeader etag = overwrite ? EtagHeader.ANY : EtagHeader.NEW_ONLY;

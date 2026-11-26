@@ -168,6 +168,52 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testApplicationAuthor() {
+        String resourceUrl = "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/";
+        String openAiUrl = "/openai/applications/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/";
+        String withoutAuthor = """
+                {"endpoint": "http://application1/v1/completions", "display_name": "App"}
+                """;
+        String withAuthor = """
+                {"endpoint": "http://application1/v1/completions", "display_name": "App", "author": "%s"}
+                """;
+
+        // created without author: the caller's name
+        verify(send(HttpMethod.PUT, resourceUrl + "plain", null, withoutAuthor), 200);
+        assertEquals("EPM-RTC-GPT", authorOf(send(HttpMethod.GET, resourceUrl + "plain", null, "")));
+
+        // created with another author: stored as sent, the audit author of the resource is still the caller
+        Response response = send(HttpMethod.PUT, resourceUrl + "copy", null, withAuthor.formatted("original-dev"));
+        verify(response, 200);
+        assertEquals("EPM-RTC-GPT", new JsonObject(response.body()).getString("author"));
+        assertEquals("original-dev", authorOf(send(HttpMethod.GET, resourceUrl + "copy", null, "")));
+        assertEquals("original-dev", ownerOf(send(HttpMethod.GET, openAiUrl + "copy", null, "")));
+
+        // created with an empty author: anonymous
+        verify(send(HttpMethod.PUT, resourceUrl + "anon", null, withAuthor.formatted("")), 200);
+        assertEquals("", authorOf(send(HttpMethod.GET, resourceUrl + "anon", null, "")));
+        assertEquals("", ownerOf(send(HttpMethod.GET, openAiUrl + "anon", null, "")));
+
+        // an update without author keeps it, an update with author replaces it
+        verify(send(HttpMethod.PUT, resourceUrl + "copy", null, withoutAuthor), 200);
+        assertEquals("original-dev", authorOf(send(HttpMethod.GET, resourceUrl + "copy", null, "")));
+        verify(send(HttpMethod.PUT, resourceUrl + "copy", null, withAuthor.formatted("team-y")), 200);
+        assertEquals("team-y", authorOf(send(HttpMethod.GET, resourceUrl + "copy", null, "")));
+    }
+
+    @Test
+    void testApplicationSavedBeforeBodyAuthorShowsAuditAuthor() {
+        String resourceUrl = "applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/legacy";
+        ResourceDescriptor descriptor = ResourceDescriptorFactory.fromAnyUrl(resourceUrl, dial.getEncryptionService());
+        dial.getResourceService().putResource(descriptor, """
+                {"endpoint": "http://application1/v1/completions", "display_name": "Legacy"}
+                """, EtagHeader.ANY, "legacy-user", false);
+
+        assertEquals("legacy-user", authorOf(send(HttpMethod.GET, "/v1/" + resourceUrl, null, "")));
+        assertEquals("legacy-user", ownerOf(send(HttpMethod.GET, "/openai/applications/" + resourceUrl, null, "")));
+    }
+
+    @Test
     void testRawApplicationGetEnrichesStatusStripsSecretsAndIgnoresInjectedStatus() {
         // The PUT body injects a bogus user_level_auth_status: it must be ignored (READ_ONLY), never persisted.
         Response put = send(HttpMethod.PUT,

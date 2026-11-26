@@ -74,6 +74,17 @@ public class ConfigFileMigrateApiTest extends ResourceBaseTest {
     }
 
     @Test
+    @DialConfigLocation("dial-config/config-file-migrate.json")
+    void testMigrateRecordsCallerAsAuditAuthor() {
+        verify(send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, """
+                {"types": ["models"]}
+                """, "authorization", "admin"), 200);
+
+        assertEquals("admin user", authorOf(send(HttpMethod.GET, "/v1/metadata/models/platform/test-model-v1", null, "",
+                "authorization", "admin")));
+    }
+
+    @Test
     @SneakyThrows
     void testMigratePlugins() {
         Response response = send(HttpMethod.POST, "/v1/admin/config/file/migrate", null, "{\"types\": [\"plugins\"]}",

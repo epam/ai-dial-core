@@ -42,7 +42,7 @@ An object containing parameters for each [application](#applications).
 * `userRoles`: A specific `claim` value provided by a specific IDP in JWT or an [API key role](./keys.md). If not defined, the application is available to all users. Refer to [IDP Configuration](https://docs.dialx.ai/tutorials/devops/auth-and-access-control/configure-idps/overview) to view examples.
 * `descriptionKeywords`: A list of keywords describing the application, e.g. `code-gen`, `text2image`.
 * `maxRetryAttempts`: The number of times DIAL Core will [retry](https://docs.dialx.ai/platform/core/load-balancer#fallbacks) a connection in case of upstream errors.
-* `author`: The application's developer.
+* `author`: The application's developer, listed as `owner` in the deployment listings. An application saved through the API without `author` gets the name of the caller: the display name of the user, or the project of the API key. An update without `author` keeps the stored one, and an empty string means the author is anonymous. The name of whoever first stored the application is not affected: `GET /v1/metadata/` reports it as `author`. An application saved before this field was kept shows that name instead.
 * `createdAt`: The date of the application creation.
 * `updatedAt`: The date of the last application update. 
 * `dependencies`: A list of dependent deployments (applications, AI models) which the application may use. Refer to [Managing Authorization in Complex Application Ecosystems](https://docs.dialx.ai/tutorials/developers/apps-development/auth-matrix) to learn more about dependencies.

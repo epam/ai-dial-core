@@ -468,6 +468,22 @@ public class ResourceBaseTest {
     }
 
     /**
+     * The {@code author} of an entity read answered with 200, or null when it has none.
+     */
+    protected static String authorOf(Response response) {
+        verify(response, 200);
+        return new JsonObject(response.body()).getString("author");
+    }
+
+    /**
+     * The {@code owner} of a deployment read or listing entry answered with 200, or null when it has none.
+     */
+    protected static String ownerOf(Response response) {
+        verify(response, 200);
+        return new JsonObject(response.body()).getString("owner");
+    }
+
+    /**
      * Spins until the wall clock moves past the current millisecond, so the next write gets a later timestamp
      * than every write before it.
      */

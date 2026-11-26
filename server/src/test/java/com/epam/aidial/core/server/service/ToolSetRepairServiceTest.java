@@ -209,6 +209,53 @@ class ToolSetRepairServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void repairPassesAuditAuthorAndKeepsStoredBodyAuthor() {
+        String toolsetUrl = "toolsets/bucket/toolset@";
+
+        ResourceDescriptor resource = mock(ResourceDescriptor.class);
+        when(resource.getUrl()).thenReturn(toolsetUrl);
+        when(resource.getBucketName()).thenReturn("bucket");
+        when(resource.getBucketLocation()).thenReturn("Users/user/");
+
+        ResourceAuthSettings authSettings = new ResourceAuthSettings();
+        authSettings.setAuthenticationType(AuthenticationType.OAUTH);
+        authSettings.setDynamicallyRegistered(true);
+        ToolSet toolSet = new ToolSet();
+        toolSet.setEndpoint("http://as.example.com/mcp");
+        toolSet.setAuthSettings(authSettings);
+        toolSet.setAuthor("team-x");
+
+        ResourceItemMetadata meta = new ResourceItemMetadata();
+        meta.setAuthor("test-author");
+        when(resourceService.getResourceWithMetadata(resource, EtagHeader.ANY))
+                .thenReturn(Pair.of(meta, ProxyUtil.convertToString(toolSet)));
+
+        when(registrationService.discoverMetadata(any(), any())).thenReturn(mock(AuthorizationServerMetadata.class));
+        when(registrationService.register(any(), any(), any(), anyBoolean(), eq(RegistrationPolicy.TOOLSET)))
+                .thenReturn(ClientRegistration.builder().clientId("new-client-id").clientSecret("new-client-secret").build());
+
+        AtomicReference<String> written = new AtomicReference<>();
+        when(resourceService.computeResource(eq(resource), eq(EtagHeader.ANY), eq("test-author"), any()))
+                .thenAnswer(invocation -> {
+                    Function<String, String> fn = invocation.getArgument(3);
+                    written.set(fn.apply(ProxyUtil.convertToString(toolSet)));
+                    return meta;
+                });
+
+        ProxyContext context = mock(ProxyContext.class);
+        try (MockedStatic<CredentialsLocatorFactory> factory = mockStatic(CredentialsLocatorFactory.class)) {
+            factory.when(() -> CredentialsLocatorFactory.fromAnyUrl(
+                    eq(toolsetUrl), eq(context), eq(ResourceTypes.TOOL_SET)))
+                    .thenReturn(mock(CredentialsLocator.class));
+
+            repairService.repair(resource, context);
+        }
+
+        assertEquals("team-x", ProxyUtil.convertToObject(written.get(), ToolSet.class).getAuthor());
+    }
+
+    @Test
     void repairReturns424WhenDiscoveryReturnsNull() {
         ResourceDescriptor resource = buildDcrToolsetResource("toolsets/bucket/toolset@");
 

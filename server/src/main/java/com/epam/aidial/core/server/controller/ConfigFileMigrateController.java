@@ -157,9 +157,10 @@ public class ConfigFileMigrateController {
             return;
         }
         boolean dryRun = Boolean.TRUE.equals(request.dryRun());
+        String author = context.getUserDisplayName();
 
         taskExecutor.submit(() -> lockService.underBucketLocks(MergedConfigStore.ADMIN_BUCKET_LOCATIONS,
-                () -> runMigration(requestedTypes, dryRun)))
+                () -> runMigration(requestedTypes, dryRun, author)))
                 .onSuccess(response -> context.respond(HttpStatus.OK, response))
                 .onFailure(error -> {
                     if (error instanceof HttpException ex) {
@@ -184,7 +185,7 @@ public class ConfigFileMigrateController {
         return result;
     }
 
-    private ConfigFileMigrateResponse runMigration(Set<String> requestedTypes, boolean dryRun) {
+    private ConfigFileMigrateResponse runMigration(Set<String> requestedTypes, boolean dryRun, String author) {
         Config fileConfig = mergedConfigStore.getFileSourcedConfig();
         if (fileConfig == null) {
             return new ConfigFileMigrateResponse(List.of());
@@ -223,7 +224,7 @@ public class ConfigFileMigrateController {
                 manifests.add(pending.manifest());
                 pendingByCanonicalId.put(pending.manifest().name(), pending);
             }
-            List<ConfigApplyService.EntityResult> appliedEntriesResults = applyService.applyEntries(manifests, scratch);
+            List<ConfigApplyService.EntityResult> appliedEntriesResults = applyService.applyEntries(manifests, scratch, author);
             for (ConfigApplyService.EntityResult result : appliedEntriesResults) {
                 results.add(toMigrateResult(result, pendingByCanonicalId.get(result.entityId())));
             }

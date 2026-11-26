@@ -180,7 +180,9 @@ public class ApplicationService {
             throw new ResourceNotFoundException("Application is not found: " + resource.getUrl());
         }
 
-        application.setAuthor(meta.getAuthor());
+        if (application.getAuthor() == null) {
+            application.setAuthor(meta.getAuthor());
+        }
         application.setCreatedAt(meta.getCreatedAt());
         application.setUpdatedAt(meta.getUpdatedAt());
         // Route-upstream secrets (routes[].upstreams[].key/secretExtraData) are @EncryptedField,
@@ -199,7 +201,9 @@ public class ApplicationService {
         if (application == null) {
             throw new IllegalArgumentException("Application content is missed");
         }
-        application.setAuthor(meta.getAuthor());
+        if (application.getAuthor() == null) {
+            application.setAuthor(meta.getAuthor());
+        }
         application.setCreatedAt(meta.getCreatedAt());
         application.setUpdatedAt(meta.getUpdatedAt());
         decryptRouteSecretsTolerant(application, meta.getDescriptor());
@@ -266,6 +270,9 @@ public class ApplicationService {
         MutableBoolean dropApproval = new MutableBoolean();
         ResourceItemMetadata meta = resourceService.computeResource(resource, etag, author, json -> {
             Application existing = ProxyUtil.convertToObject(json, Application.class);
+            if (application.getAuthor() == null) {
+                application.setAuthor(existing == null ? author : existing.getAuthor());
+            }
             boolean declared = declaresDependencies(existing);
             prepareAdminManagedFields(application, existing, adminManagedFieldsWriteMode);
             inheritOrGuardDependencies(application, existing, userAuthored, dependenciesSubmitted);
@@ -544,6 +551,8 @@ public class ApplicationService {
         externalServiceService.decryptSecrets(source, application);
         if (author == null) {
             author = result.getKey().getAuthor();
+        } else {
+            application.setAuthor(author);
         }
         Application.Function function = application.getFunction();
 
