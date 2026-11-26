@@ -1,0 +1,68 @@
+name: Publish Docker image
+
+# Builds the Dockerfile and pushes the image to this repository's GitHub Container Registry
+# (ghcr.io/<owner>/<repo>), tagged with the branch or git tag name and the commit SHA.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["*"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # The Gradle build inside the Dockerfile reads the JClouds package from GitHub Packages
+      # (maven.pkg.github.com/epam/jclouds). GITHUB_TOKEN is used unless GPR_USERNAME / GPR_PASSWORD
+      # secrets (a user and a token with read:packages) are set.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          secrets: |
+            GPR_USERNAME=${{ secrets.GPR_USERNAME || github.actor }}
+            GPR_PASSWORD=${{ secrets.GPR_PASSWORD || secrets.GITHUB_TOKEN }}
