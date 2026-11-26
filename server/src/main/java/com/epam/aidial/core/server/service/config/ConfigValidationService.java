@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.policy.PolicyAssignmentValidator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.KeyValidator;
 import com.epam.aidial.core.server.config.MergedConfigStore;
@@ -14,6 +15,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPackageManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPluginManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
@@ -199,6 +201,16 @@ public class ConfigValidationService {
                             return new ValidationResult(id, ValidationStatus.FAILED, dupError);
                         }
                     }
+                }
+                case AdminPackageManifest packageManifest -> {
+                    String error = PolicyAssignmentValidator.validatePackageName(parsed.name().name());
+                    if (error == null) {
+                        error = PolicyAssignmentValidator.validatePackage(packageManifest.spec());
+                    }
+                    if (error != null) {
+                        return new ValidationResult(id, ValidationStatus.FAILED, error);
+                    }
+                    policyPrecheck.stagePackage(parsed.name().name(), packageManifest.spec());
                 }
                 case AdminPolicyManifest policyManifest -> {
                     policyPrecheck.checkPolicy(parsed.name().name(), policyManifest.spec());

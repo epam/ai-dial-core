@@ -11,6 +11,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.policy.PolicyAssignmentValidator;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.EntityChange;
 import com.epam.aidial.core.server.config.KeyValidator;
@@ -25,6 +26,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPackageManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPluginManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
@@ -180,6 +182,15 @@ public class ConfigApplyService {
             case AdminToolSetManifest toolSet -> applyToolSet(toolSet.spec(), id, parsed.name(), scratch, pending);
             case AdminApplicationManifest application ->
                     applyApplication(application.spec(), id, parsed.name(), scratch, pending);
+            case AdminPackageManifest policyPackage -> {
+                String error = PolicyAssignmentValidator.validatePackageName(parsed.name().name());
+                if (error == null) {
+                    error = PolicyAssignmentValidator.validatePackage(policyPackage.spec());
+                }
+                yield error != null
+                        ? new EntityResult(id, AdminApplyStatus.FAILED, error)
+                        : applyManagedEntity(policyPackage.spec(), id, parsed.name(), ResourceTypes.PACKAGE, scratch, pending);
+            }
             case AdminPolicyManifest policy -> {
                 policyService.putPolicy(parsed.name().name(), policy.spec(), EtagHeader.ANY, null);
                 pending.add(new EntityChange(ResourceTypes.POLICY,

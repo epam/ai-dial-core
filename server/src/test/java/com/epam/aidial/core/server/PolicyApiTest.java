@@ -465,6 +465,20 @@ public class PolicyApiTest extends ResourceBaseTest {
     // V11
 
     @Test
+    void testBudgetNamingPackageTiesWithOneNamingItsMember() {
+        verify(put("/v1/packages/platform/v11p-engineering", "{ \"deployments\": [\"weak\", \"strong\"] }"), 200);
+        verify(put(POLICIES + "v11p-package", policy(5, "\"@v11p-engineering\"", "")), 200);
+        verify(put(POLICIES + "v11p-member", policy(5, "[\"strong\"]", "")), 200);
+        verify(put(POLICIES + "v11p-other", policy(5, "[\"hi-end\"]", "")), 200);
+        verify(put(ASSIGNMENTS + "v11p-a/one", assignment("v11p-package", ALICE, "v11p-a")), 200);
+
+        verifyRejected(put(ASSIGNMENTS + "v11p-a/two", assignment("v11p-member", ALICE, "v11p-a")), 409,
+                "has the same priority 5");
+        // a model outside the package is not a tie
+        verify(put(ASSIGNMENTS + "v11p-a/three", assignment("v11p-other", ALICE, "v11p-a")), 200);
+    }
+
+    @Test
     void testBudgetsOfOneCostObjectMustNotTieInPriority() {
         verify(put(POLICIES + "v11-first", policy(5, "[\"opus\"]", "")), 200);
         verify(put(POLICIES + "v11-second", policy(5, "[\"opus\", \"sonnet\"]", "")), 200);
