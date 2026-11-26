@@ -17716,6 +17716,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/McpTool"
+    AnalyticsConfig:
+      type: object
+      properties:
+        securedSubject:
+          type: array
+          items:
+            $ref: "#/components/schemas/PolicySubjectRule"
     AnthropicErrorData:
       type: object
       properties:
@@ -19172,6 +19179,8 @@ components:
           $ref: "#/components/schemas/MapStringAlias"
         routers:
           $ref: "#/components/schemas/MapStringRouter"
+        analytics:
+          $ref: "#/components/schemas/AnalyticsConfig"
     ConfigFileMigrateRequest:
       type: object
       properties:
@@ -19969,6 +19978,8 @@ components:
           $ref: "#/components/schemas/RateLimitSchedule"
         spendingLimits:
           $ref: "#/components/schemas/SpendingLimits"
+        analytics:
+          $ref: "#/components/schemas/AnalyticsConfig"
     GrantAdminConsentRequest:
       type: object
       properties:
