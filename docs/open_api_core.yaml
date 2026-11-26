@@ -57,6 +57,26 @@ info:
     DIAL Core adds the `X-DIAL-DEPLOYMENT-ID` header with the name of the called deployment to every request it forwards to a deployment, whatever the interface mode. When the deployment has `overrideName`, the path and `X-DIAL-OVERRIDE-NAME` carry that name, and this header still carries the DIAL deployment name.
 
     DIAL Core always sets this header itself, so a value sent by a client is overwritten and never reaches the deployment.
+
+    # Harness
+
+    This section links to endpoints for connecting AI harnesses to DIAL and calling the Anthropic and OpenAI APIs.
+
+    ## Anthropic
+
+    - [`GET /anthropic/v1/models`](#operation/getAnthropicModels) — List available models that support the Anthropic Messages API.
+    - [`GET /anthropic/v1/models/{model_name}`](#operation/getAnthropicModel) — Look up one Anthropic-compatible model by name.
+    - [`GET /anthropic/api/oauth/usage`](#operation/getAnthropicUsage) — Check your spend limits, how much you have used, and when the limits reset.
+    - [`POST /anthropic/v1/messages`](#operation/createAnthropicMessage) — Generate a reply from a conversation using the Anthropic Messages API.
+    - [`POST /anthropic/v1/messages/count_tokens`](#operation/countAnthropicMessageTokens) — Count input tokens before sending a Messages request.
+
+    ## OpenAI
+
+    - [`GET /openai/models`](#operation/getModels) — List available DIAL models and their metadata.
+    - [`GET /openai/models/{model_name}`](#operation/getModel) — Look up a DIAL model's metadata by name.
+    - [`POST /openai/v1/responses`](#operation/createResponse) — Generate model output using the OpenAI Responses API.
+    - [`POST /openai/v1/chat/completions`](#operation/createChatCompletion) — Generate a chat reply using the OpenAI Chat Completions route, with the model specified in the request body.
+    - [`POST /openai/deployments/{deployment_name}/chat/completions`](#operation/sendChatCompletionRequest) — Generate a chat reply using the Azure OpenAI Chat Completions route, with the deployment specified in the URL.
   version: 0.0.0
   license:
     name: Apache-2.0
