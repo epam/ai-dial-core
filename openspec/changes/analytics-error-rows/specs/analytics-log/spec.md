@@ -22,7 +22,7 @@ no field that other rows lack. When Core gave the answer itself, its `response.b
 
 #### Scenario: Refusal
 - **WHEN** `analytics.errorRows` is on and a key that is not `secured` is refused with `403`
-- **THEN** the row has `request.body`, `response.status: "403"` and `trace`, `response.body` is the empty string, and the row
+- **THEN** the row has the `request.body` field (empty, as the body is not read before the refusal), `response.status: "403"` and `trace`, `response.body` is the empty string, and the row
   has no `token_usage` and no `error` member
 
 #### Scenario: Successful pass with the setting on

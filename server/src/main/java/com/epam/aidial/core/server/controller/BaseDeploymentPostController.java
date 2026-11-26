@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
@@ -115,40 +116,49 @@ public class BaseDeploymentPostController {
     protected Future<?> respond(HttpStatus status, String errorMessage) {
         finalizeRequest();
         Future<?> answered = context.respond(status, errorMessage);
-        if (isErrorRowAllowed()) {
-            proxy.getLogStore().saveErrorResponse(context);
-        }
+        saveErrorResponse();
         return answered;
     }
 
     protected void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
-        if (isErrorRowAllowed()) {
-            proxy.getLogStore().saveErrorResponse(context);
-        }
+        saveErrorResponse();
     }
 
     protected void respond(HttpStatus status) {
         finalizeRequest();
         context.respond(status);
-        if (isErrorRowAllowed()) {
-            proxy.getLogStore().saveErrorResponse(context);
-        }
+        saveErrorResponse();
     }
 
     protected void respond(HttpStatus status, Object result) {
         finalizeRequest();
         context.respond(status, result);
+        saveErrorResponse();
+    }
+
+    /** Saves the error row of an answer Core gave itself; call it right after {@code context.respond(...)}. */
+    protected void saveErrorResponse() {
         if (isErrorRowAllowed()) {
             proxy.getLogStore().saveErrorResponse(context);
         }
     }
 
-    /** False for an interceptor call and an undecided decision-mode router: their specs say they write no error row. */
+    /**
+     * False for an interceptor call, an undecided decision-mode router, and a decided pass whose current candidate was not
+     * resolved (router-deployment "Decision failures"): their specs say they write no error row.
+     */
     protected boolean isErrorRowAllowed() {
-        return !(context.getDeployment() instanceof Router router && router.getMode() == Router.Mode.DECISION
-                && context.getDecision() == null);
+        Deployment deployment = context.getDeployment();
+        if (deployment instanceof Interceptor) {
+            return false;
+        }
+        RouterDecision decision = context.getDecision();
+        if (decision == null) {
+            return !(deployment instanceof Router router && router.getMode() == Router.Mode.DECISION);
+        }
+        return deployment != null && decision.current().equals(deployment.getName());
     }
 
     /**
@@ -319,9 +329,9 @@ public class BaseDeploymentPostController {
         }
     }
 
-    // a background job's terminal row is written by BackgroundJobService, once the job ends
+    // a recorded background job's terminal row is written by BackgroundJobService, once the job ends
     private void saveBrokenStreamRow() {
-        if (isErrorRowAllowed() && !context.isBackgroundJob()) {
+        if (isErrorRowAllowed() && !context.isBackgroundJobRecorded()) {
             proxy.getLogStore().saveErrorRow(context);
         }
     }

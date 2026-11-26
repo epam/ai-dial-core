@@ -281,6 +281,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                 finalizeRequest();
                 Buffer body = AnthropicLimitResponses.putNoBudget(context.getResponse().headers(), rejection.getReason());
                 context.respond(AnthropicLimitResponses.PAYMENT_REQUIRED, body);
+                saveErrorResponse();
             });
             log.warn("Deployment error {}", deploymentId, error);
         } else if (error instanceof HttpException httpException) {

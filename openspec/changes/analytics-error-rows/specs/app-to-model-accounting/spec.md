@@ -176,8 +176,14 @@ answer, as for the row of a client that left a `Model`.
 - **THEN** one row is written for the application, and the key Core sent the application still exists in Redis
 
 #### Scenario: Background job
-- **WHEN** `analytics.errorRows` is on and the stream of a Responses request with `background: true` breaks
+- **WHEN** `analytics.errorRows` is on and the stream of a Responses request with `background: true` breaks after its job
+  was recorded
 - **THEN** this pass writes no row: the terminal row of a background job is written when the job ends
+
+#### Scenario: Background request before its job is recorded
+- **WHEN** `analytics.errorRows` is on and the stream of a Responses request with `background: true` breaks before an event
+  carried the response id, so no job was recorded
+- **THEN** one row is written for the pass
 
 #### Scenario: Setting off, the origin breaks
 - **WHEN** `analytics.errorRows` is off and a model's origin breaks its stream after the headers
@@ -201,7 +207,8 @@ nor for an origin's error answer that Core relays, which already has its row.
 
 ### Requirement: One row per pass, and the passes that keep none
 Core SHALL write at most one analytics row for a pass. With `analytics.errorRows` on it SHALL NOT write an error row for the
-call to an interceptor, nor for the pass of a router in decision mode that fails before it decides.
+call to an interceptor, nor for the pass of a router in decision mode once the router is resolved and until a candidate it
+chose is resolved (router-deployment "Decision failures").
 
 #### Scenario: Retry that succeeds
 - **WHEN** `analytics.errorRows` is on, a model has two upstreams and `maxRetryAttempts: 2`, the first answers `502` and
