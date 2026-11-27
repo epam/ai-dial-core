@@ -119,34 +119,61 @@ public class ApiKeyData {
         return proxyApiKeyData;
     }
 
+    /**
+     * The execution path of the key this pass mints: the incoming key's path (none for a root request), the router
+     * after its decision, then the called deployment or route.
+     */
+    public static List<String> pathOf(ProxyContext context) {
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        List<String> path = apiKeyData.getPerRequestKey() == null ? new ArrayList<>() : new ArrayList<>(apiKeyData.getExecutionPath());
+        if (context.getDecision() != null) {
+            // the deployment the client called, so the router is the parent of the one it chose
+            path.add(context.getDecision().getRouterName());
+        }
+        if (context.getDeployment() != null) {
+            path.add(context.getDeployment().getName());
+        } else if (context.getRoute() != null) {
+            path.add(context.getRoute().getName());
+        }
+        return path;
+    }
+
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
-        List<String> currentPath;
         proxyApiKeyData.setHttpHeaders(collectHttpHeaders(context));
 
         if (apiKeyData.getPerRequestKey() == null) {
             proxyApiKeyData.setOriginalKey(context.getKey());
             proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
             proxyApiKeyData.setTraceId(context.getTraceId());
-            currentPath = new ArrayList<>();
         } else {
             proxyApiKeyData.setOriginalKey(apiKeyData.getOriginalKey());
             proxyApiKeyData.setExtractedClaims(apiKeyData.getExtractedClaims());
             proxyApiKeyData.setTraceId(apiKeyData.getTraceId());
-            currentPath = new ArrayList<>(context.getApiKeyData().getExecutionPath());
         }
         String receiver = null;
-        if (context.getDecision() != null) {
-            // the deployment the client called, so the router is the parent of the one it chose
-            currentPath.add(context.getDecision().getRouterName());
-        }
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();
-            currentPath.add(receiver);
+            if (context.getDeployment() instanceof AliasPass pass) {
+                proxyApiKeyData.setLentDeployment(pass.getTargetName());
+                if (pass.isResourceTarget()) {
+                    // lets the target pass read the target resource, as access checks of resources expect
+                    proxyApiKeyData.getAttachedDeployments().put(pass.getTargetName(), new AutoSharedData(ResourceAccessType.READ_ONLY));
+                }
+            } else if (context.getDecision() == null && isLentTo(apiKeyData, receiver, context.getInitialDeployment())) {
+                // an interceptor in front of the target, and the target's own callback such as a translator's, call
+                // Core back for the same target; the lending goes with them and covers that target only. A lent
+                // router's choice is checked against the caller's own rights, so the lending stops at the decision
+                String lent = apiKeyData.getLentDeployment();
+                proxyApiKeyData.setLentDeployment(lent);
+                AutoSharedData attached = apiKeyData.getAttachedDeployments().get(lent);
+                if (attached != null) {
+                    proxyApiKeyData.getAttachedDeployments().put(lent, attached);
+                }
+            }
             proxyApiKeyData.setSourceDeployment(receiver);
         } else if (context.getRoute() != null) {
             receiver = context.getRoute().getName();
-            currentPath.add(receiver);
             proxyApiKeyData.setSourceDeployment(receiver);
         }
         if (apiKeyData.getPerRequestKey() != null) {
@@ -182,7 +209,7 @@ public class ApiKeyData {
                 proxyApiKeyData.setAliasName(apiKeyData.getAliasName());
             }
         }
-        proxyApiKeyData.setExecutionPath(currentPath);
+        proxyApiKeyData.setExecutionPath(pathOf(context));
         proxyApiKeyData.setSpanId(context.getSpanId());
     }
 

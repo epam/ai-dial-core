@@ -122,7 +122,16 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "description": "My Custom Application Description"
                 }
                 """);
-        verify(response, 400);
+        verify(response, 400, "Custom application validation failed [Custom application schema not found: http://unknown/schema/id]");
+
+        response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/unknown-field-case", null, """
+                {
+                "endpoint": "http://application1/v1/completions",
+                "display_name": "My Custom Application",
+                "my_custom": "12345"
+                }
+                """);
+        verify(response, 400, "Unrecognized property 'my_custom'");
 
         // verify custom app creation fails if dependency is unknown
         response = send(HttpMethod.PUT, "/v1/applications/3CcedGxCx23EwiVbVmscVktScRyf46KypuBQ65miviST/my-custom-application", null, """
@@ -2206,25 +2215,17 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 "authorization", "admin");
         verify(response, 200);
 
-        // User-authored (own bucket) with the flag off — the default: rejected wholesale.
+        // User-authored (own bucket) with the flag at its default (on): accepted.
         response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                 dependencyAppBody("""
                         {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"]}"""));
-        verify(response, 403);
+        verify(response, 200);
 
-        // a malformed section is a shape error (400) regardless of the author — shape check runs before the ceiling
+        // a malformed section is a shape error (400) regardless of the author
         response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
                 dependencyAppBody("""
                         {"kind": "dial.resourceLink", "link_id": "lnk_bad", "target": {"url": "files/public/*/"}, "access": ["read"]}"""));
         verify(response, 400);
-
-        // The ceiling is keyed on the author, not the destination bucket: an admin prototyping in
-        // their own bucket authors an admin app — the section is accepted even with the flag off.
-        response = send(HttpMethod.PUT, "/v1/applications/" + adminBucket() + "/resource-dependency-app", null,
-                dependencyAppBody("""
-                        {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"]}"""),
-                "authorization", "admin");
-        verify(response, 200);
 
         // Shape violations are rejected for every author; admin + public bucket isolates shape from the ceiling.
         String[][] invalidSections = {
@@ -2264,9 +2265,36 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
                 """.formatted(dependenciesJson);
     }
 
-    private String adminBucket() {
-        Response response = send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin");
-        return new JsonObject(response.body()).getString("bucket");
+    /** The governance flag off: a user's write that changes the section is rejected; an admin's is not gated. */
+    public static class AllowUserResourceDependenciesOff extends ResourceBaseTest {
+
+        @Override
+        protected JsonObject additionalSettingsOverrides() {
+            return new JsonObject().put("applications", new JsonObject().put("allowUserAuthoredDependencies", false));
+        }
+
+        @Test
+        void testUserAuthoredDependenciesWhileFlagOff() {
+            Response response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
+                    dependencyAppBody("""
+                            {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"]}"""));
+            verify(response, 403);
+
+            // a malformed section is a shape error (400) regardless of the author — shape check runs before the ceiling
+            response = send(HttpMethod.PUT, "/v1/applications/" + bucket + "/resource-dependency-app", null,
+                    dependencyAppBody("""
+                            {"kind": "dial.resourceLink", "link_id": "lnk_bad", "target": {"url": "files/public/*/"}, "access": ["read"]}"""));
+            verify(response, 400);
+
+            // The ceiling is keyed on the author, not the destination bucket: an admin prototyping in
+            // their own bucket authors an admin app — the section is accepted even with the flag off.
+            String adminBucket = new JsonObject(send(HttpMethod.GET, "/v1/bucket", null, "", "authorization", "admin").body()).getString("bucket");
+            response = send(HttpMethod.PUT, "/v1/applications/" + adminBucket + "/resource-dependency-app", null,
+                    dependencyAppBody("""
+                            {"kind": "dial.resourceLink", "link_id": "lnk_skills", "target": {"url": "skills/{current-user}/"}, "access": ["write"]}"""),
+                    "authorization", "admin");
+            verify(response, 200);
+        }
     }
 
     /** The governance flag on: user-authored apps may declare dependencies; malformed shapes are still a 400. */
@@ -2298,12 +2326,13 @@ public class CustomApplicationApiTest extends ResourceBaseTest {
         }
     }
 
-    /** Admin rules unconfigured: nobody counts as an admin author, so the flag (off) applies to every write. */
+    /** Admin rules unconfigured, the flag off: nobody counts as an admin author, so the flag applies to every write. */
     public static class AdminRulesUnconfigured extends ResourceBaseTest {
 
         @Override
         protected JsonObject additionalSettingsOverrides() {
-            return new JsonObject().put("access", new JsonObject().put("admin", new JsonObject().put("rules", new JsonArray())));
+            return new JsonObject().put("access", new JsonObject().put("admin", new JsonObject().put("rules", new JsonArray())))
+                    .put("applications", new JsonObject().put("allowUserAuthoredDependencies", false));
         }
 
         @Test

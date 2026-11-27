@@ -90,6 +90,7 @@ tags:
 - name: Models
 - name: Notifications
 - name: Org units
+- name: Packages
 - name: Plugins
 - name: Policies
 - name: Policy Assignments
@@ -7946,6 +7947,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+  /v1/metadata/packages/{bucket}/{path}:
+    get:
+      tags:
+      - Packages
+      summary: "/v1/metadata/packages/{bucket}/{path}"
+      operationId: getPackageMetadata
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: "Empty to list the packages, or a package name."
+        required: true
+        schema:
+          type: string
+      - name: token
+        in: query
+        description: The token from the previous request to request next items.
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Limit on the number of items in the response.
+        required: false
+        schema:
+          type: integer
+      - name: recursive
+        in: query
+        description: "If true, returns items recursively without nested folder metadata."
+        required: false
+        schema:
+          type: boolean
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetadataBase"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
   /v1/metadata/plugins/{bucket}/{path}:
     get:
       tags:
@@ -12291,6 +12360,213 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorData"
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+  /v1/packages/{bucket}/{path}:
+    get:
+      tags:
+      - Packages
+      summary: "/v1/packages/{bucket}/{path}"
+      operationId: getPackage
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Package name
+        required: true
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the package
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: "#/components/schemas/PolicyPackage"
+                - $ref: "#/components/schemas/EntityMetadata"
+        "304":
+          description: Not Modified
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    put:
+      tags:
+      - Packages
+      summary: "/v1/packages/{bucket}/{path}"
+      operationId: savePackage
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Package name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      - name: If-None-Match
+        in: header
+        description: Conditional creation precondition.
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyPackage"
+        required: true
+      responses:
+        "200":
+          description: Success
+          headers:
+            ETag:
+              description: Entity tag for the saved package
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResourceControllerConfigWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "412":
+          description: Precondition Failed - ETag mismatch
+        "500":
+          description: The server had an error while processing your request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+      x-preview: true
+    delete:
+      tags:
+      - Packages
+      summary: "/v1/packages/{bucket}/{path}"
+      operationId: deletePackage
+      parameters:
+      - name: bucket
+        in: path
+        description: The target bucket.
+        required: true
+        schema:
+          type: string
+      - name: path
+        in: path
+        description: Package name
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        description: ETag precondition.
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Success
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorData"
+        "405":
+          description: Method Not Allowed
+        "409":
+          description: A policy names the package
+        "412":
+          description: Precondition Failed - ETag mismatch
         "500":
           description: The server had an error while processing your request.
           content:
@@ -17491,6 +17767,7 @@ components:
           PolicyAssignment: "#/components/schemas/AdminPolicyAssignmentManifest"
           Plugin: "#/components/schemas/AdminPluginManifest"
           Router: "#/components/schemas/AdminRouterManifest"
+          Package: "#/components/schemas/AdminPackageManifest"
       oneOf:
       - $ref: "#/components/schemas/AdminSettingsManifest"
       - $ref: "#/components/schemas/AdminSchemaManifest"
@@ -17505,6 +17782,7 @@ components:
       - $ref: "#/components/schemas/AdminModelManifest"
       - $ref: "#/components/schemas/AdminToolSetManifest"
       - $ref: "#/components/schemas/AdminApplicationManifest"
+      - $ref: "#/components/schemas/AdminPackageManifest"
       - $ref: "#/components/schemas/AdminPolicyManifest"
       - $ref: "#/components/schemas/AdminPolicyAssignmentManifest"
     AdminModelManifest:
@@ -17516,6 +17794,15 @@ components:
           type: string
         spec:
           $ref: "#/components/schemas/Model"
+    AdminPackageManifest:
+      type: object
+      properties:
+        kind:
+          type: string
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/PolicyPackage"
     AdminPluginManifest:
       type: object
       properties:
@@ -20889,6 +21176,17 @@ components:
       - type: array
         items:
           type: string
+    PolicyPackage:
+      type: object
+      properties:
+        deployments:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        name:
+          type: string
     PolicyQuantity:
       type: string
       enum:
@@ -21429,6 +21727,7 @@ components:
       - PROJECT_KEY
       - POLICY
       - POLICY_ASSIGNMENT
+      - PACKAGE
       - ROUTE
       - GLOBAL_SETTINGS
       - RESPONSE_MAPPING
@@ -22356,11 +22655,7 @@ components:
           description: The user id as DIAL resolves it from the identity provider configuration (not necessarily the token's sub claim). Present only for user-based session authentication. Use this value as owner_user_id when retrieving credentials on behalf of the user.
         userClaims:
           type: object
-          additionalProperties:
-            type: array
-            description: Array representation of a specific claim value (normalized for backward compatibility)
-            items:
-              type: string
+          additionalProperties: true
           description: Normalized token claims. Present only for user-based session authentication.
         userDisplayName:
           type: string

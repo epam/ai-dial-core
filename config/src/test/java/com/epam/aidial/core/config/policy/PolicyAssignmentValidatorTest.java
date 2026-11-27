@@ -236,4 +236,28 @@ class PolicyAssignmentValidatorTest {
         assertTrue(opus.intersects(both));
         assertFalse(opus.intersects(gpt));
     }
+
+    @Test
+    void testValidPackage() {
+        assertNull(PolicyAssignmentValidator.validatePackage(policyPackage(List.of("weak", "retired-model"))));
+    }
+
+    @Test
+    void testPackageMustListPlainDeploymentNames() {
+        assertEquals("deployments must be a non-empty list of deployment names",
+                PolicyAssignmentValidator.validatePackage(policyPackage(null)));
+        assertEquals("deployments must be a non-empty list of deployment names",
+                PolicyAssignmentValidator.validatePackage(policyPackage(List.of())));
+        assertEquals("deployments must not hold a blank name",
+                PolicyAssignmentValidator.validatePackage(policyPackage(List.of("weak", " "))));
+        assertTrue(PolicyAssignmentValidator.validatePackage(policyPackage(List.of("*"))).contains("\"*\""));
+        assertTrue(PolicyAssignmentValidator.validatePackage(policyPackage(List.of("@engineering")))
+                .contains("a package cannot include another package"));
+    }
+
+    private static PolicyPackage policyPackage(List<String> deployments) {
+        PolicyPackage policyPackage = new PolicyPackage();
+        policyPackage.setDeployments(deployments);
+        return policyPackage;
+    }
 }

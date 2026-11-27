@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.limiter.budget;
 
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.RateLimitSchedule;
@@ -10,6 +11,7 @@ import com.epam.aidial.core.config.policy.BudgetInstance;
 import com.epam.aidial.core.config.policy.PolicyAmounts;
 import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BudgetStats;
 import com.epam.aidial.core.server.data.CostItemLimitStats;
 import com.epam.aidial.core.server.limiter.CalendarPeriod;
@@ -20,6 +22,7 @@ import com.epam.aidial.core.server.limiter.SpendReadException;
 import com.epam.aidial.core.server.limiter.SpendingRefusal;
 import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.resource.ResourceTypes;
 import io.micrometer.core.instrument.Metrics;
 import io.vertx.core.Future;
 import lombok.RequiredArgsConstructor;
@@ -105,7 +108,7 @@ public class BudgetEnforcer {
         // without an outcome until the counters are read, so a failed read leaves the row without one
         BudgetCheck started = BudgetCheck.started(settings.getMode(), costObject);
         context.setBudgetCheck(started);
-        List<BudgetInstance> candidates = resolveCandidates(context, costObject, model, timestamp);
+        List<BudgetInstance> candidates = resolveCandidates(context, costObject, timestamp);
         if (candidates.isEmpty()) {
             context.setBudgetCheck(started.noBudget());
             return Future.succeededFuture(rejectNoBudget(settings, claims, costObject, model, isWithSpendCaps));
@@ -167,13 +170,33 @@ public class BudgetEnforcer {
         return store.load(costObject, budget, claims.userId(), timestamp, schedule).map(usage -> toSpendCaps(budget, usage));
     }
 
-    private static List<BudgetInstance> resolveCandidates(ProxyContext context, String costObject, Model model, long timestamp) {
+    private static List<BudgetInstance> resolveCandidates(ProxyContext context, String costObject, long timestamp) {
         return EffectiveBudgets
-                .resolve(context.getConfig().getCostObjectIndex(), costObject, context.getExtractedClaims(), model.getName(),
+                .resolve(context.getConfig().getCostObjectIndex(), costObject, context.getExtractedClaims(), resolveCoverageChain(context),
                         Instant.ofEpochMilli(timestamp))
                 .stream()
                 .filter(instance -> instance.policy().getQuantity() == PolicyQuantity.COST)
                 .toList();
+    }
+
+    /**
+     * The names a budget can cover the call by: the model and, read back from the execution path, the names before it
+     * up to the first application, interceptor or toolset, each of which starts a call of its own.
+     */
+    static List<String> resolveCoverageChain(ProxyContext context) {
+        List<String> path = ApiKeyData.pathOf(context);
+        Config config = context.getConfig();
+        int head = path.size() - 1;
+        while (head > 0 && !isChainBreak(config, path.get(head - 1))) {
+            head--;
+        }
+        return List.copyOf(path.subList(head, path.size()));
+    }
+
+    private static boolean isChainBreak(Config config, String name) {
+        return config.getApplications().containsKey(name) || config.getInterceptors().containsKey(name)
+                || config.getToolsets().containsKey(name)
+                || name.startsWith(ResourceTypes.APPLICATION.group() + "/") || name.startsWith(ResourceTypes.TOOL_SET.group() + "/");
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.data.Conversation;
@@ -126,6 +127,17 @@ public class ProxyUtilTest {
     }
 
     @Test
+    public void testApplicationSchemaValidation() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ProxyUtil.convertToObject("""
+                {"display_name": "App", "my_custom": "12345"}""", Application.class));
+        assertEquals("Unrecognized property 'my_custom'", error.getMessage());
+
+        error = assertThrows(IllegalArgumentException.class, () -> ProxyUtil.convertToObject("""
+                {"display_name": "App", "dependencies": [{}]}""", Application.class));
+        assertEquals("Invalid value for property 'dependencies[0]'", error.getMessage());
+    }
+
+    @Test
     public void testConversationSchemaValidation() {
         String validConversationJson = """
                 {
@@ -197,6 +209,10 @@ public class ProxyUtilTest {
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ProxyUtil.convertToObject(missingRequiredField, Conversation.class));
         assertEquals("Missing required property 'model.id'", error.getMessage());
+
+        error = assertThrows(IllegalArgumentException.class, () -> ProxyUtil.convertToObject("""
+                {"id": "conversation_id", "temperature": "abc"}""", Conversation.class));
+        assertEquals("Invalid value for property 'temperature'", error.getMessage());
 
         error = assertThrows(IllegalArgumentException.class, () -> ProxyUtil.convertToObject("12345", Conversation.class));
         assertEquals("Provided payload do not match required schema", error.getMessage());

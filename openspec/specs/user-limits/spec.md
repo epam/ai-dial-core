@@ -9,8 +9,8 @@ are charged to, and the legacy role cost statistics.
 
 ### Requirement: Budgets in the user stats
 `GET /v1/user/limits` and `GET /v1/user/usage` SHALL return `budgets[]`, one entry per budget that matches the caller,
-each with its `costObject`, `policy`, `displayName`, `priority`, `object` (the models its policy covers, `"*"` or the
-sorted list of deployment names, as the policy API returns it), and `day` and `month` as `{total, used, resetsAt}`,
+each with its `costObject`, `policy`, `displayName`, `priority`, `object` (as the policy API returns it: `"*"`, a
+package reference, or a sorted list of names and package references), and `day` and `month` as `{total, used, resetsAt}`,
 and SHALL list only budgets whose subject matches the caller's claims. The `deployments` and `*CostStats` fields SHALL
 NOT change.
 
@@ -37,6 +37,10 @@ NOT change.
 #### Scenario: Budget for listed models
 - **WHEN** the caller matches a budget whose policy has `object` `["gpt-4o", "claude-opus"]`
 - **THEN** its entry has `object` `["claude-opus", "gpt-4o"]`
+
+#### Scenario: Budget for a package
+- **WHEN** the caller matches a budget whose policy has `object` `["gpt-6-luna", "@engineering"]`
+- **THEN** its entry has `object` `["@engineering", "gpt-6-luna"]`, not the members of `engineering`
 
 ### Requirement: Reset instant without usage
 `resetsAt` SHALL be the end of the current day or month in the rate-limit schedule, also when the caller has no

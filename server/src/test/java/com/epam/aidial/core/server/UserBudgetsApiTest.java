@@ -224,6 +224,22 @@ class UserBudgetsApiTest extends ResourceBaseTest {
         }
     }
 
+    @Test
+    @DialConfigLocation("dial-config/user-budgets.json")
+    void testBudgetForPackageShowsTheReferenceNotItsMembers() {
+        verify(send(HttpMethod.PUT, "/v1/packages/platform/engineering", null, "{ \"deployments\": [\"weak\", \"strong\"] }",
+                "authorization", "admin"), 200);
+        putPolicy("packaged", 10, 200, 10, """
+                ["gpt-6-luna", "@engineering"]""");
+        putAssignment("projA/m1", "packaged", MANAGER);
+
+        for (String path : List.of("/v1/user/limits", "/v1/user/usage")) {
+            JsonNode budget = userStats(path).get("budgets").get(0);
+
+            assertEquals("[\"@engineering\",\"gpt-6-luna\"]", budget.get("object").toString(), path);
+        }
+    }
+
     private void putPolicy(String name, int day, int month) {
         putPolicy(name, day, month, 10);
     }

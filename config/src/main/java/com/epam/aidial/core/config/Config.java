@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.databind.MapToJsonArraySerializer;
 import com.epam.aidial.core.config.policy.CostObjectIndex;
 import com.epam.aidial.core.config.policy.Policy;
 import com.epam.aidial.core.config.policy.PolicyAssignment;
+import com.epam.aidial.core.config.policy.PolicyPackage;
 import com.epam.aidial.core.config.validation.CatalogPropertiesConformToSchemas;
 import com.epam.aidial.core.config.validation.ConformToCatalogMetaSchema;
 import com.epam.aidial.core.config.validation.ConformToMetaSchema;
@@ -63,7 +64,10 @@ public class Config {
     // key: path relative to the assignments folder, "<costObject>/<id>"
     @JsonIgnore
     private Map<String, PolicyAssignment> policyAssignments = Map.of();
-    // derived from the two maps above; replaced together with them
+    // key: package name; a policy's object references a package as "@<name>"
+    @JsonIgnore
+    private Map<String, PolicyPackage> packages = Map.of();
+    // derived from the three maps above; replaced together with them
     @JsonIgnore
     private CostObjectIndex costObjectIndex = CostObjectIndex.EMPTY;
 

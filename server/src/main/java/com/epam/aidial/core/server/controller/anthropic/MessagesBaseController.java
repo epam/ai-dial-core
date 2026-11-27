@@ -104,7 +104,8 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     }
 
     private void reenterWithCandidate() {
-        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
+        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes,
+        // or, in an in-process call without them, from a copy of the call's tree taken before the first candidate
         serveCandidate(parseBody(context.getOriginalRequestBody()));
     }
 
@@ -200,7 +201,6 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
                         dep -> DeploymentEndpointUtil.resolveServingEndpoint(dep, InterfaceType.ANTHROPIC_MESSAGES,
                                 context.getConfig().getTranslators()), upstreamId);
 
-        context.setRequestBodyTimestamp(System.currentTimeMillis());
         context.setUpstreamRoute(upstreamRoute);
     }
 

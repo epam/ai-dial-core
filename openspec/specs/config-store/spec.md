@@ -604,7 +604,7 @@ string`) or kind `Bundle` SHALL answer `400`; a non-admin `403`. An unknown kind
 ### Requirement: Manifest names
 A manifest `name` SHALL be `<segment>/<bucket>/<name>` with segment `settings`, `schemas`, `catalog_schemas`,
 `plugins`, `interceptors`, `translators`, `routers`, `roles`, `keys`, `routes`, `models`, `toolsets`, `applications`,
-`policies` or `policy_assignments` matching `kind`; bucket `platform`, or `public` for `Application` and `ToolSet`;
+`packages`, `policies` or `policy_assignments` matching `kind`; bucket `platform`, or `public` for `Application` and `ToolSet`;
 one segment matching the entity-name pattern (policies may add one folder). `Settings` SHALL be
 `settings/platform/global`.
 
@@ -620,9 +620,14 @@ one segment matching the entity-name pattern (policies may add one folder). `Set
 - **WHEN** a manifest has `kind: "Router"` and `name: "routers/public/r"`
 - **THEN** that entry fails with `'name' bucket segment must be 'platform', got 'public'`
 
+#### Scenario: Package manifest with a folder
+- **WHEN** a manifest has `kind: "Package"` and `name: "packages/platform/team/p"`
+- **THEN** that entry fails and nothing is written
+
 ### Requirement: Batch dependency order
 Core SHALL process a batch in kind order `Settings`, `Schema`/`CatalogSchema`, `Plugin`, `Translator`,
-`Interceptor`, `Router`, `Role`, `Key`, `Route`, `Model`, `ToolSet`, `Application`, `Policy`, `PolicyAssignment`
+`Interceptor`, `Router`, `Role`, `Key`, `Route`, `Model`, `ToolSet`, `Application`, `Package`, `Policy`,
+`PolicyAssignment`
 (input order within a kind), report results in that order, and resolve each entry's references against the merged
 config plus the batch's earlier accepted entries.
 
@@ -641,6 +646,10 @@ config plus the batch's earlier accepted entries.
   `anthropicMessages` to `openaiChatCompletions`
 - **THEN** Core answers `200` with all `APPLIED`, results ordered translator, router, model, and
   `GET /v1/routers/platform/r-batch` answers `200`
+
+#### Scenario: Policy before its package in the input
+- **WHEN** a batch lists a `Policy` with `object` `"@engineering"` before the `Package` `packages/platform/engineering`
+- **THEN** both entries are accepted and the results list the `Package` entry first
 
 ### Requirement: Validate endpoint
 `/v1/admin/validate` SHALL write nothing and answer `{"valid": <n>, "failed": <n>, "results": [{"entityId", "status",

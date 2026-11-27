@@ -59,7 +59,7 @@ class DefaultBudgetServiceTest {
         config.setCostObjectIndex(CostObjectIndex.build(Map.of("p", policy), Map.of(
                 HELD, assignment("alice", null),
                 OTHER, assignment("bob", null),
-                EXPIRED, assignment("alice", Instant.now().minusSeconds(60).toString()))));
+                EXPIRED, assignment("alice", Instant.now().minusSeconds(60).toString())), Map.of()));
         when(context.getConfig()).thenReturn(config);
         when(context.getUserId()).thenReturn("alice");
         when(context.getExtractedClaims()).thenReturn(claims("alice"));

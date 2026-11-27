@@ -133,7 +133,7 @@ public class ApplicationService {
         this.checkDelay = settings.getLong("checkDelay", 300000L);
         this.checkSize = settings.getInteger("checkSize", 64);
         this.includeCustomApps = settings.getBoolean("includeCustomApps", false);
-        this.allowUserAuthoredDependencies = settings.getBoolean("allowUserAuthoredDependencies", false);
+        this.allowUserAuthoredDependencies = settings.getBoolean("allowUserAuthoredDependencies", true);
 
         if (controller.isActive()) {
             long checkPeriod = settings.getLong("checkPeriod", 300000L);

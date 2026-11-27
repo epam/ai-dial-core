@@ -143,7 +143,8 @@ public class ChatCompletionsController extends BaseChatCompletionController {
     }
 
     private void reenterWithCandidate() {
-        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes
+        // the chain of the failed candidate rewrote the parsed request, so the fallback starts from the client's bytes,
+        // or, in an in-process call without them, from a copy of the call's tree taken before the first candidate
         serveCandidate(parseBody(context.getOriginalRequestBody()));
     }
 
