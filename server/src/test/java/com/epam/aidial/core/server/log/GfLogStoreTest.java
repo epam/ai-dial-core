@@ -1133,6 +1133,78 @@ public class GfLogStoreTest {
         assertFalse(logOf(context).has("spending_limits"));
     }
 
+    @Test
+    public void testUpstreamIdIsWrittenAfterUpstreamUri() {
+        JsonNode response = logOf(row("m", "{}").upstreamEndpoint("http://up-a/v1").upstreamId("a").build()).get("response");
+
+        assertEquals("http://up-a/v1", response.get("upstream_uri").asText());
+        assertEquals("a", response.get("upstream_id").asText());
+        assertEquals(List.of("status", "upstream_uri", "upstream_id"), fieldNames(response).subList(0, 3));
+    }
+
+    @Test
+    public void testUpstreamIdIsWrittenAfterStatusWithoutUpstreamUri() {
+        JsonNode response = logOf(row("m", "{}").upstreamId("a").build()).get("response");
+
+        assertFalse(response.has("upstream_uri"));
+        assertEquals(List.of("status", "upstream_id"), fieldNames(response).subList(0, 2));
+    }
+
+    @Test
+    public void testUpstreamIdIsOmittedWhenNull() {
+        JsonNode response = logOf(row("m", "{}").upstreamEndpoint("http://up-a/v1").build()).get("response");
+
+        assertEquals("http://up-a/v1", response.get("upstream_uri").asText());
+        assertFalse(response.has("upstream_id"));
+    }
+
+    @Test
+    public void testUpstreamIdIsEscaped() {
+        JsonNode response = logOf(row("m", "{}").upstreamId("a\"b\\c").build()).get("response");
+
+        assertEquals("a\"b\\c", response.get("upstream_id").asText());
+    }
+
+    @Test
+    public void testRouterRowHasNoUpstreamId() {
+        RouterDecision decision = new RouterDecision(router("r1"), InterfaceType.OPENAI_CHAT_COMPLETIONS, List.of("m1"), 3);
+        RouterDecision.Hop hop = new RouterDecision.Hop("routerspan", null, null, List.of("r1"));
+        AnalyticsLogContext serving = row("m1", "{}").upstreamId("a").build();
+
+        AnalyticsLogContext router = AnalyticsLogContext.routerRow(serving, decision.toAnalyticsDecision(), hop, TokenStatsTracker.UsageStats.EMPTY);
+
+        assertNull(router.getUpstreamId());
+        assertFalse(logOf(router).get("response").has("upstream_id"));
+    }
+
+    @Test
+    public void testUpstreamIdFromBackgroundJobRecord() {
+        BackgroundJobRecord record = BackgroundJobRecord.builder()
+                .deploymentName("m")
+                .upstreamId("a")
+                .requestBody("{}")
+                .build();
+
+        assertEquals("a", logOf(AnalyticsLogContext.from(record, null, null)).get("response").get("upstream_id").asText());
+    }
+
+    @Test
+    public void testBackgroundJobRecordStoredWithoutUpstreamIdLoadsWithNone() {
+        BackgroundJobRecord record = ProxyUtil.convertToObject("{\"requestBody\":\"{}\",\"upstreamEndpoint\":\"http://up-a/v1\"}",
+                BackgroundJobRecord.class);
+
+        assertNull(record.upstreamId());
+        JsonNode response = logOf(AnalyticsLogContext.from(record, null, null)).get("response");
+        assertEquals("http://up-a/v1", response.get("upstream_uri").asText());
+        assertFalse(response.has("upstream_id"));
+    }
+
+    private static List<String> fieldNames(JsonNode node) {
+        List<String> fields = new ArrayList<>();
+        node.fieldNames().forEachRemaining(fields::add);
+        return fields;
+    }
+
     private static BudgetCheck paid(String costObject, String policyPath, String id, PolicyAssignment assignment) {
         BudgetPayer payer = new BudgetPayer(costObject, new BudgetInstance(id, policyPath, new Policy(), assignment, List.of()), "user");
         return new BudgetCheck(SpendingLimitMode.SHADOW, costObject, BudgetCheck.Outcome.PAID, payer);

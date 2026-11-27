@@ -112,6 +112,27 @@ A request served by a global route or by an application route records which rout
 The route is published regardless of `genAiSpanAttributes`. Metric labels, `http.route` and trace/span ids
 are unchanged.
 
+## Upstream in analytics
+
+The analytics log entry names the model upstream Core chose for the request in its `response` object:
+
+| Field          | Value                                                                                          |
+|----------------|------------------------------------------------------------------------------------------------|
+| `upstream_uri` | The upstream's `endpoint`; omitted when the upstream has none                                  |
+| `upstream_id`  | The upstream's `id`; written only for an entry of a model's `upstreams` with a non-blank `id`  |
+
+A deployment without `upstreams`, a router in `proxy` mode included, writes `upstream_uri` (its serving endpoint) and
+no `upstream_id`. The router's own entry of a decided request and a `tokenize` or `truncate_prompt` call carry
+neither field. Give each upstream an `id` when a model's
+upstreams have no `endpoint`, or differ only in `extraData`, so their entries can be told apart.
+
+A request for an interface the model serves in `translator` mode names the upstream Core chose for it, although the
+translator, not that upstream, answers it. The translator calls Core back, and the entry of that call back names the
+upstream that answered: it is the child entry, whose `trace.core_parent_span_id` is the translator pass's
+`trace.core_span_id`. Count that one when counting requests per upstream.
+
+This field puts the upstream id in the analytics log only; spans do not carry it.
+
 ## Storage and rate-limit spans
 
 Core adds child spans for the storage, Redis, identity and key-management work a request does. They are emitted

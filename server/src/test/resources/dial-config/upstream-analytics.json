@@ -1,0 +1,65 @@
+{
+  "models": {
+    "m-regions": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m-regions/chat/completions",
+      "maxRetryAttempts": 2,
+      "upstreams": [
+        {"id": "a", "tier": 0, "extraData": {"region": "r1"}},
+        {"id": "b", "tier": 1, "extraData": {"region": "r2"}}
+      ]
+    },
+    "m-endpoint-no-id": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m-endpoint-no-id/chat/completions",
+      "upstreams": [{"endpoint": "http://localhost:4848/up-a"}]
+    },
+    "m-no-id": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m-no-id/chat/completions",
+      "upstreams": [{"extraData": {"region": "r1"}}]
+    },
+    "m-blank-id": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m-blank-id/chat/completions",
+      "upstreams": [{"id": "", "extraData": {"region": "r1"}}]
+    },
+    "m-plain": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m-plain/chat/completions"
+    },
+    "m-translated": {
+      "type": "chat",
+      "upstreams": [{"id": "a", "extraData": {"region": "r1"}}],
+      "interfaces": {
+        "openaiChatCompletions": {"base_url": "http://localhost:4848"},
+        "anthropicMessages": {
+          "mode": "translator",
+          "translator": {"out": "openaiChatCompletions", "baseUrl": "http://localhost:4848"}
+        }
+      }
+    },
+    "m-features": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m-features/chat/completions",
+      "features": {"tokenizeEndpoint": "http://localhost:4848/m-features/tokenize"},
+      "upstreams": [{"endpoint": "http://localhost:4848/up-a", "id": "a"}]
+    }
+  },
+  "keys": {
+    "proxyKey1": {"project": "upstreams", "role": "caller"}
+  },
+  "roles": {
+    "caller": {
+      "limits": {
+        "m-regions": {},
+        "m-endpoint-no-id": {},
+        "m-no-id": {},
+        "m-blank-id": {},
+        "m-plain": {},
+        "m-translated": {},
+        "m-features": {}
+      }
+    }
+  }
+}

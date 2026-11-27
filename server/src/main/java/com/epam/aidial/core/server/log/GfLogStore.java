@@ -359,6 +359,11 @@ public class GfLogStore implements LogStore {
             append(entry, logContext.getUpstreamEndpoint(), true);
         }
 
+        if (logContext.getUpstreamId() != null) {
+            append(entry, "\",\"upstream_id\":\"", false);
+            append(entry, logContext.getUpstreamId(), true);
+        }
+
         if (withBodies) {
             append(entry, "\",\"body\":\"", false);
             appendBody(entry, logContext.getResponseBody());
