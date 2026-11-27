@@ -132,6 +132,15 @@ public enum RouteTemplate {
             "/v1/metadata/aliases/{bucket}/{path}"
     ),
 
+    UNIVERSAL_RESOURCE_FILE(
+            "^/v1/(?<group>skills|projects)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+?)/files/(?<filePath>.*)$",
+            "/v1/{group}/{bucket}/{path}/files/{filePath}"
+    ),
+    UNIVERSAL_RESOURCE_FILE_METADATA(
+            "^/v1/metadata/(?<group>skills|projects)/(?<bucket>[a-zA-Z0-9]+)/(?<path>.+?)/files(?:/(?<filePath>.*))?$",
+            "/v1/metadata/{group}/{bucket}/{path}/files/{filePath}"
+    ),
+
     // V2 whole-resource (folder-as-resource) routes.
     // The {path} is the resource name and may span multiple segments (e.g. /v2/skills/{bucket}/group/name or /v2/projects/...).
     // The pattern forbids empty segments and a trailing slash (a resource is addressed by name, not as a

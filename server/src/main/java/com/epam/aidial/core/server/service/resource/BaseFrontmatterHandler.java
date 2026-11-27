@@ -68,6 +68,11 @@ public abstract class BaseFrontmatterHandler implements ComplexResourceHandler {
     }
 
     @Override
+    public boolean requiresFileContent(String relativePath) {
+        return manifest.equals(relativePath);
+    }
+
+    @Override
     public Map<String, Object> refreshMetadataOnPut(String relativePath, byte[] content) {
         if (!manifest.equals(relativePath)) {
             // Only the manifest carries the metadata; other files leave it unchanged.

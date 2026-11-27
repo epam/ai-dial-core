@@ -288,9 +288,11 @@ without putting the raw address in the log.
 <summary><b>Complex Resource Limits Configurations</b></summary>
 
 Per-resource limits for folder-as-resource complex resources (skills, projects), enforced on whole-resource
-PUT and single-file PUT. Exceeding a limit rejects the request and leaves nothing observable written.
+PUT, single-file PUT and the files written by copy/move. Exceeding a limit rejects the request and leaves nothing
+observable written. A same-resource rename checks the final file set and commits one version.
 These limits also bound listing reads, archive (ZIP download) size and how long a mutation holds the
-resource lock (a single-file PUT copies the whole current version under the lock).
+resource lock (a single-file mutation copies the current version under the lock).
+See [Universal File API](docs/universal-file-api.md) for v1 file routes and cross-group copy/move.
 
 | Setting                            | Default  | Required | Description                                                      |
 |-------------------------------------|:--------:|:--------:|--------------------------------------------------------------------|

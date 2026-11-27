@@ -168,6 +168,14 @@ public class ControllerSelector {
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePath(path));
         });
+        get(RouteTemplate.UNIVERSAL_RESOURCE_FILE, (proxy, context, pathMatcher) -> {
+            UniversalFileController controller = new UniversalFileController(proxy, context, false, pathMatcher.group("filePath"));
+            return () -> controller.handle(complexResourceUrl(pathMatcher));
+        });
+        get(RouteTemplate.UNIVERSAL_RESOURCE_FILE_METADATA, (proxy, context, pathMatcher) -> {
+            UniversalFileMetadataController controller = new UniversalFileMetadataController(proxy, context, pathMatcher.group("filePath"));
+            return () -> controller.handle(complexResourceUrl(pathMatcher));
+        });
         // Metadata routes: the file-listing route is more specific and must precede the children route.
         get(RouteTemplate.COMPLEX_RESOURCE_FILE_METADATA, (proxy, context, pathMatcher) -> {
             String filePath = pathMatcher.group("filePath");
@@ -693,6 +701,14 @@ public class ControllerSelector {
             ComplexResourceController controller = new ComplexResourceController(proxy, context, true);
             String path = context.getRequest().path();
             return () -> controller.handle(resourcePathV2(path));
+        });
+        put(RouteTemplate.UNIVERSAL_RESOURCE_FILE, (proxy, context, pathMatcher) -> {
+            UniversalFileController controller = new UniversalFileController(proxy, context, true, pathMatcher.group("filePath"));
+            return () -> controller.handle(complexResourceUrl(pathMatcher));
+        });
+        delete(RouteTemplate.UNIVERSAL_RESOURCE_FILE, (proxy, context, pathMatcher) -> {
+            UniversalFileController controller = new UniversalFileController(proxy, context, true, pathMatcher.group("filePath"));
+            return () -> controller.handle(complexResourceUrl(pathMatcher));
         });
         put(RouteTemplate.COMPLEX_RESOURCE_FILE, (proxy, context, pathMatcher) -> {
             ComplexResourceController controller = new ComplexResourceController(proxy, context, true,

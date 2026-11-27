@@ -64,7 +64,11 @@ small result records carrying file metadata plus the committed aggregate ETag. C
 under the marker lock; use existing EtagHeader semantics and the legacy-marker map fallback. Capture storage-returned
 FileMetadata before unlocking, then project its descriptor fields onto the logical URL, so concurrent writes cannot make
 the response body and headers refer to different versions. Downloads capture one marker and use it for both the stream
-and aggregate header.
+and aggregate header. Reads briefly hold the marker lock while capturing the version and opening a stream or metadata
+snapshot. A captured non-null file map also excludes physical ghosts before conditions or reads; GET retains physical
+fallback for legacy null-map markers without reconstructing that map. New locked marker, metadata and content reads use
+master-consistent storage helpers: acquiring a master lock does not make a replica read current. Validate final copied
+file sizes before committing, not only the source snapshot used for preflight.
 
 **Rejected: Check a file ETag before calling aggregate putFile** - a concurrent mutation can invalidate that check.
 **Rejected: Read the current marker again to build the response** - it can describe another writer's commit.
@@ -73,11 +77,18 @@ and aggregate header.
 ### D4. Reuse versioned storage and add owning-resource metadata without new records
 
 Add an optional NON_NULL owning-resource reference to FileMetadata. Read full file metadata from the mapped current-version
-blob; the marker alone cannot supply content type, author or timestamps. For folders, reuse ResourceService pagination and
-recursion, project all descriptors onto the requested logical files folder, and enrich file nodes with their resource
-reference. Compute permissions at the root once and assign them to the result and all nested nodes, not through per-file
-permission lookups. Keep the existing v2 listFiles shape untouched.
+blob; the marker alone cannot supply content type, author or timestamps. Build the new v1 logical folder membership and
+pages from the captured marker file map, with opaque Base58 logical cursors, then resolve selected file metadata through
+ResourceService. Nonrecursive pages include immediate file/folder nodes; recursive pages contain flat file nodes, as in
+the plain API. The filesystem provider can omit names during write-behind sync, so a raw blob listing cannot define a
+complete committed file set. Legacy null-map markers use the existing reconstruction fallback. Old v2 listFiles remains
+unchanged. Compute root permissions once and assign them to every returned node, not through per-file permission lookups.
 
+Normalize the filesystem provider's Windows directory suffix to `/` in BlobStorage.list, preserving file names and
+continuation tokens. The existing GC test revealed that a trailing backslash otherwise becomes part of the logical
+folder name and prevents version cleanup. This additional baseline fix was explicitly approved during apply.
+
+**Rejected: Use raw provider pages for logical membership** - the captured marker is the commit point; a concurrent filesystem sync can omit names from a scan.
 **Rejected: Synthesize all file metadata from the marker** - it stores only size and ETag.
 **Rejected: Add metadata to every stored marker entry** - existing blob metadata suffices and no migration is needed.
 
@@ -85,7 +96,8 @@ permission lookups. Keep the existing v2 listFiles shape untouched.
 
 Add an engine file copy/move primitive. Under one marker lock, check source, overwrite, destination PUT validation and,
 for move, source DELETE validation before copying. Validate changed entrypoint contents and refresh handler metadata.
-Apply both paths to one fresh version, enforce limits against the final file set, preserve copied content/MIME/ETag,
+Apply both paths to one fresh version, omitting the moved source and overwritten destination from preparation so file-to-directory
+renames do not collide with removed paths. Enforce limits against the final file set, preserve copied content/MIME/ETag,
 then commit once and publish the existing logical events. A project may become empty; a skill may not lose SKILL.md.
 
 **Rejected: Call putFile then deleteFile for a rename** - two commits expose an intermediate state and fail at final-set limits.
@@ -95,19 +107,25 @@ then commit once and publish the existing logical events. A project may become e
 
 Put the extended branch in a reusable file-operation coordinator beside the existing operation service. Acquire deduplicated
 bucket locks first, then complex marker and ordinary file record locks in a fixed canonical-storage-key order within each
-level. This refines unified_api.md's URL ordering to match the existing bucket-before-record hierarchy, including concurrent
+level (ascending bucket keys, descending record keys, matching the existing storage helpers). This refines unified_api.md's URL ordering to match the existing bucket-before-record hierarchy, including concurrent
 legacy operations. Protect plain sources with their record lock, not just the bucket lock: ordinary uploads do not take
 bucket locks. Add narrowly scoped already-locked storage/engine helpers rather than reacquiring non-reentrant locks.
 
 After locking, re-read both sides, preflight source deletion and destination validation, then commit the destination and
 remove the source. Use ResourceService copies for provider-side blob copy and cache invalidation; read bytes when an
-entrypoint must be parsed. Propagate a failed source delete while retaining the committed destination. Source shares are
+entrypoint must be parsed. Propagate a failed source delete while retaining the committed destination. Plain-source deletion
+checks actual filesystem absence before tombstoning Redis, without adding a cloud HEAD. Transient provider/Redis failures
+restore the saved source metadata from the still-locked destination on the error path, for either source kind. An unchanged
+complex source needs no restoration; an applied deletion is compensated with a validated new source version, retaining
+other files and root grants. The resource version/updatedAt can advance while the original file metadata is restored.
+Persistent infrastructure failure
+can also prevent recovery; retain the destination and attach recovery failures to the original error. Source shares are
 cleaned only after successful source deletion. Keep org-unit ownership checks on root descriptors.
 
-The shared mutation commit boundary must distinguish pre-commit rollback from post-commit cleanup: copyOnWrite currently
-catches an old-version cleanup failure after marker commit and can delete the new version. Correct that boundary where
-reused by these operations so a committed marker never loses its referenced version. Do not extend this into an unrelated
-storage or sweep refactor.
+The shared mutation commit boundary must distinguish pre-commit rollback from uncertain or completed commit. Once a marker
+write is attempted, retain that version even if the acknowledgement fails; existing GC can reclaim it if it was not
+committed. Only known pre-commit failures remove their orphan version. Existing deleteVersion already logs and suppresses
+cleanup exceptions. Keep that behavior outside rollback and do not turn this into a storage or sweep refactor.
 
 **Rejected: Sort bucket and marker locks together by logical URL** - this can invert the hierarchy used by existing requests.
 **Rejected: Hold a bucket lock without the plain record lock** - a concurrent upload can be deleted by the move.
@@ -153,7 +171,7 @@ These are code-based expectations, not measured latency results. Counts depend o
 |---|---|---|---|
 | Complex GET | One root marker read through ResourceService, mapped file stream; one controller/worker path; no body parse/copy | Same marker and stream path; file-condition check and aggregate header; no ancestor walk or extra body copy | Compare warm/cold v1/v2 HTTP latency and spy marker/blob calls |
 | Complex PUT | One buffered multipart part and byte-array handoff; marker lock/read; current-version copy; file write; marker commit and events | Same mutation cost, explicit MIME and file precondition; return write-result metadata without re-reading current marker | Compare v1/v2 latency with identical file sets, MIME and sizes; inspect allocation boundary and storage calls |
-| Complex metadata | Marker read, current-version folder listing | Item metadata read or existing listing with full file metadata; root permissions once rather than per-file access expansion | Count marker/blob metadata and permission lookups in service/controller tests |
+| Complex metadata | Marker read, current-version folder listing | Captured marker members define logical pages; selected files use full storage metadata; zero native-map folder scans and root permissions once | Assert native pages never call provider listing; count metadata and permission lookups |
 | Same-resource file copy/move | Unsupported | One marker lock/read and one new version; provider-side file copy, final-set validation and one marker commit | Assert one commit/resource update and storage operation counts |
 | Cross-resource file copy/move | Unsupported | Ordered locks; source read plus destination version copy/commit; move adds source delete commit | Failure/concurrency tests and spy storage/lock calls |
 | Ordinary files and whole resources | Existing controllers and ops | Unchanged paths and storage work; optional DTO field omitted | Targeted plain/whole-resource regression tests |
@@ -197,6 +215,6 @@ Paths are under `server/src/main/java/com/epam/aidial/core/server/` unless a mod
 - `service/ResourceOperationService.java:moveResource, moveResourceLocked, copyResource, hasResource` - preserve whole/plain behavior and keep file coordination separate from whole-resource share relocation.
 - `service/OrgUnitService.java:requireSameUnit` - retain public move ownership checks on root descriptors.
 - `storage/.../service/LockService.java:underBucketLocks, bucketKeys, lock` and `storage/.../service/ResourceService.java:lockResource, copyResource, deleteResource` - ordered lock hierarchy and scoped already-locked helpers with cache/event semantics.
-- `storage/.../service/ResourceService.java:getResourceMetadata, getFolderMetadata, getResourceStream, putFile` - full current-version metadata, existing pagination/streaming and MIME-preserving writes.
+- `storage/.../service/ResourceService.java:getResourceMetadata, getFolderMetadata, getResourceStream, putFile` - unchanged ordinary storage APIs; new `getResourceLocked, getResourceMetadataLocked, getResourceBytesLocked, getResourceStreamLocked` provide master-consistent reads for the new locked paths.
 - `storage/.../data/FileMetadata.java` and `MetadataBase.java` - optional owning-root reference and logical response projection; `storage/.../util/EtagHeader.java:fromHeader, validate` - existing conditions.
 - `.github/workflows/pr.yml:generate_openai_spec` - generate the OpenAPI document through replaceSpec; do not hand-edit it.

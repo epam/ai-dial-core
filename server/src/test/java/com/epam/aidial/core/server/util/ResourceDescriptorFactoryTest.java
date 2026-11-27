@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.server.data.FileTarget;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -16,6 +17,47 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ResourceDescriptorFactoryTest {
+
+    @Test
+    public void testComplexFileTargetsUseFirstDelimiter() {
+        for (String group : List.of("skills", "projects")) {
+            FileTarget target = ResourceDescriptorFactory.fromFileUrl(group + "/public/team/my%20resource/files/refs/files/a%20b.md", null);
+            assertTrue(target.isComplexFile());
+            assertEquals(group + "/public/team/my%20resource", target.resource().getUrl());
+            assertEquals("refs/files/a b.md", target.filePath());
+            assertEquals(group + "/public/team/my%20resource/files/refs/files/a%20b.md", target.descriptor().getUrl());
+            assertEquals(target, ResourceDescriptorFactory.fromFileUrl(group + "/public/team/my%20resource/files/refs/files/a%20b%2Emd", null));
+            assertEquals(target.descriptor(), ResourceDescriptorFactory.fromAnyUrl(target.descriptor().getUrl(), null));
+        }
+    }
+
+    @Test
+    public void testFileTargetsPreserveWholeResourcesAndPlainFiles() {
+        for (String url : List.of("files/public/a.txt", "skills/public/resource", "projects/public/resource", "conversations/public/files/c")) {
+            FileTarget target = ResourceDescriptorFactory.fromFileUrl(url, null);
+            assertFalse(target.isComplexFile());
+            assertNull(target.filePath());
+            assertEquals(target.descriptor(), target.resource());
+        }
+        assertThrows(IllegalArgumentException.class, () -> ResourceDescriptorFactory.fromFileUrl("skills/public/files/a.txt", null));
+    }
+
+    @Test
+    public void testComplexFileFolderTargets() {
+        FileTarget root = ResourceDescriptorFactory.fromFileUrl("skills/public/s/files/", null);
+        assertEquals("", root.filePath());
+        assertTrue(root.descriptor().isFolder());
+        FileTarget folder = ResourceDescriptorFactory.fromFileUrl("skills/public/s/files/refs/", null);
+        assertEquals("refs/", folder.filePath());
+        assertTrue(folder.descriptor().isFolder());
+    }
+
+    @Test
+    public void testComplexFileTargetPathValidation() {
+        for (String path : List.of("refs/%2Fsecret", "refs/%2E%2E/secret", "refs//secret", "refs/%00secret")) {
+            assertThrows(IllegalArgumentException.class, () -> ResourceDescriptorFactory.fromFileUrl("skills/public/s/files/" + path, null));
+        }
+    }
 
     @Test
     public void testHomeFolderDescription() {

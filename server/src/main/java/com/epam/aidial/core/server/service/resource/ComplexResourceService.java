@@ -21,6 +21,7 @@ import com.epam.aidial.core.storage.resource.ResourceType;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.LockService;
 import com.epam.aidial.core.storage.service.ResourceService;
+import com.epam.aidial.core.storage.util.Base58;
 import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -108,6 +109,10 @@ public class ComplexResourceService {
         this.blobStorage = blobStorage;
         this.settings = settings;
         this.pathCheck = pathCheck;
+    }
+
+    public long getMaxFileSizeBytes(ResourceType type) {
+        return settings.resolveLimits(type).getMaxFileSizeBytes();
     }
 
     /**
@@ -323,6 +328,15 @@ public class ComplexResourceService {
         }
     }
 
+    public record FileReadResult(ResourceService.ResourceStream stream, String resourceEtag) {
+    }
+
+    public record FileMutationResult(@Nullable FileMetadata metadata, String resourceEtag) {
+    }
+
+    public record LockedFileSnapshot(ResourceDescriptor descriptor, FileMetadata metadata) {
+    }
+
     /**
      * Streams a single file of the current version, or returns {@code null} if the resource is absent or
      * in the {@code deleting} state, or the file does not exist in the current version (both surface as 404).
@@ -336,6 +350,244 @@ public class ComplexResourceService {
         }
         ResourceDescriptor file = versionFile(resource, marker.getCurrentVersion(), normalized);
         return resourceService.getResourceStream(file, EtagHeader.ANY);
+    }
+
+    /** Captures the stream and resource ETag from one version, before a writer can clean that version up. */
+    @SneakyThrows
+    public FileReadResult getFileStream(ResourceDescriptor resource, String relativePath, EtagHeader etag) {
+        try (LockService.Lock ignore = resourceService.lockResource(markerDescriptor(resource))) {
+            FolderResourceMarker marker = readMarkerLocked(markerDescriptor(resource));
+            if (!isActive(marker)) {
+                return null;
+            }
+            String normalized = normalizePath(relativePath);
+            if (marker.getFileMetadata() != null && !marker.getFileMetadata().containsKey(normalized)) {
+                return null;
+            }
+            ResourceService.ResourceStream stream = resourceService.getResourceStreamLocked(
+                    versionFile(resource, marker.getCurrentVersion(), normalized), etag);
+            return stream == null ? null : new FileReadResult(stream, marker.getEtag());
+        }
+    }
+
+    public String deleteFileWithFileEtag(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath,
+                                         EtagHeader etag, String author) {
+        String normalized = normalizePath(relativePath);
+        try (LockService.Lock ignore = resourceService.lockResource(markerDescriptor(resource))) {
+            return deleteFileLocked(resource, handler, normalized, etag, author);
+        }
+    }
+
+    /** The caller must hold this marker's record lock for the explicitly Locked file APIs. */
+    public static ResourceDescriptor getMarkerLockDescriptor(ResourceDescriptor resource) {
+        return markerDescriptor(resource);
+    }
+
+    @Nullable
+    public LockedFileSnapshot getFileSnapshotLocked(ResourceDescriptor resource, String relativePath) {
+        FolderResourceMarker current = readMarkerLocked(markerDescriptor(resource));
+        if (!isActive(current)) {
+            return null;
+        }
+        String normalized = normalizePath(relativePath);
+        if (current.getFileMetadata() != null && !current.getFileMetadata().containsKey(normalized)) {
+            return null;
+        }
+        ResourceDescriptor file = versionFile(resource, current.getCurrentVersion(), normalized);
+        FileMetadata metadata = (FileMetadata) resourceService.getResourceMetadataLocked(file);
+        return metadata == null ? null : new LockedFileSnapshot(file, projectFileMetadata(resource, current.getEtag(), metadata));
+    }
+
+    public void validateFileDeleteLocked(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath) {
+        FolderResourceMarker current = requireActiveMarkerLocked(resource);
+        requireFile(currentFileMetadata(resource, current, true), relativePath);
+        handler.validateFileMutation(relativePath, ComplexResourceHandler.FileMutation.DELETE);
+    }
+
+    public String deleteFileLocked(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath, String author) {
+        return deleteFileLocked(resource, handler, relativePath, EtagHeader.ANY, author);
+    }
+
+    private String deleteFileLocked(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath,
+                                    EtagHeader etag, String author) {
+        FolderResourceMarker current = requireActiveMarkerLocked(resource);
+        return copyOnWriteLocked(resource, current, author, true, Set.of(),
+                files -> {
+                    etag.validate(fileEtag(files, relativePath));
+                    requireFile(files, relativePath);
+                    handler.validateFileMutation(relativePath, ComplexResourceHandler.FileMutation.DELETE);
+                },
+                (versionId, files) -> {
+                    files.remove(relativePath);
+                    resourceService.deleteResource(versionFile(resource, versionId, relativePath), EtagHeader.ANY);
+                    return new MutationResult(null, null);
+                }).resourceEtag();
+    }
+
+    /** Copies from a stable physical source whose record or owning marker lock the caller already holds. */
+    public FileMutationResult importFileLocked(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath,
+                                               ResourceDescriptor source, FileMetadata sourceMetadata, boolean overwrite, String author) {
+        return importFileLocked(resource, handler, relativePath, source, sourceMetadata, overwrite, author, false);
+    }
+
+    private FileMutationResult importFileLocked(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath,
+                                                ResourceDescriptor source, FileMetadata sourceMetadata, boolean overwrite, String author,
+                                                boolean preserveFileMetadata) {
+        FolderResourceMarker current = requireActiveMarkerLocked(resource);
+        String normalized = normalizePath(relativePath);
+        Map<String, FolderResourceMarker.ResourceFileMetadata> files = currentFileMetadata(resource, current, true);
+        validateFileImport(resource, handler, normalized, sourceMetadata, overwrite, files, null);
+        Map<String, Object> refreshed = refreshCopiedMetadata(handler, normalized, source);
+        return copyOnWriteLocked(resource, current, author, true, Set.of(normalized), ignored -> { },
+                (versionId, after) -> {
+                    ResourceDescriptor destination = versionFile(resource, versionId, normalized);
+                    FileMetadata copied = copyPhysicalFile(source, destination, sourceMetadata, author, preserveFileMetadata);
+                    after.put(normalized, new FolderResourceMarker.ResourceFileMetadata(copied.getContentLength(), copied.getEtag()));
+                    return new MutationResult(refreshed, copied);
+                });
+    }
+
+    /** Restores a saved file snapshot from a stable backup after a failed move; the caller holds both sides' locks. */
+    public FileMutationResult restoreFileLocked(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath,
+                                                ResourceDescriptor backupPhysical, FileMetadata savedFileMetadata) {
+        return importFileLocked(resource, handler, relativePath, backupPhysical, savedFileMetadata, true, savedFileMetadata.getAuthor(), true);
+    }
+
+    public String copyFile(ResourceDescriptor resource, ComplexResourceHandler handler, String fromPath, String toPath,
+                           boolean move, boolean overwrite, String author) {
+        try (LockService.Lock ignore = resourceService.lockResource(markerDescriptor(resource))) {
+            return copyFileLocked(resource, handler, fromPath, toPath, move, overwrite, author);
+        }
+    }
+
+    public String copyFileLocked(ResourceDescriptor resource, ComplexResourceHandler handler, String fromPath, String toPath,
+                                 boolean move, boolean overwrite, String author) {
+        String from = normalizePath(fromPath);
+        String to = normalizePath(toPath);
+        if (from.equals(to)) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Source and destination files are equal");
+        }
+        FolderResourceMarker current = requireActiveMarkerLocked(resource);
+        Map<String, FolderResourceMarker.ResourceFileMetadata> files = currentFileMetadata(resource, current, true);
+        if (!files.containsKey(from)) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Source file not found: " + from);
+        }
+        ResourceDescriptor source = versionFile(resource, current.getCurrentVersion(), from);
+        FileMetadata sourceMetadata = (FileMetadata) resourceService.getResourceMetadataLocked(source);
+        if (move) {
+            handler.validateFileMutation(from, ComplexResourceHandler.FileMutation.DELETE);
+        }
+        validateFileImport(resource, handler, to, sourceMetadata, overwrite, files, move ? from : null);
+        Map<String, Object> refreshed = refreshCopiedMetadata(handler, to, source);
+        return copyOnWriteLocked(resource, current, author, true, move ? Set.of(from, to) : Set.of(to), ignored -> { },
+                (versionId, after) -> {
+                    FileMetadata copied = copyPhysicalFile(source, versionFile(resource, versionId, to), sourceMetadata, author, false);
+                    after.put(to, new FolderResourceMarker.ResourceFileMetadata(copied.getContentLength(), copied.getEtag()));
+                    if (move) {
+                        after.remove(from);
+                    }
+                    return new MutationResult(refreshed, copied);
+                }).resourceEtag();
+    }
+
+    private void validateFileImport(ResourceDescriptor resource, ComplexResourceHandler handler, String path, FileMetadata source,
+                                    boolean overwrite, Map<String, FolderResourceMarker.ResourceFileMetadata> files, @Nullable String removed) {
+        if (files.containsKey(path) && !overwrite) {
+            throw new HttpException(HttpStatus.CONFLICT, "Destination file already exists: " + path);
+        }
+        handler.validateFileMutation(path, ComplexResourceHandler.FileMutation.PUT);
+        Map<String, FolderResourceMarker.ResourceFileMetadata> after = new TreeMap<>(files);
+        if (removed != null) {
+            after.remove(removed);
+        }
+        after.put(path, new FolderResourceMarker.ResourceFileMetadata(source.getContentLength(), source.getEtag()));
+        validateFileMetadataLimits(resource, after);
+    }
+
+    @Nullable
+    private Map<String, Object> refreshCopiedMetadata(ComplexResourceHandler handler, String path, ResourceDescriptor source) {
+        return handler.requiresFileContent(path)
+                ? handler.refreshMetadataOnPut(path, resourceService.getResourceBytesLocked(source, EtagHeader.ANY)) : null;
+    }
+
+    private FileMetadata copyPhysicalFile(ResourceDescriptor source, ResourceDescriptor destination, FileMetadata sourceMetadata,
+                                           String author, boolean preserveFileMetadata) {
+        UserMetadata metadata = new UserMetadata();
+        metadata.setEtag(sourceMetadata.getEtag());
+        metadata.setAuthor(author);
+        metadata.setResourceType(destination.getType().name());
+        if (preserveFileMetadata) {
+            metadata.setCreatedAt(sourceMetadata.getCreatedAt());
+            metadata.setUpdatedAt(sourceMetadata.getUpdatedAt());
+        }
+        if (!resourceService.copyResourceLocked(source, destination, metadata, true)) {
+            throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR, "Can't copy resource file");
+        }
+        return (FileMetadata) resourceService.getResourceMetadataLocked(destination);
+    }
+
+    private FolderResourceMarker requireActiveMarkerLocked(ResourceDescriptor resource) {
+        FolderResourceMarker current = readMarkerLocked(markerDescriptor(resource));
+        if (!isActive(current)) {
+            throw new HttpException(HttpStatus.NOT_FOUND,
+                    "Resource not found: " + resource.getUrl() + "; create it with PUT /v2/" + resource.getUrl());
+        }
+        return current;
+    }
+
+    @Nullable
+    private static String fileEtag(Map<String, FolderResourceMarker.ResourceFileMetadata> files, String path) {
+        FolderResourceMarker.ResourceFileMetadata file = files.get(path);
+        return file == null ? null : file.getEtag();
+    }
+
+    private static void requireFile(Map<String, FolderResourceMarker.ResourceFileMetadata> files, String path) {
+        if (!files.containsKey(path)) {
+            throw new HttpException(HttpStatus.NOT_FOUND, "File not found: " + path);
+        }
+    }
+
+    private void validateFileMetadataLimits(ResourceDescriptor resource, Map<String, FolderResourceMarker.ResourceFileMetadata> files) {
+        Limits limits = settings.resolveLimits(resource.getType());
+        if (files.size() > limits.getMaxFiles()) {
+            throw new HttpException(HttpStatus.BAD_REQUEST, "Resource would contain more than %d files".formatted(limits.getMaxFiles()));
+        }
+        long total = 0;
+        for (Map.Entry<String, FolderResourceMarker.ResourceFileMetadata> entry : files.entrySet()) {
+            long size = entry.getValue().getSize();
+            if (size > limits.getMaxFileSizeBytes()) {
+                throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
+                        "File '%s' size %d exceeds max file size of %d".formatted(entry.getKey(), size, limits.getMaxFileSizeBytes()));
+            }
+            total += size;
+        }
+        if (total > limits.getMaxTotalBytes()) {
+            throw new HttpException(HttpStatus.REQUEST_ENTITY_TOO_LARGE,
+                    "Resource size %d exceeds max total size of %d".formatted(total, limits.getMaxTotalBytes()));
+        }
+    }
+
+    public FileMutationResult putFile(ResourceDescriptor resource, ComplexResourceHandler handler, String relativePath,
+                                     byte[] content, EtagHeader etag, String contentType, String author) {
+        String normalized = normalizePath(relativePath);
+        try (LockService.Lock ignore = resourceService.lockResource(markerDescriptor(resource))) {
+            FolderResourceMarker current = requireActiveMarkerLocked(resource);
+            return copyOnWriteLocked(resource, current, author, true, Set.of(),
+                    files -> {
+                        etag.validate(fileEtag(files, normalized));
+                        handler.validateFileMutation(normalized, ComplexResourceHandler.FileMutation.PUT);
+                        Map<String, FolderResourceMarker.ResourceFileMetadata> after = new TreeMap<>(files);
+                        after.put(normalized, new FolderResourceMarker.ResourceFileMetadata(content.length, ""));
+                        validateFileMetadataLimits(resource, after);
+                    },
+                    (versionId, files) -> {
+                        Map<String, Object> refreshed = handler.refreshMetadataOnPut(normalized, content);
+                        FileMetadata written = resourceService.putFile(versionFile(resource, versionId, normalized),
+                                content, EtagHeader.ANY, contentType, author);
+                        files.put(normalized, new FolderResourceMarker.ResourceFileMetadata(content.length, written.getEtag()));
+                        return new MutationResult(refreshed, written);
+                    });
+        }
     }
 
     /**
@@ -378,7 +630,7 @@ public class ComplexResourceService {
                     fileMetadata.put(normalized,
                             new FolderResourceMarker.ResourceFileMetadata(content.length, written.getEtag()));
                     // Only a change to a metadata-bearing file (e.g. the manifest) refreshes the marker metadata.
-                    return handler.refreshMetadataOnPut(normalized, content);
+                    return new MutationResult(handler.refreshMetadataOnPut(normalized, content), null);
                 });
     }
 
@@ -399,7 +651,7 @@ public class ComplexResourceService {
                     }
                     resourceService.deleteResource(versionFile(resource, newVersionId, normalized), EtagHeader.ANY);
                     // A deletable file never carries marker metadata (the manifest cannot be deleted).
-                    return null;
+                    return new MutationResult(null, null);
                 });
     }
 
@@ -413,41 +665,69 @@ public class ComplexResourceService {
      *
      * @param preflight validates the prospective change against the current per-file metadata map before
      *                  any copy happens; throws {@link HttpException} to reject
-     * @param mutation applies the change to the fresh version and to the per-file metadata map, returning
-     *                 the refreshed marker metadata, or {@code null} to keep the existing metadata
+     * @param mutation applies the change to the fresh version and file map, returning optional refreshed
+     *                 marker metadata and storage-returned file metadata for the response
      */
     private String copyOnWrite(ResourceDescriptor resource, EtagHeader etag, String author,
                                LimitsPreflight preflight, VersionMutation mutation) {
         ResourceDescriptor marker = markerDescriptor(resource);
-        String newVersionId = UUID.randomUUID().toString().replace("-", "");
-
         try (LockService.Lock ignore = resourceService.lockResource(marker)) {
             FolderResourceMarker current = readMarker(marker, false);
             if (!isActive(current)) {
                 throw new HttpException(HttpStatus.NOT_FOUND, "Resource not found: " + resource.getUrl());
             }
             etag.validate(current.getEtag());
-
-            Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = currentFileMetadata(resource, current);
-            preflight.check(fileMetadata);
-            Map<String, FolderResourceMarker.ResourceFileMetadata> before = new TreeMap<>(fileMetadata);
-            try {
-                resourceService.copyFolder(versionFolder(resource, current.getCurrentVersion()),
-                        versionFolder(resource, newVersionId), false);
-                Map<String, Object> refreshed = mutation.apply(newVersionId, fileMetadata);
-                Map<String, Object> metadata = refreshed != null ? refreshed : current.getMetadata();
-
-                String aggregateEtag = commitMarker(marker, resource, newVersionId, aggregateEtag(fileMetadata),
-                        metadata, fileMetadata, current, author);
-                publishEvents(resource, ResourceEvent.Action.UPDATE, aggregateEtag, before, fileMetadata);
-                deleteVersion(versionFolder(resource, current.getCurrentVersion()));
-                return aggregateEtag;
-            } catch (Exception e) {
-                // Nothing is observable until the marker is committed; drop the orphan version files.
-                deleteVersion(versionFolder(resource, newVersionId));
-                throw e;
-            }
+            return copyOnWriteLocked(resource, current, author, false, Set.of(), preflight, mutation).resourceEtag();
         }
+    }
+
+    private FileMutationResult copyOnWriteLocked(ResourceDescriptor resource, FolderResourceMarker current, String author,
+                                                  boolean masterReads, Set<String> excludedCopies, LimitsPreflight preflight, VersionMutation mutation) {
+        String newVersionId = UUID.randomUUID().toString().replace("-", "");
+        Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = currentFileMetadata(resource, current, masterReads);
+        preflight.check(fileMetadata);
+        Map<String, FolderResourceMarker.ResourceFileMetadata> before = new TreeMap<>(fileMetadata);
+        MutationResult changed;
+        String aggregateEtag;
+        boolean commitAttempted = false;
+        try {
+            // The marker is authoritative: a provider listing can retain physically deleted files.
+            for (String path : fileMetadata.keySet()) {
+                if (excludedCopies.contains(path)) {
+                    continue;
+                }
+                ResourceDescriptor source = versionFile(resource, current.getCurrentVersion(), path);
+                ResourceDescriptor destination = versionFile(resource, newVersionId, path);
+                boolean copied = masterReads
+                        ? resourceService.copyResourceLocked(source, destination, null, false)
+                        : resourceService.copyResource(source, destination, null, false);
+                if (!copied) {
+                    throw new IllegalArgumentException("Can't copy resource file: " + displayFileDescriptor(resource, path, false).getUrl());
+                }
+            }
+            changed = mutation.apply(newVersionId, fileMetadata);
+            if (masterReads) {
+                validateFileMetadataLimits(resource, fileMetadata);
+            }
+            Map<String, Object> metadata = changed.metadata() != null ? changed.metadata() : current.getMetadata();
+            String prospectiveEtag = aggregateEtag(fileMetadata);
+            commitAttempted = true;
+            aggregateEtag = commitMarker(markerDescriptor(resource), resource, newVersionId, prospectiveEtag,
+                    metadata, fileMetadata, current, author);
+        } catch (Exception e) {
+            // Once a marker write is attempted, its acknowledgement can be lost after the commit applied.
+            if (!commitAttempted) {
+                deleteVersion(versionFolder(resource, newVersionId));
+            }
+            throw e;
+        }
+        publishEvents(resource, ResourceEvent.Action.UPDATE, aggregateEtag, before, fileMetadata);
+        deleteVersion(versionFolder(resource, current.getCurrentVersion()));
+        FileMetadata response = changed.file() == null ? null : projectFileMetadata(resource, aggregateEtag, changed.file());
+        return new FileMutationResult(response, aggregateEtag);
+    }
+
+    private record MutationResult(@Nullable Map<String, Object> metadata, @Nullable FileMetadata file) {
     }
 
     @FunctionalInterface
@@ -457,8 +737,7 @@ public class ComplexResourceService {
 
     @FunctionalInterface
     private interface VersionMutation {
-        @Nullable
-        Map<String, Object> apply(String newVersionId, Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata);
+        MutationResult apply(String newVersionId, Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata);
     }
 
     /**
@@ -467,13 +746,18 @@ public class ComplexResourceService {
      */
     private Map<String, FolderResourceMarker.ResourceFileMetadata> currentFileMetadata(
             ResourceDescriptor resource, FolderResourceMarker current) {
+        return currentFileMetadata(resource, current, false);
+    }
+
+    private Map<String, FolderResourceMarker.ResourceFileMetadata> currentFileMetadata(
+            ResourceDescriptor resource, FolderResourceMarker current, boolean masterReads) {
         if (current.getFileMetadata() != null) {
             return new TreeMap<>(current.getFileMetadata());
         }
         Map<String, FolderResourceMarker.ResourceFileMetadata> fileMetadata = new TreeMap<>();
         ResourceDescriptor versionFolder = versionFolder(resource, current.getCurrentVersion());
         for (ResourceDescriptor file : listVersionFiles(versionFolder)) {
-            ResourceItemMetadata meta = resourceService.getResourceMetadata(file);
+            ResourceItemMetadata meta = masterReads ? resourceService.getResourceMetadataLocked(file) : resourceService.getResourceMetadata(file);
             if (meta != null) {
                 String relativePath = versionFolder.getRelativePath(file);
                 long size = meta instanceof FileMetadata fileMeta ? fileMeta.getContentLength() : 0L;
@@ -795,6 +1079,93 @@ public class ComplexResourceService {
         return new ResourceFolderMetadata(groupingFolder, items, raw.getNextToken());
     }
 
+    public MetadataBase getFileMetadata(ResourceDescriptor resource, String relativePath, String token, int limit, boolean recursive) {
+        try (LockService.Lock ignore = resourceService.lockResource(markerDescriptor(resource))) {
+            FolderResourceMarker current = readMarkerLocked(markerDescriptor(resource));
+            if (!isActive(current)) {
+                return null;
+            }
+            boolean rootFolder = relativePath.isEmpty();
+            if (!rootFolder && !relativePath.endsWith(ResourceDescriptor.PATH_SEPARATOR)) {
+                String normalized = normalizePath(relativePath);
+                if (current.getFileMetadata() != null && !current.getFileMetadata().containsKey(normalized)) {
+                    return null;
+                }
+                ResourceDescriptor file = versionFile(resource, current.getCurrentVersion(), normalized);
+                FileMetadata metadata = (FileMetadata) resourceService.getResourceMetadataLocked(file);
+                return metadata == null ? null : projectFileMetadata(resource, current.getEtag(), metadata);
+            }
+            Map<String, FolderResourceMarker.ResourceFileMetadata> files = currentFileMetadata(resource, current, true);
+            TreeMap<String, Boolean> nodesByPath = new TreeMap<>();
+            for (String path : files.keySet()) {
+                if (!path.startsWith(relativePath)) {
+                    continue;
+                }
+                String remainder = path.substring(relativePath.length());
+                int separator = remainder.indexOf(ResourceDescriptor.PATH_SEPARATOR);
+                boolean folder = !recursive && separator >= 0;
+                String nodePath = folder ? relativePath + remainder.substring(0, separator + 1) : path;
+                nodesByPath.put(nodePath, folder);
+            }
+            if (!rootFolder && nodesByPath.isEmpty()) {
+                return null;
+            }
+            ResourceDescriptor logicalFolder = rootFolder ? filesListingFolder(resource) : displayFileDescriptor(resource, relativePath, true);
+            String binding = logicalFolder.getUrl() + "\n" + recursive + "\n";
+            String after = null;
+            if (token != null) {
+                String cursor;
+                try {
+                    cursor = new String(Base58.decode(token), StandardCharsets.UTF_8);
+                } catch (IllegalArgumentException e) {
+                    throw new HttpException(HttpStatus.BAD_REQUEST, "Invalid file listing token");
+                }
+                if (!cursor.startsWith(binding) || !nodesByPath.containsKey(cursor.substring(binding.length()))) {
+                    throw new HttpException(HttpStatus.BAD_REQUEST, "Invalid file listing token");
+                }
+                after = cursor.substring(binding.length());
+            }
+            List<MetadataBase> items = new ArrayList<>();
+            String last = null;
+            Set<Map.Entry<String, Boolean>> remaining = after == null ? nodesByPath.entrySet() : nodesByPath.tailMap(after, false).entrySet();
+            for (Map.Entry<String, Boolean> entry : remaining) {
+                if (items.size() == limit) {
+                    break;
+                }
+                String path = entry.getKey();
+                if (entry.getValue()) {
+                    items.add(new ResourceFolderMetadata(displayFileDescriptor(resource, path, true)));
+                } else {
+                    FileMetadata file = (FileMetadata) resourceService.getResourceMetadataLocked(versionFile(resource, current.getCurrentVersion(), path));
+                    if (file == null) {
+                        throw new HttpException(HttpStatus.INTERNAL_SERVER_ERROR,
+                                "Metadata unavailable for resource file: " + displayFileDescriptor(resource, path, false).getUrl());
+                    }
+                    items.add(projectFileMetadata(resource, current.getEtag(), file));
+                }
+                last = path;
+            }
+            String nextToken = last != null && nodesByPath.higherKey(last) != null
+                    ? Base58.encode((binding + last).getBytes(StandardCharsets.UTF_8)) : null;
+            return new ResourceFolderMetadata(logicalFolder, items, nextToken);
+        }
+    }
+
+    private static FileMetadata projectFileMetadata(ResourceDescriptor resource, String resourceEtag, FileMetadata source) {
+        ResourceDescriptor physical = source.getDescriptor();
+        List<String> path = new ArrayList<>(physical.getParentFolders().subList(resource.getParentFolders().size() + 3,
+                physical.getParentFolders().size()));
+        path.add(physical.getName());
+        ResourceDescriptor logical = displayFileDescriptor(resource, String.join(ResourceDescriptor.PATH_SEPARATOR, path), false);
+        FileMetadata metadata = new FileMetadata(logical, source.getContentLength(), source.getContentType());
+        metadata.setEtag(source.getEtag());
+        metadata.setCreatedAt(source.getCreatedAt());
+        metadata.setUpdatedAt(source.getUpdatedAt());
+        metadata.setAuthor(source.getAuthor());
+        metadata.setResource(new FileMetadata.ResourceReference(resource.getUrl(), resourceEtag));
+        return metadata;
+    }
+
     /**
      * Lists the files of a skill's current version (optionally under {@code subPath}), presented under the
      * clean {@code .../files/} url with the internal {@code v/{versionId}/} prefix hidden. Honors
@@ -1091,7 +1462,7 @@ public class ComplexResourceService {
             if (lock == null) {
                 return false;
             }
-            FolderResourceMarker current = readMarker(marker, false);
+            FolderResourceMarker current = readMarkerLocked(marker);
             if (!isActive(current)) {
                 return false;
             }
@@ -1174,6 +1545,11 @@ public class ComplexResourceService {
     private String readAggregateEtag(ResourceDescriptor marker) {
         FolderResourceMarker document = readMarker(marker, false);
         return isActive(document) ? document.getEtag() : null;
+    }
+
+    private FolderResourceMarker readMarkerLocked(ResourceDescriptor marker) {
+        String json = resourceService.getResourceLocked(marker, EtagHeader.ANY);
+        return json == null ? null : ProxyUtil.convertToObject(json, FolderResourceMarker.class);
     }
 
     private FolderResourceMarker readMarker(ResourceDescriptor marker, boolean lock) {

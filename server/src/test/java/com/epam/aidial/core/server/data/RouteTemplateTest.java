@@ -35,6 +35,24 @@ public class RouteTemplateTest {
     }
 
     @Test
+    void universalFileRoutesSplitAtFirstDelimiter() {
+        for (String group : new String[] {"skills", "projects"}) {
+            Matcher file = RouteTemplate.UNIVERSAL_RESOURCE_FILE.getPattern().matcher("/v1/" + group + "/bucket/team/resource/files/refs/files/a.md");
+            assertTrue(file.matches());
+            assertEquals("team/resource", file.group("path"));
+            assertEquals("refs/files/a.md", file.group("filePath"));
+            assertTrue(RouteTemplate.UNIVERSAL_RESOURCE_FILE.matches("/v1/" + group + "/bucket/resource/files/"));
+            assertTrue(RouteTemplate.UNIVERSAL_RESOURCE_FILE_METADATA.matches("/v1/metadata/" + group + "/bucket/resource/files"));
+            assertTrue(RouteTemplate.UNIVERSAL_RESOURCE_FILE_METADATA.matches("/v1/metadata/" + group + "/bucket/resource/files/refs/"));
+            assertFalse(RouteTemplate.UNIVERSAL_RESOURCE_FILE.matches("/v1/" + group + "/bucket/resource"));
+            assertFalse(RouteTemplate.UNIVERSAL_RESOURCE_FILE.matches("/v1/" + group + "/bucket/folder/"));
+            assertFalse(RouteTemplate.UNIVERSAL_RESOURCE_FILE_METADATA.matches("/v1/metadata/" + group + "/bucket/"));
+        }
+        assertFalse(RouteTemplate.UNIVERSAL_RESOURCE_FILE.matches("/v1/prompts/bucket/p/files/a.md"));
+        assertFalse(RouteTemplate.UNIVERSAL_RESOURCE_FILE.matches("/v2/skills/bucket/s/files/a.md"));
+    }
+
+    @Test
     void complexResourceRoutesMatchSkillsAndProjectsOnly() {
         for (String group : new String[] {"skills", "projects"}) {
             Matcher resource = RouteTemplate.COMPLEX_RESOURCE.getPattern().matcher("/v2/" + group + "/bucket/dir/name");

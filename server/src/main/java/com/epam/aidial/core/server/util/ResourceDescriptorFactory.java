@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.util;
 
+import com.epam.aidial.core.server.data.FileTarget;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceType;
@@ -9,6 +10,7 @@ import com.epam.aidial.core.storage.util.UrlUtil;
 import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -111,6 +113,30 @@ public class ResourceDescriptorFactory {
     public static ResourceDescriptor fromAnyUrl(String url, EncryptionService encryption) {
         return fromUrl(url, null, null, encryption);
     }
+
+    public static FileTarget fromFileUrl(String url, EncryptionService encryption) {
+        ResourceDescriptor descriptor = fromAnyUrl(url, encryption);
+        if (!descriptor.getType().isComplex()) {
+            return new FileTarget(descriptor, descriptor, null);
+        }
+        List<String> segments = new ArrayList<>(descriptor.getParentFolders());
+        if (descriptor.getName() != null) {
+            segments.add(descriptor.getName());
+        }
+        int delimiter = segments.indexOf("files");
+        if (delimiter < 0) {
+            return new FileTarget(descriptor, descriptor, null);
+        }
+        verify(delimiter > 0, "Complex file URL must name a resource: " + url);
+        ResourceDescriptor root = new ResourceDescriptor(descriptor.getType(), segments.get(delimiter - 1),
+                List.copyOf(segments.subList(0, delimiter - 1)), descriptor.getBucketName(), descriptor.getBucketLocation(), false);
+        String filePath = String.join(ResourceDescriptor.PATH_SEPARATOR, segments.subList(delimiter + 1, segments.size()));
+        if (descriptor.isFolder() && !filePath.isEmpty()) {
+            filePath += ResourceDescriptor.PATH_SEPARATOR;
+        }
+        return new FileTarget(descriptor, root, filePath);
+    }
+
 
     /**
      *

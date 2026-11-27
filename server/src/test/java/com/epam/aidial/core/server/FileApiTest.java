@@ -5,6 +5,7 @@ import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.Bucket;
 import com.epam.aidial.core.server.vertx.stream.BlobWriteStream;
+import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -18,10 +19,17 @@ import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHeaders;
+import org.jclouds.ContextBuilder;
+import org.jclouds.blobstore.BlobStore;
+import org.jclouds.blobstore.BlobStoreContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.io.File;
+import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.stream.IntStream;
 
@@ -36,6 +44,46 @@ public class FileApiTest extends ResourceBaseTest {
 
     private static final String TEST_FILE_CONTENT = "Test file content";
     private static final String TEST_FILE_ETAG = "\"ac79653edeb65ab5563585f2d5f14fe9\"";
+
+    private BlobStorage fixtureStorage;
+    private BlobStore originalBackend;
+    private BlobStoreContext transientBackendContext;
+
+    @BeforeEach
+    void installPortableBlobBackend() throws Exception {
+        if (File.separatorChar != '\\') {
+            return;
+        }
+        // Real multipart staging timestamps contain colons, which Windows filenames cannot represent.
+        fixtureStorage = dial.getProxy().getStorage();
+        originalBackend = (BlobStore) resolveBlobBackendField().get(fixtureStorage);
+        transientBackendContext = ContextBuilder.newBuilder("transient").buildView(BlobStoreContext.class);
+        transientBackendContext.getBlobStore().createContainerInLocation(null, "test");
+        resolveBlobBackendField().set(fixtureStorage, transientBackendContext.getBlobStore());
+    }
+
+    @Override
+    @AfterEach
+    void destroy() throws Exception {
+        try {
+            // Stop Core before closing the transient provider, so scheduled storage work cannot outlive it.
+            super.destroy();
+        } finally {
+            if (transientBackendContext != null) {
+                try {
+                    resolveBlobBackendField().set(fixtureStorage, originalBackend);
+                } finally {
+                    transientBackendContext.close();
+                }
+            }
+        }
+    }
+
+    private static Field resolveBlobBackendField() throws NoSuchFieldException {
+        Field field = BlobStorage.class.getDeclaredField("blobStore");
+        field.setAccessible(true);
+        return field;
+    }
 
     @Test
     public void testBucket(Vertx vertx, VertxTestContext context) {
