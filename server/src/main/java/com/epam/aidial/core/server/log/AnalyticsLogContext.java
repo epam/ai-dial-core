@@ -16,6 +16,7 @@ import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
 import com.epam.aidial.core.server.upstream.UpstreamRoute;
+import com.epam.aidial.core.server.util.EncryptedContentAffinityUtil;
 import com.epam.aidial.core.server.util.MergeChunks;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -76,6 +77,8 @@ public class AnalyticsLogContext {
     private final Buffer requestBody;
 
     private final String upstreamEndpoint;
+    // the id of the model upstream Core chose for the pass, see upstreamId(ProxyContext)
+    private final String upstreamId;
 
     private final String routeName;
     private final String routeType;
@@ -139,6 +142,7 @@ public class AnalyticsLogContext {
                         .map(UpstreamRoute::get)
                         .map(Upstream::getEndpoint)
                         .orElse(null))
+                .upstreamId(upstreamId(context))
                 .routeName(route == null ? null : route.getName())
                 .routeType(routeType == null ? null : routeType.getValue())
                 .responseStatusCode(context.getResponse().getStatusCode())
@@ -179,6 +183,7 @@ public class AnalyticsLogContext {
                 .requestTimestamp(record.requestTimestamp())
                 .requestBody(Buffer.buffer(record.requestBody()))
                 .upstreamEndpoint(record.upstreamEndpoint())
+                .upstreamId(record.upstreamId())
                 .responseStatusCode(result == null ? 500 : 200) // 500 when expired
                 .responseBody(result == null ? null : result.body())
                 .tokenUsage(result == null ? null : result.usage())
@@ -240,11 +245,28 @@ public class AnalyticsLogContext {
                 .assembledStreamingResponse(null)
                 .bodiesOmitted(true)
                 .upstreamEndpoint(null)
+                .upstreamId(null)
                 .routeName(null)
                 .routeType(null)
                 .tokenUsage(usage)
                 .usagePerModel(usagePerModel)
                 .build();
+    }
+
+    /**
+     * The id of the model upstream Core chose for the pass, or null when the upstream has no id or a blank one, or
+     * the deployment declares no upstreams: the synthetic upstream Core builds then has its endpoint as its id, which
+     * the row already carries as the upstream uri.
+     */
+    @Nullable
+    public static String upstreamId(ProxyContext context) {
+        UpstreamRoute route = context.getUpstreamRoute();
+        Upstream upstream = route == null ? null : route.get();
+        if (upstream == null || !EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {
+            return null;
+        }
+        String id = upstream.getId();
+        return id == null || id.isBlank() ? null : id;
     }
 
     public static String getParentDeployment(String sourceDeployment, List<String> interceptors, List<String> executionPath) {

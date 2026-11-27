@@ -50,7 +50,9 @@ public record BackgroundJobRecord(
         String requestUri,
         long requestTimestamp,
         String requestBody,
-        String upstreamEndpoint) {
+        String upstreamEndpoint,
+        // absent from a record an older Core wrote
+        String upstreamId) {
 
     public static BackgroundJobRecord from(ProxyContext context, UnaryOperator<String> keyEncryptor) {
         return BackgroundJobRecord.builder()
@@ -89,6 +91,7 @@ public record BackgroundJobRecord(
                         .map(UpstreamRoute::get)
                         .map(Upstream::getEndpoint)
                         .orElse(null))
+                .upstreamId(AnalyticsLogContext.upstreamId(context))
                 .build();
     }
 }

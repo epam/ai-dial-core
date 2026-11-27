@@ -2,7 +2,9 @@ package com.epam.aidial.core.server.service;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.InterfaceType;
+import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.Router;
+import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.credentials.encryption.CredentialEncryptionService;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
@@ -18,6 +20,7 @@ import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.token.UsagePerModel;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
+import com.epam.aidial.core.server.upstream.UpstreamRoute;
 import com.epam.aidial.core.server.util.DeploymentEndpointUtil;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -426,6 +429,78 @@ class BackgroundJobServiceTest {
         AnalyticsLogContext routerRow = rows.stream().filter(row -> "r1".equals(row.getDeploymentName())).findFirst().orElseThrow();
         assertTrue(serving.getUsagePerModel().isEmpty(), "the job reported no usage of its own");
         assertEquals(rollUp, routerRow.getUsagePerModel());
+    }
+
+    @Test
+    void jobRowHasTheUpstreamId(VertxTestContext ctx) throws Throwable {
+        Upstream upstream = new Upstream();
+        upstream.setId("a");
+        Model model = new Model();
+        model.setName(DEPLOYMENT_NAME);
+        model.setUpstreams(List.of(upstream));
+        servedBy(model, upstream);
+        Router router = new Router();
+        router.setName("r1");
+        RouterDecision decision = new RouterDecision(router, InterfaceType.OPENAI_RESPONSES, List.of(DEPLOYMENT_NAME), 1);
+        decision.setHop(new RouterDecision.Hop("hop-span", null, null, List.of("r1")));
+        when(proxyContext.getDecision()).thenReturn(decision);
+
+        List<AnalyticsLogContext> rows = completeJob(ctx, 2);
+
+        AnalyticsLogContext serving = rows.stream().filter(row -> !"r1".equals(row.getDeploymentName())).findFirst().orElseThrow();
+        AnalyticsLogContext routerRow = rows.stream().filter(row -> "r1".equals(row.getDeploymentName())).findFirst().orElseThrow();
+        assertEquals("a", serving.getUpstreamId());
+        assertNull(routerRow.getUpstreamId());
+    }
+
+    @Test
+    void jobRowWithoutUpstreamsHasNoUpstreamId(VertxTestContext ctx) throws Throwable {
+        // the synthetic upstream Core builds for a deployment without upstreams has its endpoint as its id
+        Upstream synthetic = new Upstream();
+        synthetic.setEndpoint("http://m/v1/responses");
+        synthetic.setId("http://m/v1/responses");
+        Model model = new Model();
+        model.setName(DEPLOYMENT_NAME);
+        model.setEndpoint("http://m/v1/responses");
+        servedBy(model, synthetic);
+
+        AnalyticsLogContext row = completeJob(ctx, 1).getFirst();
+
+        assertEquals("http://m/v1/responses", row.getUpstreamEndpoint());
+        assertNull(row.getUpstreamId());
+    }
+
+    private void servedBy(Model model, Upstream upstream) {
+        UpstreamRoute route = mock(UpstreamRoute.class);
+        when(route.get()).thenReturn(upstream);
+        when(proxyContext.getUpstreamRoute()).thenReturn(route);
+        when(proxyContext.getDeployment()).thenReturn(model);
+    }
+
+    /**
+     * Saves the job from {@link #proxyContext}, completes it and returns the rows it wrote, once there are
+     * {@code rowCount}.
+     */
+    private List<AnalyticsLogContext> completeJob(VertxTestContext ctx, int rowCount) throws Throwable {
+        when(configStore.get()).thenReturn(mock(Config.class));
+        when(apiKeyStore.getApiKeyData(anyString(), any())).thenReturn(Future.failedFuture("not found"));
+        when(apiKeyStore.invalidatePerRequestApiKey(any())).thenReturn(Future.succeededFuture(true));
+        List<AnalyticsLogContext> rows = new CopyOnWriteArrayList<>();
+        doAnswer(inv -> {
+            rows.add(inv.getArgument(0));
+            if (rows.size() == rowCount) {
+                ctx.completeNow();
+            }
+            return null;
+        }).when(logStore).save(any());
+
+        service.saveJob(JOB_ID, proxyContext)
+                .compose(ignored -> service.tryComplete(
+                        JOB_ID, buildMapping(), new ResponsesApiClient.TerminalResult(Buffer.buffer("{}"), null)))
+                .onFailure(ctx::failNow);
+
+        await(ctx);
+        return rows;
     }
 
     @Test
