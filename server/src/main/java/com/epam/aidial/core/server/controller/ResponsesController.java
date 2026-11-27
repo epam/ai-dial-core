@@ -39,6 +39,7 @@ import com.epam.aidial.core.server.limiter.NoBudgetException;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.SpendCap;
 import com.epam.aidial.core.server.limiter.SpendCaps;
+import com.epam.aidial.core.server.limiter.budget.BudgetHeaders;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
@@ -278,6 +279,7 @@ public class ResponsesController extends BaseDeploymentPostController {
     }
 
     private Void setupDeployment(String model) {
+        BudgetHeaders.verifyRootCall(context);
         Deployment deployment = proxy.getDeploymentService().findCallableDeployment(context, model);
         proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.OPENAI_RESPONSES);
 

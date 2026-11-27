@@ -1609,9 +1609,12 @@ public class RateLimiterTest {
         assertEquals(1, count(shadow, "blob.list"));
         assertEquals(1, count(enforce, "listResources"));
         assertEquals(1, count(enforce, "blob.list"));
+        // a call that indicates no budget reads the caller's default budget record in shadow and enforce: one read,
+        // counted twice as the service calls its own overload
+        long defaultRead = 2;
         // shadow still reads the role cost record; enforce does not
-        assertEquals(count(off, "getResource"), count(shadow, "getResource"));
-        assertTrue(count(enforce, "getResource") < count(off, "getResource"), checks.toString());
+        assertEquals(count(off, "getResource") + defaultRead, count(shadow, "getResource"), checks.toString());
+        assertTrue(count(enforce, "getResource") - defaultRead < count(off, "getResource"), checks.toString());
         assertEquals(count(off, "computeResource"), count(enforce, "computeResource"));
         // the request counter, written without the lock, in every mode
         assertEquals(1, count(off, "computeResourceWithoutLock"), checks.toString());

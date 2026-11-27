@@ -12,6 +12,13 @@ import javax.annotation.Nullable;
 public record CostObject(String id, Source source) {
 
     /**
+     * The cost object the root request's budget headers named, else {@link #resolve(String, Key, Supplier)}.
+     */
+    public static CostObject resolve(@Nullable String header, @Nullable String claim, @Nullable Key key, Supplier<SpendingLimits> settings) {
+        return header != null ? new CostObject(header, Source.HEADER) : resolve(claim, key, settings);
+    }
+
+    /**
      * The token's cost object claim, else the API key's project, else {@code defaultCostObject}, which is read only
      * when neither is there.
      */
@@ -28,7 +35,7 @@ public record CostObject(String id, Source source) {
     public enum Source {
         CLAIM("claim"),
         KEY("key"),
-        // set from a request header by the cost object ladder, which a later change adds
+        // named by the root request's X-DIAL-COST-OBJECT or X-DIAL-BUDGET, where the identity provider has no costObjectPath
         HEADER("header"),
         DEFAULT("default");
 

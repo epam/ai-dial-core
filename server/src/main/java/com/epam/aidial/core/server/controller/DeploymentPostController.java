@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.data.RouterDecision;
 import com.epam.aidial.core.server.function.request.ChatCompletionRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
+import com.epam.aidial.core.server.limiter.budget.BudgetHeaders;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
@@ -152,6 +153,7 @@ public class DeploymentPostController extends BaseChatCompletionController {
 
     private Future<?> handleDeployment(String deploymentId) {
         return proxy.getTaskExecutor().submit(() -> proxy.getBlockingCallTracer().trace("deployment.resolve", () -> {
+            BudgetHeaders.verifyRootCall(context);
             Deployment dep = proxy.getDeploymentService().findCallableDeployment(context, deploymentId);
             proxy.getConsentService().verifyUserConsent(context, dep, requestedInterface());
             return dep;

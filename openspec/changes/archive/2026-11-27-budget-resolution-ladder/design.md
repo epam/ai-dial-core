@@ -58,7 +58,8 @@ problem of D2.
 
 ### D4. The default budget is read on each model call that reaches the default step
 `DefaultBudgetService.findDefault` runs on the task executor in the budget check when the call has no indication,
-in `shadow` and `enforce`. The record is a resource that `ResourceService` caches in Redis, its absence included, so
+in `shadow` and `enforce`. `RateLimiter` builds the `DefaultBudgetService` it hands to `BudgetEnforcer` from its own
+`ResourceService`, as it builds the `BudgetCounterStore`: the service holds no state. The record is a resource that `ResourceService` caches in Redis, its absence included, so
 the read is one Redis GET, with a blob read when the cache entry has expired. A default changed mid-session applies
 from the next model call, as a standing preference should.
 **Rejected: read once at the root and store it in the key** - another stored field (D2), and a read for every root
@@ -118,8 +119,8 @@ the bodies have no place for the code.
 | Call | Today | After | Measured by |
 |---|---|---|---|
 | JWT root call to any deployment | - | parse two headers, no I/O | none needed |
-| Model call, `shadow`/`enforce`, no indication | candidates' counter loads | one more resource read (one Redis GET; a blob read when the cache entry expired), then the same loads, or one load when the default pays | `resource.get` spans per call in an integration test (tasks 6.2) |
-| Model call with an indication | candidates' counter loads | one counter load | the same test |
+| Model call, `shadow`/`enforce`, no indication | candidates' counter loads | one more `ResourceService.getResource` (one Redis GET; a blob read when the cache entry expired), then the same loads, or one load when the default pays | `RateLimiterTest.testRoundTripsOfTheSpendCapRoutes` (task 6.2) |
+| Model call with an indication | candidates' counter loads | one counter load, no default read | `BudgetEnforcerTest.testIndicatedBudgetPaysOverTheWalk`, `testIndicatedBudgetUsedUpIsNotReplacedByAnother` |
 | Messages/Responses model call, `enforce` | one extra in-memory listing of the cost object's budgets to decide whether to report | none | - |
 | `off` mode | - | header parse only; no read | - |
 
@@ -143,12 +144,16 @@ Deploy as usual; release notes list the new headers, the 400s and the reporting 
 
 ## Code map
 
-- Root header check and effective cost object: `DeploymentPostController.handleDeployment` and the unified routes
-  through `BaseDeploymentPostController` (`ChatCompletionsController`, `ResponsesController`,
-  `MessagesBaseController`); rejection path `DeploymentPostController.handleRateLimitHit`, `RateLimitResult`.
+- Root header check and effective cost object: `BudgetHeaders.verifyRootCall`, called first in the deployment-resolve
+  step of `DeploymentPostController.handleDeployment`, `ChatCompletionsController.setupDeployment`,
+  `ResponsesController.setupDeployment`, `MessagesBaseController.setupDeployment` and `McpProxyController.handle`
+  (toolsets); it throws through `RateLimitResult.throwIfError`, and each controller's error handler answers it.
+- The Messages and Responses answers of every 403 refusal: `RateLimitResult.isNoBudget` (every refusal with a 403
+  status), `NoBudgetException`, `BaseDeploymentPostController.respondNoBudget`.
 - Header element rule: `PolicyService.isValidElement` (to share, with `ConfigPostProcessor.ENTITY_NAME_PATTERN`).
 - Refusal codes: `SpendingRefusal` (all codes exist).
-- Effective cost object: `CostObject.resolve`, `CostObject.Source.HEADER`; `ProxyContext.resolveCostObject`,
+- Effective cost object: `CostObject.resolve` (an overload takes the header cost object first),
+  `CostObject.Source.HEADER`, `BudgetEnforcer.resolveCostObject`; `ProxyContext.resolveCostObject`,
   `ProxyContext.getCostObject`, `ProxyContext.getCostObjectSource`, the `ProxyContext` constructor that reads
   `extractedClaims.project()`.
 - Claim path flag: `IdentityProvider.toExtractedClaims`, `IdentityProvider.getCostObjectPath`, `ExtractedClaims`.
@@ -158,10 +163,11 @@ Deploy as usual; release notes list the new headers, the 400s and the reporting 
   `BudgetEnforcer.rejectNoBudget`, `BudgetEnforcer.buildExhaustedResult`, `BudgetEnforcer.reject`,
   `BudgetEnforcer.resolveCandidates`, `BudgetEnforcer.resolveCoverageChain`, `BudgetEnforcer.startCheck`,
   `BudgetEnforcer.toSpendCaps`, `BudgetEnforcer.hasLimitedWindow`.
-- Holding and the attestation rule: `EffectiveBudgets.resolve`, `EffectiveBudgets.isSubjectMatched`,
+- Holding and the attestation rule: `EffectiveBudgets.resolve`, `EffectiveBudgets.findHeld`, `EffectiveBudgets.isCovered`,
+  `EffectiveBudgets.isSubjectMatched`,
   `EffectiveBudgets.toRule`, `EffectiveBudgets.isExpired`, `CostObjectIndex.getInstances`, `BudgetInstance.covered`.
-- Default budget: `DefaultBudgetService.findDefault`, `DefaultBudgetService.findHeld`; wired in
-  `AiDial` and `Proxy.getDefaultBudgetService`, to pass into `RateLimiter` / `BudgetEnforcer`.
+- Default budget: `DefaultBudgetService.findDefault`, `DefaultBudgetService.findHeld`; built in the `RateLimiter`
+  constructor for `BudgetEnforcer`.
 - Limit flow: `RateLimiter.checkLimits`, `RateLimiter.checkBudgetsWithSpendCaps`, `RateLimiter.readSpendCaps`
   (keeps the one-budget rule).
 - Analytics: `BudgetCheck.noBudget`, `BudgetCheck.exhausted`, `AnalyticsLogContext`, `GfLogStore`.

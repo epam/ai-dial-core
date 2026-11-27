@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nullable;
 
 /**
  * Answers which budgets can pay for a call. Pure and in memory: the order is a total order, so every pod
@@ -47,13 +48,24 @@ public class EffectiveBudgets {
      * @return the budgets that can pay, by policy priority (lower first) and then by id
      */
     public List<BudgetInstance> resolve(CostObjectIndex index, String costObject, ExtractedClaims claims, List<String> chain, Instant now) {
+        return resolve(index, costObject, claims, chain, now, true);
+    }
+
+    /**
+     * @param isCostObjectAttested whether the cost object came from the claim, the key or the configured default; when it
+     *                             came from a request header, a budget is reached only through a subject rule that
+     *                             names the caller, never through a {@code TRUE} one
+     */
+    public List<BudgetInstance> resolve(CostObjectIndex index, String costObject, ExtractedClaims claims, List<String> chain, Instant now,
+                                        boolean isCostObjectAttested) {
         if (claims == null) {
             return List.of();
         }
         Map<BudgetInstance, Integer> positions = new HashMap<>();
         int earliest = Integer.MAX_VALUE;
         for (BudgetInstance instance : index.getInstances(costObject)) {
-            if (instance.policy().getKind() != PolicyKind.BUDGET || isExpired(instance, now) || !isSubjectMatched(instance, claims)) {
+            if (instance.policy().getKind() != PolicyKind.BUDGET || isExpired(instance, now)
+                    || !isSubjectMatched(instance, claims, isCostObjectAttested)) {
                 continue;
             }
             // "*" covers the call at the model, the last name of the chain, like a budget naming the model: it ties with
@@ -102,9 +114,36 @@ public class EffectiveBudgets {
                 .filter(instance -> instance.policy().getKind() == PolicyKind.BUDGET)
                 .filter(instance -> instance.policy().getQuantity() == PolicyQuantity.COST)
                 .filter(instance -> !isExpired(instance, now))
-                .filter(instance -> isSubjectMatched(instance, claims))
+                .filter(instance -> isSubjectMatched(instance, claims, true))
                 .sorted(ORDER)
                 .toList();
+    }
+
+    /**
+     * The cost budget of the cost object with that id when the caller holds it: unexpired, and its subject matches the
+     * caller, under the attestation rule of {@link #resolve}. Whatever the call, so a held budget that does not cover it
+     * is told apart from one the caller does not hold.
+     *
+     * @return null when there is no such budget, it has expired, or its subject does not match the caller
+     */
+    @Nullable
+    public BudgetInstance findHeld(CostObjectIndex index, String costObject, String instanceId, ExtractedClaims claims, Instant now,
+                                   boolean isCostObjectAttested) {
+        return index.getInstances(costObject).stream()
+                .filter(instance -> instance.id().equals(instanceId))
+                .filter(instance -> instance.policy().getKind() == PolicyKind.BUDGET)
+                .filter(instance -> instance.policy().getQuantity() == PolicyQuantity.COST)
+                .filter(instance -> !isExpired(instance, now))
+                .filter(instance -> isSubjectMatched(instance, claims, isCostObjectAttested))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * Whether the budget covers any name of the call's coverage chain.
+     */
+    public boolean isCovered(BudgetInstance instance, List<String> chain) {
+        return instance.covered().isAll() || instance.covered().indexOfFirstCovered(chain) >= 0;
     }
 
     public boolean isExpired(BudgetInstance instance, Instant now) {
@@ -114,12 +153,20 @@ public class EffectiveBudgets {
         return !OffsetDateTime.parse(instance.assignment().getExpiresAt()).toInstant().isAfter(now);
     }
 
-    private boolean isSubjectMatched(BudgetInstance instance, ExtractedClaims claims) {
+    private boolean isSubjectMatched(BudgetInstance instance, ExtractedClaims claims, boolean isCostObjectAttested) {
         List<PolicySubjectRule> subject = instance.subject();
         if (subject == null) {
             return false;
         }
-        List<Rule> rules = subject.stream().map(EffectiveBudgets::toRule).toList();
+        List<Rule> rules = subject.stream()
+                // a TRUE rule says "everyone on this cost object", which only an attested cost object proves
+                .filter(rule -> isCostObjectAttested || rule.getFunction() != PolicySubjectRule.Function.TRUE)
+                .map(EffectiveBudgets::toRule)
+                .toList();
+        if (!isCostObjectAttested && rules.isEmpty()) {
+            // RuleMatcher matches everybody on no rules, and nothing here names the caller
+            return false;
+        }
         return RuleMatcher.match(claims.userRoles(), claims.userEmail(), claims.userClaims(), rules);
     }
 

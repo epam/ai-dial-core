@@ -396,7 +396,10 @@ public class PolicyService {
         return slash < 0 ? null : path.substring(0, slash);
     }
 
-    private static boolean isValidElement(String element) {
+    /**
+     * Whether the name can be one path element of a policy, an assignment or a budget counter.
+     */
+    public static boolean isValidElement(String element) {
         return ConfigPostProcessor.ENTITY_NAME_PATTERN.matcher(element).matches() && element.indexOf('%') < 0;
     }
 

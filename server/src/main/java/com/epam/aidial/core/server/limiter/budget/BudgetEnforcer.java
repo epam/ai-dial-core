@@ -10,6 +10,7 @@ import com.epam.aidial.core.config.SpendingLimits;
 import com.epam.aidial.core.config.policy.BudgetInstance;
 import com.epam.aidial.core.config.policy.PolicyAmounts;
 import com.epam.aidial.core.config.policy.PolicyQuantity;
+import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BudgetStats;
@@ -21,6 +22,7 @@ import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.limiter.SpendReadException;
 import com.epam.aidial.core.server.limiter.SpendingRefusal;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import io.micrometer.core.instrument.Metrics;
@@ -44,12 +46,16 @@ import javax.annotation.Nullable;
 public class BudgetEnforcer {
 
     private final BudgetCounterStore store;
+    private final DefaultBudgetService defaultBudgets;
+    private final AsyncTaskExecutor taskExecutor;
 
     /**
-     * The cost object of the root caller, or the configured default when the call carries none.
+     * The effective cost object of the root caller: the one its budget headers named, its claim, or the configured
+     * default when the call carries none.
      */
-    public static String resolveCostObject(ProxyContext context, SpendingLimits settings) {
-        return CostObject.resolve(context.getUserProject(), context.getKey(), () -> settings).id();
+    public static String resolveCostObject(ProxyContext context) {
+        return CostObject.resolve(context.getHeaderCostObject(), context.getUserProject(), context.getKey(),
+                () -> context.getConfig().getSpendingLimits()).id();
     }
 
     /**
@@ -79,7 +85,7 @@ public class BudgetEnforcer {
     public static BudgetCheck startCheck(ProxyContext context) {
         SpendingLimits settings = context.getConfig().getSpendingLimits();
         return settings.getMode() == SpendingLimitMode.OFF
-                ? BudgetCheck.OFF : BudgetCheck.started(settings.getMode(), resolveCostObject(context, settings));
+                ? BudgetCheck.OFF : BudgetCheck.started(settings.getMode(), resolveCostObject(context));
     }
 
     /**
@@ -92,30 +98,44 @@ public class BudgetEnforcer {
 
     /**
      * The {@code enforce} check of a route that reports spend caps to its client. It picks and stores the payer as
-     * {@link #check} does. The result carries the caps to report: the caller's one budget in their cost object, or
-     * none when they have several. When every candidate is used up, it carries the cap of the one that can pay
-     * again first. A failed load fails with {@link SpendReadException} only when a candidate caps the caller.
+     * {@link #check} does. The result carries the caps of the payer, whichever budget the ladder resolved. When the
+     * payer, or every budget of the walk, is used up, it carries the cap of the one that can pay again first. A failed
+     * load fails with {@link SpendReadException} only when a candidate caps the caller.
      */
     public Future<RateLimitResult> checkWithSpendCaps(ProxyContext context, Model model, long timestamp, RateLimitSchedule schedule) {
         return checkBudgets(context, model, timestamp, schedule, true);
     }
 
+    /**
+     * The resolution ladder: the indicated budget, else the caller's default budget when it is on the effective cost
+     * object, else the priority walk when {@code autoBudgetSelection} allows it. A declared payer is the only candidate.
+     */
     private Future<RateLimitResult> checkBudgets(ProxyContext context, Model model, long timestamp, RateLimitSchedule schedule,
                                                  boolean isWithSpendCaps) {
         SpendingLimits settings = context.getConfig().getSpendingLimits();
         ExtractedClaims claims = context.getExtractedClaims();
-        String costObject = resolveCostObject(context, settings);
+        String costObject = resolveCostObject(context);
         // without an outcome until the counters are read, so a failed read leaves the row without one
         BudgetCheck started = BudgetCheck.started(settings.getMode(), costObject);
         context.setBudgetCheck(started);
-        List<BudgetInstance> candidates = resolveCandidates(context, costObject, timestamp);
-        if (candidates.isEmpty()) {
-            context.setBudgetCheck(started.noBudget());
-            return Future.succeededFuture(rejectNoBudget(settings, claims, costObject, model, isWithSpendCaps));
-        }
-        // the candidates are a subset of the cost object's budgets, so with several the caller has several
-        boolean isReported = isWithSpendCaps && candidates.size() == 1 && EffectiveBudgets.resolveInCostObject(
-                context.getConfig().getCostObjectIndex(), costObject, claims, Instant.ofEpochMilli(timestamp)).size() == 1;
+        Future<Candidates> resolved = context.getBudgetIndication() != null
+                ? Future.succeededFuture(resolveIndicated(context, costObject, timestamp))
+                : taskExecutor.submit(() -> defaultBudgets.findDefault(context))
+                        .map(defaultBudget -> resolveUnindicated(context, model, costObject, defaultBudget, timestamp));
+        return resolved.compose(candidates -> {
+            if (candidates.refusal() != null) {
+                context.setBudgetCheck(started.noBudget());
+                return Future.succeededFuture(rejectForbidden(settings, candidates.refusal(), candidates.message(), claims, costObject, model,
+                        isWithSpendCaps));
+            }
+            return pickAndReport(context, model, candidates.budgets(), costObject, started, timestamp, schedule, isWithSpendCaps);
+        });
+    }
+
+    private Future<RateLimitResult> pickAndReport(ProxyContext context, Model model, List<BudgetInstance> candidates, String costObject,
+                                                  BudgetCheck started, long timestamp, RateLimitSchedule schedule, boolean isWithSpendCaps) {
+        SpendingLimits settings = context.getConfig().getSpendingLimits();
+        ExtractedClaims claims = context.getExtractedClaims();
         Future<Outcome> picked = pickPayer(candidates, costObject, claims.userId(), timestamp, schedule);
         if (isWithSpendCaps) {
             picked = picked.recover(error -> Future.failedFuture(candidates.stream().anyMatch(BudgetEnforcer::hasLimitedWindow)
@@ -127,8 +147,7 @@ public class BudgetEnforcer {
                 if (!isWithSpendCaps) {
                     return RateLimitResult.SUCCESS;
                 }
-                return RateLimitResult.SUCCESS.withSpendCaps(
-                        isReported ? toSpendCaps(outcome.payer.instance(), outcome.payerUsage) : SpendCaps.EMPTY);
+                return RateLimitResult.SUCCESS.withSpendCaps(toSpendCaps(outcome.payer.instance(), outcome.payerUsage));
             }
             context.setBudgetCheck(started.exhausted());
             // with spend caps there is no display message: a client builds it from the cap's period
@@ -140,6 +159,69 @@ public class BudgetEnforcer {
             }
             return reject(settings, SpendingRefusal.BUDGET_EXHAUSTED, claims.userId(), costObject, model, exhausted);
         });
+    }
+
+    /**
+     * The indicated budget is the payer, exclusively: one the caller does not hold, or one that does not cover the call,
+     * refuses it. Its cost object is the effective one: the root request refused any other with 400.
+     */
+    private static Candidates resolveIndicated(ProxyContext context, String costObject, long timestamp) {
+        String indication = context.getBudgetIndication();
+        BudgetInstance held = EffectiveBudgets.findHeld(context.getConfig().getCostObjectIndex(), costObject, indication,
+                context.getExtractedClaims(), Instant.ofEpochMilli(timestamp), context.getHeaderCostObject() == null);
+        if (held == null) {
+            // the same whether it does not exist, is someone else's or has expired, so it tells nothing about other budgets
+            return Candidates.refused(SpendingRefusal.NO_BUDGET, "Budget " + indication + " is not available to you");
+        }
+        List<String> chain = resolveCoverageChain(context);
+        if (!EffectiveBudgets.isCovered(held, chain)) {
+            return Candidates.refused(SpendingRefusal.BUDGET_NOT_APPLICABLE, "Budget " + indication + " does not cover " + chain.get(0));
+        }
+        return new Candidates(List.of(held), null, null);
+    }
+
+    /**
+     * @param defaultBudget the caller's default budget while they hold it in any cost object, null when none is set
+     */
+    private static Candidates resolveUnindicated(ProxyContext context, Model model, String costObject, @Nullable BudgetInstance defaultBudget,
+                                                 long timestamp) {
+        boolean isAttested = context.getHeaderCostObject() == null;
+        Instant now = Instant.ofEpochMilli(timestamp);
+        List<String> chain = resolveCoverageChain(context);
+        // a default on another cost object is not in effect: a standing preference, not a declaration of this call
+        if (defaultBudget != null && defaultBudget.id().startsWith(costObject + "/")) {
+            BudgetInstance held = EffectiveBudgets.findHeld(context.getConfig().getCostObjectIndex(), costObject, defaultBudget.id(),
+                    context.getExtractedClaims(), now, isAttested);
+            if (held != null) {
+                if (!EffectiveBudgets.isCovered(held, chain)) {
+                    return Candidates.refused(SpendingRefusal.DEFAULT_BUDGET_NOT_APPLICABLE, "Your default budget " + held.id()
+                            + " does not cover " + chain.get(0) + ". Indicate a budget with the " + Proxy.HEADER_DIAL_BUDGET + " header.");
+                }
+                return new Candidates(List.of(held), null, null);
+            }
+        }
+        if (!context.getConfig().getSpendingLimits().isAutoBudgetSelection()) {
+            return Candidates.refused(SpendingRefusal.NO_BUDGET, "No budget is indicated for " + model.getName() + ". Indicate a budget with the "
+                    + Proxy.HEADER_DIAL_BUDGET + " header or set a default budget.");
+        }
+        List<BudgetInstance> candidates = resolveCandidates(context, costObject, chain, now, isAttested);
+        if (candidates.isEmpty()) {
+            // a user reads the message as it is, in Codex CLI and Claude Code; it keeps the model and the cost object for the admin
+            return Candidates.refused(SpendingRefusal.NO_BUDGET, "No DIAL spend limit is assigned for " + model.getName() + " in project "
+                    + costObject + ". Ask your DIAL admin to assign one.");
+        }
+        return new Candidates(candidates, null, null);
+    }
+
+    /**
+     * The budgets that can pay, or why none can.
+     *
+     * @param refusal null when {@code budgets} has the candidates
+     */
+    private record Candidates(List<BudgetInstance> budgets, @Nullable SpendingRefusal refusal, @Nullable String message) {
+        static Candidates refused(SpendingRefusal refusal, String message) {
+            return new Candidates(List.of(), refusal, message);
+        }
     }
 
     /**
@@ -160,7 +242,7 @@ public class BudgetEnforcer {
      */
     public Future<SpendCaps> readSpendCaps(ProxyContext context, long timestamp, RateLimitSchedule schedule) {
         ExtractedClaims claims = context.getExtractedClaims();
-        String costObject = resolveCostObject(context, context.getConfig().getSpendingLimits());
+        String costObject = resolveCostObject(context);
         List<BudgetInstance> budgets = EffectiveBudgets.resolveInCostObject(context.getConfig().getCostObjectIndex(), costObject,
                 claims, Instant.ofEpochMilli(timestamp));
         if (budgets.size() != 1 || !hasLimitedWindow(budgets.get(0))) {
@@ -170,10 +252,10 @@ public class BudgetEnforcer {
         return store.load(costObject, budget, claims.userId(), timestamp, schedule).map(usage -> toSpendCaps(budget, usage));
     }
 
-    private static List<BudgetInstance> resolveCandidates(ProxyContext context, String costObject, long timestamp) {
+    private static List<BudgetInstance> resolveCandidates(ProxyContext context, String costObject, List<String> chain, Instant now,
+                                                          boolean isAttested) {
         return EffectiveBudgets
-                .resolve(context.getConfig().getCostObjectIndex(), costObject, context.getExtractedClaims(), resolveCoverageChain(context),
-                        Instant.ofEpochMilli(timestamp))
+                .resolve(context.getConfig().getCostObjectIndex(), costObject, context.getExtractedClaims(), chain, now, isAttested)
                 .stream()
                 .filter(instance -> instance.policy().getQuantity() == PolicyQuantity.COST)
                 .toList();
@@ -200,23 +282,21 @@ public class BudgetEnforcer {
     }
 
     /**
-     * The message names only the caller's own model and cost object, so it is the same whatever the reason and
-     * tells nothing about other people's budgets.
+     * A 403 refusal: no budget can pay, or the declared payer does not cover the call. The message names only the
+     * caller's own model, budget and cost object, so it tells nothing about other people's budgets.
      *
      * @param isWithSpendCaps the routes that report spend caps tell their client not to retry: only an admin adding
-     *                        a budget can make the call pass. They also answer the refusal in their own way
+     *                        a budget, or the client indicating another, can make the call pass. They also answer the
+     *                        refusal in their own way
      */
-    private static RateLimitResult rejectNoBudget(SpendingLimits settings, ExtractedClaims claims, String costObject, Model model,
-                                                  boolean isWithSpendCaps) {
-        // a user reads the message as it is, in Codex CLI and Claude Code; it keeps the model and the cost object for the admin
-        String message = "No DIAL spend limit is assigned for " + model.getName() + " in project " + costObject
-                + ". Ask your DIAL admin to assign one.";
-        SpendingRefusal refusal = SpendingRefusal.NO_BUDGET;
+    private static RateLimitResult rejectForbidden(SpendingLimits settings, SpendingRefusal refusal, String message, ExtractedClaims claims,
+                                                   String costObject, Model model, boolean isWithSpendCaps) {
         // the Messages and Responses routes answer their client in their own way and keep a 429 inside Core, which
         // an alias pass and a router fall back on; every other route answers the refusal's own status
         HttpStatus status = isWithSpendCaps ? HttpStatus.TOO_MANY_REQUESTS : refusal.status();
+        String displayMessage = refusal == SpendingRefusal.NO_BUDGET ? "You have no budget for this model" : message;
         return reject(settings, refusal, claims.userId(), costObject, model, new RateLimitResult(
-                status, message, "You have no budget for this model", -1, null, null, isWithSpendCaps, refusal));
+                status, message, displayMessage, -1, null, null, isWithSpendCaps, refusal));
     }
 
     private static RateLimitResult buildExhaustedResult(String costObject, @Nullable String displayMessage, Outcome outcome, long timestamp) {
@@ -253,7 +333,7 @@ public class BudgetEnforcer {
             budget.setMonth(toStats(instance.policy().getCost().getMonth(), usage.month(), usage.monthResetsAt(), schedule));
             stats.add(budget);
         }
-        return new BudgetReport(resolveCostObject(context, settings), stats);
+        return new BudgetReport(resolveCostObject(context), stats);
     }
 
     /**

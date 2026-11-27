@@ -41,11 +41,11 @@ public record RateLimitResult(
     }
 
     /**
-     * Whether no budget covers the model; such a rejection is thrown as a {@link NoBudgetException}, so a route can
-     * answer it in its own way.
+     * Whether no budget can pay for the call, or the declared payer does not cover it: a 403 refusal of the budget check.
+     * Such a rejection is thrown as a {@link NoBudgetException}, so a route can answer it in its own way.
      */
     public boolean isNoBudget() {
-        return refusal == SpendingRefusal.NO_BUDGET;
+        return refusal != null && refusal.status() == HttpStatus.FORBIDDEN;
     }
 
     public void throwIfError() {

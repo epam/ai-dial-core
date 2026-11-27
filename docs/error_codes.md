@@ -6,6 +6,7 @@ DIAL Core server cannot or will not process the request due to something that is
  - Resource URL is malformed
  - Both API key and Authorization headers are provided
  - Folder can't be downloaded
+ - A user's request to a deployment with a malformed budget header, in every `spendingLimits.mode`: `code` `invalid_budget_indication` for an `X-DIAL-BUDGET` that is not `<costObject>/<id>`, `invalid_cost_object` for an `X-DIAL-COST-OBJECT` that is not one name. `cost_object_mismatch` when the indicated budget is on another cost object than the call's, where the identity provider sets `costObjectPath`; `budget_indication_required` when `spendingLimits.budgetMandatory` is on and the request indicates no budget. These come with the DIAL error body on every route
  - With `spendingLimits.mode: enforce`, no budget covers the model on the Responses routes (`/openai/v1/responses`, `/openai/responses`): the client's own request gets the message as `text/plain`, with `x-should-retry: false`, because Codex CLI shows the message of a 400 and hides that of a 429. This holds directly and through an alias, but not for a background request through an alias, which gets the 429 below, as a call made with a per-request key does. With an interceptor in front of the model, global interceptors included, the refusal is made on the interceptor's call, and the client gets what the interceptor answers.
 
 #### 401 UNAUTHORIZED
@@ -27,7 +28,8 @@ User is authenticated by Core but doesn't have insufficient permissions to a res
 - a required resource dependency of the application is not accessible to the user or not approved by an administrator
 - only administrators can manage an application's admin consent, and only for an application they can read in the config, the public or review bucket, or their own bucket
 - a user changes an application's resource dependencies while `applications.allowUserAuthoredDependencies` is off
-- with `spendingLimits.mode: enforce`, no budget of the caller's cost object covers the model, on any route but the Messages and Responses ones (see 402, and 429 below): the error body has `code` `no_budget` and a `message` that names the model and the cost object, and no `retry-after`. Only an admin adding a budget makes the call pass
+- with `spendingLimits.mode: enforce`, no budget of the caller's cost object covers the model, on any route but the Messages and Responses ones (see 402, and 429 below): the error body has `code` `no_budget` and a `message` that names the model and the cost object, and no `retry-after`. Only an admin adding a budget makes the call pass. `no_budget` is also the code when the budget a request indicates with `X-DIAL-BUDGET` is not one the caller holds, and when nothing is indicated or defaulted and `spendingLimits.autoBudgetSelection` is off
+- with `spendingLimits.mode: enforce`, the declared payer does not cover the call: `code` `budget_not_applicable` for the budget indicated with `X-DIAL-BUDGET`, `default_budget_not_applicable` for the user's default budget. The Messages and Responses routes answer these as they answer `no_budget`
 
 #### 404 NOT FOUND
 

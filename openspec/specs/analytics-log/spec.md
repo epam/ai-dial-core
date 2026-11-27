@@ -86,10 +86,9 @@ before its origin writes no row, as on a direct call.
 
 ### Requirement: Spending limits in the analytics row
 When Core checks the limits of a JWT caller's call to a model, it SHALL write, in that model's row, right after
-`project`, a `spending_limits` object with `mode` (`spendingLimits.mode`: `off`, `shadow` or `enforce`). In
-`shadow` and `enforce` the object SHALL also carry `cost_object` (the cost object the call is charged to) and
-`outcome`: `paid` when a budget pays, `no_budget` when no budget covers the caller and the model, or `exhausted`
-when every such budget is used up.
+`project`, a `spending_limits` object with `mode` (`off`, `shadow` or `enforce`). In `shadow` and `enforce` it SHALL
+also carry `cost_object` (the effective cost object the call is charged to) and `outcome`: `paid` when a budget pays,
+`no_budget` when the budget check refuses with a 403 code, or `exhausted` when the budget that would pay is used up.
 
 #### Scenario: Enforce mode
 - **WHEN** `spendingLimits.mode` is `enforce`, a caller whose token carries project `projA` has one budget, policy
@@ -108,6 +107,10 @@ when every such budget is used up.
 - **WHEN** `spendingLimits.mode` is `shadow` and a caller whose token has no project claim has no budget
 - **THEN** the call succeeds and its row has `spending_limits` with `cost_object` `ORG` and `outcome` `no_budget`,
   while `project.id` is empty
+
+#### Scenario: Indicated budget not covering in shadow mode
+- **WHEN** `spendingLimits.mode` is `shadow` and a caller indicates a budget that does not cover the model they call
+- **THEN** the call succeeds and its row has `spending_limits` with `outcome` `no_budget`
 
 #### Scenario: Every budget used up in shadow mode
 - **WHEN** `spendingLimits.mode` is `shadow` and the caller's only budget is used up
@@ -170,10 +173,9 @@ from a background Responses job's record when the job ends.
 
 ### Requirement: Cost object in the analytics row
 Every analytics row SHALL carry a `cost_object` object with `id`, the cost object of the caller that started the
-chain, and `source`: `claim` (the token's project), `key` (the API key's project) or `default`
-(`spendingLimits.defaultCostObject`). It SHALL follow `spending_limits`, or `project` when the row has none. `project`
-and `spending_limits.cost_object` SHALL stay as they are. A background Responses job's row SHALL carry the cost object
-of the request that started the job.
+chain, and `source`: `claim`, `key`, `header` (named by the root request's budget headers where the provider sets no
+`costObjectPath`) or `default`. It SHALL follow `spending_limits`, or `project` when the row has none; both stay as
+they are. A background Responses job's row SHALL carry the cost object of the request that started the job.
 
 #### Scenario: API-key caller
 - **WHEN** a client with API key `proxyKey1` (project `EPM-RTC-GPT`) sends a chat completion
@@ -188,3 +190,8 @@ of the request that started the job.
 #### Scenario: Token without a project
 - **WHEN** a caller whose token has no project claim sends a request
 - **THEN** the row has `cost_object` with `id` `ORG` and `source` `default`, while `project.id` is empty
+
+#### Scenario: Cost object from the header
+- **WHEN** the provider sets no `costObjectPath` and a caller sends `X-DIAL-COST-OBJECT: IMF` with a chat completion
+  to a model
+- **THEN** the row has `cost_object` with `id` `IMF` and `source` `header`, and `spending_limits.cost_object` `IMF`

@@ -510,7 +510,8 @@ public class IdentityProvider {
                 extractUserClaims(map),
                 extractStringClaim(map, costObjectPath),
                 extractStringClaim(map, userDisplayName),
-                extractStringClaim(map, userEmailPath));
+                extractStringClaim(map, userEmailPath),
+                costObjectPath != null);
     }
 
     private void logClaims(Map<String, Object> claims) {

@@ -156,6 +156,10 @@ public class Proxy implements Handler<HttpServerRequest> {
     // Core's own mark of a refusal, from an alias's target pass to its alias pass; on the Responses routes never relayed
     // from outside Core
     public static final String HEADER_DIAL_REFUSAL = "X-DIAL-REFUSAL";
+    // the budget instance that pays a JWT caller's calls, <costObject>/<id>, and the cost object that scopes them where
+    // the identity provider has no costObjectPath; read on the root request only
+    public static final String HEADER_DIAL_BUDGET = "X-DIAL-BUDGET";
+    public static final String HEADER_DIAL_COST_OBJECT = "X-DIAL-COST-OBJECT";
 
     public static final Set<HttpMethod> ALLOWED_HTTP_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
             HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.PATCH);
