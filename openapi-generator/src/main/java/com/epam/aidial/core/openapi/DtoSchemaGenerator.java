@@ -31,6 +31,7 @@ import com.github.victools.jsonschema.module.jackson.JacksonOption;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -96,6 +97,7 @@ public class DtoSchemaGenerator {
             return createPolymorphicDefinition(javaType, context);
         });
         configBuilder.forFields().withCustomDefinitionProvider(this::createFieldOneOfDefinition);
+        configBuilder.forFields().withInstanceAttributeOverride(DtoSchemaGenerator::applyFieldNullable);
 
         SchemaGeneratorConfig config = configBuilder.build();
         this.generator = new SchemaGenerator(config);
@@ -245,6 +247,20 @@ public class DtoSchemaGenerator {
         ApiSchema apiSchema = clazz.getAnnotation(ApiSchema.class);
         ObjectNode schema = buildOneOfSchema(apiSchema, context);
         return schema == null ? null : new CustomDefinition(schema);
+    }
+
+    /**
+     * Honors {@code @ApiSchema(nullable = true)} on a DTO field. Only inline schemas are marked (primitives and
+     * collections, which render as {@code type: array}): OpenAPI 3.0 ignores siblings of {@code $ref}, so a
+     * nullable reference cannot be expressed this way.
+     */
+    private static void applyFieldNullable(ObjectNode node, FieldScope field, SchemaGenerationContext context) {
+        ApiSchema apiSchema = field.getAnnotationConsideringFieldAndGetter(ApiSchema.class);
+        Class<?> type = field.getType().getErasedType();
+        if (apiSchema != null && apiSchema.nullable()
+                && (OpenApiParameterBuilder.isInlinePrimitiveType(type) || Collection.class.isAssignableFrom(type))) {
+            node.put("nullable", true);
+        }
     }
 
     private CustomPropertyDefinition createFieldOneOfDefinition(FieldScope field, SchemaGenerationContext context) {

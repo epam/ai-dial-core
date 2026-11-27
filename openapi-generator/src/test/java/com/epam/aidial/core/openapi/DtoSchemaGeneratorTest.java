@@ -158,6 +158,35 @@ class DtoSchemaGeneratorTest {
     }
 
     @Test
+    void fieldLevelNullableMarksInlinePrimitivesAndCollections() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(com.epam.aidial.core.storage.data.MetadataBase.class);
+
+        JsonNode folder = generator.getSchemas().get("ResourceFolderMetadata").get("properties");
+        assertTrue(folder.get("name").get("nullable").asBoolean(), "name is null for the bucket root");
+        assertTrue(folder.get("parentPath").get("nullable").asBoolean(), "parentPath is null at the bucket root");
+        assertEquals("array", folder.get("items").get("type").asText());
+        assertTrue(folder.get("items").get("nullable").asBoolean(), "items is null for nested folders");
+        assertFalse(folder.get("bucket").has("nullable"));
+    }
+
+    @Test
+    void fieldLevelNullableIsIgnoredOnReferences() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(SampleNullableReference.class);
+
+        JsonNode link = generator.getSchemas().get(generator.resolveTypeName(SampleNullableReference.class))
+                .get("properties").get("link");
+        assertTrue(link.has("$ref"));
+        assertFalse(link.has("nullable"), "OpenAPI 3.0 ignores siblings of $ref");
+    }
+
+    static class SampleNullableReference {
+        @ApiSchema(nullable = true)
+        public com.epam.aidial.core.server.data.ResourceLink link;
+    }
+
+    @Test
     void regexPatternIsStringNotObject() {
         DtoSchemaGenerator generator = new DtoSchemaGenerator();
         generator.processType(Route.class);

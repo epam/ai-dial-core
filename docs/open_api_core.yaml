@@ -19418,10 +19418,12 @@ components:
           type: string
         name:
           type: string
+          nullable: true
         nodeType:
           $ref: "#/components/schemas/NodeType"
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -20211,10 +20213,12 @@ components:
           type: string
         name:
           type: string
+          nullable: true
         nodeType:
           $ref: "#/components/schemas/NodeType"
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -21584,8 +21588,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MetadataBase"
+          nullable: true
         name:
           type: string
+          nullable: true
         nextToken:
           type: string
         nodeType:
@@ -21595,6 +21601,7 @@ components:
           - FOLDER
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
@@ -21624,6 +21631,7 @@ components:
           type: string
         name:
           type: string
+          nullable: true
         nodeType:
           $ref: "#/components/schemas/NodeType"
           type: string
@@ -21631,6 +21639,7 @@ components:
           - ITEM
         parentPath:
           type: string
+          nullable: true
         permissions:
           type: array
           items:
