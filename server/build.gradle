@@ -67,8 +67,146 @@ dependencies {
 }
 
 application {
-    mainClass = 'com.epam.aidial.core.server.AiDial'
+    mainClass = 'com.epam.aidial.core.bootstrap.Launcher'
 }
+
+// Select roots from the resolved server graph, not a second configuration with potentially different versions.
+// Closure-only libraries in Shared remain hidden from plugins by the plugin loader's package filter.
+def sharedRootModules = [
+    'com.fasterxml.jackson.core:jackson-core',
+    'com.fasterxml.jackson.core:jackson-databind',
+    'com.fasterxml.jackson.core:jackson-annotations',
+    'org.slf4j:slf4j-api',
+    'ch.qos.logback:logback-classic',
+    'ch.qos.logback:logback-core',
+    'net.logstash.logback:logstash-logback-encoder',
+    'org.codehaus.janino:janino',
+    'io.vertx:vertx-core',
+    'io.vertx:vertx-opentelemetry',
+    'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0'
+] as Set
+
+def runtimePartition = providers.provider {
+    def components = configurations.runtimeClasspath.incoming.resolutionResult.allComponents
+    def roots = components.findAll { component ->
+        def id = component.id
+        if (id instanceof org.gradle.api.artifacts.component.ProjectComponentIdentifier) {
+            return id.projectPath == ':aidial-core-plugin-api'
+        }
+        if (id instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier) {
+            return sharedRootModules.contains("${id.group}:${id.module}".toString()) ||
+                id.group == 'io.netty' || id.group == 'io.opentelemetry'
+        }
+        false
+    }
+    def sharedIds = new LinkedHashSet()
+    def pending = new ArrayDeque(roots)
+    while (!pending.isEmpty()) {
+        def component = pending.removeFirst()
+        if (sharedIds.add(component.id)) {
+            component.dependencies.each { dependency ->
+                if (dependency instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult && !dependency.constraint) {
+                    pending.addLast(dependency.selected)
+                }
+            }
+        }
+    }
+    def artifacts = configurations.runtimeClasspath.incoming.artifacts.artifacts
+    [shared: artifacts.findAll { sharedIds.contains(it.id.componentIdentifier) },
+     core: artifacts.findAll { !sharedIds.contains(it.id.componentIdentifier) }]
+}
+
+def bootstrapJar = project(':bootstrap').tasks.named('jar')
+def partitionManifest = layout.buildDirectory.file('runtime-partition.txt')
+
+tasks.register('runtimePartition') {
+    inputs.files(configurations.runtimeClasspath)
+    inputs.property('sharedRoots', sharedRootModules.toList().sort())
+    outputs.file(partitionManifest)
+    doLast {
+        def partition = runtimePartition.get()
+        def lines = ['# Actual resolved runtime closure. Format: partition | component | jar']
+        ['shared', 'core'].each { side ->
+            partition[side].sort { it.file.name }.each { artifact ->
+                lines.add("${side} | ${artifact.id.componentIdentifier.displayName} | ${artifact.file.name}")
+            }
+        }
+        lines.add("core | project :server | ${tasks.jar.archiveFile.get().asFile.name}")
+        partitionManifest.get().asFile.text = lines.join('\n') + '\n'
+        logger.lifecycle("Runtime partition: ${partition.shared.size()} Shared jars, ${partition.core.size() + 1} Core jars, 1 bootstrap jar")
+    }
+}
+
+startScripts {
+    dependsOn bootstrapJar
+    classpath = files(bootstrapJar.flatMap { it.archiveFile })
+    doLast {
+        unixScript.text = unixScript.text.replace('\$APP_HOME/lib/', '\$APP_HOME/bootstrap/')
+        windowsScript.text = windowsScript.text.replace('%APP_HOME%\\lib\\', '%APP_HOME%\\bootstrap\\')
+    }
+}
+
+distributions {
+    main {
+        contents {
+            includeEmptyDirs = false
+            eachFile { details ->
+                if (details.relativePath.segments.contains('lib')) {
+                    details.exclude()
+                }
+            }
+            from(bootstrapJar) { into 'bootstrap' }
+            from({ runtimePartition.get().shared.collect { it.file } }) { into 'shared' }
+            from({ runtimePartition.get().core.collect { it.file } }) { into 'core' }
+            from(tasks.named('jar')) { into 'core' }
+            from(tasks.named('runtimePartition'))
+        }
+    }
+}
+
+installDist {
+    doFirst {
+        // Gradle's application plugin recognizes installations by bin/lib; Sync removes this temporary empty marker.
+        if (new File(destinationDir, 'bootstrap').isDirectory()) {
+            new File(destinationDir, 'lib').mkdirs()
+        }
+    }
+}
+
+tasks.register('verifyRuntimeDistribution') {
+    dependsOn tasks.named('installDist')
+    doLast {
+        def home = layout.buildDirectory.dir('install/server').get().asFile
+        def partition = runtimePartition.get()
+        ['shared', 'core'].each { side ->
+            def expected = partition[side].collect { it.file.name } as Set
+            if (side == 'core') {
+                expected.add(tasks.jar.archiveFile.get().asFile.name)
+            }
+            def actual = new File(home, side).listFiles().collect { it.name } as Set
+            if (actual != expected) {
+                throw new GradleException("Unexpected ${side} distribution: expected ${expected}, got ${actual}")
+            }
+        }
+        def bootFiles = new File(home, 'bootstrap').listFiles().collect { it.name }
+        if (bootFiles != [bootstrapJar.get().archiveFile.get().asFile.name] || new File(home, 'lib').exists()) {
+            throw new GradleException('The launcher distribution must contain one bootstrap jar and no legacy lib directory')
+        }
+        ['server', 'server.bat'].each { script ->
+            def classpathLine = new File(home, "bin/${script}").readLines().find { it.contains('CLASSPATH=') }
+            if (!classpathLine.contains('bootstrap') || classpathLine.contains('/lib/') || classpathLine.contains('\\lib\\')) {
+                throw new GradleException("Unexpected launcher classpath: ${classpathLine}")
+            }
+        }
+        logger.lifecycle('Verified bootstrap-only scripts and complete, disjoint Shared/Core jar partition')
+    }
+}
+
+run {
+    dependsOn tasks.named('installDist')
+    classpath = files(layout.buildDirectory.dir('install/server/bootstrap').map { it.asFileTree })
+}
+
 
 distributions {
     // write current version to the version file

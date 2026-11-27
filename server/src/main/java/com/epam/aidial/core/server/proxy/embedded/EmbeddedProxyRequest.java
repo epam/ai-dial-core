@@ -6,6 +6,7 @@ import com.epam.aidial.core.plugin.Request;
 import com.epam.aidial.core.plugin.Response;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.plugin.PluginClassLoaderScope;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.util.ProxyUtil;
@@ -38,6 +39,7 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     private final ContextInternal context;
     private final ProxyContext proxyContext;
     private final Supplier<Plugin> plugin;
+    private ClassLoader pluginClassLoader;
     private final HttpMethod method;
     private final String baseUrl;
     private final String absoluteUri;
@@ -72,6 +74,13 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
     public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin, HttpMethod method,
                          String baseUrl, String absoluteUri, RouterRequest router) {
         this(context, proxyContext, plugin, method, baseUrl, absoluteUri, router, false);
+    }
+
+    /** The provider's origin is retained for the response, even when its implementation uses shared classes. */
+    public EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin, HttpMethod method,
+                                String baseUrl, String absoluteUri, RouterRequest router, ClassLoader pluginClassLoader) {
+        this(context, proxyContext, plugin, method, baseUrl, absoluteUri, router, false);
+        this.pluginClassLoader = pluginClassLoader;
     }
 
     private EmbeddedProxyRequest(ContextInternal context, ProxyContext proxyContext, Supplier<Plugin> plugin, HttpMethod method,
@@ -155,7 +164,15 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
         }
         try {
             Request request = new Request(method, absoluteUri.substring(baseUrl.length()), headers, body, tree, caller());
-            plugin.get().handle(request, host).onComplete(result -> onAnswer(result, promise));
+            Plugin origin = plugin.get();
+            if (pluginClassLoader == null) {
+                pluginClassLoader = origin.getClass().getClassLoader();
+            }
+            Future<Response> answer;
+            try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+                answer = origin.handle(request, host);
+            }
+            answer.onComplete(result -> onAnswer(result, promise));
         } catch (RuntimeException | LinkageError e) {
             // Core is shutting down, creating the plugin again failed, or plugin code threw: a jar missing a class
             // throws NoClassDefFoundError on first use
@@ -216,8 +233,8 @@ public final class EmbeddedProxyRequest implements ProxyRequest {
             throw new IllegalStateException("The plugin answered null");
         }
         return router == null
-                ? new EmbeddedProxyResponse(answer, host::cancel)
-                : new EmbeddedProxyResponse(answer, host::cancel, host::close);
+                ? new EmbeddedProxyResponse(answer, host::cancel, () -> { }, pluginClassLoader)
+                : new EmbeddedProxyResponse(answer, host::cancel, host::close, pluginClassLoader);
     }
 
     private void fail(Promise<ProxyResponse> promise, Throwable error) {

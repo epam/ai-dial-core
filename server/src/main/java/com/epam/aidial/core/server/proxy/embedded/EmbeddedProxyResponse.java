@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.proxy.embedded;
 
 import com.epam.aidial.core.plugin.Response;
+import com.epam.aidial.core.server.plugin.PluginClassLoaderScope;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -16,6 +17,7 @@ final class EmbeddedProxyResponse implements ProxyResponse {
 
     private final Response answer;
     private final ReadStream<Buffer> body;
+    private final ClassLoader pluginClassLoader;
     private final Runnable onDiscard;
     private final Runnable onBodyRead;
     private boolean cancelled;
@@ -33,11 +35,18 @@ final class EmbeddedProxyResponse implements ProxyResponse {
      * @throws IllegalStateException when the answer has no headers or no body
      */
     EmbeddedProxyResponse(Response answer, Runnable onDiscard, Runnable onBodyRead) {
-        if (answer.headers() == null) {
-            throw new IllegalStateException("The plugin answered without headers");
+        this(answer, onDiscard, onBodyRead, answer.getClass().getClassLoader());
+    }
+
+    EmbeddedProxyResponse(Response answer, Runnable onDiscard, Runnable onBodyRead, ClassLoader pluginClassLoader) {
+        this.pluginClassLoader = pluginClassLoader;
+        try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+            if (answer.headers() == null) {
+                throw new IllegalStateException("The plugin answered without headers");
+            }
+            this.answer = answer;
+            this.body = answer.body();
         }
-        this.answer = answer;
-        this.body = answer.body();
         if (body == null) {
             throw new IllegalStateException("The plugin answered without a body");
         }
@@ -47,27 +56,33 @@ final class EmbeddedProxyResponse implements ProxyResponse {
 
     @Override
     public int statusCode() {
-        return answer.statusCode();
+        try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+            return answer.statusCode();
+        }
     }
 
     @Override
     public MultiMap headers() {
-        return answer.headers();
+        try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+            return answer.headers();
+        }
     }
 
     @Override
     public String getHeader(CharSequence name) {
-        return answer.headers().get(name);
+        try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+            return answer.headers().get(name);
+        }
     }
 
     @Override
     public Future<Buffer> body() {
         Promise<Buffer> promise = Promise.promise();
         Buffer content = Buffer.buffer();
-        body.exceptionHandler(promise::tryFail);
-        body.endHandler(ignored -> promise.tryComplete(content));
-        body.handler(content::appendBuffer);
-        body.resume();
+        exceptionHandler(promise::tryFail);
+        endHandler(ignored -> promise.tryComplete(content));
+        handler(content::appendBuffer);
+        resume();
         return promise.future().onComplete(ignored -> onBodyRead.run());
     }
 
@@ -75,44 +90,58 @@ final class EmbeddedProxyResponse implements ProxyResponse {
     public void discard() {
         if (!cancelled) {
             cancelled = true;
-            answer.cancel();
+            try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+                answer.cancel();
+            }
             onDiscard.run();
         }
     }
 
     @Override
     public EmbeddedProxyResponse exceptionHandler(Handler<Throwable> handler) {
-        body.exceptionHandler(handler);
+        try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+            body.exceptionHandler(handler);
+        }
         return this;
     }
 
     @Override
     public EmbeddedProxyResponse handler(Handler<Buffer> handler) {
-        body.handler(handler);
+        try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+            body.handler(handler);
+        }
         return this;
     }
 
     @Override
     public EmbeddedProxyResponse pause() {
-        body.pause();
+        try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+            body.pause();
+        }
         return this;
     }
 
     @Override
     public EmbeddedProxyResponse resume() {
-        body.resume();
+        try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+            body.resume();
+        }
         return this;
     }
 
     @Override
     public EmbeddedProxyResponse fetch(long amount) {
-        body.fetch(amount);
+        try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+            body.fetch(amount);
+        }
         return this;
     }
 
     @Override
     public EmbeddedProxyResponse endHandler(Handler<Void> endHandler) {
-        body.endHandler(endHandler);
+        try (var ignored = PluginClassLoaderScope.enter(pluginClassLoader)) {
+            body.endHandler(endHandler);
+        }
         return this;
     }
 }
