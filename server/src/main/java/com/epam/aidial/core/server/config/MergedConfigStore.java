@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.config;
 
 import com.epam.aidial.core.config.Alias;
+import com.epam.aidial.core.config.AnalyticsConfig;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.GlobalSettings;
@@ -593,7 +594,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Whether the {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule} /
-     * {@code spendingLimits} fields in the current {@link Config} were sourced from the API-managed settings singleton blob
+     * {@code spendingLimits} / {@code analytics} fields in the current {@link Config} were sourced from the API-managed settings singleton blob
      * ({@code platform/settings/global}) rather than from the file-defined defaults.
      * Drives the blob-only {@code 404} path on {@code GET /v1/settings/platform/global}
      * (slice U.1): when {@code false}, the per-entity endpoint returns {@code 404} and
@@ -876,7 +877,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Settings singleton overlay write (slice 4S.4). Applies {@code globalInterceptors} +
-     * {@code retriableErrorCodes} + {@code rateLimitSchedule} + {@code spendingLimits} fields from the supplied
+     * {@code retriableErrorCodes} + {@code rateLimitSchedule} + {@code spendingLimits} + {@code analytics} fields from the supplied
      * {@link GlobalSettings}, flips {@code settingsFromApi} to {@code true}.
      */
     public Config applySettingsWrite(GlobalSettings settings) {
@@ -891,6 +892,7 @@ public final class MergedConfigStore implements ConfigStore {
                     ? new RateLimitSchedule() : settings.getRateLimitSchedule());
             next.setSpendingLimits(settings.getSpendingLimits() == null
                     ? new SpendingLimits() : settings.getSpendingLimits());
+            next.setAnalytics(settings.getAnalytics() == null ? new AnalyticsConfig() : settings.getAnalytics());
             this.config = next;
             this.settingsFromApi = true;
             return next;
@@ -901,7 +903,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     /**
      * Settings singleton overlay delete (slice 4S.4). Restores {@code globalInterceptors} +
-     * {@code retriableErrorCodes} + {@code rateLimitSchedule} + {@code spendingLimits} from the
+     * {@code retriableErrorCodes} + {@code rateLimitSchedule} + {@code spendingLimits} + {@code analytics} from the
      * file-derived {@link Config} and flips {@code settingsFromApi} to {@code false}.
      */
     public Config applySettingsDelete() {
@@ -913,6 +915,7 @@ public final class MergedConfigStore implements ConfigStore {
             next.setRetriableErrorCodes(base.getRetriableErrorCodes());
             next.setRateLimitSchedule(base.getRateLimitSchedule());
             next.setSpendingLimits(base.getSpendingLimits());
+            next.setAnalytics(base.getAnalytics());
             this.config = next;
             this.settingsFromApi = false;
             return next;
@@ -1098,6 +1101,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setGlobalInterceptors(base.getGlobalInterceptors());
         next.setRateLimitSchedule(base.getRateLimitSchedule());
         next.setSpendingLimits(base.getSpendingLimits());
+        next.setAnalytics(base.getAnalytics());
         next.setTranslators(base.getTranslators());
         next.setPlugins(base.getPlugins());
         next.setPolicies(base.getPolicies());
@@ -1323,6 +1327,7 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setRateLimitSchedule(base.getRateLimitSchedule());
         merged.setOrgUnitRoles(base.getOrgUnitRoles());
         merged.setSpendingLimits(base.getSpendingLimits());
+        merged.setAnalytics(base.getAnalytics());
         // Wire the (still-being-populated) local maps onto merged now rather than after the blob
         // scan below — same references either way, but it lets addBlobEntity/removeAddedEntity
         // dispatch off a single Config parameter instead of a positional map per type (they used
@@ -1486,7 +1491,7 @@ public final class MergedConfigStore implements ConfigStore {
      * Singleton overlay (design 02 §4): when the API-managed settings blob exists at
      * {@code platform/settings/global}, its fields replace the file-derived
      * {@code globalInterceptors} / {@code retriableErrorCodes} / {@code rateLimitSchedule} /
-     * {@code spendingLimits} on the merged {@link Config}.
+     * {@code spendingLimits} / {@code analytics} on the merged {@link Config}.
      * GlobalSettings is intentionally NOT in {@link #MANAGED_TYPES} — it is a singleton overlay,
      * not a union-by-key like other types. Returns {@code true} iff the blob is present and
      * parses; on parse failure records an {@link InvalidEntityRecord} under {@code GLOBAL_SETTINGS}
@@ -1524,6 +1529,7 @@ public final class MergedConfigStore implements ConfigStore {
                     settings.getRateLimitSchedule() == null ? new RateLimitSchedule() : settings.getRateLimitSchedule());
             merged.setSpendingLimits(
                     settings.getSpendingLimits() == null ? new SpendingLimits() : settings.getSpendingLimits());
+            merged.setAnalytics(settings.getAnalytics() == null ? new AnalyticsConfig() : settings.getAnalytics());
             return true;
         } catch (Exception parseError) {
             log.warn("Failed to bind settings singleton blob to GlobalSettings", parseError);

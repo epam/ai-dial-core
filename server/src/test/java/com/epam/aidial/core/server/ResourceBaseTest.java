@@ -231,6 +231,14 @@ public class ResourceBaseTest {
                             return Future.succeededFuture(createClaims("user", authorization.substring("user@".length())));
                         }
 
+                        if (authorization.startsWith("claims:")) {
+                            return Future.succeededFuture(createClaimsOf(authorization.substring("claims:".length())));
+                        }
+
+                        if (authorization.startsWith("roles:")) {
+                            return Future.succeededFuture(createRolesClaims(authorization.substring("roles:".length()).split(",")));
+                        }
+
                         if (authorization.startsWith("azp:")) {
                             return Future.succeededFuture(createWorkloadClaims(authorization.substring("azp:".length())));
                         }
@@ -289,6 +297,17 @@ public class ResourceBaseTest {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("title", "Manager");
         return new ExtractedClaims(role, List.of(role), role, claims, project, role + " user", null);
+    }
+
+    // User "user" whose token carries the given roles ("roles:legal,dev").
+    static ExtractedClaims createRolesClaims(String... roles) {
+        return new ExtractedClaims("user", List.of(roles), "user", ProxyUtil.MAPPER.createObjectNode(), null, "user", null);
+    }
+
+    // User "user" with no roles whose token carries the given claim payload ("claims:{\"user_name\":\"test-user\"}").
+    static ExtractedClaims createClaimsOf(String json) {
+        ObjectNode claims = ProxyUtil.convertToObject(json, ObjectNode.class);
+        return new ExtractedClaims("user", List.of(), "user", claims, null, "user", null);
     }
 
     // A workload (service-principal) JWT carrying an azp claim and no user roles.

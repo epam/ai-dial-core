@@ -17,4 +17,6 @@ public class GlobalSettings {
     private RateLimitSchedule rateLimitSchedule = new RateLimitSchedule();
     @Valid
     private SpendingLimits spendingLimits = new SpendingLimits();
+    @Valid
+    private AnalyticsConfig analytics = new AnalyticsConfig();
 }

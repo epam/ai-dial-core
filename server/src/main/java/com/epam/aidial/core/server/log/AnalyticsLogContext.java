@@ -52,7 +52,8 @@ public class AnalyticsLogContext {
     private final String conversationId;
     private final String sessionId;
     private final String jobTitle;
-    private final boolean securedApiKey;
+    // the caller is secured: a secured key, or a caller matching analytics.securedSubject (see ProxyContext#isSecured)
+    private final boolean secured;
     // what the pre-call budget check found for a JWT caller's model call; null when budgets were not considered
     private final BudgetCheck budgetCheck;
 
@@ -83,7 +84,7 @@ public class AnalyticsLogContext {
     private final int responseStatusCode;
     private final Buffer responseBody;
     private final String assembledStreamingResponse;
-    // true for a copy made by withoutBodies(); the row is then written like one for a secured key
+    // true for a copy made by withoutBodies(); the row is then written like one for a secured caller
     private final boolean bodiesOmitted;
 
     private final TokenUsage tokenUsage;
@@ -118,7 +119,7 @@ public class AnalyticsLogContext {
                 .conversationId(context.getRequestHeader(Proxy.HEADER_CONVERSATION_ID))
                 .sessionId(GenAiTraceAttributes.resolveConversationId(context))
                 .jobTitle(context.getRequestHeader(Proxy.HEADER_JOB_TITLE))
-                .securedApiKey(context.isSecuredApiKey())
+                .secured(context.isSecured())
                 .budgetCheck(context.getBudgetCheck())
                 .userId(context.getUserId())
                 .userRoles(context.getUserRoles())
@@ -164,7 +165,7 @@ public class AnalyticsLogContext {
                 .conversationId(record.conversationId())
                 .sessionId(record.sessionId())
                 .jobTitle(record.jobTitle())
-                .securedApiKey(record.securedApiKey())
+                .secured(record.securedApiKey())
                 .userId(record.userId())
                 .userRoles(record.userRoles())
                 .userDisplayName(record.userDisplayName())

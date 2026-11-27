@@ -375,6 +375,20 @@ class RouterDecisionApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
+    void backgroundJobOfSecuredSubjectHasNoBodies() throws Exception {
+        List<AnalyticsLogContext> rows = captureRows();
+        try (TestWebServer server = server()) {
+            verify(send(HttpMethod.POST, "/openai/v1/responses", null, "{\"model\":\"r3\",\"background\":true,\"input\":\"hi\"}",
+                    "content-type", "application/json", "authorization", "roles:legal"), 200);
+            awaitRows(rows, 2);
+        }
+        // the job's row comes from the record stored at submit
+        assertTrue(row(rows, "gpt-4").isSecured());
+        assertTrue(routerRow(rows).isSecured());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
     void messagesBodyModelRewritten() throws Exception {
         verdict.set("{\"candidates\": [\"claude\"]}");
         try (TestWebServer server = server()) {
@@ -1637,9 +1651,9 @@ class RouterDecisionApiTest extends ResourceBaseTest {
         }
         awaitRows(rows, 2);
         AnalyticsLogContext router = routerRow(rows);
-        assertTrue(router.isSecuredApiKey());
+        assertTrue(router.isSecured());
         assertEquals("gpt-4", router.getDecision().deployment());
-        assertTrue(row(rows, "gpt-4").isSecuredApiKey());
+        assertTrue(row(rows, "gpt-4").isSecured());
     }
 
     @Test

@@ -1689,6 +1689,7 @@ public class ConfigResourceController implements Controller {
         body.set("retriableErrorCodes", ProxyUtil.MAPPER.valueToTree(config.getRetriableErrorCodes()));
         body.set("rateLimitSchedule", ProxyUtil.MAPPER.valueToTree(config.getRateLimitSchedule()));
         body.set("spendingLimits", ProxyUtil.MAPPER.valueToTree(config.getSpendingLimits()));
+        body.set("analytics", ProxyUtil.MAPPER.valueToTree(config.getAnalytics()));
         body.put("name", SETTINGS_SINGLETON_NAME);
         body.put("status", "valid");
         context.respond(HttpStatus.OK, body);

@@ -4,7 +4,10 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.epam.aidial.core.config.AnalyticsConfig;
+import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.policy.PolicySubjectRule;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.proxy.embedded.EmbeddedServerRequest;
 import com.epam.aidial.core.server.security.ApiKeyStore;
@@ -175,6 +178,29 @@ public class ProxyContextTest {
     }
 
     @Test
+    public void testSecuredWithoutAnalyticsConfig() {
+        // a file config with "analytics": null passes validation: nobody is secured rather than every row failing
+        Config config = new Config();
+        config.setAnalytics(null);
+
+        assertFalse(context(config, List.of("legal")).isSecured());
+    }
+
+    @Test
+    public void testSecuredByRole() {
+        PolicySubjectRule rule = new PolicySubjectRule();
+        rule.setSource("roles");
+        rule.setFunction(PolicySubjectRule.Function.EQUAL);
+        rule.setTargets(List.of("legal"));
+        Config config = new Config();
+        config.setAnalytics(new AnalyticsConfig());
+        config.getAnalytics().setSecuredSubject(List.of(rule));
+
+        assertTrue(context(config, List.of("legal")).isSecured());
+        assertFalse(context(config, List.of("dev")).isSecured());
+    }
+
+    @Test
     public void testMasterApiKeyDataIsReadOncePerRequest() {
         ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         Proxy proxy = mock(Proxy.class);
@@ -245,6 +271,15 @@ public class ProxyContextTest {
         assertNull(context.loadMasterApiKeyData());
 
         verifyNoInteractions(proxy);
+    }
+
+    private static ProxyContext context(Config config, List<String> roles) {
+        Proxy proxy = mock(Proxy.class, RETURNS_DEEP_STUBS);
+        when(proxy.getConfigStore().get()).thenReturn(config);
+        ExtractedClaims claims = new ExtractedClaims("sub", roles, "hash", ProxyUtil.MAPPER.createObjectNode(), null, "user", null);
+        ApiKeyData apiKeyData = new ApiKeyData();
+        apiKeyData.setOriginalKey(new Key());
+        return new ProxyContext(proxy, mock(HttpServerRequest.class, RETURNS_DEEP_STUBS), apiKeyData, claims, "trace-id", "span-id", "01");
     }
 
     private static ProxyContext context(ExtractedClaims claims) {

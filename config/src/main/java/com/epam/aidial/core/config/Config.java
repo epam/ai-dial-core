@@ -97,6 +97,8 @@ public class Config {
 
     private SpendingLimits spendingLimits = new SpendingLimits();
 
+    private AnalyticsConfig analytics = new AnalyticsConfig();
+
     @JsonIgnore
     public Deployment selectDeployment(String deploymentId) {
         Application application = applications.get(deploymentId);
