@@ -15,7 +15,8 @@ README limits and org-unit/storage documentation are updated. Windows test clean
   RouteTemplateTest, FileTargetTest, UniversalFileControllerTest, UniversalFileMetadataControllerTest and FileUtilTest.
 - Passed affected storage classes: ResourceServiceTest, LockServiceTest, LockServiceFailureTest, FileUtilTest,
   FileMetadataTest and BlobStorageUploadTest.
-- Passed affected OpenAPI classes: EndpointValidatorTest and EndpointMetadataTest. Passed `./gradlew replaceSpec -Plint`.
+- Passed affected OpenAPI classes: EndpointValidatorTest, EndpointMetadataTest and DtoSchemaGeneratorTest.
+  Passed `./gradlew replaceSpec -Plint`; schema generation and checkstyle were verified against the latest development updates.
 - Passed OpenSpec change/all strict validation and diff whitespace checks. Independent production verification confirmed
   the corrected stale-read, rename-collision and uncertain-marker-commit scenarios, and source compensation.
 - Passed the opt-in HTTP latency measurement: OpenJDK 25.0.2, Windows 11, embedded Redis, real JClouds transient backing
