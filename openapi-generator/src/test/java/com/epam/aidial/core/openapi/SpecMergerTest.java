@@ -1,5 +1,6 @@
 package com.epam.aidial.core.openapi;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -990,5 +991,52 @@ class SpecMergerTest {
                 "Manual structural schema should NOT override skeleton $ref");
         assertFalse(output.contains("type: array"),
                 "Manual array structure should NOT override skeleton $ref");
+    }
+
+    @Test
+    void generatedStructureReplacesStaleManualRef(@TempDir Path tempDir) throws IOException {
+        ObjectNode skeleton = specWithPricingRateBranch(
+                "{\"oneOf\": [{\"type\": \"string\"}, {\"$ref\": \"#/components/schemas/PricingRate\"}]}");
+        ObjectNode manual = specWithPricingRateBranch(
+                "{\"$ref\": \"#/components/schemas/PricingRate\", \"description\": \"Branch taken when the test passes\"}");
+
+        JsonNode branch = mergeAndReadPricingRateBranch(tempDir, skeleton, manual);
+
+        assertFalse(branch.has("$ref"), "a stale manual $ref must not survive next to the generated oneOf");
+        assertEquals(2, branch.get("oneOf").size());
+        assertEquals("Branch taken when the test passes", branch.get("description").asText());
+    }
+
+    @Test
+    void manualRefKeptWhenGeneratedNodeHasNoStructure(@TempDir Path tempDir) throws IOException {
+        ObjectNode skeleton = specWithPricingRateBranch("{\"description\": \"Generated text\"}");
+        ObjectNode manual = specWithPricingRateBranch("{\"$ref\": \"#/components/schemas/PricingRate\"}");
+
+        JsonNode branch = mergeAndReadPricingRateBranch(tempDir, skeleton, manual);
+
+        assertEquals("#/components/schemas/PricingRate", branch.get("$ref").asText());
+    }
+
+    private ObjectNode specWithPricingRateBranch(String branchJson) throws IOException {
+        ObjectNode spec = mapper.createObjectNode();
+        spec.putObject("info").put("title", "Test");
+        ObjectNode pricingRate = spec.putObject("components").putObject("schemas").putObject("PricingRate");
+        pricingRate.put("type", "object");
+        pricingRate.putObject("properties").set("ifTrue", new ObjectMapper().readTree(branchJson));
+        return spec;
+    }
+
+    private JsonNode mergeAndReadPricingRateBranch(Path tempDir, ObjectNode skeleton, ObjectNode manual)
+            throws IOException {
+        Path skeletonFile = tempDir.resolve("skeleton.yaml");
+        Path manualFile = tempDir.resolve("manual.yaml");
+        Path outputFile = tempDir.resolve("output.yaml");
+        mapper.writeValue(skeletonFile.toFile(), skeleton);
+        mapper.writeValue(manualFile.toFile(), manual);
+
+        new SpecMerger().merge(skeletonFile, manualFile, outputFile);
+
+        return mapper.readTree(outputFile.toFile())
+                .path("components").path("schemas").path("PricingRate").path("properties").path("ifTrue");
     }
 }
