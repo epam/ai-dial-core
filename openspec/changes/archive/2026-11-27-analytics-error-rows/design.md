@@ -274,7 +274,7 @@ The setting is on by default, so after an upgrade Core writes the new rows; ever
 - **D4. A mark on the row of a broken stream.** Its `response.status` is `200`, which looks like a delivered answer. With no new field
   the only difference is that it has no tokens, and a Messages stream keeps the usage its relayed events reported, so it has not even
   that. A marker would add a field to the schema. Default here: no marker.
-- **D5. The bodies of a Core answer.** The text of Core's own answer is in the WARN line, so `response.body` stays empty. Decided in review: the row keeps its `request.body` only for a `400` or a `500`, the answers the body may have caused; any other answer's row is written without bodies, as for a `secured` key.
+- **D5. The bodies of a Core answer.** The text of Core's own answer is in the WARN line, so `response.body` stays empty. Decided in review: the row keeps its `request.body` only for a `400` or a `500`, the answers the body may have caused, and not when spending limits refused the call (a `400` on `/openai/v1/responses`); any other answer's row is written without bodies, as for a `secured` key.
 
 ## Superseded by this revision
 

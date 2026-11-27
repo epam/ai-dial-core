@@ -245,8 +245,10 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
 
         AnalyticsLogContext row = rows(1).get(0);
         assertEquals(400, row.getResponseStatusCode());
-        // the body may be the cause of a 400, so the row keeps it
+        // the body may be the cause of a 400, so the row keeps it, and Core's own answer is not kept
         assertFalse(row.isBodiesOmitted());
+        assertEquals("{not json", row.getRequestBody().toString());
+        assertNull(row.getResponseBody());
     }
 
     @Test

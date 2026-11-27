@@ -19,7 +19,8 @@ Core's console and the analytics file by trace id) found nine such events on the
 this task.
 
 The specs say today that several of these answers write no row ("Passes without an analytics row", "Client gone from an
-application"). They are not accidents, so changing them needs a spec change, and operators must see nothing new unless they ask.
+application"). They are not accidents, so changing them needs a spec change, and an operator who wants the rows as before sets the
+setting to `false`.
 
 ## What Changes
 

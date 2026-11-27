@@ -1,8 +1,10 @@
 package com.epam.aidial.core.server.log;
 
 import com.epam.aidial.core.config.Key;
+import com.epam.aidial.core.config.SpendingLimitMode;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.ApiKeyData;
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
@@ -67,6 +69,24 @@ class LogStoreTest {
 
         assertEquals(List.of(false, false, true, true, true, true, true, true, true, true, true),
                 store.saved.stream().map(AnalyticsLogContext::isBodiesOmitted).toList());
+    }
+
+    @Test
+    void saveErrorResponseDropsBodiesOfSpendingLimitRefusal() {
+        RecordingStore store = new RecordingStore(true);
+        // /openai/v1/responses answers the refusal with a 400; shadow mode does not refuse
+        ProxyContext refused = context(400);
+        refused.setBudgetCheck(BudgetCheck.started(SpendingLimitMode.ENFORCE, "p").noBudget());
+        ProxyContext exhausted = context(400);
+        exhausted.setBudgetCheck(BudgetCheck.started(SpendingLimitMode.ENFORCE, "p").exhausted());
+        ProxyContext shadow = context(400);
+        shadow.setBudgetCheck(BudgetCheck.started(SpendingLimitMode.SHADOW, "p").noBudget());
+
+        store.saveErrorResponse(refused);
+        store.saveErrorResponse(exhausted);
+        store.saveErrorResponse(shadow);
+
+        assertEquals(List.of(true, true, false), store.saved.stream().map(AnalyticsLogContext::isBodiesOmitted).toList());
     }
 
     @Test

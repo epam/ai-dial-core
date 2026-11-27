@@ -92,9 +92,9 @@ what Core writes without this setting.
 
 ### Requirement: Error rows use the fields of any row
 A row of "Error rows for answers Core gives itself" or "Error rows for a relay that breaks" SHALL have the fields every row has and
-no field that other rows lack. When Core gave the answer itself, the row SHALL have no `token_usage`; with status `400` or
-`500`, which the body may have caused, its `response.body` SHALL be empty, and with any other status the row SHALL have no
-`request.body` or `response.body`, as for a `secured` key. A broken relay's row SHALL keep its `request.body`.
+no field that other rows lack. A row of an answer Core gave itself SHALL have no `token_usage`, and no `request.body` or
+`response.body`, as for a `secured` key, unless its status is `400` or `500` and spending limits did not refuse the call;
+then `response.body` SHALL be empty. A broken relay's row SHALL keep its `request.body`.
 
 #### Scenario: Refusal
 - **WHEN** `analytics.errorRows` is on and a key that is not `secured` is refused with `403` on
@@ -109,6 +109,11 @@ no field that other rows lack. When Core gave the answer itself, the row SHALL h
 #### Scenario: Body that is not JSON
 - **WHEN** `analytics.errorRows` is on and a client sends a body that is not valid JSON
 - **THEN** the client gets `400` and its row has the `request.body` field and an empty `response.body`
+
+#### Scenario: Spending-limit refusal on Responses
+- **WHEN** `analytics.errorRows` is on, `spendingLimits.mode` is `enforce`, a caller has no budget, and it calls
+  `/openai/v1/responses`
+- **THEN** the client gets `400` and its row has no `request.body` or `response.body`
 
 #### Scenario: Successful pass with the setting on
 - **WHEN** `analytics.errorRows` is on and a model answers `200`

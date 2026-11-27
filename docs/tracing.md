@@ -134,11 +134,11 @@ A row has the fields every row has and none that others lack:
 
 | Field in the row            | Value                                                                                          |
 |-----------------------------|------------------------------------------------------------------------------------------------|
-| `response.status`           | the status the **client** got; for a broken stream, the `200` Core had set                     |
+| `response.status`           | the status the **client** got; for a broken stream, the status Core had set, `200` for a normal stream |
 | `response.body`             | empty for a `400` or a `500` Core gave itself, absent for any other answer it gave itself: the text is in the WARN line |
 | `token_usage`               | absent, except for a broken `/anthropic/v1/messages` stream: it keeps the usage of the events Core had already relayed, with no price, and limits are not charged for it |
 | `response.upstream_uri`     | absent when the upstreams were used up, present for a connection that failed                   |
-| `request.body`              | for an answer Core gave itself, only with a `400` or a `500`, the answers the body may have caused (empty if Core had not read the body yet); the row of any other answer is written without bodies, as for a `secured` key. A broken stream keeps its request body |
+| `request.body`              | for an answer Core gave itself, only with a `400` or a `500`, the answers the body may have caused (empty if Core had not read the body yet), and not for a spending-limit refusal, which is a `400` on `/openai/v1/responses`; the row of any other answer is written without bodies, as for a `secured` key. A broken stream keeps its request body |
 | `deployment`                | absent for an answer given before Core puts the deployment on the pass: a `404` for an unknown deployment, a `403` for a role the deployment does not allow on `/openai/deployments/{id}/...`, and on the MCP proxy every answer given before its first request to the server, such as `403` and `429` |
 | `execution_path`            | absent for an answer given before the pass's per-request key exists: Core's `429`, `403`, `404` and `415`, and a `400` everywhere except `/openai/deployments/{id}/...`, which parses the body after the key exists |
 | `parent_deployment`         | as in any row, and also when Core refuses a deployment it resolved before the pass's key exists (its own `429`): the deployment whose key made the call, such as an application that calls a model |
@@ -148,7 +148,7 @@ it). For an exhausted upstream Core never relays a retriable status (an alias pa
 the model is at `429`, and `502 No route` otherwise, so an origin `502`, `503` or `504` gives the client `502`, and an origin `429`
 gives `503` only when no other upstream of the model failed with something else.
 
-A broken stream is a row with status `200` and no tokens, like the row of a client that left a `Model` mid-stream. It is told apart
+A broken stream is a row with the status Core had set (`200` for a normal stream) and no tokens, like the row of a client that left a `Model` mid-stream. It is told apart
 only by having no tokens. A broken Messages stream is the exception: it keeps the usage its relayed events reported, so its tokens do
 not tell it apart.
 
