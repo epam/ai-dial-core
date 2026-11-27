@@ -411,7 +411,8 @@ public class ResourceDependencyOrgUnitApiTest extends ResourceBaseTest {
         @Override
         protected JsonObject additionalSettingsOverrides() {
             return new JsonObject()
-                    .put("orgUnits", new JsonObject().put("enabled", true));
+                    .put("orgUnits", new JsonObject().put("enabled", true))
+                    .put("applications", new JsonObject().put("allowUserAuthoredDependencies", false));
         }
 
         @BeforeEach
