@@ -30,7 +30,7 @@ public class AnalyticsSettingsTest {
 
     @Test
     public void testMaxPendingBodyHeapPercent() {
-        assertEquals(-1.0, AnalyticsSettings.from(new JsonObject()).maxPendingBodyHeapPercent());
+        assertEquals(10.0, AnalyticsSettings.from(new JsonObject()).maxPendingBodyHeapPercent());
         assertEquals(10.0, AnalyticsSettings.from(new JsonObject().put("maxPendingBodyHeapPercent", 10)).maxPendingBodyHeapPercent());
         assertEquals(2.5, AnalyticsSettings.from(new JsonObject().put("maxPendingBodyHeapPercent", 2.5)).maxPendingBodyHeapPercent());
     }

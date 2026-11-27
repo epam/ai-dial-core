@@ -58,6 +58,18 @@ class LogStoreTest {
     }
 
     @Test
+    void saveErrorResponseKeepsBodiesOnlyForStatusTheBodyMayCause() {
+        RecordingStore store = new RecordingStore(true);
+
+        for (int status : new int[] {400, 500, 402, 403, 404, 415, 422, 429, 502, 503, 504}) {
+            store.saveErrorResponse(context(status));
+        }
+
+        assertEquals(List.of(false, false, true, true, true, true, true, true, true, true, true),
+                store.saved.stream().map(AnalyticsLogContext::isBodiesOmitted).toList());
+    }
+
+    @Test
     void saveErrorResponseDoesNothingWithTheSettingOff() {
         RecordingStore store = new RecordingStore(false);
 
@@ -75,6 +87,8 @@ class LogStoreTest {
 
         assertEquals(1, store.saved.size());
         assertEquals(200, store.saved.get(0).getResponseStatusCode());
+        // it keeps its bodies, as the row of the relay it replaces would
+        assertFalse(store.saved.get(0).isBodiesOmitted());
     }
 
     @Test

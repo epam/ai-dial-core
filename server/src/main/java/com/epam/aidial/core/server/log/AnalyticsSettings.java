@@ -21,7 +21,7 @@ import javax.annotation.Nullable;
  * @param headersBlacklist never null; empty means block nothing.
  * @param headersAllowlist null means the allowlist is disabled, i.e. collect all non-blocked headers.
  * @param maxPendingBodyHeapPercent the percent of the JVM's maximum heap that the bodies held by rows waiting to be
- *                         written may fill; once they reach it, new rows are written without bodies. 0 or below
+ *                         written may fill (10 when absent); once they reach it, new rows are written without bodies. 0 or below
  *                         means no limit.
  * @param errorRows        true when an error answer that Core gives itself, and a stream that breaks after its headers, also write a
  *                         row, which has no tokens and the status the client got.
@@ -65,7 +65,7 @@ public record AnalyticsSettings(boolean collectClaims, boolean collectAllClaims,
                 // default is defined in the bundled aidial.settings.json and always merged in
                 parseHeaderPatterns(settings.getJsonArray("headersBlacklist")),
                 parseHeaderPatterns(settings.getJsonArray("headersAllowlist")),
-                settings.getDouble("maxPendingBodyHeapPercent", -1.0),
+                settings.getDouble("maxPendingBodyHeapPercent", 10.0),
                 settings.getBoolean("errorRows", true));
     }
 

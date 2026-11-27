@@ -1,6 +1,26 @@
 # Spec Delta
 
+## RENAMED Requirements
+
+- FROM: `### Requirement: No limit on bodies waiting to be logged by default`
+- TO: `### Requirement: A limit on bodies waiting to be logged by default`
+
 ## MODIFIED Requirements
+
+### Requirement: A limit on bodies waiting to be logged by default
+When `analytics.maxPendingBodyHeapPercent` (env `aidial.analytics.maxPendingBodyHeapPercent`) is absent, Core SHALL
+take it as `10`. When it is 0 or below, Core SHALL keep the bodies of every row of a key that is not `secured`,
+whatever the backlog.
+
+#### Scenario: Setting absent
+- **WHEN** the JVM's maximum heap is 10,000 bytes, Core runs without `analytics.maxPendingBodyHeapPercent` (a limit of
+  1,000 bytes), a row with a 2,000-byte request body is waiting to be written, and another pass writes its row
+- **THEN** that row has no `request.body`, `response.body` or `assembled_response`
+
+#### Scenario: Value 0 or below
+- **WHEN** Core runs with `analytics.maxPendingBodyHeapPercent` `0` or `-1`, a row with a 2,000-byte request body is
+  waiting to be written, and another pass writes its row
+- **THEN** that row has its `request.body` and `response.body`
 
 ### Requirement: Rows without bodies for an alias pass
 Core SHALL write the row of an alias pass without `request.body`, `response.body` and `assembled_response`, and with
@@ -72,14 +92,23 @@ what Core writes without this setting.
 
 ### Requirement: Error rows use the fields of any row
 A row of "Error rows for answers Core gives itself" or "Error rows for a relay that breaks" SHALL have the fields every row has and
-no field that other rows lack. When Core gave the answer itself, its `response.body` SHALL be empty and it SHALL have no
-`token_usage`.
+no field that other rows lack. When Core gave the answer itself, the row SHALL have no `token_usage`; with status `400` or
+`500`, which the body may have caused, its `response.body` SHALL be empty, and with any other status the row SHALL have no
+`request.body` or `response.body`, as for a `secured` key. A broken relay's row SHALL keep its `request.body`.
 
 #### Scenario: Refusal
 - **WHEN** `analytics.errorRows` is on and a key that is not `secured` is refused with `403` on
   `/openai/deployments/{id}/chat/completions`
-- **THEN** the row has the `request.body` field (empty, as that surface reads the body after the refusal), `response.status: "403"` and `trace`, `response.body` is the empty string, and the row
-  has no `token_usage` and no `error` member
+- **THEN** the row has `response.status: "403"` and `trace`, and has no `request.body`, `response.body`,
+  `token_usage` or `error` member
+
+#### Scenario: Upstreams used up
+- **WHEN** `analytics.errorRows` is on and a model's only upstream answers `503` with `maxRetryAttempts` 1
+- **THEN** the client gets `502` and its row has no `request.body` or `response.body`
+
+#### Scenario: Body that is not JSON
+- **WHEN** `analytics.errorRows` is on and a client sends a body that is not valid JSON
+- **THEN** the client gets `400` and its row has the `request.body` field and an empty `response.body`
 
 #### Scenario: Successful pass with the setting on
 - **WHEN** `analytics.errorRows` is on and a model answers `200`

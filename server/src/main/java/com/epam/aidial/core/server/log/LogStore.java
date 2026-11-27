@@ -13,20 +13,26 @@ public interface LogStore {
 
     /** Saves the row of a pass that ended in an error, when {@code analytics.errorRows} is on. */
     default void saveErrorRow(ProxyContext context) {
+        saveErrorRow(context, true);
+    }
+
+    private void saveErrorRow(ProxyContext context, boolean withBodies) {
         // only POST requests write rows, which GfLogStore.save checks too, but only after the row is built
         if (isErrorRowsEnabled() && "POST".equals(context.getRequest().method().name())) {
-            save(AnalyticsLogContext.fromError(context));
+            AnalyticsLogContext row = AnalyticsLogContext.fromError(context);
+            save(withBodies ? row : row.withoutBodies());
         }
     }
 
     /**
      * Saves the row of an error answer that Core gave itself, when {@code analytics.errorRows} is on and the status of the response is
-     * outside 200-299: the answers that {@code ProxyContext.respond} logs at WARN. Call it right after {@code respond(...)}.
+     * outside 200-299: the answers that {@code ProxyContext.respond} logs at WARN. Call it right after {@code respond(...)}. The row
+     * keeps its bodies only for a 400 or a 500, the answers the body may have caused.
      */
     default void saveErrorResponse(ProxyContext context) {
         int statusCode = context.getResponse().getStatusCode();
         if (statusCode < 200 || statusCode >= 300) {
-            saveErrorRow(context);
+            saveErrorRow(context, statusCode == 400 || statusCode == 500);
         }
     }
 }

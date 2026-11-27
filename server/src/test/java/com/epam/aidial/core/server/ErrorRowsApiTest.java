@@ -15,6 +15,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -242,7 +243,10 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
 
         verify(send(HttpMethod.POST, adapterPath("m-not-json"), null, "{not json", "content-type", "application/json"), 400);
 
-        assertEquals(400, rows(1).get(0).getResponseStatusCode());
+        AnalyticsLogContext row = rows(1).get(0);
+        assertEquals(400, row.getResponseStatusCode());
+        // the body may be the cause of a 400, so the row keeps it
+        assertFalse(row.isBodiesOmitted());
     }
 
     @Test
@@ -506,9 +510,9 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
         String traceId = response.headers().get("X-DIAL-TRACE-ID");
         assertNotNull(traceId);
         assertEquals(traceId, row.getTraceId());
-        assertNotNull(row.getRequestBody());
-        assertTrue(row.getRequestBody().toString().contains("\"messages\""));
-        // Core's own answer is not kept, so the row's response body is empty
+        // the body did not cause a 502, so the row is written without bodies, as for a secured key
+        assertTrue(row.isBodiesOmitted());
+        assertNull(row.getRequestBody());
         assertNull(row.getResponseBody());
         // the exhausted route has no current upstream
         assertNull(row.getUpstreamEndpoint());

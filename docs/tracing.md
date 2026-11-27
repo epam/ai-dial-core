@@ -135,10 +135,11 @@ A row has the fields every row has and none that others lack:
 | Field in the row            | Value                                                                                          |
 |-----------------------------|------------------------------------------------------------------------------------------------|
 | `response.status`           | the status the **client** got; for a broken stream, the `200` Core had set                     |
-| `response.body`             | empty for an answer Core gave itself: the text is in the WARN line                             |
+| `response.body`             | empty for a `400` or a `500` Core gave itself, absent for any other answer it gave itself: the text is in the WARN line |
 | `token_usage`               | absent, except for a broken `/anthropic/v1/messages` stream: it keeps the usage of the events Core had already relayed, with no price, and limits are not charged for it |
 | `response.upstream_uri`     | absent when the upstreams were used up, present for a connection that failed                   |
-| `request.body`              | empty for an answer given before the body is read: `403`, `404`, `415` and Core's `429` on `/openai/deployments/{id}/...`. `/openai/v1/chat/completions`, `/openai/v1/responses` and `/anthropic/v1/messages` read the body first, to find the model, so their rows have it |
+| `request.body`              | for an answer Core gave itself, only with a `400` or a `500`, the answers the body may have caused (empty if Core had not read the body yet); the row of any other answer is written without bodies, as for a `secured` key. A broken stream keeps its request body |
+| `deployment`                | absent for an answer given before Core puts the deployment on the pass: a `404` for an unknown deployment, a `403` for a role the deployment does not allow on `/openai/deployments/{id}/...`, and on the MCP proxy every answer given before its first request to the server, such as `403` and `429` |
 | `execution_path`            | absent for an answer given before the pass's per-request key exists: Core's `429`, `403`, `404` and `415`, and a `400` everywhere except `/openai/deployments/{id}/...`, which parses the body after the key exists |
 | `parent_deployment`         | as in any row, and also when Core refuses a deployment it resolved before the pass's key exists (its own `429`): the deployment whose key made the call, such as an application that calls a model |
 
@@ -161,9 +162,9 @@ MCP request or a route (another code path), WebSocket and the polling of a backg
 `analytics.errorRows` as "every failure has a row".
 
 An analytics consumer that sums requests from the rows counts these requests too, with a status of `4xx` or `5xx`. During an outage of
-every upstream that is one row per failed request. A client over its limit gets a `429` that costs Core little, each with a row, which on
-`/openai/v1/...` and `/anthropic/v1/messages` carries the request body: where bodies are logged, set
-`analytics.maxPendingBodyHeapPercent` too, so that waiting rows cannot fill the heap.
+every upstream that is one row per failed request. A client over its limit gets a `429` that costs Core little, each with a row, but
+that row has no bodies, and the bodies of waiting rows are bounded by `analytics.maxPendingBodyHeapPercent` (10 percent of the heap
+by default).
 
 ## Storage and rate-limit spans
 
@@ -203,7 +204,7 @@ These metrics show where Core waits rather than works. The timers have buckets f
 Locks and async tasks each have queue-size gauges and timers for the wait and the work; the event loops have a
 queue-size gauge only. The event-loop gauges are only registered when a Prometheus or OTLP registry is enabled. The
 analytics log writer has a gauge of the bodies its queue holds and a counter of rows written without them; the counter
-stays at 0 unless `analytics.maxPendingBodyHeapPercent` is set.
+stays at 0 while `analytics.maxPendingBodyHeapPercent` is 0 or below.
 
 | Metric                                | Type  | Measures                                                                                                       |
 |---------------------------------------|-------|----------------------------------------------------------------------------------------------------------------|

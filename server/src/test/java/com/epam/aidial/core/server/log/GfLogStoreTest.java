@@ -861,9 +861,19 @@ public class GfLogStoreTest {
     }
 
     @Test
+    public void testLimitIsTenPercentWhenAbsent() {
+        // 10 percent of the heap is 1,000 bytes, and 2,000 are waiting
+        GfLogStore store = store(AnalyticsSettings.from(new JsonObject()));
+        store.admit(row("a", "x".repeat(2000)).build());
+
+        assertNull(store.admit(row("b", "y".repeat(2000)).build()).getRequestBody());
+        assertEquals(1, bodiesSkipped());
+    }
+
+    @Test
     public void testRowsKeepBodiesWithoutLimit() {
-        // no setting reads as -1; 0 means no limit as well
-        for (AnalyticsSettings settings : List.of(AnalyticsSettings.from(new JsonObject()), percentOfHeap(0))) {
+        // -1, like any value of 0 or below, means no limit
+        for (AnalyticsSettings settings : List.of(percentOfHeap(-1), percentOfHeap(0))) {
             GfLogStore store = store(settings);
             AnalyticsLogContext a = row("a", "x".repeat(2000)).build();
             AnalyticsLogContext b = row("b", "y".repeat(2000)).build();
@@ -1169,25 +1179,25 @@ public class GfLogStoreTest {
     @SneakyThrows
     @Test
     public void testRowWithoutResponseBodyHasEmptyBody() {
-        // an error answer Core gives itself: a request body, a status, no response body and no tokens
+        // an error answer Core gives itself that keeps its bodies, a 400: a request body, a status, no response body and no tokens
         AnalyticsLogContext context = AnalyticsLogContext.builder()
                 .deploymentName("m")
                 .traceId("trace-m")
                 .requestBody(Buffer.buffer("{\"messages\":[]}"))
-                .responseStatusCode(403)
+                .responseStatusCode(400)
                 .build();
 
         String line = line(context);
         JsonNode row = ProxyUtil.MAPPER.readTree(line);
 
         assertEquals("{\"messages\":[]}", row.get("request").get("body").asText());
-        assertEquals("403", row.get("response").get("status").asText());
+        assertEquals("400", row.get("response").get("status").asText());
         assertEquals("", row.get("response").get("body").asText());
         assertFalse(row.get("response").has("upstream_uri"));
         assertFalse(row.has("token_usage"));
         assertFalse(row.has("error"));
         // the line ends exactly as the line of any row did before this setting existed
-        assertTrue(line.endsWith("\"response\":{\"status\":\"403\",\"body\":\"\"}}"), line);
+        assertTrue(line.endsWith("\"response\":{\"status\":\"400\",\"body\":\"\"}}"), line);
     }
 
     @SneakyThrows

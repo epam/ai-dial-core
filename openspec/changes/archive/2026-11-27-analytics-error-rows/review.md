@@ -6,8 +6,10 @@
 - With it on, one row for every error answer Core gives itself through the `respond(...)` helpers on the LLM surfaces, feature
   calls, the MCP proxy and routes (the answers logged as `Responding with error`), and one row for a stream that breaks after its
   headers on the LLM surfaces. `response.status` is the client's; no new field, no tokens (a broken Messages stream keeps the
-  usage already relayed, unpriced and uncharged), an empty `response.body`. An early refusal of a resolved deployment takes its
-  `parent_deployment` from the path its key would have had (`AnalyticsLogContext.fromError`).
+  usage already relayed, unpriced and uncharged). An early refusal of a resolved deployment takes its
+  `parent_deployment` from the path its key would have had (`AnalyticsLogContext.fromError`). Only a `400` or a `500` row keeps
+  its `request.body`; the row of any other answer Core gives itself is written without bodies (`LogStore.saveErrorResponse`).
+- `analytics.maxPendingBodyHeapPercent` defaults to 10 (it meant no limit when absent), so the bodies of waiting rows are bounded.
 - No row for `401`, `413`, an interceptor call, a decision-mode router that fails before it decides or whose candidate does not
   resolve, a stream that breaks on a feature call, MCP or a route, WebSocket, or a recorded background job's stream.
 - Docs: the settings table in `README.md` and "Error rows in the analytics log" in `docs/tracing.md`.

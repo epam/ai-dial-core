@@ -140,7 +140,7 @@ for a decided request. Nothing in the two rows can collide: they are different r
 
 ### 4. No change to the schema
 
-The row has the fields every row has. A refusal has no tokens and an empty `response.body`, which is what `GfLogStore.java:append`
+The row has the fields every row has. A refusal has no tokens and no bodies, as the row of a `secured` key (D5); a `400` or a `500` has an empty `response.body`, which is what `GfLogStore.java:append`
 writes today for a pass whose context holds no response body (it writes `"body":"` and `appendBody` returns on a null buffer; Code).
 The earlier drafts added an `error` object (`reason`, then `upstream_status`); both are gone, and so is the in-memory
 `lastUpstreamStatus` that fed the first filter.
@@ -253,7 +253,7 @@ on, expecting the same count (deferred: needs Docker and Redis, as in the invest
   before archive.
 - **No marker.** → Decision 6; the row counts of the tests.
 - **A row for a decided request has `deployment` of the last candidate.** → It is the pass that answered.
-- **Volume during an outage.** → Same as any row; where bodies are logged, set `analytics.maxPendingBodyHeapPercent`, or the setting to `false`.
+- **Volume during an outage or a retry storm.** → A row of an answer Core gives itself has no bodies unless its status is `400` or `500`, and `analytics.maxPendingBodyHeapPercent` now defaults to 10, so waiting bodies are bounded; set the setting to `false` to write no such row.
 - **A background stream that breaks while its job is being saved, and a save that then fails, write no row.**
   `backgroundJobRecorded` is set before the saves, so the break writes none, and the failed save leaves no job to write it. → Two
   failures at once, within the time the two saves take; accepted.
@@ -274,7 +274,7 @@ The setting is on by default, so after an upgrade Core writes the new rows; ever
 - **D4. A mark on the row of a broken stream.** Its `response.status` is `200`, which looks like a delivered answer. With no new field
   the only difference is that it has no tokens, and a Messages stream keeps the usage its relayed events reported, so it has not even
   that. A marker would add a field to the schema. Default here: no marker.
-- **D5. `response.body` of a Core answer.** Empty today; the text of Core's own answer is in the WARN line. Default here: leave it empty.
+- **D5. The bodies of a Core answer.** The text of Core's own answer is in the WARN line, so `response.body` stays empty. Decided in review: the row keeps its `request.body` only for a `400` or a `500`, the answers the body may have caused; any other answer's row is written without bodies, as for a `secured` key.
 
 ## Superseded by this revision
 
