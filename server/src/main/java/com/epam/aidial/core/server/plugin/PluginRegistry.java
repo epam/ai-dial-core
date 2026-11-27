@@ -98,7 +98,10 @@ public final class PluginRegistry {
             log.info("Loaded plugin directory {}: types {}", id, types);
         }
         // Wrapped last, so the checks above name the providers' own classes
-        directoryLoaderByType.forEach((type, loader) -> providers.compute(type, (ignored, provider) -> new ScopedPlugins.ScopedProvider(provider, loader)));
+        directoryLoaderByType.forEach(
+            (type, loader) -> providers.compute(
+                type, (ignored, provider) -> new ScopedPlugins.ScopedProvider(provider, loader)
+            ));
         return new PluginRegistry(Map.copyOf(providers));
     }
 

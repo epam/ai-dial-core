@@ -28,13 +28,13 @@ final class ScopedPlugins {
     }
 
     private static <T> T call(ClassLoader loader, Supplier<T> call) {
-        try (var ignored = PluginClassLoaderScope.enter(loader)) {
+        try (var _ = PluginClassLoaderScope.enter(loader)) {
             return call.get();
         }
     }
 
     private static void run(ClassLoader loader, Runnable call) {
-        try (var ignored = PluginClassLoaderScope.enter(loader)) {
+        try (var _ = PluginClassLoaderScope.enter(loader)) {
             call.run();
         }
     }
