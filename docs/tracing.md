@@ -143,7 +143,7 @@ A row has the fields every row has and none that others lack:
 | `parent_deployment`         | as in any row, and also when Core refuses a deployment it resolved before the pass's key exists (its own `429`): the deployment whose key made the call, such as an application that calls a model |
 
 `response.status` is not the status the origin sent, which the row does not carry (the INFO line `Received header from origin` has
-it). Core never relays a retriable status. When no attempt is left it answers `503 Service is not available` if **every** upstream of
+it). For an exhausted upstream Core never relays a retriable status (an alias pass may relay its target's). When no attempt is left it answers `503 Service is not available` if **every** upstream of
 the model is at `429`, and `502 No route` otherwise, so an origin `502`, `503` or `504` gives the client `502`, and an origin `429`
 gives `503` only when no other upstream of the model failed with something else.
 

@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.server.limiter.budget.BudgetCheck;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import io.vertx.core.http.HttpMethod;
 import lombok.SneakyThrows;
@@ -574,7 +575,10 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
                 "{\"model\":\"claude-spend\",\"max_tokens\":100,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
                 "content-type", "application/json", "authorization", "user@projA", "anthropic-version", "2023-06-01"), 402);
 
-        assertErrorRow(rows(1).get(0), "claude-spend", 402);
+        AnalyticsLogContext row = rows(1).get(0);
+        assertErrorRow(row, "claude-spend", 402);
+        // analytics-log "Spending limits in the analytics row": the refusal row is that model's row
+        assertEquals(BudgetCheck.Outcome.NO_BUDGET, row.getBudgetCheck().outcome());
     }
 
     // "One row per pass, and the passes that keep none"

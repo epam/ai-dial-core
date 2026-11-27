@@ -84,6 +84,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -811,7 +812,8 @@ public class ResponsesControllerTest {
 
     @Test
     public void testBackgroundJobRecordSaved(Vertx vertx, VertxTestContext textContext) throws Throwable {
-        stubBackgroundJobRequest(vertx, mock(ApiKeyStore.class));
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        stubBackgroundJobRequest(vertx, apiKeyStore);
         // a background job's usage record gets the longer TTL, so the flag must be set before startSpan
         AtomicBoolean backgroundAtStartSpan = new AtomicBoolean();
         when(proxy.getTokenStatsTracker().startSpan(context)).thenAnswer(invocation -> {
@@ -827,6 +829,8 @@ public class ResponsesControllerTest {
 
         await(textContext);
         assertTrue(backgroundAtStartSpan.get());
+        // the job's poller polls with the pass's key and ends the pass, so this pass must not invalidate it
+        verify(apiKeyStore, after(300).never()).invalidatePerRequestApiKey(any());
     }
 
     @Test

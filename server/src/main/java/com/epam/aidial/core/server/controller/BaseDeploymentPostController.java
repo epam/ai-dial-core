@@ -141,7 +141,8 @@ public class BaseDeploymentPostController {
 
     /** Saves the error row of an answer Core gave itself; call it right after {@code context.respond(...)}. */
     protected void saveErrorResponse() {
-        if (isErrorRowAllowed()) {
+        // the setting first: with it off, an error answer reads one boolean
+        if (proxy.getLogStore().isErrorRowsEnabled() && isErrorRowAllowed()) {
             proxy.getLogStore().saveErrorResponse(context);
         }
     }
@@ -337,7 +338,7 @@ public class BaseDeploymentPostController {
 
     // a recorded background job's terminal row is written by BackgroundJobService, once the job ends
     private void saveBrokenStreamRow() {
-        if (isErrorRowAllowed() && !context.isBackgroundJobRecorded()) {
+        if (proxy.getLogStore().isErrorRowsEnabled() && isErrorRowAllowed() && !context.isBackgroundJobRecorded()) {
             proxy.getLogStore().saveErrorRow(context);
         }
     }
