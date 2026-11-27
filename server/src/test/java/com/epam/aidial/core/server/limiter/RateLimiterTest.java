@@ -1881,7 +1881,7 @@ public class RateLimiterTest {
             assignment.setSubject(List.of(rule));
             assignments.put(id, assignment);
         }
-        config.setCostObjectIndex(CostObjectIndex.build(policies, assignments));
+        config.setCostObjectIndex(CostObjectIndex.build(policies, assignments, Map.of()));
         return config;
     }
 

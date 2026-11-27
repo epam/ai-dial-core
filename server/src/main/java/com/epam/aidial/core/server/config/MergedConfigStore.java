@@ -21,6 +21,7 @@ import com.epam.aidial.core.config.policy.CostObjectIndex;
 import com.epam.aidial.core.config.policy.Policy;
 import com.epam.aidial.core.config.policy.PolicyAssignment;
 import com.epam.aidial.core.config.policy.PolicyKind;
+import com.epam.aidial.core.config.policy.PolicyPackage;
 import com.epam.aidial.core.config.policy.PolicyQuantity;
 import com.epam.aidial.core.credentials.data.credentials.BucketInfo;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
@@ -118,6 +119,7 @@ public final class MergedConfigStore implements ConfigStore {
             ResourceTypes.ROUTE,
             ResourceTypes.APPLICATION,
             ResourceTypes.TOOL_SET,
+            ResourceTypes.PACKAGE,
             ResourceTypes.POLICY,
             ResourceTypes.POLICY_ASSIGNMENT,
             ResourceTypes.ALIAS);
@@ -521,6 +523,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> BLOB_MAPPER.treeToValue(node, ToolSet.class);
             case POLICY -> BLOB_MAPPER.treeToValue(node, Policy.class);
             case POLICY_ASSIGNMENT -> BLOB_MAPPER.treeToValue(node, PolicyAssignment.class);
+            case PACKAGE -> BLOB_MAPPER.treeToValue(node, PolicyPackage.class);
             case APP_TYPE_SCHEMA, CATALOG_SCHEMA -> node.toString();
             default -> throw new IllegalArgumentException("Unsupported replica type: " + type);
         };
@@ -794,6 +797,7 @@ public final class MergedConfigStore implements ConfigStore {
                 }
             }
             refreshCostObjectIndex(next, touched);
+            requestRebuildIfPoliciesDependOnPackages(next, nextInvalid, touched);
 
             this.config = next;
             this.invalidEntities = freeze(nextInvalid);
@@ -855,6 +859,7 @@ public final class MergedConfigStore implements ConfigStore {
                 // rebuild, which sees both records and applies onInvalidEntity.
                 case POLICY_ASSIGNMENT -> ConfigPostProcessor.validateSingleAssignment(next, mapKey, null);
                 case ALIAS -> ConfigPostProcessor.validateSingleAlias(next, mapKey, onSkip);
+                case PACKAGE -> ConfigPostProcessor.validateSinglePackage(next, mapKey, onSkip);
                 default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
             }
         } catch (RuntimeException error) {
@@ -935,6 +940,7 @@ public final class MergedConfigStore implements ConfigStore {
         EntityChange change = new EntityChange(type, mapKey, decryptedEntity);
         applyChangeInPlace(next, nextInvalid, change, onSkip);
         refreshCostObjectIndex(next, EnumSet.of(type));
+        requestRebuildIfPoliciesDependOnPackages(next, nextInvalid, EnumSet.of(type));
 
         this.config = next;
         this.invalidEntities = freeze(nextInvalid);
@@ -955,6 +961,7 @@ public final class MergedConfigStore implements ConfigStore {
         EntityChange change = new EntityChange(type, mapKey, null);
         applyChangeInPlace(next, nextInvalid, change, onSkip);
         refreshCostObjectIndex(next, EnumSet.of(type));
+        requestRebuildIfPoliciesDependOnPackages(next, nextInvalid, EnumSet.of(type));
 
         this.config = next;
         this.invalidEntities = freeze(nextInvalid);
@@ -962,12 +969,28 @@ public final class MergedConfigStore implements ConfigStore {
     }
 
     /**
-     * Rebuilds the index of {@code next} when a policy or an assignment changed. Cost is linear in the
+     * Rebuilds the index of {@code next} when a policy, an assignment or a package changed. Cost is linear in the
      * number of records, like the clone of their map that the change already paid.
      */
     private static void refreshCostObjectIndex(Config next, Set<ResourceTypes> touched) {
-        if (touched.contains(ResourceTypes.POLICY) || touched.contains(ResourceTypes.POLICY_ASSIGNMENT)) {
-            next.setCostObjectIndex(CostObjectIndex.build(next.getPolicies(), next.getPolicyAssignments()));
+        if (touched.contains(ResourceTypes.POLICY) || touched.contains(ResourceTypes.POLICY_ASSIGNMENT)
+                || touched.contains(ResourceTypes.PACKAGE)) {
+            next.setCostObjectIndex(CostObjectIndex.build(next.getPolicies(), next.getPolicyAssignments(), next.getPackages()));
+        }
+    }
+
+    /**
+     * A package change can make a policy valid that an earlier rebuild dropped, or leave a policy naming a package
+     * that no longer exists; only a full rebuild reads such policies back and applies {@code config.onInvalidEntity}.
+     */
+    private void requestRebuildIfPoliciesDependOnPackages(Config next, Map<ResourceTypes, Map<String, InvalidEntityRecord>> nextInvalid,
+                                                          Set<ResourceTypes> touched) {
+        if (!touched.contains(ResourceTypes.PACKAGE)) {
+            return;
+        }
+        Map<String, InvalidEntityRecord> invalidPolicies = nextInvalid.get(ResourceTypes.POLICY);
+        if ((invalidPolicies != null && !invalidPolicies.isEmpty()) || ConfigPostProcessor.hasPolicyNamingMissingPackage(next)) {
+            requestRebuild();
         }
     }
 
@@ -1083,6 +1106,7 @@ public final class MergedConfigStore implements ConfigStore {
         next.setPlugins(base.getPlugins());
         next.setPolicies(base.getPolicies());
         next.setPolicyAssignments(base.getPolicyAssignments());
+        next.setPackages(base.getPackages());
         next.setCostObjectIndex(base.getCostObjectIndex());
         next.setOrgUnitRoles(base.getOrgUnitRoles());
         return next;
@@ -1132,6 +1156,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.setToolsets(new LinkedHashMap<>(config.getToolsets()));
             case POLICY -> config.setPolicies(new HashMap<>(config.getPolicies()));
             case POLICY_ASSIGNMENT -> config.setPolicyAssignments(new HashMap<>(config.getPolicyAssignments()));
+            case PACKAGE -> config.setPackages(new HashMap<>(config.getPackages()));
             case ALIAS -> config.setAliases(new LinkedHashMap<>(config.getAliases()));
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
@@ -1153,6 +1178,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().get(mapKey);
             case POLICY -> config.getPolicies().get(mapKey);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().get(mapKey);
+            case PACKAGE -> config.getPackages().get(mapKey);
             case ALIAS -> config.getAliases().get(mapKey);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         };
@@ -1174,6 +1200,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().put(mapKey, (ToolSet) entity);
             case POLICY -> config.getPolicies().put(mapKey, (Policy) entity);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().put(mapKey, (PolicyAssignment) entity);
+            case PACKAGE -> config.getPackages().put(mapKey, (PolicyPackage) entity);
             case ALIAS -> config.getAliases().put(mapKey, (Alias) entity);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
@@ -1195,6 +1222,7 @@ public final class MergedConfigStore implements ConfigStore {
             case TOOL_SET -> config.getToolsets().remove(mapKey);
             case POLICY -> config.getPolicies().remove(mapKey);
             case POLICY_ASSIGNMENT -> config.getPolicyAssignments().remove(mapKey);
+            case PACKAGE -> config.getPackages().remove(mapKey);
             case ALIAS -> config.getAliases().remove(mapKey);
             default -> throw new IllegalArgumentException("Unsupported type for partial update: " + type);
         }
@@ -1293,6 +1321,7 @@ public final class MergedConfigStore implements ConfigStore {
         Map<String, Plugin> plugins = new LinkedHashMap<>(base.getPlugins());
         Map<String, Policy> policies = new HashMap<>();
         Map<String, PolicyAssignment> policyAssignments = new HashMap<>();
+        Map<String, PolicyPackage> packages = new HashMap<>();
         merged.setRetriableErrorCodes(base.getRetriableErrorCodes());
         merged.setGlobalInterceptors(base.getGlobalInterceptors());
         merged.setRateLimitSchedule(base.getRateLimitSchedule());
@@ -1318,6 +1347,7 @@ public final class MergedConfigStore implements ConfigStore {
         merged.setAliases(aliases);
         merged.setPolicies(policies);
         merged.setPolicyAssignments(policyAssignments);
+        merged.setPackages(packages);
 
         Map<String, JsonNode> blobBodies = new HashMap<>();
         Map<ResourceTypes, Map<String, InvalidEntityRecord>> pendingInvalid = new EnumMap<>(ResourceTypes.class);
@@ -1440,7 +1470,7 @@ public final class MergedConfigStore implements ConfigStore {
         ConfigPostProcessor.processPlugins(merged, pluginRegistry, onSkip);
         ConfigPostProcessor.processSemantic(merged, apiKeyStore, base.getKeys(), apiKeysByCanonicalId, onSkip);
         ConfigPostProcessor.processPolicies(merged, onSkip);
-        merged.setCostObjectIndex(CostObjectIndex.build(policies, policyAssignments));
+        merged.setCostObjectIndex(CostObjectIndex.build(policies, policyAssignments, packages));
 
         // ConfigPostProcessor sets entity.name = mapKey. For models/interceptors/roles/
         // applications/toolsets the map key is the short name ("gpt-4"); for schemas it is
@@ -1653,7 +1683,7 @@ public final class MergedConfigStore implements ConfigStore {
 
     public static boolean isShortNameKeyed(ResourceTypes type) {
         return switch (type) {
-            case MODEL, INTERCEPTOR, ROUTER, TRANSLATOR, PLUGIN, ROLE, APPLICATION, TOOL_SET, ALIAS -> true;
+            case MODEL, INTERCEPTOR, ROUTER, TRANSLATOR, PLUGIN, ROLE, APPLICATION, TOOL_SET, ALIAS, PACKAGE -> true;
             default -> false;
         };
     }
@@ -1748,6 +1778,12 @@ public final class MergedConfigStore implements ConfigStore {
                 warnIfReplaced(type, mapKey, previous);
                 return new BlobPutResult(entity, previous);
             }
+            case PACKAGE -> {
+                PolicyPackage entity = BLOB_MAPPER.treeToValue(node, PolicyPackage.class);
+                Object previous = config.getPackages().put(mapKey, entity);
+                warnIfReplaced(type, mapKey, previous);
+                return new BlobPutResult(entity, previous);
+            }
             case ALIAS -> {
                 Alias dirty = BLOB_MAPPER.treeToValue(node, Alias.class);
                 List<ValidationWarning> warnings = StoredAliases.validateFields(dirty);
@@ -1795,6 +1831,7 @@ public final class MergedConfigStore implements ConfigStore {
             case ROUTER -> restore(config.getRouters(), mapKey, (Router) previous);
             case POLICY -> restore(config.getPolicies(), mapKey, (Policy) previous);
             case POLICY_ASSIGNMENT -> restore(config.getPolicyAssignments(), mapKey, (PolicyAssignment) previous);
+            case PACKAGE -> restore(config.getPackages(), mapKey, (PolicyPackage) previous);
             case ALIAS -> restore(config.getAliases(), mapKey, (Alias) previous);
             default -> { /* no-op */ }
         }

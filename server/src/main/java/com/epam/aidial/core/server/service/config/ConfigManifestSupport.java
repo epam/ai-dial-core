@@ -12,6 +12,7 @@ import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.config.Router;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.config.Translator;
+import com.epam.aidial.core.config.policy.PolicyPackage;
 import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.config.ValidationWarning;
@@ -21,6 +22,7 @@ import com.epam.aidial.core.server.data.config.manifest.AdminInterceptorManifest
 import com.epam.aidial.core.server.data.config.manifest.AdminKeyManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminModelManifest;
+import com.epam.aidial.core.server.data.config.manifest.AdminPackageManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPluginManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyAssignmentManifest;
 import com.epam.aidial.core.server.data.config.manifest.AdminPolicyManifest;
@@ -75,8 +77,9 @@ public class ConfigManifestSupport {
             Map.entry("Model", 9),
             Map.entry("ToolSet", 10),
             Map.entry("Application", 11),
-            Map.entry("Policy", 12),
-            Map.entry("PolicyAssignment", 13));
+            Map.entry("Package", 12),
+            Map.entry("Policy", 13),
+            Map.entry("PolicyAssignment", 14));
 
     /**
      * Sorts a manifest list so a kind that other kinds can reference (e.g. {@code Interceptor})
@@ -101,6 +104,7 @@ public class ConfigManifestSupport {
             Map.entry("Model", "models"),
             Map.entry("ToolSet", "toolsets"),
             Map.entry("Application", "applications"),
+            Map.entry("Package", "packages"),
             Map.entry("Policy", "policies"),
             Map.entry("PolicyAssignment", "policy_assignments"));
 
@@ -169,7 +173,9 @@ public class ConfigManifestSupport {
                         scratch.getToolsets().put(parsed.name().name(), toolSet.spec());
                     }
                 }
-                // policies and assignments are not part of the scratch config: a batch sees them through PolicyAssignmentPrecheck
+                // packages, policies and assignments are not part of the scratch config: a batch sees them through
+                // PolicyAssignmentPrecheck
+                case AdminPackageManifest policyPackage -> { }
                 case AdminPolicyManifest policy -> { }
                 case AdminPolicyAssignmentManifest assignment -> { }
                 case AdminSchemaManifest schema ->
@@ -287,6 +293,8 @@ public class ConfigManifestSupport {
                     ConfigEntityCodec.treeToEntity(entry.spec(), ToolSet.class));
             case "Application" -> new AdminApplicationManifest(entry.kind(), entry.name(),
                     ConfigEntityCodec.treeToEntity(entry.spec(), Application.class));
+            case "Package" -> new AdminPackageManifest(entry.kind(), entry.name(),
+                    ConfigEntityCodec.treeToEntity(entry.spec(), PolicyPackage.class));
             case "Policy" -> new AdminPolicyManifest(entry.kind(), entry.name(),
                     PolicyRecordCodec.parsePolicy(entry.spec()));
             case "PolicyAssignment" -> new AdminPolicyAssignmentManifest(entry.kind(), entry.name(),

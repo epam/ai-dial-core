@@ -75,6 +75,56 @@ Existing policies require no migration and use the policy path as their label. D
 on all instances before configuring names: older versions reject unknown policy fields. Before rolling back,
 remove `displayName` from stored policy records while the supporting version is still running.
 
+# Packages in a policy's object
+
+A policy's `object` says what its budgets cover: `"*"` for every deployment, or a list of deployment names. It can
+also name a [package](packages.md) with `@`: a single package as a string, or packages mixed with deployment names in
+a list.
+
+```json
+{ "priority": 50, "kind": "budget", "quantity": "cost", "costObject": "IMF",
+  "object": "@engineering", "per": ["subject"], "cost": { "month": 1000 } }
+```
+
+```json
+"object": ["@engineering", "gpt-6-luna"]
+```
+
+Reads of the policy return `object` as written: a single package stays a string, a list is sorted. So do the
+`budgets[].object` entries of `GET /v1/user/limits` and `GET /v1/user/usage`: they never list the deployments inside a
+package. The policy field `packages` is reserved and still rejected; a package is named in `object` only.
+
+# Which budgets cover a call
+
+Budgets check and charge a call on the model, under the model's name, but a budget covers the call by any name it was
+reached through. The **coverage chain** of a model call is the model and, read back from the call's execution path,
+the aliases and routers before it, up to the first application, interceptor or toolset, which starts a call of its
+own. A budget covers the call when its policy's `object` is `"*"` or names, directly or through a package, any name on
+the chain.
+
+| Call | Coverage chain | `@engineering` = `["weak", "medium", "strong"]` | `"*"` |
+|---|---|---|---|
+| `strong` → router `r1` decides `claude-opus-vertex` → model `m` | `strong`, `r1`, `claude-opus-vertex`, `m` | covered | covered |
+| `m` called directly | `m` | not covered | covered |
+| `hi-end` → model `m2` | `hi-end`, `m2` | not covered | covered |
+| application `codemie` calls `strong` with its per-request key | `strong`, `r1`, `claude-opus-vertex`, `m` | covered | covered |
+
+So a budget naming the tier aliases pays for routed calls, and direct model access needs a budget that names the
+model or `"*"`. A model release retargets the routing-target alias; no package or policy changes.
+
+When budgets of the caller's cost object cover a call at different positions of the chain, only those covering the
+earliest position, nearest the head of the chain, are candidates. A budget naming `strong` takes a call made through
+`strong` before a budget naming `m`, whatever their priorities, and when it has no money left the call is refused
+with `budget_exhausted`; it does not fall through to the model's budget. Budgets at the same position are walked by
+priority, as before. A budget with the object `"*"` counts as covering the call at the model, the last name of
+the chain: it ties by priority with budgets that name the model, and yields to a budget that names an earlier name.
+
+Two consequences to keep in mind:
+
+* The chain follows the routing topology. Retargeting a router or an alias can change which budget pays.
+* An interceptor in front of a model starts the chain again at the model, so budgets that name only the tier aliases
+  do not cover that model. Add the model to the package when its calls should be covered.
+
 # Spending limits in the analytics log
 
 The analytics log row of a JWT caller's model call whose limits Core checks carries a `spending_limits` object,

@@ -109,27 +109,39 @@ public class ApiKeyData {
         return proxyApiKeyData;
     }
 
+    /**
+     * The execution path of the key this pass mints: the incoming key's path (none for a root request), the router
+     * after its decision, then the called deployment or route.
+     */
+    public static List<String> pathOf(ProxyContext context) {
+        ApiKeyData apiKeyData = context.getApiKeyData();
+        List<String> path = apiKeyData.getPerRequestKey() == null ? new ArrayList<>() : new ArrayList<>(apiKeyData.getExecutionPath());
+        if (context.getDecision() != null) {
+            // the deployment the client called, so the router is the parent of the one it chose
+            path.add(context.getDecision().getRouterName());
+        }
+        if (context.getDeployment() != null) {
+            path.add(context.getDeployment().getName());
+        } else if (context.getRoute() != null) {
+            path.add(context.getRoute().getName());
+        }
+        return path;
+    }
+
     public static void initFromContext(ApiKeyData proxyApiKeyData, ProxyContext context) {
         ApiKeyData apiKeyData = context.getApiKeyData();
-        List<String> currentPath;
         proxyApiKeyData.setHttpHeaders(collectHttpHeaders(context));
 
         if (apiKeyData.getPerRequestKey() == null) {
             proxyApiKeyData.setOriginalKey(context.getKey());
             proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
             proxyApiKeyData.setTraceId(context.getTraceId());
-            currentPath = new ArrayList<>();
         } else {
             proxyApiKeyData.setOriginalKey(apiKeyData.getOriginalKey());
             proxyApiKeyData.setExtractedClaims(apiKeyData.getExtractedClaims());
             proxyApiKeyData.setTraceId(apiKeyData.getTraceId());
-            currentPath = new ArrayList<>(context.getApiKeyData().getExecutionPath());
         }
         String receiver = null;
-        if (context.getDecision() != null) {
-            // the deployment the client called, so the router is the parent of the one it chose
-            currentPath.add(context.getDecision().getRouterName());
-        }
         if (context.getDeployment() != null) {
             receiver = context.getDeployment().getName();
             if (context.getDeployment() instanceof AliasPass pass) {
@@ -149,11 +161,9 @@ public class ApiKeyData {
                     proxyApiKeyData.getAttachedDeployments().put(lent, attached);
                 }
             }
-            currentPath.add(receiver);
             proxyApiKeyData.setSourceDeployment(receiver);
         } else if (context.getRoute() != null) {
             receiver = context.getRoute().getName();
-            currentPath.add(receiver);
             proxyApiKeyData.setSourceDeployment(receiver);
         }
         if (apiKeyData.getPerRequestKey() != null) {
@@ -172,7 +182,7 @@ public class ApiKeyData {
                 proxyApiKeyData.setCallerReceivers(callerReceivers);
             }
         }
-        proxyApiKeyData.setExecutionPath(currentPath);
+        proxyApiKeyData.setExecutionPath(pathOf(context));
         proxyApiKeyData.setSpanId(context.getSpanId());
     }
 

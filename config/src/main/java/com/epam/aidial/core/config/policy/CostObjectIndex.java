@@ -24,13 +24,22 @@ public final class CostObjectIndex {
     /**
      * @param policies    by path relative to the policies folder
      * @param assignments by path relative to the assignments folder, {@code <costObject>/<id>}
+     * @param packages    by name, to expand the package references of the policies' objects
      */
-    public static CostObjectIndex build(Map<String, Policy> policies, Map<String, PolicyAssignment> assignments) {
+    public static CostObjectIndex build(Map<String, Policy> policies, Map<String, PolicyAssignment> assignments,
+                                        Map<String, PolicyPackage> packages) {
         Map<String, List<BudgetInstance>> instancesByCostObject = new HashMap<>();
+        Map<String, PolicyObjectSet> coveredByPolicyPath = new HashMap<>();
+        policies.forEach((path, policy) -> {
+            if (policy.getObject() != null) {
+                coveredByPolicyPath.put(path, policy.getObject().expand(packages));
+            }
+        });
         policies.forEach((path, policy) -> {
             String costObject = folderOf(path);
             if (policy.isSelfApplying() && costObject != null) {
-                add(instancesByCostObject, costObject, new BudgetInstance(path, path, policy, null, policy.getSubject()));
+                add(instancesByCostObject, costObject,
+                        new BudgetInstance(path, path, policy, null, policy.getSubject(), coveredByPolicyPath.get(path)));
             }
         });
         assignments.forEach((path, assignment) -> {
@@ -38,7 +47,8 @@ public final class CostObjectIndex {
             String costObject = folderOf(path);
             if (policy != null && costObject != null) {
                 List<PolicySubjectRule> subject = policy.getSubject() != null ? policy.getSubject() : assignment.getSubject();
-                add(instancesByCostObject, costObject, new BudgetInstance(path, assignment.getPolicy(), policy, assignment, subject));
+                add(instancesByCostObject, costObject, new BudgetInstance(path, assignment.getPolicy(), policy, assignment, subject,
+                        coveredByPolicyPath.get(assignment.getPolicy())));
             }
         });
         instancesByCostObject.replaceAll((costObject, instances) -> List.copyOf(instances));
