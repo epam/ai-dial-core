@@ -21258,9 +21258,13 @@ components:
       type: object
       properties:
         ifFalse:
-          $ref: "#/components/schemas/PricingRate"
+          oneOf:
+          - type: string
+          - $ref: "#/components/schemas/PricingRate"
         ifTrue:
-          $ref: "#/components/schemas/PricingRate"
+          oneOf:
+          - type: string
+          - $ref: "#/components/schemas/PricingRate"
         rate:
           type: string
         test:
