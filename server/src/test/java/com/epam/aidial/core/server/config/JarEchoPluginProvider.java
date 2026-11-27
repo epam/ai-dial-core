@@ -38,14 +38,28 @@ public class JarEchoPluginProvider implements PluginProvider {
     }
 
     /**
-     * Writes a jar registering the provider class {@code className}. The class itself stays on the test classpath,
-     * which the plugin class loader asks first, so the jar carries the registration only.
+     * Writes a jar carrying a provider registration and its compiled implementation, including this base provider.
      */
     public static void writeJar(Path jar, String className) throws IOException {
         try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
             out.putNextEntry(new JarEntry("META-INF/services/" + PluginProvider.class.getName()));
             out.write(className.getBytes(StandardCharsets.UTF_8));
             out.closeEntry();
+            writeClass(out, JarEchoPluginProvider.class.getName());
+            if (!className.equals(JarEchoPluginProvider.class.getName())) {
+                writeClass(out, className);
+            }
+        }
+    }
+
+    private static void writeClass(JarOutputStream out, String className) throws IOException {
+        String entry = className.replace('.', '/') + ".class";
+        try (var input = JarEchoPluginProvider.class.getClassLoader().getResourceAsStream(entry)) {
+            if (input != null) {
+                out.putNextEntry(new JarEntry(entry));
+                input.transferTo(out);
+                out.closeEntry();
+            }
         }
     }
 

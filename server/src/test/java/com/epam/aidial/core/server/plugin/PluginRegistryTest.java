@@ -21,6 +21,7 @@ import java.util.stream.Stream;
 import javax.tools.ToolProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -41,7 +42,7 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings());
 
-        assertInstanceOf(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.TYPE));
+        assertEquals(JarEchoPluginProvider.class.getName(), registry.get(JarEchoPluginProvider.TYPE).getClass().getName());
         assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.TYPE));
     }
 
@@ -136,7 +137,7 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings());
 
-        assertInstanceOf(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.TYPE));
+        assertEquals(JarEchoPluginProvider.class.getName(), registry.get(JarEchoPluginProvider.TYPE).getClass().getName());
     }
 
     @Test
@@ -154,6 +155,10 @@ class PluginRegistryTest {
         assertNotNull(b);
         assertEquals(a.getClass().getName(), b.getClass().getName());
         assertNotSame(a.getClass(), b.getClass());
+        assertSame(a.getClass().getClassLoader(), registry.getClassLoader("type-a"));
+        assertSame(b.getClass().getClassLoader(), registry.getClassLoader("type-b"));
+        assertSame(PluginRegistry.class.getClassLoader(), registry.getClassLoader(TestEchoPluginProvider.TYPE));
+        assertNull(registry.getClassLoader("missing"));
     }
 
     @Test
@@ -181,8 +186,8 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings());
 
-        assertInstanceOf(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.TYPE));
-        assertInstanceOf(OtherPluginProvider.class, registry.get(OtherPluginProvider.TYPE));
+        assertEquals(JarEchoPluginProvider.class.getName(), registry.get(JarEchoPluginProvider.TYPE).getClass().getName());
+        assertEquals(OtherPluginProvider.class.getName(), registry.get(OtherPluginProvider.TYPE).getClass().getName());
     }
 
     @Test
@@ -194,7 +199,7 @@ class PluginRegistryTest {
         PluginRegistry registry = PluginRegistry.load(settings().put("exclude", "builtin/*"));
 
         assertNull(registry.get(JarEchoPluginProvider.TYPE));
-        assertInstanceOf(OtherPluginProvider.class, registry.get(OtherPluginProvider.TYPE));
+        assertEquals(OtherPluginProvider.class.getName(), registry.get(OtherPluginProvider.TYPE).getClass().getName());
     }
 
     @Test
@@ -218,7 +223,7 @@ class PluginRegistryTest {
         PluginRegistry registry = PluginRegistry.load(settings().put("include", new JsonArray().add(" custom/* ").add("")));
 
         assertNull(registry.get(JarEchoPluginProvider.TYPE));
-        assertInstanceOf(OtherPluginProvider.class, registry.get(OtherPluginProvider.TYPE));
+        assertEquals(OtherPluginProvider.class.getName(), registry.get(OtherPluginProvider.TYPE).getClass().getName());
     }
 
     @Test
@@ -237,7 +242,8 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings().put("exclude", new JsonArray().add("builtin/echo")));
 
-        assertSame(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.TYPE).getClass());
+        assertEquals(JarEchoPluginProvider.class.getName(), registry.get(JarEchoPluginProvider.TYPE).getClass().getName());
+        assertNotSame(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.TYPE).getClass());
     }
 
     @Test
@@ -248,6 +254,47 @@ class PluginRegistryTest {
         PluginRegistry registry = PluginRegistry.load(settings().put("exclude", new JsonArray().add("custom/broken")));
 
         assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.TYPE));
+    }
+
+    @Test
+    void testBundledSharedWarningsAreBoundedAndIncludeVersionedClasses() throws IOException {
+        writeJar("custom/echo/provider.jar", JarEchoPluginProvider.class.getName());
+        for (int i = 0; i < 12; i++) {
+            Path jar = dir.resolve("custom/echo/lib-%02d.jar".formatted(i));
+            try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+                for (String entry : List.of("io/vertx/core/Bundled.class", "META-INF/versions/25/io/vertx/core/Bundled.class")) {
+                    out.putNextEntry(new JarEntry(entry));
+                    out.write(0);
+                    out.closeEntry();
+                }
+            }
+        }
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(PluginRegistry.class);
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            PluginRegistry.load(settings());
+            var warnings = appender.list.stream().filter(event -> event.getLevel() == ch.qos.logback.classic.Level.WARN).toList();
+            assertEquals(1, warnings.size());
+            String warning = warnings.getFirst().getFormattedMessage();
+            assertTrue(warning.contains("custom/echo"));
+            assertTrue(warning.contains("12 jars"));
+            assertTrue(warning.contains("io.vertx.core.=24"));
+            assertTrue(warning.contains("lib-09.jar"));
+            assertFalse(warning.contains("lib-10.jar"));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
+    @Test
+    void testMapConstructorDerivesProviderLoader() {
+        PluginProvider provider = new JarEchoPluginProvider();
+        PluginRegistry registry = new PluginRegistry(java.util.Map.of("fixture", provider));
+        assertSame(provider, registry.get("fixture"));
+        assertSame(provider.getClass().getClassLoader(), registry.getClassLoader("fixture"));
     }
 
     @Test
@@ -279,6 +326,16 @@ class PluginRegistryTest {
         JarEchoPluginProvider.writeJar(jar, className);
     }
 
+    private static void writeClass(JarOutputStream out, String className) throws IOException {
+        String entry = className.replace('.', '/') + ".class";
+        out.putNextEntry(new JarEntry(entry));
+        try (var input = PluginRegistryTest.class.getClassLoader().getResourceAsStream(entry)) {
+            assertNotNull(input);
+            input.transferTo(out);
+        }
+        out.closeEntry();
+    }
+
     /**
      * Writes {@code <pluginDir>/plugin.jar} with the classes {@code com.example.Shared}, whose {@code type()} answers
      * {@code type}, and {@code com.example.IsolatedProvider}, which declares the type {@code Shared} answers. Neither
@@ -290,7 +347,10 @@ class PluginRegistryTest {
                 "package com.example; public class Shared { public static String type() { return \"%s\"; } }".formatted(type));
         Path provider = Files.writeString(sources.resolve("IsolatedProvider.java"),
                 "package com.example; public class IsolatedProvider extends " + JarEchoPluginProvider.class.getName()
-                        + " { @Override public String type() { return Shared.type(); } }");
+                        + " { static { checkLoader(); } public IsolatedProvider() { checkLoader(); }"
+                        + " private static void checkLoader() { if (Thread.currentThread().getContextClassLoader() != IsolatedProvider.class.getClassLoader())"
+                        + " throw new IllegalStateException(\"wrong context loader\"); }"
+                        + " @Override public String type() { checkLoader(); return Shared.type(); } }");
         Path classes = sources.resolve("classes");
         int exitCode = ToolProvider.getSystemJavaCompiler().run(null, null, null,
                 "-d", classes.toString(), "-cp", System.getProperty("java.class.path"), shared.toString(), provider.toString());
@@ -305,6 +365,7 @@ class PluginRegistryTest {
                 out.write(Files.readAllBytes(file));
                 out.closeEntry();
             }
+            writeClass(out, JarEchoPluginProvider.class.getName());
             out.putNextEntry(new JarEntry("META-INF/services/" + PluginProvider.class.getName()));
             out.write("com.example.IsolatedProvider".getBytes(StandardCharsets.UTF_8));
             out.closeEntry();

@@ -2,6 +2,8 @@ package com.epam.aidial.core.server.plugin;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Plugin;
+import com.epam.aidial.core.plugin.PluginProvider;
+import com.epam.aidial.core.server.config.ConfigPostProcessor;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider;
 import com.epam.aidial.core.server.config.TestOriginPluginProvider.Closed;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -28,6 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class PluginManagerTest {
 
@@ -195,6 +202,39 @@ class PluginManagerTest {
         ObjectNode settings = JsonNodeFactory.instance.objectNode().put("createNull", true);
 
         assertFailure(configWith(new Plugin(TestOriginPluginProvider.TYPE, settings)), "its provider returned null");
+    }
+
+    @Test
+    void testProviderOriginScopesValidationCreateAndCloseWithoutWrappingInstance() throws Exception {
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        ClassLoader origin = new ClassLoader(previous) { };
+        PluginRegistry registry = mock(PluginRegistry.class);
+        PluginProvider provider = mock(PluginProvider.class);
+        com.epam.aidial.core.plugin.Plugin plugin = mock(com.epam.aidial.core.plugin.Plugin.class);
+        when(registry.get("scoped")).thenReturn(provider);
+        when(registry.getClassLoader("scoped")).thenReturn(origin);
+        when(provider.validate(any())).thenAnswer(invocation -> {
+            assertSame(origin, Thread.currentThread().getContextClassLoader());
+            return List.of();
+        });
+        when(provider.create(any(), any())).thenAnswer(invocation -> {
+            assertSame(origin, Thread.currentThread().getContextClassLoader());
+            return plugin;
+        });
+        doAnswer(invocation -> {
+            assertSame(origin, Thread.currentThread().getContextClassLoader());
+            return null;
+        }).when(plugin).close();
+        Plugin declaration = new Plugin("scoped", greeting("hello"));
+        Config config = configWith(declaration);
+        ConfigPostProcessor.validatePlugin("p1", declaration, registry, true, new ArrayList<>());
+        assertSame(previous, Thread.currentThread().getContextClassLoader());
+        PluginManager manager = new PluginManager(registry, vertx, new AsyncTaskExecutor(vertx, new JsonObject()));
+        assertSame(plugin, manager.resolve(config, "p1"));
+        assertSame(origin, manager.getClassLoader(config, "p1"));
+        assertSame(previous, Thread.currentThread().getContextClassLoader());
+        await(manager.close());
+        assertSame(previous, Thread.currentThread().getContextClassLoader());
     }
 
     private void assertFailure(Config config, String message) {

@@ -1,32 +1,39 @@
 package com.epam.aidial.core.server.plugin;
 
-import kotlin.KotlinVersion;
-import kotlin.jvm.internal.Reflection;
-import kotlin.reflect.KClass;
-import kotlin.reflect.full.KClasses;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import java.net.URL;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class KotlinRuntimeTest {
 
     @Test
-    void testKotlinReflectIsOnTheClassPathNextToTheStdlib() {
-        KClass<?> kotlinClass = Reflection.getOrCreateKotlinClass(String.class);
-
-        assertEquals("kotlin.reflect.jvm.internal.KClassImpl", kotlinClass.getClass().getName());
-        assertDoesNotThrow(() -> KClasses.getPrimaryConstructor(kotlinClass));
+    void testPluginCannotBorrowCoresKotlin() throws Exception {
+        ClassLoader core = getClass().getClassLoader();
+        core.loadClass("kotlin.jvm.internal.Reflection");
+        try (PluginClassLoader plugin = new PluginClassLoader(new URL[0], core)) {
+            assertThrows(ClassNotFoundException.class, () -> plugin.loadClass("kotlin.jvm.internal.Reflection"));
+            assertThrows(ClassNotFoundException.class, () -> plugin.loadClass("kotlin.reflect.jvm.internal.ReflectionFactoryImpl"));
+        }
     }
 
     @Test
-    void testStdlibAndReflectAreOfOneVersion() {
-        String reflect = Reflection.getOrCreateKotlinClass(String.class).getClass().getPackage().getImplementationVersion();
-        String stdlib = KotlinVersion.CURRENT.toString();
-
-        assertNotNull(reflect, "kotlin-reflect has no Implementation-Version in its manifest");
-        assertTrue(reflect.equals(stdlib) || reflect.startsWith(stdlib + "-"), "kotlin-reflect " + reflect + " with kotlin-stdlib " + stdlib);
+    void testBundledStdlibDoesNotUseCoresOptionalReflection() throws Exception {
+        ClassLoader core = getClass().getClassLoader();
+        Class<?> coreReflection = core.loadClass("kotlin.jvm.internal.Reflection");
+        URL stdlib = coreReflection.getProtectionDomain().getCodeSource().getLocation();
+        try (PluginClassLoader plugin = new PluginClassLoader(new URL[]{stdlib}, core)) {
+            Class<?> reflection = plugin.loadClass("kotlin.jvm.internal.Reflection");
+            assertNotSame(coreReflection, reflection);
+            assertSame(plugin, reflection.getClassLoader());
+            Object kotlinClass = reflection.getMethod("getOrCreateKotlinClass", Class.class).invoke(null, String.class);
+            assertEquals("kotlin.jvm.internal.ClassReference", kotlinClass.getClass().getName());
+            assertSame(plugin, kotlinClass.getClass().getClassLoader());
+            assertThrows(ClassNotFoundException.class, () -> plugin.loadClass("kotlin.reflect.jvm.internal.ReflectionFactoryImpl"));
+        }
     }
 }
