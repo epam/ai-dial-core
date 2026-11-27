@@ -113,6 +113,46 @@ class OauthTokenRefreshStrategyTest {
         assertTrue(oauthTokenRefreshStrategy.requiresTokenRefresh(creds));
     }
 
+    static Stream<Arguments> provideRefreshMarginCases() {
+        long hour = TimeUnit.HOURS.toSeconds(1);
+        return Stream.of(
+                Arguments.of(2 * hour, TimeUnit.SECONDS.toMillis(2 * hour) - 3_600, true),
+                Arguments.of(2 * hour, TimeUnit.SECONDS.toMillis(2 * hour) - TimeUnit.MINUTES.toMillis(4), true),
+                Arguments.of(2 * hour, TimeUnit.SECONDS.toMillis(2 * hour) - TimeUnit.MINUTES.toMillis(6), false),
+                Arguments.of(60L, TimeUnit.SECONDS.toMillis(20), false),
+                Arguments.of(60L, TimeUnit.SECONDS.toMillis(40), true)
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideRefreshMarginCases")
+    void requiresTokenRefreshBeforeExpiryTest(long expiresInSeconds, long elapsedMillis, boolean expected) {
+        long now = System.currentTimeMillis();
+        ResourceCredentials creds = ResourceCredentials.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .accessToken("access-token")
+                .refreshToken("refresh")
+                .updatedAt(now)
+                .expiresInSeconds(expiresInSeconds)
+                .build();
+        when(timeProvider.getCurrentTime()).thenReturn(now + elapsedMillis);
+        assertEquals(expected, oauthTokenRefreshStrategy.requiresTokenRefresh(creds));
+    }
+
+    @Test
+    void hasUnexpiredTokenIgnoresRefreshMarginTest() {
+        long now = System.currentTimeMillis();
+        ResourceCredentials creds = ResourceCredentials.builder()
+                .authenticationType(AuthenticationType.OAUTH)
+                .accessToken("access-token")
+                .refreshToken(null)
+                .updatedAt(now)
+                .expiresInSeconds(TimeUnit.HOURS.toSeconds(2))
+                .build();
+        when(timeProvider.getCurrentTime()).thenReturn(now + TimeUnit.HOURS.toMillis(2) - 3_600);
+        assertTrue(oauthTokenRefreshStrategy.hasUnexpiredToken(creds));
+    }
+
     static Stream<Arguments> provideNotRequiresTokenRefreshCases() {
         long now = System.currentTimeMillis();
         return Stream.of(

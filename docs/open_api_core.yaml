@@ -18351,6 +18351,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Application
         name:
           type: string
         spec:
@@ -18396,6 +18398,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - CatalogSchema
         name:
           type: string
         spec:
@@ -18425,6 +18429,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Interceptor
         name:
           type: string
         spec:
@@ -18434,6 +18440,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Key
         name:
           type: string
         spec:
@@ -18482,6 +18490,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Model
         name:
           type: string
         spec:
@@ -18491,6 +18501,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Package
         name:
           type: string
         spec:
@@ -18500,6 +18512,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Plugin
         name:
           type: string
         spec:
@@ -18509,6 +18523,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - PolicyAssignment
         name:
           type: string
         spec:
@@ -18518,6 +18534,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Policy
         name:
           type: string
         spec:
@@ -18527,6 +18545,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Role
         name:
           type: string
         spec:
@@ -18536,6 +18556,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Route
         name:
           type: string
         spec:
@@ -18545,6 +18567,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Router
         name:
           type: string
         spec:
@@ -18554,6 +18578,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Schema
         name:
           type: string
         spec:
@@ -18563,6 +18589,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Settings
         name:
           type: string
         spec:
@@ -18572,6 +18600,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - ToolSet
         name:
           type: string
         spec:
@@ -18581,6 +18611,8 @@ components:
       properties:
         kind:
           type: string
+          enum:
+          - Translator
         name:
           type: string
         spec:
@@ -18927,6 +18959,8 @@ components:
           type: string
         object:
           type: string
+          enum:
+          - application
         owner:
           type: string
         reference:
@@ -21577,6 +21611,8 @@ components:
           type: string
         object:
           type: string
+          enum:
+          - model
         owner:
           type: string
         pricing:
@@ -22255,6 +22291,9 @@ components:
           type: string
         nodeType:
           $ref: "#/components/schemas/NodeType"
+          type: string
+          enum:
+          - FOLDER
         parentPath:
           type: string
         permissions:
@@ -22288,6 +22327,9 @@ components:
           type: string
         nodeType:
           $ref: "#/components/schemas/NodeType"
+          type: string
+          enum:
+          - ITEM
         parentPath:
           type: string
         permissions:
@@ -22719,6 +22761,8 @@ components:
           type: string
         object:
           type: string
+          enum:
+          - router
         owner:
           type: string
         reference:
@@ -23164,6 +23208,8 @@ components:
           type: string
         object:
           type: string
+          enum:
+          - toolset
         owner:
           type: string
         reference:
