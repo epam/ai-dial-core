@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
 
@@ -43,6 +44,8 @@ public class DependencyTypePolicyTest {
 
     static {
         expect(ResourceTypes.APPLICATION, Disposition.ROOT_AND_DEPENDENCY, Disposition.ROOT_AND_DEPENDENCY);
+        // a ToolSet is bound to both buckets by the configuration API, like an Application, but it is not a root
+        expect(ResourceTypes.TOOL_SET, Disposition.DEPENDENCY, Disposition.DEPENDENCY);
         // the others cannot live in public/
         expect(ResourceTypes.MODEL, Disposition.DEPENDENCY, Disposition.UNSUPPORTED);
         expect(ResourceTypes.INTERCEPTOR, Disposition.DEPENDENCY, Disposition.UNSUPPORTED);
@@ -96,8 +99,9 @@ public class DependencyTypePolicyTest {
             assertEquals(supportedSomewhere, content != null, type + ": a supported type has a content rule and an unsupported one has none");
         }
         assertEquals(DependencyTypePolicy.Content.EXAMINED, DependencyTypePolicy.resolveContent(ResourceTypes.APPLICATION));
+        assertEquals(DependencyTypePolicy.Content.EXAMINED, DependencyTypePolicy.resolveContent(ResourceTypes.TOOL_SET), "a ToolSet is a Deployment");
         assertEquals(DependencyTypePolicy.Content.LEAF, DependencyTypePolicy.resolveContent(ResourceTypes.FILE));
-        assertNull(DependencyTypePolicy.resolveContent(ResourceTypes.TOOL_SET), "a ToolSet is not listed");
+        assertNull(DependencyTypePolicy.resolveContent(ResourceTypes.ROUTER), "a Router is not listed");
     }
 
     @Test
@@ -129,15 +133,19 @@ public class DependencyTypePolicyTest {
         Application application = new Application();
         Model model = new Model();
         Interceptor interceptor = new Interceptor();
+        ToolSet toolSet = new ToolSet();
         config.setApplications(Map.of("n", application));
         config.setModels(Map.of("n", model));
         config.setInterceptors(Map.of("n", interceptor));
+        config.setToolsets(Map.of("n", toolSet));
 
         assertSame(application, DependencyTypePolicy.findDeployment(config, ResourceTypes.APPLICATION, "n"));
         assertSame(model, DependencyTypePolicy.findDeployment(config, ResourceTypes.MODEL, "n"));
         assertSame(interceptor, DependencyTypePolicy.findDeployment(config, ResourceTypes.INTERCEPTOR, "n"));
+        assertSame(toolSet, DependencyTypePolicy.findDeployment(config, ResourceTypes.TOOL_SET, "n"));
         assertEquals(Application.class, DependencyTypePolicy.resolveEntityClass(ResourceTypes.APPLICATION));
         assertEquals(Model.class, DependencyTypePolicy.resolveEntityClass(ResourceTypes.MODEL));
         assertEquals(Interceptor.class, DependencyTypePolicy.resolveEntityClass(ResourceTypes.INTERCEPTOR));
+        assertEquals(ToolSet.class, DependencyTypePolicy.resolveEntityClass(ResourceTypes.TOOL_SET));
     }
 }

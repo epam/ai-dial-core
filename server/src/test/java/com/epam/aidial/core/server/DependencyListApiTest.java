@@ -56,6 +56,21 @@ public class DependencyListApiTest extends ResourceBaseTest {
     }
 
     @Test
+    void testToolSetOfThePlatformIsListedWithItsReferences() throws Exception {
+        store("platform/applications/root", "{\"endpoint\":\"http://root.invalid\",\"dependencies\":[\"toolsets/platform/search\"]}");
+        store("platform/toolsets/search", "{\"endpoint\":\"http://search.invalid/mcp\",\"dependencies\":[\"applications/platform/helper\"]}");
+        store("platform/applications/helper", "{\"endpoint\":\"http://helper.invalid\"}");
+
+        Response response = list("admin", DependencyListApiSupport.rootsRequest("applications/platform/root"));
+
+        verify(response, 200);
+        JsonNode root = ProxyUtil.MAPPER.readTree(response.body()).get("roots").get(0);
+        assertEquals(List.of("toolset:search", "application:helper"), namesOf(root));
+        assertEquals("toolsets/platform/search", root.get("dependencies").get(0).get("url").asText());
+        assertEquals("platform", root.get("dependencies").get(0).get("origin").asText());
+    }
+
+    @Test
     void testUrlOfListedResourceIsAcceptedAsRootOfTheNextRequest() throws Exception {
         store("platform/applications/root", "{\"endpoint\":\"http://root.invalid\",\"dependencies\":[\"applications/platform/dep\"]}");
         store("platform/applications/dep", "{\"endpoint\":\"http://dep.invalid\",\"dependencies\":[\"applications/platform/leaf\"]}");

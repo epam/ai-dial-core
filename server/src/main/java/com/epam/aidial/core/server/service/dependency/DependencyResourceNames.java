@@ -23,6 +23,7 @@ final class DependencyResourceNames {
             ResourceTypes.APPLICATION, "application",
             ResourceTypes.MODEL, "model",
             ResourceTypes.INTERCEPTOR, "interceptor",
+            ResourceTypes.TOOL_SET, "toolset",
             ResourceTypes.APP_TYPE_SCHEMA, "application-type-schema",
             ResourceTypes.CATALOG_SCHEMA, "catalog-schema",
             ResourceTypes.FILE, "file",

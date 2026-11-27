@@ -4,6 +4,7 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.service.dependency.DiscoveredEdge.EdgeStatus;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
@@ -33,6 +34,7 @@ public class DependencyNamesTest {
             {
               "models": {"m1": {"type": "chat", "displayName": "M", "endpoint": "http://m.invalid/v1"}},
               "interceptors": {"i1": {"endpoint": "http://i.invalid", "description": "d"}},
+              "toolsets": {"t1": {"endpoint": "http://t.invalid/mcp", "description": "d"}},
               "applications": {"a1": {"display_name": "A", "endpoint": "http://a.invalid/chat", "dependencies": ["m1"]}}
             }
             """;
@@ -67,6 +69,7 @@ public class DependencyNamesTest {
     public void testKeyOfPlatformPublicFileAndPrivateOrigin() {
         assertEquals("application:platform:app", DependencyResourceNames.buildKey(descriptor(ResourceTypes.APPLICATION, "platform", "platform/", "app")));
         assertEquals("model:file:m", DependencyResourceNames.buildKey(FileConfigEntities.newDescriptor(ResourceTypes.MODEL, "m")));
+        assertEquals("toolset:platform:search", DependencyResourceNames.buildKey(descriptor(ResourceTypes.TOOL_SET, "platform", "platform/", "search")));
         assertEquals("application:public:folder/name__1.0.0", DependencyResourceNames.buildKey(publicDescriptor(ResourceTypes.APPLICATION, "folder/name__1.0.0")));
     }
 
@@ -106,6 +109,9 @@ public class DependencyNamesTest {
                 FileConfigEntities.findDeployment(config, FileConfigEntities.newDescriptor(ResourceTypes.APPLICATION, "a1")));
         assertSame(config.getApplications().get("a1"), application);
         assertEquals("m1", application.getDependencies().get(0));
+        assertSame(config.getToolsets().get("t1"),
+                assertInstanceOf(ToolSet.class, FileConfigEntities.findDeployment(config, FileConfigEntities.newDescriptor(ResourceTypes.TOOL_SET, "t1"))));
+        assertEquals("toolset", DependencyResourceNames.resolveTypeName(ResourceTypes.TOOL_SET));
     }
 
     @Test

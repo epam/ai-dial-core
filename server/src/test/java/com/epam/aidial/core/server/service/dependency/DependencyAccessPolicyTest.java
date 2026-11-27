@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.service.dependency.DependencyAccessPolicy.ConfigSnapshot;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -101,12 +102,21 @@ public class DependencyAccessPolicyTest {
     }
 
     @Test
+    public void testToolSetOfPlatformAndPublicIsListedForAdmin() {
+        ResourceDescriptor platformToolSet = platform(ResourceTypes.TOOL_SET, "t");
+        ResourceDescriptor publicToolSet = publicResource(ResourceTypes.TOOL_SET, "team/t");
+        ResourceDescriptor userToolSet = descriptor(ResourceTypes.TOOL_SET, "bucketToken", "Users/someone/", "t");
+
+        assertEquals(Set.of(platformToolSet, publicToolSet), listed(READS_PUBLIC, platformToolSet, publicToolSet, userToolSet));
+        assertFalse(READS_PUBLIC.isRootAllowed(platformToolSet), "only an Application is a root");
+    }
+
+    @Test
     public void testTypeOutsideTheTableAndFolderAreNotListed() {
-        ResourceDescriptor toolSet = platform(ResourceTypes.TOOL_SET, "t");
         ResourceDescriptor router = platform(ResourceTypes.ROUTER, "r");
         ResourceDescriptor folder = publicResource(ResourceTypes.FILE, "folder/");
 
-        assertEquals(Set.of(), listed(READS_PUBLIC, toolSet, router, folder));
+        assertEquals(Set.of(), listed(READS_PUBLIC, router, folder));
     }
 
     @Test
@@ -137,6 +147,7 @@ public class DependencyAccessPolicyTest {
                 config.setModels(new HashMap<>());
                 config.setApplications(new HashMap<>());
                 config.setInterceptors(new HashMap<>());
+                config.setToolsets(new HashMap<>());
             }
         }
 
@@ -227,6 +238,39 @@ public class DependencyAccessPolicyTest {
 
         assertEquals(Set.of(model), listed(policy, admitting, model));
         assertEquals(Set.of(), listed(policy, refusing, model), "the same policy, another publication: the roles of that one decide");
+    }
+
+    @Test
+    public void testToolSetOfTheConfigurationNeedsRoleThatAdmitsTheCallerAndHasNoUrl() {
+        InitiatorSetup setup = new InitiatorSetup();
+        ToolSet open = new ToolSet();
+        ToolSet restricted = new ToolSet();
+        restricted.setUserRoles(Set.of("power-user"));
+        setup.merged.getToolsets().put("open", open);
+        setup.merged.getToolsets().put("restricted", restricted);
+        ResourceDescriptor openDescriptor = platform(ResourceTypes.TOOL_SET, "open");
+        ResourceDescriptor restrictedDescriptor = platform(ResourceTypes.TOOL_SET, "restricted");
+        ResourceDescriptor unknown = platform(ResourceTypes.TOOL_SET, "unknown");
+
+        assertEquals(Set.of(openDescriptor), listed(setup.policy("user"), setup.snapshot(), openDescriptor, restrictedDescriptor, unknown));
+        assertEquals(Set.of(openDescriptor, restrictedDescriptor),
+                listed(setup.policy("user", "power-user"), setup.snapshot(), openDescriptor, restrictedDescriptor, unknown));
+        assertFalse(setup.policy().isUrlExposed(openDescriptor), "a ToolSet of the configuration has no URL for a caller");
+        assertEquals(0, setup.lookups.get(), "the roles decide, no lookup of the right to read");
+    }
+
+    @Test
+    public void testToolSetInTheStoresOfTheUserIsListedByTheRightToRead() {
+        InitiatorSetup setup = new InitiatorSetup();
+        setup.readable.add("mine");
+        ResourceDescriptor own = descriptor(ResourceTypes.TOOL_SET, "tokenMe", OWN, "mine");
+        ResourceDescriptor others = descriptor(ResourceTypes.TOOL_SET, "tokenOther", OTHER, "theirs");
+        ResourceDescriptor open = publicResource(ResourceTypes.TOOL_SET, "open");
+        setup.readable.add("open");
+
+        assertEquals(Set.of(own, open), listed(setup.policy(), setup.snapshot(), own, others, open));
+        assertTrue(setup.policy().isUrlExposed(own));
+        assertFalse(setup.policy().isRootAllowed(own), "only an Application is a root");
     }
 
     @Test

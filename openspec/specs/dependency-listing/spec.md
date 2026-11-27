@@ -125,11 +125,15 @@ The `dependencies` of a root SHALL list every resource reachable from that root 
 - **THEN** its `name` is `bot__1.0.0`
 
 ### Requirement: The walk follows Deployments and stops at the other types
-Core SHALL examine the references of an Application, a Model and an Interceptor it lists. It SHALL list an application type schema, a catalog schema, a File, a Skill and a Prompt and SHALL NOT examine their content. A reference to any other type, to a folder or to an alias SHALL NOT produce an element.
+Core SHALL examine the references of an Application, a Model, a ToolSet and an Interceptor it lists. It SHALL list an application type schema, a catalog schema, a File, a Skill and a Prompt and SHALL NOT examine their content. A reference to any other type, to a folder or to an alias SHALL NOT produce an element.
 
 #### Scenario: Model to Interceptor to File
 - **WHEN** a root Application depends on a platform Model whose `interceptors` names an Interceptor and whose `icon_url` is `files/public/a/t.png`
 - **THEN** the Model, the Interceptor and the File are listed
+
+#### Scenario: ToolSet to File
+- **WHEN** a root Application names a platform ToolSet in `dependencies`, by URL or by short name, and the ToolSet's `icon_url` is `files/public/a/t.png`
+- **THEN** the ToolSet, with `type` `toolset`, and the File are listed, and the ToolSet is not a root
 
 #### Scenario: A leaf is not examined
 - **WHEN** a listed Prompt, Skill or File holds text that names an Application
@@ -307,7 +311,7 @@ For a caller who is not an explicit admin, Core SHALL accept a root in the calle
 - **THEN** it is left out
 
 ### Requirement: A caller sees the deployments their roles allow and the interceptors
-For a caller who is not an explicit admin, Core SHALL list a Model or an Application of the configuration that a short name or a platform URL resolves to only when the deployment's `user_roles` admit the caller, and SHALL follow the references of a listed deployment. It SHALL list an Interceptor and follow it. The deployments SHALL have `url` null and the `origin` that an admin would see.
+For a caller who is not an explicit admin, Core SHALL list a Model, an Application or a ToolSet of the configuration that a short name or a platform URL resolves to only when the deployment's `user_roles` admit the caller, and SHALL follow the references of a listed deployment. It SHALL list an Interceptor and follow it. The deployments SHALL have `url` null and the `origin` that an admin would see.
 
 #### Scenario: Role allows
 - **WHEN** a user's Application names a Model whose `user_roles` the user holds
@@ -316,6 +320,10 @@ For a caller who is not an explicit admin, Core SHALL list a Model or an Applica
 #### Scenario: Role does not allow
 - **WHEN** the named Model's `user_roles` do not include any role of the user
 - **THEN** the Model is not listed and its references are not followed
+
+#### Scenario: ToolSet and its roles
+- **WHEN** a user's Application names a platform ToolSet, once whose `user_roles` the user holds and once whose `user_roles` the user does not hold
+- **THEN** the first ToolSet is listed with `url` null, and the second is neither listed nor followed
 
 #### Scenario: Through a platform Model
 - **WHEN** a user's Application names a platform Model that the user's roles admit, and the Model names a public File in `icon_url` that the user may read

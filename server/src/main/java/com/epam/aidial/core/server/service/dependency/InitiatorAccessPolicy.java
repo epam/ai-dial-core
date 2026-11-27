@@ -15,7 +15,7 @@ import javax.annotation.Nullable;
 
 /**
  * The policy of a caller who is not an explicit admin. Stored resources (public, own and shared buckets) are listed by the right to read on the
- * caller's own standing; a Model or an Application of the configuration is listed by its roles and has no URL; an Interceptor and a schema of
+ * caller's own standing; a Model, an Application or a ToolSet of the configuration is listed by its roles and has no URL; an Interceptor and a schema of
  * the configuration are listed.
  */
 public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
@@ -23,10 +23,10 @@ public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
     private static final String USER_BUCKET_PREFIX = "Users/";
     private static final String API_KEY_BUCKET_PREFIX = "Keys/";
     /** The types that a user bucket holds and that the walk follows: the others are configuration entities. */
-    private static final Set<ResourceTypes> USER_BUCKET_TYPES = Set.of(ResourceTypes.APPLICATION, ResourceTypes.FILE, ResourceTypes.PROMPT,
-            ResourceTypes.SKILL);
+    private static final Set<ResourceTypes> USER_BUCKET_TYPES = Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET, ResourceTypes.FILE,
+            ResourceTypes.PROMPT, ResourceTypes.SKILL);
     /** The types that have roles of their own: a short name or a platform URL resolves to them whatever the roles are. */
-    private static final Set<ResourceTypes> ROLE_CHECKED_TYPES = Set.of(ResourceTypes.MODEL, ResourceTypes.APPLICATION);
+    private static final Set<ResourceTypes> ROLE_CHECKED_TYPES = Set.of(ResourceTypes.MODEL, ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET);
 
     private final Function<Set<ResourceDescriptor>, Map<ResourceDescriptor, Set<ResourceAccessType>>> initiatorPermissions;
     private final List<String> userRoles;
@@ -70,7 +70,7 @@ public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
         return allowed;
     }
 
-    /** An entity of the file configuration has no URL, and neither has a Model or an Application of the configuration that the caller sees. */
+    /** An entity of the file configuration has no URL, and neither has a Model, an Application or a ToolSet of the configuration that the caller sees. */
     @Override
     public boolean isUrlExposed(ResourceDescriptor target) {
         return !FileConfigEntities.isFile(target) && !(isConfiguration(target) && ROLE_CHECKED_TYPES.contains(DependencyTypePolicy.resolveType(target)));
@@ -107,7 +107,7 @@ public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
         return readable;
     }
 
-    /** A Model or an Application of the configuration needs a role that admits the caller; an Interceptor and a schema are listed. */
+    /** A Model, an Application or a ToolSet of the configuration needs a role that admits the caller; an Interceptor and a schema are listed. */
     private boolean isAdmittedConfigurationEntity(ResourceDescriptor target, ConfigSnapshot configuration) {
         if (!ROLE_CHECKED_TYPES.contains(DependencyTypePolicy.resolveType(target))) {
             return true;

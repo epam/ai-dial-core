@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.security.EntityBucketBinding;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -44,11 +45,13 @@ final class DependencyTypePolicy {
     private static final EntityTraits APPLICATION_ENTITY = new EntityTraits(Application.class, Config::getApplications);
     private static final EntityTraits MODEL_ENTITY = new EntityTraits(Model.class, Config::getModels);
     private static final EntityTraits INTERCEPTOR_ENTITY = new EntityTraits(Interceptor.class, Config::getInterceptors);
+    private static final EntityTraits TOOL_SET_ENTITY = new EntityTraits(ToolSet.class, Config::getToolsets);
 
     private static final Map<ResourceTypes, Traits> TRAITS = Map.ofEntries(
             Map.entry(ResourceTypes.APPLICATION, new Traits(true, Content.EXAMINED, APPLICATION_ENTITY)),
             Map.entry(ResourceTypes.MODEL, new Traits(false, Content.EXAMINED, MODEL_ENTITY)),
             Map.entry(ResourceTypes.INTERCEPTOR, new Traits(false, Content.EXAMINED, INTERCEPTOR_ENTITY)),
+            Map.entry(ResourceTypes.TOOL_SET, new Traits(false, Content.EXAMINED, TOOL_SET_ENTITY)),
             Map.entry(ResourceTypes.APP_TYPE_SCHEMA, new Traits(false, Content.LEAF, null)),
             Map.entry(ResourceTypes.CATALOG_SCHEMA, new Traits(false, Content.LEAF, null)),
             Map.entry(ResourceTypes.FILE, new Traits(false, Content.LEAF, null)),

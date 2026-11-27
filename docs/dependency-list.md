@@ -1,7 +1,7 @@
 # Dependency list
 
 `POST /v1/ops/dependency/list` answers one question: what does an Application need. For each Application you name, it returns the flat list of
-the resources the Application reaches through its references: other Applications, Models, Interceptors, application type and catalog schemas,
+the resources the Application reaches through its references: other Applications, Models, ToolSets, Interceptors, application type and catalog schemas,
 Files, Skills and Prompts. The call only reads. It copies, moves and changes nothing.
 
 The endpoint is a preview (`x-preview`) and is described in the [OpenAPI specification](open_api_core.yaml). Every authenticated caller can
@@ -51,8 +51,8 @@ The answer has one entry per root, in the order of the request. Each entry holds
 
 | Field | Where | Value |
 |---|---|---|
-| `type` | root entry and item | `application`, `model`, `interceptor`, `application-type-schema`, `catalog-schema`, `file`, `skill` or `prompt` |
-| `url` | root entry and item | The URL of the resource, which is also valid as a root of a later request; for a resource in a user bucket the bucket is in its encrypted form. `null` for an entity that only `aidial.config.json` defines and, for a caller who is not an administrator, for a Model or an Application of the configuration |
+| `type` | root entry and item | `application`, `model`, `toolset`, `interceptor`, `application-type-schema`, `catalog-schema`, `file`, `skill` or `prompt` |
+| `url` | root entry and item | The URL of the resource, which is also valid as a root of a later request; for a resource in a user bucket the bucket is in its encrypted form. `null` for an entity that only `aidial.config.json` defines and, for a caller who is not an administrator, for a Model, an Application or a ToolSet of the configuration |
 | `name` | root entry and item | The last segment of the path, with a version suffix such as `__1.0` left in. For an entity of the file configuration the name of the deployment, and for a schema of the file configuration the digest of its `$id` |
 | `origin` | root entry and item | `public`, `platform`, `file` (an entity of `aidial.config.json`) or `private` (a user bucket) |
 | `dependencies` | root entry only | The flat list of everything the root reaches. Empty when the root references nothing |
@@ -84,7 +84,7 @@ dependency is checked on its own, so naming a root never opens its dependencies:
 - A resource in `public/`, in the caller's own bucket or in a shared bucket is listed when the caller may read it. The right to read comes
   from the caller's own bucket, what is shared with them and the rules of the public folders. A global-reader or administrator standing and the
   grants of a calling key do not widen the list. The `origin` of such a resource is `public`, or `private` in a user bucket.
-- A Model or an Application of the configuration (a short name or a `platform/` URL) is listed only when its `user_roles` admit one of the
+- A Model, an Application or a ToolSet of the configuration (a short name or a `platform/` URL) is listed only when its `user_roles` admit one of the
   roles of the caller, and its references are then followed, so the list shows what the Application uses at run time. It has `url` `null`.
 - An Interceptor and a schema of the configuration are listed.
 - A resource that the caller may not read, or a deployment that their roles do not admit, is left out without a trace: it is not read, not
@@ -93,7 +93,7 @@ dependency is checked on its own, so naming a root never opens its dependencies:
 
 ## What the list follows
 
-For an Application, a Model and an Interceptor Core reads these references:
+For an Application, a Model, a ToolSet and an Interceptor Core reads these references:
 
 | Field | Reference |
 |---|---|

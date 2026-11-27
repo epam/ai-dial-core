@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
@@ -128,6 +129,11 @@ public class DeploymentEdgeDiscoveryTest {
         platformBlobs.add("APPLICATION/" + name);
     }
 
+    private void givenPlatformToolSet(String name) {
+        merged.getToolsets().put(name, new ToolSet());
+        platformBlobs.add("TOOL_SET/" + name);
+    }
+
     private void givenFileOnlyModel(String name) {
         Model model = new Model();
         merged.getModels().put(name, model);
@@ -189,6 +195,44 @@ public class DeploymentEdgeDiscoveryTest {
         assertEquals(ResourceTypes.MODEL, typeOf(edge));
         assertFalse(FileConfigEntities.isFile(edge.target()));
         assertEquals("models/platform/gpt-4o", edge.target().getUrl());
+    }
+
+    @Test
+    public void testShortNameThatResolvesToPlatformToolSetIsCandidateWithItsOrigin() {
+        givenPlatformToolSet("search");
+
+        DiscoveredEdge edge = onlyEdgeOf(discover(new Application(), resourceMarker("/deployment_id", "search")));
+
+        assertNull(edge.status());
+        assertEquals(ResourceTypes.TOOL_SET, typeOf(edge));
+        assertFalse(FileConfigEntities.isFile(edge.target()));
+        assertEquals("toolsets/platform/search", edge.target().getUrl());
+    }
+
+    @Test
+    public void testDependencyOnPlatformToolSetByUrlIsCandidate() {
+        givenPlatformToolSet("search");
+        Application application = new Application();
+        application.setDependencies(List.of("toolsets/platform/search"));
+
+        DiscoveredEdge edge = onlyEdgeOf(discover(application));
+
+        assertNull(edge.status());
+        assertEquals(ResourceTypes.TOOL_SET, typeOf(edge));
+        assertEquals("/dependencies/0", edge.pointer());
+    }
+
+    @Test
+    public void testShortNameHeldByToolSetAndModelIsListedAsOriginUnknownWithoutTarget() {
+        givenPlatformToolSet("shared");
+        givenPlatformModel("shared");
+        Application application = new Application();
+        application.setDependencies(List.of("shared"));
+
+        DiscoveredEdge edge = onlyEdgeOf(discover(application));
+
+        assertEquals(EdgeStatus.ORIGIN_UNKNOWN, edge.status());
+        assertNull(edge.target(), "no holder is chosen");
     }
 
     @Test
@@ -368,17 +412,18 @@ public class DeploymentEdgeDiscoveryTest {
     }
 
     @Test
-    public void testPublicApplicationPromptAndSkillDependenciesAreCandidatesAndOtherTypesAreUnsupported() {
+    public void testPublicApplicationToolSetPromptAndSkillDependenciesAreCandidatesAndOtherTypesAreUnsupported() {
         List<DiscoveredEdge> edges = discover(new Application(),
                 resourceMarker("/app", "applications/public/folder/b__1.0.0"),
-                resourceMarker("/other", "toolsets/public/t"),
+                resourceMarker("/toolset", "toolsets/public/t"),
                 resourceMarker("/prompt", "prompts/public/p"),
                 resourceMarker("/skill", "skills/public/s"),
                 resourceMarker("/conversation", "conversations/public/c")).edges();
 
         assertNull(edges.get(0).status());
         assertEquals("public/", edges.get(0).target().getBucketLocation());
-        assertEquals(EdgeStatus.UNSUPPORTED, edges.get(1).status(), "a type outside the table is not listed");
+        assertNull(edges.get(1).status(), "a public ToolSet is a candidate; the traversal still has to authorize and read it");
+        assertEquals(ResourceTypes.TOOL_SET, typeOf(edges.get(1)));
         assertNull(edges.get(2).status(), "a public Prompt is a candidate; the traversal still has to authorize and read it");
         assertEquals(ResourceTypes.PROMPT, typeOf(edges.get(2)));
         assertNull(edges.get(3).status(), "a public Skill is a candidate; the traversal still has to authorize and read its marker");

@@ -167,6 +167,10 @@ public class DependencyWalkerTest {
                 "{\"type\":\"chat\",\"displayName\":\"M\",\"endpoint\":\"http://" + name + ".invalid/v1\"," + dependencies(dependencies) + "}");
     }
 
+    private void toolSet(String name, String... dependencies) {
+        stored.put("toolsets/platform/" + name, "{\"endpoint\":\"http://" + name + ".invalid/mcp\"," + dependencies(dependencies) + "}");
+    }
+
     private void file(String path) {
         stored.put("files/public/" + path, "bytes");
     }
@@ -299,6 +303,30 @@ public class DependencyWalkerTest {
 
         assertEquals(List.of("application:broken", "application:ok"), listOf(entry));
         assertFalse(logs.list.stream().anyMatch(event -> event.getFormattedMessage().contains("SECRET-VALUE")));
+    }
+
+    @Test
+    void testToolSetIsExaminedAndItsReferencesAreListed() {
+        app("a", "toolsets/platform/t");
+        toolSet("t", "files/public/icon.png", "models/platform/m");
+        file("icon.png");
+        model("m");
+
+        DependencyRootEntry entry = walk("a").roots().get(0);
+
+        assertEquals(List.of("toolset:t", "file:icon.png", "model:m"), listOf(entry));
+        assertTrue(reads.contains("toolsets/platform/t"), "the body of a ToolSet is read to find its references");
+    }
+
+    @Test
+    void testToolSetThatDoesNotExistIsNotListedAndDoesNotFailTheWalk() {
+        app("a", "toolsets/platform/gone", "files/public/f.png");
+        file("f.png");
+
+        DependencyRootEntry entry = walk("a").roots().get(0);
+
+        assertEquals(List.of("file:f.png"), listOf(entry));
+        assertEquals(1, warnings().size(), "one log record for the reference that is not followed");
     }
 
     @Test
