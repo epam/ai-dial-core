@@ -9,19 +9,27 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class OauthTokenRefreshStrategy implements TokenRefreshStrategy {
 
+    /**
+     * How long before expiry a token is refreshed. A caller gets the token and uses it a few seconds later (a git
+     * clone, an MCP call), so a token handed out in its last seconds can expire on the way. Capped at half the
+     * token's lifetime, so a short-lived token is not refreshed on every read.
+     */
+    static final long MAX_REFRESH_MARGIN_MILLIS = TimeUnit.MINUTES.toMillis(5);
+
     private final TimeProvider timeProvider;
 
     @Override
     public boolean hasUnexpiredToken(ResourceCredentials credentials) {
         return credentials.getAccessToken() != null
-                && (isTokenUnexpired(credentials.getUpdatedAt(), credentials.getExpiresInSeconds())
+                && (isTokenUnexpired(credentials.getUpdatedAt(), credentials.getExpiresInSeconds(), 0)
                     || credentials.getRefreshToken() != null);
     }
 
     @Override
     public boolean requiresTokenRefresh(ResourceCredentials credentials) {
-        return supportsTokenRefreshFlow(credentials.getRefreshToken(), credentials.getExpiresInSeconds())
-                && !isTokenUnexpired(credentials.getUpdatedAt(), credentials.getExpiresInSeconds());
+        Long expiresInSeconds = credentials.getExpiresInSeconds();
+        return supportsTokenRefreshFlow(credentials.getRefreshToken(), expiresInSeconds)
+                && !isTokenUnexpired(credentials.getUpdatedAt(), expiresInSeconds, resolveRefreshMarginMillis(expiresInSeconds));
     }
 
     private boolean supportsTokenRefreshFlow(String refreshToken,
@@ -29,8 +37,16 @@ public class OauthTokenRefreshStrategy implements TokenRefreshStrategy {
         return refreshToken != null && expiresInSeconds != null;
     }
 
+    private static long resolveRefreshMarginMillis(Long expiresInSeconds) {
+        if (expiresInSeconds == null || expiresInSeconds <= 0) {
+            return 0;
+        }
+        return Math.min(MAX_REFRESH_MARGIN_MILLIS, TimeUnit.SECONDS.toMillis(expiresInSeconds) / 2);
+    }
+
     private boolean isTokenUnexpired(Long updatedAt,
-                                     Long expiresInSeconds) {
+                                     Long expiresInSeconds,
+                                     long marginMillis) {
         if (expiresInSeconds == null) {
             return true;
         }
@@ -40,6 +56,6 @@ public class OauthTokenRefreshStrategy implements TokenRefreshStrategy {
         }
 
         long expiryTimeInMillis = updatedAt + TimeUnit.SECONDS.toMillis(expiresInSeconds);
-        return expiryTimeInMillis > timeProvider.getCurrentTime();
+        return expiryTimeInMillis - marginMillis > timeProvider.getCurrentTime();
     }
 }
