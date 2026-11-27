@@ -1,0 +1,43 @@
+{
+  "models": {
+    "gpt-cost": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/gpt-cost/chat/completions"
+    }
+  },
+  "toolsets": {
+    "search": {
+      "endpoint": "http://localhost:4848/search/mcp"
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "capped",
+      "role": "capped"
+    },
+    "proxyKey2": {
+      "project": "request-limited",
+      "role": "request-limited"
+    }
+  },
+  "roles": {
+    "capped": {
+      "limits": {
+        "gpt-cost": {},
+        "search": {}
+      },
+      "costLimit": {
+        "day": "10",
+        "week": "100",
+        "month": "1000"
+      }
+    },
+    "request-limited": {
+      "limits": {
+        "search": {
+          "requestDay": "1"
+        }
+      }
+    }
+  }
+}
