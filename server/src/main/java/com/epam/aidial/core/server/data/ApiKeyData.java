@@ -10,6 +10,7 @@ import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.vertx.core.MultiMap;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -47,6 +48,13 @@ public class ApiKeyData {
     private Key originalKey;
     // user claims extracted from JWT
     private ExtractedClaims extractedClaims;
+    // the root request's budget indication and the cost object its headers named (ProxyContext has the meaning). Left out
+    // when null: a Core without these fields refuses a stored key that has them, so only keys of roots that sent a budget
+    // header carry them
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String budgetIndication;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String headerCostObject;
     // OpenTelemetry trace ID
     private String traceId;
     // OpenTelemetry span ID created by the Core
@@ -135,10 +143,14 @@ public class ApiKeyData {
         if (apiKeyData.getPerRequestKey() == null) {
             proxyApiKeyData.setOriginalKey(context.getKey());
             proxyApiKeyData.setExtractedClaims(context.getExtractedClaims());
+            proxyApiKeyData.setBudgetIndication(context.getBudgetIndication());
+            proxyApiKeyData.setHeaderCostObject(context.getHeaderCostObject());
             proxyApiKeyData.setTraceId(context.getTraceId());
         } else {
             proxyApiKeyData.setOriginalKey(apiKeyData.getOriginalKey());
             proxyApiKeyData.setExtractedClaims(apiKeyData.getExtractedClaims());
+            proxyApiKeyData.setBudgetIndication(apiKeyData.getBudgetIndication());
+            proxyApiKeyData.setHeaderCostObject(apiKeyData.getHeaderCostObject());
             proxyApiKeyData.setTraceId(apiKeyData.getTraceId());
         }
         String receiver = null;

@@ -127,6 +127,8 @@ public class ResponsesControllerTest {
         // resolveRequestUri always consults the ingress path (even though the legacy flow ignores it)
         lenient().when(request.path()).thenReturn("/openai/v1/responses");
         lenient().when(proxy.getBlockingCallTracer()).thenReturn(BlockingCallTracer.NOOP);
+        // the budget headers are read before the deployment resolves
+        lenient().when(request.headers()).thenReturn(new HeadersMultiMap());
     }
 
     @Test

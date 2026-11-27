@@ -10,7 +10,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SpendingLimitsConfigTest {
 
@@ -22,6 +24,16 @@ class SpendingLimitsConfigTest {
 
         assertEquals(SpendingLimitMode.OFF, config.getSpendingLimits().getMode());
         assertEquals("ORG", config.getSpendingLimits().getDefaultCostObject());
+        assertTrue(config.getSpendingLimits().isAutoBudgetSelection());
+        assertFalse(config.getSpendingLimits().isBudgetMandatory());
+    }
+
+    @Test
+    void testSelectionFlagsAreRead() throws Exception {
+        SpendingLimits limits = mapper.readValue("{\"autoBudgetSelection\":false,\"budgetMandatory\":true}", SpendingLimits.class);
+
+        assertFalse(limits.isAutoBudgetSelection());
+        assertTrue(limits.isBudgetMandatory());
     }
 
     @ParameterizedTest

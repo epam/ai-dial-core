@@ -229,14 +229,15 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void testTwoBudgetsAreNotReported() {
+    void testTwoBudgetsReportThePayer() {
         budget("projA/a1", 10, "10", null);
         budget("projA/a2", 20, "10", null);
+        spend("projA/a1", "claude-spend", "8.2");
         try (TestWebServer server = upstreams(null)) {
             Response response = postMessages("claude-spend", USER_A);
 
             assertEquals(200, response.status(), response.body());
-            assertFalse(hasHeaderWithPrefix(response, UNIFIED), response.headers().toString());
+            assertEquals("0.82", header(response, OVERAGE + "utilization"));
         }
 
         assertEquals("{\"limits\":[]}", getUsage(USER_A).body());
@@ -244,15 +245,75 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
 
     @Test
     @DialConfigLocation(CONFIG)
-    void testSecondBudgetForAnotherModelIsCounted() {
-        budget("projA/a1", 20, "10", null);
-        budgetFor("projA/a2", 10, "10", null, List.of("gpt-other"));
+    void testIndicatedBudgetReported() {
+        budget("projA/a1", 10, "10", null);
+        budget("projA/a2", 20, "10", null);
+        spend("projA/a2", "gpt-spend", "4");
+        try (TestWebServer server = upstreams(null)) {
+            Response response = send(HttpMethod.POST, RESPONSES_PATH, null, responsesBody("gpt-spend"),
+                    "content-type", "application/json", "authorization", USER_A, "X-DIAL-BUDGET", "projA/a2");
+
+            assertEquals(200, response.status(), response.body());
+            assertEquals("40", header(response, PRIMARY + "used-percent"));
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testDefaultBudgetReported() {
+        budget("projA/a1", 10, "10", null);
+        budget("projA/a2", 20, "10", null);
+        spend("projA/a2", "gpt-spend", "4");
+        verify(send(HttpMethod.PUT, "/v1/user/budgets/default", null, "{\"budget\": \"projA/a2\"}",
+                "content-type", "application/json", "authorization", USER_A), 200);
         try (TestWebServer server = upstreams(null)) {
             Response response = postResponses("gpt-spend", USER_A);
 
             assertEquals(200, response.status(), response.body());
-            assertFalse(hasHeaderWithPrefix(response, "x-codex-"), response.headers().toString());
+            assertEquals("40", header(response, PRIMARY + "used-percent"));
         }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testIndicatedBudgetExhaustedAnotherHasRoom() {
+        budget("projA/a1", 10, "100", "10");
+        budget("projA/a2", 20, "10", null);
+        spend("projA/a1", "gpt-spend", "10");
+        try (TestWebServer server = upstreams(null)) {
+            Response response = send(HttpMethod.POST, RESPONSES_PATH, null, responsesBody("gpt-spend"),
+                    "content-type", "application/json", "authorization", USER_A, "X-DIAL-BUDGET", "projA/a1");
+
+            assertEquals(429, response.status(), response.body());
+            JsonNode error = parse(response.body()).get("error");
+            assertEquals("usage_limit_reached", error.get("type").asText());
+            assertEquals(43200, error.get("limit_window_minutes").asInt());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testIndicatedBudgetNotCoveringOnMessages() {
+        budgetFor("projA/t1", 10, "10", null, List.of("claude-other"));
+        try (TestWebServer server = upstreams(null)) {
+            Response response = send(HttpMethod.POST, MESSAGES_PATH, null, messagesBody("claude-spend"), "content-type", "application/json",
+                    "authorization", USER_A, "anthropic-version", "2023-06-01", "X-DIAL-BUDGET", "projA/t1");
+
+            assertEquals(402, response.status(), response.body());
+            JsonNode error = parse(response.body()).get("error");
+            assertEquals("billing_error", error.get("type").asText(), response.body());
+            assertEquals("Budget projA/t1 does not cover claude-spend", error.get("message").asText());
+            assertEquals("false", header(response, "x-should-retry"), response.headers().toString());
+        }
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    void testSecondBudgetForAnotherModelIsCounted() {
+        budget("projA/a1", 20, "10", null);
+        budgetFor("projA/a2", 10, "10", null, List.of("gpt-other"));
+
+        assertEquals("{\"limits\":[]}", getUsage(USER_A).body());
     }
 
     @Test
@@ -459,13 +520,14 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
         budget("projA/a1", 10, "10", null);
         budget("projA/a2", 20, "10", null);
         spend("projA/a1", "gpt-spend", "10");
+        spend("projA/a2", "gpt-spend", "4");
         AtomicInteger upstreamCalls = new AtomicInteger();
         try (TestWebServer server = upstreams(upstreamCalls)) {
             Response response = postResponses("gpt-spend", USER_A);
 
             assertEquals(200, response.status(), response.body());
             assertEquals(1, upstreamCalls.get());
-            assertFalse(hasHeaderWithPrefix(response, "x-codex-"), response.headers().toString());
+            assertEquals("40", header(response, PRIMARY + "used-percent"));
         }
     }
 
@@ -1034,7 +1096,8 @@ class BudgetSpendCapsApiTest extends ResourceBaseTest {
     @Test
     @DialConfigLocation(CONFIG)
     void testSeveralBudgetsSendNoCodexHeaders() {
-        budget("projA/a1", 10, "10", null);
+        // the walk picks a1, whose only window is too large to report
+        budget("projA/a1", 10, TWO_POW_53, null);
         budget("projA/a2", 20, "10", null);
         try (TestWebServer server = upstreams(null)) {
             Response response = postResponses("gpt-spend", USER_A);

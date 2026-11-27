@@ -20,6 +20,7 @@ import com.epam.aidial.core.server.function.enhancement.EnhanceDeploymentRequest
 import com.epam.aidial.core.server.function.request.MessagesApiRequest;
 import com.epam.aidial.core.server.function.request.RequestObject;
 import com.epam.aidial.core.server.limiter.NoBudgetException;
+import com.epam.aidial.core.server.limiter.budget.BudgetHeaders;
 import com.epam.aidial.core.server.proxy.ProxyRequest;
 import com.epam.aidial.core.server.proxy.ProxyResponse;
 import com.epam.aidial.core.server.service.DeploymentService;
@@ -148,6 +149,7 @@ abstract class MessagesBaseController extends BaseDeploymentPostController {
     }
 
     protected Void setupDeployment(String model) {
+        BudgetHeaders.verifyRootCall(context);
         Deployment deployment = proxy.getDeploymentService().findCallableDeployment(context, model);
         proxy.getConsentService().verifyUserConsent(context, deployment, InterfaceType.ANTHROPIC_MESSAGES);
 

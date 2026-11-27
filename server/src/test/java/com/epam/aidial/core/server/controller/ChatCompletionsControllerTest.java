@@ -12,6 +12,7 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.impl.headers.HeadersMultiMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,6 +57,8 @@ public class ChatCompletionsControllerTest {
     void setUp() {
         lenient().when(context.getConfig()).thenReturn(new Config());
         lenient().when(proxy.getBlockingCallTracer()).thenReturn(BlockingCallTracer.NOOP);
+        // the budget headers are read before the deployment resolves
+        lenient().when(request.headers()).thenReturn(new HeadersMultiMap());
         controller = new ChatCompletionsController(proxy, context);
     }
 

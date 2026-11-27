@@ -38,6 +38,16 @@ class CostObjectTest {
     }
 
     @Test
+    void testHeaderWinsOverClaimAndKey() {
+        assertEquals(new CostObject("IMF", CostObject.Source.HEADER), CostObject.resolve("IMF", "projA", key("keyProject"), UNREAD));
+    }
+
+    @Test
+    void testNoHeaderFallsBackToClaim() {
+        assertEquals(new CostObject("projA", CostObject.Source.CLAIM), CostObject.resolve(null, "projA", null, UNREAD));
+    }
+
+    @Test
     void testSourceValues() {
         assertEquals("claim", CostObject.Source.CLAIM.toValue());
         assertEquals("key", CostObject.Source.KEY.toValue());

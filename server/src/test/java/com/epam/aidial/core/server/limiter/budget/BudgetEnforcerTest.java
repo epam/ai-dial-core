@@ -28,6 +28,7 @@ import com.epam.aidial.core.server.limiter.SpendCaps;
 import com.epam.aidial.core.server.limiter.SpendReadException;
 import com.epam.aidial.core.server.limiter.SpendingRefusal;
 import com.epam.aidial.core.server.security.ExtractedClaims;
+import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +38,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -59,6 +61,7 @@ class BudgetEnforcerTest {
     private static final String TWO_POW_53 = "9007199254740992";
 
     private BudgetCounterStore store;
+    private DefaultBudgetService defaultBudgets;
     private BudgetEnforcer enforcer;
     private Config config;
     private ProxyContext context;
@@ -67,7 +70,13 @@ class BudgetEnforcerTest {
     @BeforeEach
     void setUp() {
         store = mock(BudgetCounterStore.class);
-        enforcer = new BudgetEnforcer(store);
+        defaultBudgets = mock(DefaultBudgetService.class);
+        AsyncTaskExecutor taskExecutor = mock(AsyncTaskExecutor.class);
+        when(taskExecutor.submit(any(Callable.class))).thenAnswer(invocation -> {
+            Callable<?> callable = invocation.getArgument(0);
+            return Future.succeededFuture(callable.call());
+        });
+        enforcer = new BudgetEnforcer(store, defaultBudgets, taskExecutor);
         config = new Config();
         config.getSpendingLimits().setMode(SpendingLimitMode.ENFORCE);
         context = mock(ProxyContext.class);
@@ -266,18 +275,21 @@ class BudgetEnforcerTest {
     @Test
     void testCostObjectIsTheProjectOfTheCallOtherwiseTheConfiguredDefault() {
         // traces 6 and 14
-        assertEquals("ORG", BudgetEnforcer.resolveCostObject(context, config.getSpendingLimits()));
+        assertEquals("ORG", BudgetEnforcer.resolveCostObject(context));
 
         config.getSpendingLimits().setDefaultCostObject("PERSONAL");
-        assertEquals("PERSONAL", BudgetEnforcer.resolveCostObject(context, config.getSpendingLimits()));
+        assertEquals("PERSONAL", BudgetEnforcer.resolveCostObject(context));
 
         Key key = new Key();
         key.setProject("keyProject");
         when(context.getKey()).thenReturn(key);
-        assertEquals("keyProject", BudgetEnforcer.resolveCostObject(context, config.getSpendingLimits()));
+        assertEquals("keyProject", BudgetEnforcer.resolveCostObject(context));
 
         when(context.getUserProject()).thenReturn("jwtProject");
-        assertEquals("jwtProject", BudgetEnforcer.resolveCostObject(context, config.getSpendingLimits()));
+        assertEquals("jwtProject", BudgetEnforcer.resolveCostObject(context));
+
+        when(context.getHeaderCostObject()).thenReturn("IMF");
+        assertEquals("IMF", BudgetEnforcer.resolveCostObject(context));
     }
 
     @Test
@@ -384,8 +396,7 @@ class BudgetEnforcerTest {
     }
 
     @Test
-    void testWithSpendCapsReportsNothingForTwoBudgets() {
-        // the second budget covers another model only, and still counts
+    void testWithSpendCapsReportsThePayerOfTwoBudgets() {
         Policy other = policy(2, "10", null);
         other.setObject(PolicyObjectSet.of(List.of("claude")));
         index(Map.of("first", policy(1, "10", null), "other", other), Map.of("ORG/a", assignment("first"), "ORG/b", assignment("other")));
@@ -394,7 +405,7 @@ class BudgetEnforcerTest {
         RateLimitResult result = enforcer.checkWithSpendCaps(context, model, NOW, SCHEDULE).result();
 
         assertEquals(HttpStatus.OK, result.status());
-        assertEquals(SpendCaps.EMPTY, result.spendCaps());
+        assertEquals(new SpendCap(CalendarPeriod.DAY, BigDecimal.ONE, BigDecimal.TEN, DAY_RESET), result.spendCaps().reported());
         ArgumentCaptorHolder.verifyPayer(context, "ORG/a", "ORG", "alice");
     }
 
@@ -568,6 +579,163 @@ class BudgetEnforcerTest {
 
     private static BudgetUsage budgetUsage(String day, String month) {
         return new BudgetUsage(new BigDecimal(day), new BigDecimal(month), DAY_RESET, MONTH_RESET);
+    }
+
+    @Test
+    void testIndicatedBudgetPaysOverTheWalk() {
+        index(Map.of("first", policy(1, "10", null), "second", policy(2, "10", null)),
+                Map.of("ORG/a", assignment("first"), "ORG/b", assignment("second")));
+        usage("ORG/b", "0", "0");
+        when(context.getBudgetIndication()).thenReturn("ORG/b");
+
+        assertEquals(HttpStatus.OK, enforcer.check(context, model, NOW, SCHEDULE).result().status());
+        ArgumentCaptorHolder.verifyPayer(context, "ORG/b", "ORG", "alice");
+        verify(defaultBudgets, never()).findDefault(any());
+    }
+
+    @Test
+    void testIndicatedBudgetOfAnotherSubjectIsNotHeld() {
+        index(Map.of("p", policy(1, "10", null)), Map.of("ORG/a", assignment("p"), "ORG/b", assignmentFor("p", "bob")));
+
+        when(context.getBudgetIndication()).thenReturn("ORG/b");
+        RateLimitResult another = enforcer.check(context, model, NOW, SCHEDULE).result();
+        when(context.getBudgetIndication()).thenReturn("ORG/missing");
+        RateLimitResult missing = enforcer.check(context, model, NOW, SCHEDULE).result();
+
+        assertEquals(HttpStatus.FORBIDDEN, another.status());
+        assertEquals(SpendingRefusal.NO_BUDGET, another.refusal());
+        assertEquals("Budget ORG/b is not available to you", another.errorMessage());
+        assertEquals("Budget ORG/missing is not available to you", missing.errorMessage());
+    }
+
+    @Test
+    void testIndicatedBudgetThatDoesNotCoverTheCall() {
+        deployments();
+        incomingPath("strong");
+        Policy claude = policy(1, "10", null);
+        claude.setObject(PolicyObjectSet.of(List.of("claude")));
+        index(Map.of("p", claude, "all", policy(2, "10", null)), Map.of("ORG/a", assignment("p"), "ORG/b", assignment("all")));
+        when(context.getBudgetIndication()).thenReturn("ORG/a");
+
+        RateLimitResult result = enforcer.check(context, model, NOW, SCHEDULE).result();
+
+        assertEquals(HttpStatus.FORBIDDEN, result.status());
+        assertEquals(SpendingRefusal.BUDGET_NOT_APPLICABLE, result.refusal());
+        assertEquals("Budget ORG/a does not cover strong", result.errorMessage());
+        assertTrue(result.isNoBudget());
+    }
+
+    @Test
+    void testIndicatedBudgetUsedUpIsNotReplacedByAnother() {
+        index(Map.of("first", policy(1, "10", null), "second", policy(2, "1", null)),
+                Map.of("ORG/a", assignment("first"), "ORG/b", assignment("second")));
+        usage("ORG/b", "1", "1");
+        when(context.getBudgetIndication()).thenReturn("ORG/b");
+
+        RateLimitResult result = enforcer.check(context, model, NOW, SCHEDULE).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(SpendingRefusal.BUDGET_EXHAUSTED, result.refusal());
+        verify(store, never()).load(eq("ORG"), eq(instance("ORG/a")), any(), anyLong(), any());
+    }
+
+    @Test
+    void testDefaultBudgetPaysOverTheWalk() {
+        index(Map.of("first", policy(1, "10", null), "second", policy(2, "10", null)),
+                Map.of("ORG/a", assignment("first"), "ORG/b", assignment("second")));
+        usage("ORG/b", "0", "0");
+        when(defaultBudgets.findDefault(context)).thenReturn(instance("ORG/b"));
+
+        assertEquals(HttpStatus.OK, enforcer.check(context, model, NOW, SCHEDULE).result().status());
+        ArgumentCaptorHolder.verifyPayer(context, "ORG/b", "ORG", "alice");
+    }
+
+    @Test
+    void testDefaultOnAnotherCostObjectIsNotInEffect() {
+        index(Map.of("first", policy(1, "10", null), "edu", policy(2, "10", null)),
+                Map.of("ORG/a", assignment("first"), "EDU/e1", assignment("edu")));
+        usage("ORG/a", "0", "0");
+        when(defaultBudgets.findDefault(context)).thenReturn(config.getCostObjectIndex().getInstances("EDU").getFirst());
+
+        assertEquals(HttpStatus.OK, enforcer.check(context, model, NOW, SCHEDULE).result().status());
+        ArgumentCaptorHolder.verifyPayer(context, "ORG/a", "ORG", "alice");
+    }
+
+    @Test
+    void testDefaultThatDoesNotCoverTheCallRefusesEvenWhenAnotherCovers() {
+        Policy claude = policy(1, "10", null);
+        claude.setObject(PolicyObjectSet.of(List.of("claude")));
+        index(Map.of("p", claude, "all", policy(2, "10", null)), Map.of("ORG/a", assignment("p"), "ORG/b", assignment("all")));
+        when(defaultBudgets.findDefault(context)).thenReturn(instance("ORG/a"));
+
+        RateLimitResult result = enforcer.check(context, model, NOW, SCHEDULE).result();
+
+        assertEquals(HttpStatus.FORBIDDEN, result.status());
+        assertEquals(SpendingRefusal.DEFAULT_BUDGET_NOT_APPLICABLE, result.refusal());
+        assertEquals("Your default budget ORG/a does not cover gpt. Indicate a budget with the X-DIAL-BUDGET header.", result.errorMessage());
+    }
+
+    @Test
+    void testWalkTurnedOffAsksForAnIndication() {
+        config.getSpendingLimits().setAutoBudgetSelection(false);
+        index(Map.of("p", policy(1, "10", null)), Map.of("ORG/a", assignment("p")));
+
+        RateLimitResult result = enforcer.check(context, model, NOW, SCHEDULE).result();
+
+        assertEquals(HttpStatus.FORBIDDEN, result.status());
+        assertEquals(SpendingRefusal.NO_BUDGET, result.refusal());
+        assertEquals("No budget is indicated for gpt. Indicate a budget with the X-DIAL-BUDGET header or set a default budget.",
+                result.errorMessage());
+    }
+
+    @Test
+    void testHeaderCostObjectReachesOnlyBudgetsNamingTheCaller() {
+        when(context.getHeaderCostObject()).thenReturn("ORG");
+        index(Map.of("team", policy(1, "10", null), "ticket", policy(2, "10", null)),
+                Map.of("ORG/a", assignment("team"), "ORG/b", assignmentFor("ticket", "alice")));
+        usage("ORG/b", "0", "0");
+
+        assertEquals(HttpStatus.OK, enforcer.check(context, model, NOW, SCHEDULE).result().status());
+        ArgumentCaptorHolder.verifyPayer(context, "ORG/b", "ORG", "alice");
+
+        when(context.getBudgetIndication()).thenReturn("ORG/a");
+        assertEquals(SpendingRefusal.NO_BUDGET, enforcer.check(context, model, NOW, SCHEDULE).result().refusal());
+    }
+
+    @Test
+    void testShadowLogsDefaultThatDoesNotCover() {
+        config.getSpendingLimits().setMode(SpendingLimitMode.SHADOW);
+        Policy claude = policy(1, "10", null);
+        claude.setObject(PolicyObjectSet.of(List.of("claude")));
+        index(Map.of("p", claude), Map.of("ORG/a", assignment("p")));
+        when(defaultBudgets.findDefault(context)).thenReturn(instance("ORG/a"));
+
+        assertEquals(HttpStatus.OK, enforcer.check(context, model, NOW, SCHEDULE).result().status());
+    }
+
+    @Test
+    void testWithSpendCapsKeepsNotApplicableRefusalInsideCore() {
+        Policy claude = policy(1, "10", null);
+        claude.setObject(PolicyObjectSet.of(List.of("claude")));
+        index(Map.of("p", claude), Map.of("ORG/a", assignment("p")));
+        when(context.getBudgetIndication()).thenReturn("ORG/a");
+
+        RateLimitResult result = enforcer.checkWithSpendCaps(context, model, NOW, SCHEDULE).result();
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, result.status());
+        assertEquals(SpendingRefusal.BUDGET_NOT_APPLICABLE, result.refusal());
+        assertTrue(result.isClientRetryDisabled());
+    }
+
+    private static PolicyAssignment assignmentFor(String policy, String sub) {
+        PolicySubjectRule rule = new PolicySubjectRule();
+        rule.setSource("sub");
+        rule.setFunction(PolicySubjectRule.Function.EQUAL);
+        rule.setTargets(List.of(sub));
+        PolicyAssignment assignment = new PolicyAssignment();
+        assignment.setPolicy(policy);
+        assignment.setSubject(List.of(rule));
+        return assignment;
     }
 
     private void index(Map<String, Policy> policies, Map<String, PolicyAssignment> assignments) {

@@ -14,6 +14,7 @@ import com.epam.aidial.core.server.function.FilterAllowedToolsFn;
 import com.epam.aidial.core.server.function.RewriteMcpUiDomainFn;
 import com.epam.aidial.core.server.limiter.RateLimitResult;
 import com.epam.aidial.core.server.limiter.RateLimiter;
+import com.epam.aidial.core.server.limiter.budget.BudgetHeaders;
 import com.epam.aidial.core.server.log.AnalyticsLogContext;
 import com.epam.aidial.core.server.log.LogStore;
 import com.epam.aidial.core.server.mcp.McpClientUtils;
@@ -120,6 +121,7 @@ public class McpProxyController implements Controller {
             if (!useAllowedTools && !accessService.hasAdminAccess(context)) {
                 throw new HttpException(HttpStatus.FORBIDDEN, "Only admin is allowed to view all tools");
             }
+            BudgetHeaders.verifyRootCall(context);
             Deployment deployment = deploymentService.findCallableDeployment(context, deploymentId);
             consentService.verifyUserConsent(context, deployment);
             validateDeployment(deployment);

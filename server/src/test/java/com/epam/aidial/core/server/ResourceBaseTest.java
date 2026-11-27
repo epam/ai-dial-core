@@ -231,6 +231,15 @@ public class ResourceBaseTest {
                             return Future.succeededFuture(createClaims("user", authorization.substring("user@".length())));
                         }
 
+                        if (authorization.startsWith("path:")) {
+                            String[] subAndClaim = authorization.substring("path:".length()).split("@", -1);
+                            return Future.succeededFuture(createSubjectClaims(subAndClaim[0], subAndClaim[1].isEmpty() ? null : subAndClaim[1], true));
+                        }
+
+                        if (authorization.startsWith("nopath:")) {
+                            return Future.succeededFuture(createSubjectClaims(authorization.substring("nopath:".length()), null, false));
+                        }
+
                         if (authorization.startsWith("azp:")) {
                             return Future.succeededFuture(createWorkloadClaims(authorization.substring("azp:".length())));
                         }
@@ -288,7 +297,16 @@ public class ResourceBaseTest {
     static ExtractedClaims createClaims(String role, String project) {
         ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
         claims.put("title", "Manager");
-        return new ExtractedClaims(role, List.of(role), role, claims, project, role + " user", null);
+        return new ExtractedClaims(role, List.of(role), role, claims, project, role + " user", null, project != null);
+    }
+
+    // A user of role "user" with the subject sub in the token ("path:<sub>@<claim>", "nopath:<sub>"), from an IdP that
+    // sets costObjectPath or not; the claim is absent for "path:<sub>@".
+    static ExtractedClaims createSubjectClaims(String sub, String costObject, boolean costObjectPathSet) {
+        ObjectNode claims = ProxyUtil.MAPPER.createObjectNode();
+        claims.put("sub", sub);
+        claims.put("title", "Manager");
+        return new ExtractedClaims(sub, List.of("user"), sub, claims, costObject, sub + " user", null, costObjectPathSet);
     }
 
     // A workload (service-principal) JWT carrying an azp claim and no user roles.

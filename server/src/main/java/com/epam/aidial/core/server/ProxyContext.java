@@ -91,6 +91,11 @@ public class ProxyContext {
     private List<String> userRoles;
     // the cost object the identity provider resolved from the caller's token at costObjectPath
     private String claimCostObject;
+    // the root request's X-DIAL-BUDGET, <costObject>/<id>, checked; null when it indicates none
+    private String budgetIndication;
+    // the cost object the root request's headers named where the identity provider has no costObjectPath: the
+    // indicated budget's, else X-DIAL-COST-OBJECT; null when they name none or the default
+    private String headerCostObject;
     // what the pre-call budget check found, for the analytics row and the charge; null when budgets were not considered
     private BudgetCheck budgetCheck;
     private String userHash;
@@ -175,6 +180,8 @@ public class ProxyContext {
         this.key = apiKeyData.getOriginalKey();
         if (apiKeyData.getPerRequestKey() != null) {
             initExtractedClaims(apiKeyData.getExtractedClaims(), apiKeyData.getOriginalKey());
+            this.budgetIndication = apiKeyData.getBudgetIndication();
+            this.headerCostObject = apiKeyData.getHeaderCostObject();
             this.traceId = apiKeyData.getTraceId();
             this.parentSpanId = apiKeyData.getSpanId();
             this.sourceDeployment = apiKeyData.getSourceDeployment();
@@ -282,8 +289,8 @@ public class ProxyContext {
     }
 
     /**
-     * The cost object the root caller's calls are charged to: the token's claim, the API key's project, or
-     * {@code spendingLimits.defaultCostObject} of the current config.
+     * The cost object the root caller's calls are charged to: the cost object the root request's budget headers named,
+     * the token's claim, the API key's project, or {@code spendingLimits.defaultCostObject} of the current config.
      */
     public String getCostObject() {
         return resolveCostObject().id();
@@ -294,7 +301,7 @@ public class ProxyContext {
     }
 
     private CostObject resolveCostObject() {
-        return CostObject.resolve(claimCostObject, key, () -> getConfig().getSpendingLimits());
+        return CostObject.resolve(headerCostObject, claimCostObject, key, () -> getConfig().getSpendingLimits());
     }
 
     /**

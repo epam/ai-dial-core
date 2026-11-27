@@ -41,7 +41,7 @@ On a 200 answer to `POST /openai/v1/responses` or `POST /openai/responses`, Core
 - **THEN** that request's answer reports `60`, and the caller's next request reports `70`
 
 ### Requirement: No Codex headers without a cost cap
-Core SHALL NOT send any `x-codex-*` header when the caller's caps come from the role cost limit and the caller has no day, week or month cost limit, or only limits too large to enforce, or a limit of 0; when the caller's caps come from budgets and the caller does not have exactly one budget in their cost object, or that budget sets no window below 2^53; or when the upstream answer is not 200.
+Core SHALL NOT send any `x-codex-*` header when the caller's caps come from the role cost limit and the caller has no day, week or month cost limit, or only limits too large to enforce, or a limit of 0; when the caller's caps come from budgets and the budget reported under "The payer is reported" sets no window below 2^53, or there is none; or when the upstream answer is not 200.
 
 #### Scenario: Uncapped caller
 - **WHEN** a caller whose role sets no day, week or month cost limit sends a Responses request
@@ -52,8 +52,8 @@ Core SHALL NOT send any `x-codex-*` header when the caller's caps come from the 
 - **THEN** the answer carries no `x-codex-*` header
 
 #### Scenario: Several budgets
-- **WHEN** `spendingLimits.mode` is `enforce` and a JWT caller with two budgets in their cost object sends a
-  Responses request that the upstream answers 200
+- **WHEN** `spendingLimits.mode` is `enforce`, a JWT caller has two budgets in their cost object, and the one that
+  pays sets only a day amount of 2^53, and the caller sends a Responses request that the upstream answers 200
 - **THEN** the answer carries no `x-codex-*` header
 
 #### Scenario: Budget too large to report
@@ -129,7 +129,7 @@ For a Responses request to a deployment that Core serves through a translator, w
 - **THEN** Core answers the `usage_limit_reached` 429 without calling the translator
 
 ### Requirement: Budgets decide the caps in enforce mode
-When `spendingLimits.mode` is `enforce`, for a JWT caller of a model on `POST /anthropic/v1/messages`, `POST /openai/v1/responses` and `POST /openai/responses`, and for a JWT caller of `GET /anthropic/api/oauth/usage`, Core SHALL take the spend caps from the caller's budget and SHALL NOT read or enforce the role cost limit; the cost object is the token's project claim or `defaultCostObject`. A JWT caller of anything else SHALL get no caps. API key callers and other modes keep the role limit.
+When `spendingLimits.mode` is `enforce`, for a JWT caller of a model on `POST /anthropic/v1/messages`, `POST /openai/v1/responses` and `POST /openai/responses`, and for a JWT caller of `GET /anthropic/api/oauth/usage`, Core SHALL take the spend caps from the caller's budget in the effective cost object and SHALL NOT read or enforce the role cost limit. A JWT caller of anything else SHALL get no caps. API key callers and other modes keep the role limit.
 
 #### Scenario: Project budget reported on Messages
 - **WHEN** a caller whose token carries project `projA` has one budget in `projA` with a day amount of $10 and $8.20
@@ -164,19 +164,28 @@ When `spendingLimits.mode` is `enforce`, for a JWT caller of a model on `POST /a
   to an application that answers 200
 - **THEN** Core answers 200
 
-### Requirement: Only a single budget is reported
-Under the requirement above, Core SHALL report a budget only when the caller has exactly one unexpired cost budget that matches the caller in their cost object, counted whatever models the budgets cover. Otherwise Core SHALL send no `anthropic-ratelimit-unified-*` and no `x-codex-*` header on a 200 answer, and `GET /anthropic/api/oauth/usage` SHALL return `{"limits":[]}`.
+### Requirement: The payer is reported
+Under the requirement above, the answer to a call to a model SHALL report the budget that pays it, whichever the indication, the default budget or the walk resolved, never a blend. `GET /anthropic/api/oauth/usage` SHALL report a budget only when the caller has exactly one unexpired cost budget that matches the caller in their cost object, counted whatever models the budgets cover, and SHALL return `{"limits":[]}` otherwise.
 
 #### Scenario: Two budgets in the cost object
-- **WHEN** a caller whose token carries project `projA` matches two budgets in `projA`, each with room, and sends a
-  Messages request that the upstream answers 200
-- **THEN** the answer carries no `anthropic-ratelimit-unified-*` header, and the usage endpoint returns
-  `{"limits":[]}`
+- **WHEN** a caller whose token carries project `projA` matches two budgets in `projA`, each with room, the walk
+  picks the first at 82% of its day amount, and the caller sends a Messages request that the upstream answers 200
+- **THEN** the answer carries `anthropic-ratelimit-unified-overage-utilization: 0.82`, and the usage endpoint
+  returns `{"limits":[]}`
+
+#### Scenario: Indicated budget reported
+- **WHEN** the same caller indicates the second budget, at 40% of its day amount, and sends a Responses request that
+  the upstream answers 200
+- **THEN** the answer carries `x-codex-primary-used-percent: 40`
+
+#### Scenario: Default budget reported
+- **WHEN** the caller's default is the second budget and they send a Responses request without an indication that
+  the upstream answers 200
+- **THEN** the answer carries `x-codex-primary-used-percent: 40`
 
 #### Scenario: Second budget covers another model
-- **WHEN** the caller matches a budget in `projA` for every model and another one in `projA` only for `claude-opus`,
-  and sends a Responses request for another model that the upstream answers 200
-- **THEN** the answer carries no `x-codex-*` header
+- **WHEN** the caller matches a budget in `projA` for every model and another one in `projA` only for `claude-opus`
+- **THEN** the usage endpoint returns `{"limits":[]}`
 
 #### Scenario: Budget in another cost object
 - **WHEN** a caller whose token carries project `projA` has one budget in `projA` and one in the default cost object
@@ -184,7 +193,7 @@ Under the requirement above, Core SHALL report a budget only when the caller has
 
 #### Scenario: Expired budget not counted
 - **WHEN** the caller matches two budgets in their cost object and the assignment of one has expired
-- **THEN** Core reports the other one
+- **THEN** the usage endpoint reports the other one
 
 #### Scenario: No budget
 - **WHEN** the caller matches no budget in their cost object
@@ -223,7 +232,7 @@ Of the reported budget's windows, Core SHALL report the fullest one, or once a w
   `anthropic-ratelimit-unified-overage-reset` of a Messages answer
 
 ### Requirement: Exhausted budgets rejected in the client's format
-Under the first requirement, for a deployment that is not translated, when no budget that covers the model has room in every window it sets, Core SHALL reject the request before contacting the upstream with the route's spend-cap 429: `billing_error` on Messages, `usage_limit_reached` on Responses. It SHALL name the used-up window and reset of the budget that can pay again first, the earlier budget in priority order on a tie, and SHALL win over a token or request limit.
+Under the first requirement, for a deployment that is not translated, when the budget that would pay (indicated, default or every walk candidate) has no room in a window it sets, Core SHALL reject the request before contacting the upstream with the route's spend-cap 429: `billing_error` on Messages, `usage_limit_reached` on Responses. It SHALL name the used-up window and reset of the budget that can pay again first, the earlier by priority on a tie, and SHALL win over a token or request limit.
 
 #### Scenario: One budget, day exhausted, Messages
 - **WHEN** a caller who has spent $10 of their one budget's $10 day amount sends a Messages request
@@ -252,8 +261,14 @@ Under the first requirement, for a deployment that is not translated, when no bu
 - **THEN** the answer names the window of the first budget in priority order
 
 #### Scenario: One of several budgets has room
-- **WHEN** a caller matches two budgets that cover the model, the first is exhausted and the second has room
-- **THEN** the request reaches the upstream and the answer carries no `x-codex-*` header
+- **WHEN** a caller matches two budgets that cover the model, the first is exhausted and the second, at 40% of its day
+  amount, has room, and the upstream answers the Responses request 200
+- **THEN** the request reaches the upstream and the answer carries `x-codex-primary-used-percent: 40`
+
+#### Scenario: Indicated budget exhausted, another has room
+- **WHEN** a caller indicates a budget that has used its month amount and holds another budget with room, and sends a
+  Responses request
+- **THEN** Core answers the `usage_limit_reached` 429 with `error.limit_window_minutes` `43200`
 
 #### Scenario: Exhausted budget wins over a token limit
 - **WHEN** a caller's budgets are exhausted and the model's per-minute token limit is reached too

@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EffectiveBudgetsTest {
@@ -390,6 +392,51 @@ class EffectiveBudgetsTest {
             call.run();
         }
         return (System.nanoTime() - start) / measured;
+    }
+
+    @Test
+    void testHeldBudgetIsFoundWhateverItCovers() {
+        Policy claude = costPolicy(1, PolicyObjectSet.of(List.of("claude")));
+        CostObjectIndex index = CostObjectIndex.build(Map.of("p", claude), Map.of("projA/t1", assignment("p", null, equal("sub", "alice"))), Map.of());
+
+        BudgetInstance held = EffectiveBudgets.findHeld(index, COST_OBJECT, "projA/t1", user("alice"), NOW, true);
+
+        assertEquals("projA/t1", held.id());
+        assertFalse(EffectiveBudgets.isCovered(held, List.of("gpt")));
+        assertTrue(EffectiveBudgets.isCovered(held, List.of("claude")));
+    }
+
+    @Test
+    void testBudgetNotHeld() {
+        Map<String, Policy> policies = Map.of("p", costPolicy(1, PolicyObjectSet.all()), "tokens", policy(1, PolicyObjectSet.all()));
+        Map<String, PolicyAssignment> assignments = Map.of(
+                "projA/bob", assignment("p", null, equal("sub", "bob")),
+                "projA/old", assignment("p", "2026-11-01T00:00:00Z", anyone()),
+                "projA/tok", assignment("tokens", null, anyone()));
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments, Map.of());
+
+        assertNull(EffectiveBudgets.findHeld(index, COST_OBJECT, "projA/bob", user("alice"), NOW, true));
+        assertNull(EffectiveBudgets.findHeld(index, COST_OBJECT, "projA/old", user("alice"), NOW, true));
+        assertNull(EffectiveBudgets.findHeld(index, COST_OBJECT, "projA/tok", user("alice"), NOW, true));
+        assertNull(EffectiveBudgets.findHeld(index, COST_OBJECT, "projA/missing", user("alice"), NOW, true));
+    }
+
+    @Test
+    void testUnattestedCostObjectSkipsTrueRules() {
+        Map<String, Policy> policies = Map.of("p", costPolicy(1, PolicyObjectSet.all()));
+        Map<String, PolicyAssignment> assignments = Map.of(
+                "projA/team", assignment("p", null, anyone()),
+                "projA/open", assignment("p", null, List.of()),
+                "projA/mixed", assignment("p", null, List.of(rule("sub", PolicySubjectRule.Function.TRUE),
+                        rule("sub", PolicySubjectRule.Function.EQUAL, "alice"))));
+        CostObjectIndex index = CostObjectIndex.build(policies, assignments, Map.of());
+
+        assertNull(EffectiveBudgets.findHeld(index, COST_OBJECT, "projA/team", user("alice"), NOW, false));
+        assertNull(EffectiveBudgets.findHeld(index, COST_OBJECT, "projA/open", user("alice"), NOW, false));
+        assertEquals("projA/mixed", EffectiveBudgets.findHeld(index, COST_OBJECT, "projA/mixed", user("alice"), NOW, false).id());
+        assertNull(EffectiveBudgets.findHeld(index, COST_OBJECT, "projA/mixed", user("dave"), NOW, false));
+        assertEquals(List.of("projA/mixed"), ids(EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), List.of("gpt"), NOW, false)));
+        assertEquals(3, EffectiveBudgets.resolve(index, COST_OBJECT, user("alice"), List.of("gpt"), NOW, true).size());
     }
 
     private static PolicyPackage engineering() {

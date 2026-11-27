@@ -52,8 +52,8 @@ resetting spend or changing limits, priority order or enforcement. No locale sel
 
 ## Default budget
 
-A user can pick one budget they hold as their **default budget**. Later versions use it to pay the user's calls that
-name no budget; in this version Core only stores it. Only the user picks it: an admin cannot set it, and neither an
+A user can pick one budget they hold as their **default budget**. It pays the user's calls that indicate no budget,
+when it is on the call's cost object (see [Which budget pays a call](#which-budget-pays-a-call)). Only the user picks it: an admin cannot set it, and neither an
 API key nor an application calling with a per-request key can read or set it (403).
 
 - `GET /v1/user/budgets/default` answers `{"budget": "<costObject>/<id>"}`, or `{"budget": null}` when no default is
@@ -68,6 +68,46 @@ The id is the path of the assignment that grants the budget, `<costObject>/<id>`
 self-applying policy. The default works in every `spendingLimits.mode`. Core keeps it as a private record in the
 user's bucket, which the files and resource APIs cannot reach. A default whose budget is withdrawn stays stored and
 reads as unset. It counts again if the same assignment is granted back.
+
+## Which budget pays a call
+
+The budget that pays a JWT caller's call to a model is **declared**, not chosen by Core:
+
+1. **The indication.** `X-DIAL-BUDGET: <costObject>/<id>` names the budget instance that pays: an assignment, or a
+   self-applying policy. It is the only payer: when the caller does not hold it (no such budget, another subject's,
+   expired) the call gets 403 `no_budget`, the same message in each case; when it does not cover the call, 403
+   `budget_not_applicable`, naming the deployment the caller asked for; when it is used up, 429 `budget_exhausted`.
+   Core never lets another budget pay instead.
+2. **The default budget**, when the call indicates none and the default is on the call's cost object. When it does not
+   cover the call, 403 `default_budget_not_applicable`, even when another budget would cover it; used up, 429. A default
+   on another cost object is skipped.
+3. **The walk**, when `spendingLimits.autoBudgetSelection` is `true` (the default): the first budget of the cost
+   object, by priority, that covers the call and has room, as before. With `false` the call gets 403 `no_budget` asking
+   to indicate a budget.
+
+With `spendingLimits.budgetMandatory: true` (default `false`) a call that indicates no budget gets 400
+`budget_indication_required`.
+
+**The cost object of a call** is the token's claim at `identityProviders.*.costObjectPath`, else
+`spendingLimits.defaultCostObject`: a token without the claim is charged to the default. An indicated budget on
+another cost object gets 400 `cost_object_mismatch`, whose message names the call's cost object and where it came
+from. Where the identity provider sets no `costObjectPath`, the request can name the cost object instead: the
+indicated budget's own, or `X-DIAL-COST-OBJECT: <name>` when nothing is indicated. Where `costObjectPath` is set,
+`X-DIAL-COST-OBJECT` is ignored.
+
+**A cost object named by a header attests nothing.** A budget whose subject reaches everybody (`"function": "TRUE"`,
+"everyone on this cost object") pays only when the cost object came from the claim or the default. Through a header,
+a budget pays only through a subject rule that names the caller, such as `sub` or another claim.
+
+**Calls an application makes** with its per-request key use the indication and the header cost object of the user's
+request: their own `X-DIAL-BUDGET` and `X-DIAL-COST-OBJECT` are ignored. The indication is looked up again on each
+call, so a budget withdrawn mid-session refuses the next call with 403. API key callers are not paid by budgets yet,
+and Core ignores both headers on their calls.
+
+The 400s (`invalid_budget_indication` for an `X-DIAL-BUDGET` that is not `<costObject>/<id>`, `invalid_cost_object`
+for an `X-DIAL-COST-OBJECT` that is not one name, `cost_object_mismatch`, `budget_indication_required`) are checked on
+the user's request to any deployment, in every `spendingLimits.mode`, `off` included. In `shadow` mode the 403s and
+429s are logged and counted but do not refuse the call.
 
 ## Rollout
 
@@ -139,13 +179,13 @@ right after `project`:
 | Key           | Value                                                                                                  |
 |---------------|--------------------------------------------------------------------------------------------------------|
 | `mode`        | `spendingLimits.mode`: `off`, `shadow` or `enforce`. Always present; with `off` it is the only key       |
-| `cost_object` | The cost object the call is charged to: the token's project claim, or `spendingLimits.defaultCostObject` when the token has none |
-| `outcome`     | `paid`: a budget pays. `no_budget`: no budget covers the caller and the model. `exhausted`: every such budget is used up. Absent when a budget counter could not be read |
+| `cost_object` | The cost object the call is charged to: the token's project claim, the cost object the request named where the identity provider sets no `costObjectPath`, or `spendingLimits.defaultCostObject` |
+| `outcome`     | `paid`: a budget pays. `no_budget`: a 403 refusal: no budget covers the caller and the model, the indicated or default budget is not held or does not cover the call, or the walk is off. `exhausted`: the budget that would pay is used up. Absent when a budget counter could not be read |
 | `policy`      | With `paid`: the path of the budget's policy, as `budgets[].policy` of `GET /v1/user/limits` reports it |
 | `assignment`  | With `paid`: the path of the policy assignment that grants the budget, `<costObject>/<id>`; absent for a policy that applies by itself |
 
-The paying budget is the one the check before the call picked: the first budget of the caller's cost object, by
-priority, that covers the model and has room. The call's cost is charged to it after the call, in `shadow` mode as in
+The paying budget is the one the check before the call resolved: the indicated budget, the default budget, or the
+first budget of the caller's cost object, by priority, that covers the model and has room. The call's cost is charged to it after the call, in `shadow` mode as in
 `enforce` mode. `user.id` is the user's hash; `spending_limits` does not carry the user.
 
 In `enforce` mode a call with `exhausted` is refused with 429, `retry-after` and error code `budget_exhausted`, and a
@@ -160,7 +200,8 @@ call with `no_budget` with 403 and error code `no_budget`, except on the Message
 
 Core writes no analytics row for a refused call, so `no_budget` and `exhausted` appear in `shadow` mode only, where
 the call goes through. The metric `dial_budget_rejections_total` counts refusals in both modes, with `reason` set to
-the error code (`no_budget` or `budget_exhausted`) and `mode` to `spendingLimits.mode`.
+the error code (`no_budget`, `budget_not_applicable`, `default_budget_not_applicable`, `budget_exhausted`, or one of the
+400 codes) and `mode` to `spendingLimits.mode`.
 
 A row has no `spending_limits` when:
 
@@ -189,7 +230,8 @@ came from. It follows `spending_limits`, or `project` when the row has none:
 "cost_object": { "id": "project-a", "source": "claim" },
 ```
 
-`source` is `claim` (the token's claim at `identityProviders.*.costObjectPath`), `key` (the API key's project) or
-`default` (`spendingLimits.defaultCostObject`). `project` stays in the row while consumers move to `cost_object`. The
+`source` is `claim` (the token's claim at `identityProviders.*.costObjectPath`), `key` (the API key's project),
+`header` (the cost object the user's request named with `X-DIAL-COST-OBJECT` or `X-DIAL-BUDGET`, where the identity
+provider sets no `costObjectPath`) or `default` (`spendingLimits.defaultCostObject`). `project` stays in the row while consumers move to `cost_object`. The
 row a background Responses job writes when it ends carries the cost object of the request that started the job; a job
 started before an upgrade to this version has no `cost_object`.

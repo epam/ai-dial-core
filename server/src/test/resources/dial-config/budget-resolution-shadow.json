@@ -1,0 +1,64 @@
+{
+  "spendingLimits": {
+    "mode": "shadow"
+  },
+  "models": {
+    "m": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m/chat/completions",
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    },
+    "m2": {
+      "type": "chat",
+      "endpoint": "http://localhost:4848/openai/deployments/m2/chat/completions",
+      "pricing": {
+        "unit": "token",
+        "prompt": "0.025",
+        "completion": "0.025"
+      }
+    }
+  },
+  "aliases": {
+    "strong": {
+      "presentAs": "model",
+      "target": {
+        "path": "models/m"
+      }
+    },
+    "hi-end": {
+      "presentAs": "model",
+      "target": {
+        "path": "models/m2"
+      }
+    }
+  },
+  "applications": {
+    "app": {
+      "endpoint": "http://localhost:4848/app/chat/completions"
+    }
+  },
+  "roles": {
+    "user": {
+      "limits": {
+        "m": {},
+        "m2": {},
+        "strong": {},
+        "hi-end": {},
+        "app": {}
+      }
+    },
+    "default": {
+      "limits": {}
+    }
+  },
+  "keys": {
+    "proxyKey1": {
+      "project": "keyProject",
+      "role": "user"
+    }
+  }
+}

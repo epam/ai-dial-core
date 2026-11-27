@@ -17,6 +17,7 @@ import com.epam.aidial.core.server.data.UserLimitStats;
 import com.epam.aidial.core.server.limiter.budget.BudgetCounterStore;
 import com.epam.aidial.core.server.limiter.budget.BudgetEnforcer;
 import com.epam.aidial.core.server.limiter.budget.BudgetPayer;
+import com.epam.aidial.core.server.limiter.budget.DefaultBudgetService;
 import com.epam.aidial.core.server.service.DeploymentService;
 import com.epam.aidial.core.server.token.TokenUsage;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -77,7 +78,8 @@ public class RateLimiter {
         this.resourceService = resourceService;
         this.configStore = configStore;
         this.blockingCallTracer = blockingCallTracer;
-        this.budgetEnforcer = new BudgetEnforcer(new BudgetCounterStore(taskExecutor, resourceService));
+        this.budgetEnforcer = new BudgetEnforcer(new BudgetCounterStore(taskExecutor, resourceService), new DefaultBudgetService(resourceService),
+                taskExecutor);
     }
 
     public Future<Void> increase(

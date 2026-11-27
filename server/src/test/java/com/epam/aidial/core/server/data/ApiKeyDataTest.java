@@ -3,6 +3,7 @@ package com.epam.aidial.core.server.data;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.security.ExtractedClaims;
 import com.epam.aidial.core.server.util.ProxyUtil;
 import io.vertx.core.MultiMap;
 import org.junit.jupiter.api.Test;
@@ -123,6 +124,80 @@ class ApiKeyDataTest {
 
         assertEquals("m1", key.getLentDeployment());
         assertFalse(key.isMadeByAliasPass());
+    }
+
+    @Test
+    void claimPathFlagIsNotStoredWithTheKey() {
+        // a Core without the component refuses a stored key that has it, and only the root request reads it
+        ApiKeyData key = new ApiKeyData();
+        key.setExtractedClaims(new ExtractedClaims("alice", List.of("user"), "hash", ProxyUtil.MAPPER.createObjectNode(), "IMF",
+                "Alice", null, true));
+
+        String json = ProxyUtil.convertToString(key);
+        ApiKeyData read = ProxyUtil.convertToObject(json, ApiKeyData.class);
+
+        assertFalse(json.contains("costObjectPathSet"), json);
+        assertEquals("IMF", read.getExtractedClaims().project());
+        assertFalse(read.getExtractedClaims().costObjectPathSet());
+    }
+
+    @Test
+    void keyStoredWithoutTheClaimPathFlagReads() {
+        String json = "{\"extractedClaims\":{\"userId\":\"alice\",\"userRoles\":[\"user\"],\"userHash\":\"hash\","
+                + "\"userClaims\":{},\"project\":\"IMF\",\"userDisplayName\":\"Alice\",\"userEmail\":null}}";
+
+        ApiKeyData read = ProxyUtil.convertToObject(json, ApiKeyData.class);
+
+        assertEquals("alice", read.getExtractedClaims().userId());
+        assertFalse(read.getExtractedClaims().costObjectPathSet());
+    }
+
+    @Test
+    void rootKeyTakesTheBudgetHeadersOfTheContext() {
+        Deployment app = mock(Deployment.class);
+        when(app.getName()).thenReturn("app");
+        ProxyContext context = contextOf(app, new ApiKeyData());
+        when(context.getBudgetIndication()).thenReturn("IMF/TKT-1");
+        when(context.getHeaderCostObject()).thenReturn("IMF");
+
+        ApiKeyData key = new ApiKeyData();
+        ApiKeyData.initFromContext(key, context);
+
+        assertEquals("IMF/TKT-1", key.getBudgetIndication());
+        assertEquals("IMF", key.getHeaderCostObject());
+    }
+
+    @Test
+    void childKeyKeepsTheRootsBudgetHeaders() {
+        ApiKeyData caller = new ApiKeyData();
+        caller.setPerRequestKey("caller-key");
+        caller.setExecutionPath(List.of("app"));
+        caller.setBudgetIndication("IMF/TKT-1");
+        caller.setHeaderCostObject("IMF");
+        Deployment model = mock(Deployment.class);
+        when(model.getName()).thenReturn("m");
+        ProxyContext context = contextOf(model, caller);
+        // what the application's own call carries is not read
+        when(context.getBudgetIndication()).thenReturn("IMF/other");
+
+        ApiKeyData key = new ApiKeyData();
+        ApiKeyData.initFromContext(key, context);
+
+        assertEquals("IMF/TKT-1", key.getBudgetIndication());
+        assertEquals("IMF", key.getHeaderCostObject());
+    }
+
+    @Test
+    void budgetHeadersAreLeftOutWhenAbsent() {
+        // a Core without these fields refuses a stored key that has them
+        String json = ProxyUtil.convertToString(new ApiKeyData());
+
+        assertFalse(json.contains("budgetIndication"), json);
+        assertFalse(json.contains("headerCostObject"), json);
+
+        ApiKeyData key = new ApiKeyData();
+        key.setBudgetIndication("IMF/TKT-1");
+        assertEquals("IMF/TKT-1", ProxyUtil.convertToObject(ProxyUtil.convertToString(key), ApiKeyData.class).getBudgetIndication());
     }
 
     private static ProxyContext contextOf(Deployment deployment, ApiKeyData apiKeyData) {

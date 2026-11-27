@@ -74,15 +74,16 @@ usage endpoint on `/anthropic/*` then describe a budget.
   (`identityProviders.<idp>.costObjectPath`), or `spendingLimits.defaultCostObject` when the token has none. Set
   `costObjectPath` to the claim that holds the project, for example `project` for the identity provider the `dial`
   launcher uses. The `aud` or `azp` of the sample settings would make the OAuth client id the cost object.
-- **Reported only with one budget.** DIAL reports a budget only when the user has exactly one unexpired budget in
-  that cost object, whatever models it covers. With several, or none, a 200 answer carries no
-  `anthropic-ratelimit-unified-*` header and the usage endpoint returns `{"limits":[]}`, because no single budget
-  says what the user can still spend. `GET /v1/user/usage` still lists every budget in `budgets[]`.
-  It names the user's cost object in `costObject` and the models each budget covers in `object`; which budget of
-  that cost object pays depends on the model and the priority.
+- **The payer is reported.** An answer reports the budget that pays the call: the one indicated with
+  `X-DIAL-BUDGET`, the user's default budget, or the one the priority walk picked (see
+  [Which budget pays a call](dynamic-settings/policies.md#which-budget-pays-a-call)), never a blend. The usage
+  endpoint resolves no payer, so it reports a budget only when the user has exactly one unexpired budget in that cost
+  object, whatever models it covers, and returns `{"limits":[]}` otherwise. `GET /v1/user/usage` still lists every
+  budget in `budgets[]`, with the user's cost object in `costObject` and the models each budget covers in `object`.
 - **Windows.** The budget's `day` and `month` amounts are its caps; a budget has no week window. The cap to report
   and the header values follow the rules above, and an amount of 2^53 or more is not reported.
-- **Used up.** When no budget that covers the model has room in every window it sets, the request is rejected before
+- **Used up.** When the budget that would pay (the indicated one, the default, or every budget the walk considers) has
+  no room in every window it sets, the request is rejected before
   it goes upstream with the `billing_error` 429 below. It names the used-up window and the reset of the budget that
   can pay again first, the first by priority on a tie. This holds with one budget or several, and wins over a token
   or request limit.
