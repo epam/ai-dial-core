@@ -7,6 +7,8 @@ import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.LocalizedValue;
 import com.epam.aidial.core.config.Model;
+import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.config.ToolSet;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.security.AccessService;
@@ -76,6 +78,16 @@ class AliasServiceTest {
         assertEquals("gpt-4", pass.getTargetName());
         assertFalse(pass.isResourceTarget());
         assertInstanceOf(AliasApplicationPass.class, pass);
+        assertTargetDependency(pass, "models/platform/gpt-4");
+    }
+
+    private static void assertTargetDependency(AliasPass pass, String url) {
+        assertEquals(1, pass.getTargetDependencies().size());
+        ResourceDependency dependency = pass.getTargetDependencies().getFirst();
+        assertEquals(ResourceDependency.KIND, dependency.getKind());
+        assertEquals(url, dependency.getTarget().getUrl());
+        assertEquals(ResourceAccessType.READ_ONLY, dependency.getAccess());
+        assertTrue(dependency.isRequired());
     }
 
     @Test
@@ -99,6 +111,7 @@ class AliasServiceTest {
 
         assertEquals("applications/public/app", pass.getTargetName());
         assertTrue(pass.isResourceTarget());
+        assertTargetDependency(pass, "applications/public/app");
     }
 
     @Test

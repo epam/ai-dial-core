@@ -42,7 +42,7 @@ class AliasPassesTest {
         target.setInterfaces(Map.of("openaiChatCompletions", new DeploymentInterface(),
                 "openaiResponses", new DeploymentInterface()));
 
-        Deployment pass = AliasPasses.build(alias(AliasPresentation.MODEL), AliasPresentation.MODEL, target, "gpt-4", false, SELF);
+        Deployment pass = AliasPasses.build(alias(AliasPresentation.MODEL), AliasPresentation.MODEL, target, "gpt-4", false, List.of(), SELF);
 
         assertInstanceOf(Application.class, pass);
         assertInstanceOf(AliasPass.class, pass);
@@ -66,7 +66,7 @@ class AliasPassesTest {
         target.setType(ModelType.EMBEDDING);
         target.setEndpoint("http://adapter/embeddings");
 
-        Deployment pass = AliasPasses.build(alias(AliasPresentation.MODEL), AliasPresentation.MODEL, target, "ada", false, SELF);
+        Deployment pass = AliasPasses.build(alias(AliasPresentation.MODEL), AliasPresentation.MODEL, target, "ada", false, List.of(), SELF);
 
         assertEquals(Set.of("openaiEmbeddings"), pass.getInterfaces().keySet());
     }
@@ -75,7 +75,7 @@ class AliasPassesTest {
     void mcpApplicationKeepsItsMcpBehindTheAlias() {
         Application target = mcpApplication();
 
-        Application pass = (Application) AliasPasses.build(alias(AliasPresentation.APPLICATION), AliasPresentation.APPLICATION, target, "mcp-app", false, SELF);
+        Application pass = (Application) AliasPasses.build(alias(AliasPresentation.APPLICATION), AliasPresentation.APPLICATION, target, "mcp-app", false, List.of(), SELF);
 
         assertEquals("http://localhost:8080/v1/deployments/mcp-app/mcp", pass.getMcp().getEndpoint());
         assertEquals(List.of("search"), pass.getMcp().getAllowedTools());
@@ -87,12 +87,12 @@ class AliasPassesTest {
         toolSet.setEndpoint("http://search/mcp");
         toolSet.setAllowedTools(List.of("find"));
 
-        ToolSet pass = (ToolSet) AliasPasses.build(alias(AliasPresentation.TOOLSET), AliasPresentation.TOOLSET, toolSet, "search", false, SELF);
+        ToolSet pass = (ToolSet) AliasPasses.build(alias(AliasPresentation.TOOLSET), AliasPresentation.TOOLSET, toolSet, "search", false, List.of(), SELF);
         assertEquals("http://localhost:8080/v1/toolset/search/mcp", pass.getEndpoint());
         assertTrue(pass.isForwardPerRequestKey());
         assertEquals(List.of("find"), pass.getAllowedTools());
 
-        ToolSet appPass = (ToolSet) AliasPasses.build(alias(AliasPresentation.TOOLSET), AliasPresentation.TOOLSET, mcpApplication(), "mcp-app", false, SELF);
+        ToolSet appPass = (ToolSet) AliasPasses.build(alias(AliasPresentation.TOOLSET), AliasPresentation.TOOLSET, mcpApplication(), "mcp-app", false, List.of(), SELF);
         assertEquals("http://localhost:8080/v1/deployments/mcp-app/mcp", appPass.getEndpoint());
         assertEquals(List.of("search"), appPass.getAllowedTools());
     }
@@ -102,7 +102,7 @@ class AliasPassesTest {
         Model target = new Model();
         target.setEndpoint("http://adapter/chat");
 
-        Deployment pass = AliasPasses.build(alias(AliasPresentation.MODEL), AliasPresentation.MODEL, target, "gpt 4%", false, SELF);
+        Deployment pass = AliasPasses.build(alias(AliasPresentation.MODEL), AliasPresentation.MODEL, target, "gpt 4%", false, List.of(), SELF);
 
         assertEquals("/openai/deployments/gpt%204%25/chat/completions",
                 pass.getInterfaces().get("openaiChatCompletions").getOverridePaths().get("postAzureOpenaiChatCompletions"));

@@ -1,9 +1,12 @@
 package com.epam.aidial.core.server.security;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.ResourceAccessType;
+import com.epam.aidial.core.config.ResourceDependency;
 import com.epam.aidial.core.server.ProxyContext;
+import com.epam.aidial.core.server.alias.AliasPass;
 import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.AutoSharedData;
 import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
@@ -40,6 +43,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 @ExtendWith(MockitoExtension.class)
 public class AccessServiceTest {
@@ -902,6 +906,48 @@ public class AccessServiceTest {
 
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE), result.get(inNestedFolder));
         assertEquals(Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE), result.get(exactAndFolder));
+    }
+
+    @Test
+    public void testLookupPermissions_AliasTargetPassReadsTheResourceTarget() {
+        // the grant is on the path-encoded url, which must match the descriptor's url
+        ResourceDescriptor target = new ResourceDescriptor(ResourceTypes.APPLICATION, "my app", List.of(), "bucket", "Users/other-user/", false);
+        ResourceDescriptor sibling = new ResourceDescriptor(ResourceTypes.APPLICATION, "other", List.of(), "bucket", "Users/other-user/", false);
+        targetPass("res-alias", "applications/bucket/my%20app");
+        AccessService accessService = accessService(mock(ApplicationSchemaService.class));
+
+        Map<ResourceDescriptor, Set<ResourceAccessType>> result = accessService.lookupPermissions(Set.of(target, sibling), context);
+
+        assertEquals(ResourceAccessType.READ_ONLY, result.get(target));
+        assertTrue(result.get(sibling).isEmpty(), "the grant covers the target only");
+    }
+
+    /**
+     * Makes {@link #context} the target pass of an alias call: its key is the one the alias pass {@code aliasName}
+     * mints for a target at {@code targetUrl}.
+     */
+    private void targetPass(String aliasName, String targetUrl) {
+        Deployment pass = mock(Deployment.class, withSettings().extraInterfaces(AliasPass.class));
+        when(pass.getName()).thenReturn(aliasName);
+        when(((AliasPass) pass).getTargetDependencies()).thenReturn(List.of(new ResourceDependency()
+                .setTarget(new ResourceDependency.Target().setUrl(targetUrl)).setAccess(ResourceAccessType.READ_ONLY)));
+        Alias alias = new Alias();
+        alias.setName(aliasName);
+        when(((AliasPass) pass).getAlias()).thenReturn(alias);
+        ApiKeyData caller = new ApiKeyData();
+        caller.setPerRequestKey("prk");
+        caller.setExecutionPath(List.of("caller"));
+        caller.setHttpHeaders(Map.of("X-CONVERSATION-ID", "conversation"));
+        ProxyContext aliasContext = mock(ProxyContext.class);
+        when(aliasContext.getApiKeyData()).thenReturn(caller);
+        when(aliasContext.getDeployment()).thenReturn(pass);
+        ApiKeyData targetKey = new ApiKeyData();
+        ApiKeyData.initFromContext(targetKey, aliasContext);
+        targetKey.setPerRequestKey("target-prk");
+
+        lenient().when(context.getApiKeyData()).thenReturn(targetKey);
+        lenient().when(context.getSourceDeployment()).thenReturn(aliasName);
+        when(context.getUserId()).thenReturn("user-sub");
     }
 
     @Test

@@ -7,7 +7,6 @@ import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.AuthBucket;
 import com.epam.aidial.core.server.data.consent.Consent;
-import com.epam.aidial.core.server.data.permission.PerRequestSharedData;
 import com.epam.aidial.core.server.log.ResourceDependencyAuditLog;
 import com.epam.aidial.core.server.service.ResourceDependencyValidator;
 import com.epam.aidial.core.server.util.BucketBuilder;
@@ -17,7 +16,6 @@ import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -142,14 +140,7 @@ public class ResolveResourceDependenciesFn<T> extends BaseRequestFunction<T> {
     }
 
     private void bakeGrant(ResourceDescriptor target, Set<ResourceAccessType> requestedAccess) {
-        // copy-on-write: the entry may be shared with the calling key's receivers
-        context.getProxyApiKeyData().getPerRequestSharedResources().merge(target.getUrl(),
-                new PerRequestSharedData(new HashSet<>(requestedAccess)),
-                (existing, added) -> {
-                    Set<ResourceAccessType> union = new HashSet<>(existing.permissions());
-                    union.addAll(added.permissions());
-                    return new PerRequestSharedData(union);
-                });
+        context.getProxyApiKeyData().grant(target.getUrl(), requestedAccess);
     }
 
     private static List<String> requiredUrlsOf(List<ResourceDependency> unresolved) {

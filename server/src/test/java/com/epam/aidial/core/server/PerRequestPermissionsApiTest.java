@@ -402,4 +402,25 @@ public class PerRequestPermissionsApiTest extends ResourceBaseTest {
                 """.formatted(bucket), "api-key", apiKeyData.getPerRequestKey());
         verify(response, 200);
     }
+
+    @Test
+    public void testGrant_ConfigDeploymentRefused() {
+        // even a key that holds READ on a config deployment's url, the right to call it, cannot pass it on
+        ApiKeyData apiKeyData = createAppKey("guest", Map.of());
+        apiKeyData.setPerRequestSharedResources(Map.of("models/platform/chat-gpt-35-turbo", new PerRequestSharedData(Set.of(ResourceAccessType.READ))));
+        apiKeyStore.assignPerRequestApiKey(apiKeyData);
+
+        var response = send(HttpMethod.POST, "/v1/ops/resource/per-request-permissions/grant", null, """
+                {
+                 "resourcePermissions": [
+                   {
+                     "url": "models/platform/chat-gpt-35-turbo",
+                     "permissions": ["READ"]
+                   }
+                 ],
+                 "receiver": "applications/public/app2"
+                }
+                """, "api-key", apiKeyData.getPerRequestKey());
+        verify(response, 403, "Access to resource is forbidden: models/platform/chat-gpt-35-turbo");
+    }
 }

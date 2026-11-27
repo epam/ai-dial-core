@@ -246,6 +246,27 @@ class AliasPublicApiTest extends ResourceBaseTest {
             assertEquals(403, chat("gpt-4-internal", "default-key").status());
         }
         assertEquals(List.of(PUB, "gpt-4-internal"), targetKey.get().getExecutionPath());
+        assertEquals(PUB, targetKey.get().getAliasName());
+    }
+
+    @Test
+    @DialConfigLocation(CONFIG)
+    @SneakyThrows
+    void limitsOfTheTargetFollowTheRolesOfTheStoredAlias() {
+        // mixed-key has the roles default-user and limited-user; limited-user has a limit of 1 token for gpt-4-internal
+        assertEquals(200, putAlias("both-v1", "{\"userRoles\":[\"default-user\",\"limited-user\"],\"target\":{\"path\":\"models/gpt-4-internal\"}}").status());
+        assertEquals(200, putAlias("plain-v1", RESTRICTED_ALIAS).status());
+        try (TestWebServer server = new TestWebServer(4848)) {
+            server.map(HttpMethod.POST, "/openai/deployments/gpt-4/chat/completions", 200, CHAT_RESPONSE,
+                    "Content-Type", "application/json");
+
+            assertEquals(200, chat("aliases/public/both-v1", "mixed-key").status());
+            Thread.sleep(1000); // usage is saved after the answer
+            assertEquals(429, chat("aliases/public/both-v1", "mixed-key").status());
+            // plain-v1 admits default-user only, so the limit of limited-user does not apply through it
+            Response throughPlain = chat("aliases/public/plain-v1", "mixed-key");
+            assertEquals(200, throughPlain.status(), throughPlain.body());
+        }
     }
 
     @Test

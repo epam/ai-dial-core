@@ -212,23 +212,13 @@ public class RouterDecisionFlow {
     }
 
     /**
-     * The alias the client called when this pass is its target pass, lent the router by it: the last name of the
-     * incoming path that is not an interceptor in front of the router, the alias pass's own. Null otherwise.
+     * The alias the client called when this pass is its target pass, granted the router by it: the alias its key names,
+     * which the interceptors in front of the router carry on with the grant. Null otherwise.
      */
     @Nullable
     private String aliasCalled(Router router) {
-        ApiKeyData key = context.getApiKeyData();
-        List<String> path = key.getExecutionPath();
-        if (!DeploymentService.isLent(context, router) || path == null) {
-            return null;
-        }
-        List<String> interceptors = key.getInterceptors() == null ? List.of() : key.getInterceptors();
-        for (String name : path.reversed()) {
-            if (!interceptors.contains(name)) {
-                return name;
-            }
-        }
-        return null;
+        String aliasName = context.getApiKeyData().getAliasName();
+        return aliasName != null && DeploymentService.isGranted(context, router) ? aliasName : null;
     }
 
     /**

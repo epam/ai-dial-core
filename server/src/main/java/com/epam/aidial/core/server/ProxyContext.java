@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
 import com.epam.aidial.core.config.Key;
@@ -138,6 +139,12 @@ public class ProxyContext {
      * current span, the alias pass's, which an origin plugin's call does not.
      */
     private boolean aliasTargetPass;
+    /**
+     * The alias whose target pass this request is, named by the per-request key and found when the deployment is looked
+     * up to be called ({@code DeploymentService.findCallableDeployment}); the rate limits of the target come from the
+     * roles it admits.
+     */
+    private Alias callingAlias;
     // the tree the chain serialised into requestBody, kept for the plugin of an embedded interface until it is called
     private ObjectNode requestTree;
     // the hosts of the in-process calls this pass's plugin makes, one per attempt

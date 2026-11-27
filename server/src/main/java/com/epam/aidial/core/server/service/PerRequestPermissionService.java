@@ -48,6 +48,11 @@ public class PerRequestPermissionService {
     private void validatePermissions(List<ResourcePermission> resourcePermissions, ProxyContext context) {
         for (ResourcePermission resourcePermission : resourcePermissions) {
             ResourceDescriptor resource = ResourceDescriptorFactory.fromAnyUrl(resourcePermission.getUrl(), encryptionService);
+            if (ResourceDescriptor.PLATFORM_BUCKET.equals(resource.getBucketName())) {
+                // READ on a config deployment's url is the right to call it (DeploymentGrants), which only Core grants: a
+                // global reader holds READ on every resource, and could otherwise pass the right to call any model on
+                throw new PermissionDeniedException("Access to resource is forbidden: " + resourcePermission.getUrl());
+            }
             Set<ResourceAccessType> expected = resourcePermission.getPermissions();
             Set<ResourceAccessType> actual = accessService.lookupPermissions(resource, context, expected);
             if (!actual.containsAll(expected) || resource.isFolder() && !accessService.mayPassOnFolder(resource, context)) {

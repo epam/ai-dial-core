@@ -1,5 +1,6 @@
 package com.epam.aidial.core.server.limiter;
 
+import com.epam.aidial.core.config.Alias;
 import com.epam.aidial.core.config.CostLimit;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Limit;
@@ -834,14 +835,18 @@ public class RateLimiter {
 
     private Limit getLimitByUser(ProxyContext context, RoleBasedEntity roleBasedEntity) {
         String name = roleBasedEntity.getName();
+        // the target pass of an alias call: the caller reaches the target through the alias, so the limits are those of
+        // the roles the alias admits; an alias without userRoles takes the target's, as a direct call does
+        Alias alias = context.getCallingAlias();
+        Set<String> requiredRoles = alias != null && alias.getUserRoles() != null && DeploymentService.isGranted(context, roleBasedEntity)
+                ? alias.getUserRoles() : roleBasedEntity.getUserRoles();
         List<String> userRoles;
-        // the target pass of an alias call: the caller reaches the target through the alias, not through its roles
-        if (roleBasedEntity.getUserRoles() == null || DeploymentService.isLent(context, roleBasedEntity)) {
+        if (requiredRoles == null) {
             // find limits for all user roles
             userRoles = context.getUserRoles();
         } else {
             // find limits for user roles which match to required roles
-            userRoles = context.getUserRoles().stream().filter(role -> roleBasedEntity.getUserRoles().contains(role)).toList();
+            userRoles = context.getUserRoles().stream().filter(requiredRoles::contains).toList();
         }
         Map<String, Role> roles = context.getConfig().getRoles();
         Limit defaultUserLimit = getLimit(roles, DEFAULT_USER_ROLE, name, DEFAULT_LIMIT);
