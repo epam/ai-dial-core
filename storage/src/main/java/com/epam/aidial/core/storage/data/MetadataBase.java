@@ -42,7 +42,7 @@ public abstract class MetadataBase {
     @ApiSchema(nullable = true)
     private String name;
     /**
-     * {@code null} for the bucket root folder.
+     * {@code null} for the bucket root folder and for resources directly in the bucket root.
      */
     @ApiSchema(nullable = true)
     private String parentPath;
