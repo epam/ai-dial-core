@@ -99,14 +99,19 @@ encoded resource name.
 - **THEN** `POST /v1/admin/validate` reports it `FAILED`
 
 ### Requirement: Who may declare resource dependencies
-While the static setting `applications.allowUserAuthoredDependencies` is `false` (the default), a write of an
-application by a caller without explicit admin access that submits a `resource_dependencies` section **different from
-the stored one** SHALL be answered `403` after the shape rules are checked (a malformed section is `400`). An empty
-section equals an absent one. An admin's write is not gated. With the setting `true`, a user's section SHALL pass the
-same shape rules as an admin's.
+While the static setting `applications.allowUserAuthoredDependencies` is `false`, a write of an application by a caller
+without explicit admin access that submits a `resource_dependencies` section **different from the stored one** SHALL be
+answered `403` after the shape rules are checked (a malformed section is `400`). An empty section equals an absent one.
+An admin's write is not gated. With the setting `true` (the default), a user's section SHALL pass the same shape rules
+as an admin's.
 
 #### Scenario: User creates an application with an empty section
 - **WHEN** a user sends `PUT /v1/applications/<own bucket>/app` with `"resource_dependencies": []`, the setting off
+- **THEN** Core answers `200`
+
+#### Scenario: User declares with the setting left at its default
+- **WHEN** the setting is not configured and a user sends `PUT /v1/applications/<own bucket>/app` with a valid section
+  declaring `skills/{current-user}/`
 - **THEN** Core answers `200`
 
 ### Requirement: An omitted or unchanged section is inherited
@@ -118,7 +123,7 @@ submits the same list as stored SHALL be accepted.
 - **THEN** Core answers `200`, and the stored list and the approval are kept
 
 #### Scenario: User with the setting off — valid section
-- **WHEN** a user sends `PUT /v1/applications/<own bucket>/app` with a valid section and no stored list
+- **WHEN** a user sends `PUT /v1/applications/<own bucket>/app` with a valid section and no stored list, the setting off
 - **THEN** Core answers `403`
 
 #### Scenario: User with the setting off — malformed section
@@ -134,7 +139,7 @@ submits the same list as stored SHALL be accepted.
 - **THEN** Core answers `200`, and a section declaring `{current-user}/` is answered `400`
 
 #### Scenario: No admin rules
-- **WHEN** no admin rules are configured and a user writes a valid section
+- **WHEN** no admin rules are configured and a user writes a valid section, the setting off
 - **THEN** Core answers `403`
 
 ### Requirement: Admin consent is for administrators
@@ -259,7 +264,6 @@ application created again at a deleted one's id SHALL start unapproved.
 #### Scenario: Delete and create again
 - **WHEN** an approved application is deleted and created again with the same list
 - **THEN** `GET /v1/admin-consent/<id>` answers `{"consented": false}`
-
 
 #### Scenario: Move and copy
 - **WHEN** an approved application is moved, and another is copied from it
