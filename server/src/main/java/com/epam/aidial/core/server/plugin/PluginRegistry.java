@@ -1,6 +1,7 @@
 package com.epam.aidial.core.server.plugin;
 
 import com.epam.aidial.core.plugin.PluginProvider;
+import com.epam.aidial.core.plugin.SharedPackages;
 import com.google.common.annotations.VisibleForTesting;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -11,7 +12,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -73,10 +73,11 @@ public final class PluginRegistry {
             throw new IllegalStateException("plugins.include is empty: name the plugin directories to load, or set plugins.exclude to * to load none");
         }
         List<String> exclude = patterns(settings, "exclude", "");
-        ClassLoader parent = PluginRegistry.class.getClassLoader();
+        ClassLoader core = PluginRegistry.class.getClassLoader();
         Map<String, PluginProvider> providers = new HashMap<>();
         Map<String, String> originByType = new HashMap<>();
-        addProviders(ServiceLoader.load(PluginProvider.class, parent).stream(), "the classpath", providers, originByType);
+        Map<String, ClassLoader> directoryLoaderByType = new HashMap<>();
+        addProviders(core, "the classpath", providers, originByType);
         for (Path pluginDir : listPluginDirs(dir)) {
             String group = pluginDir.getParent().getFileName().toString();
             String plugin = pluginDir.getFileName().toString();
@@ -89,15 +90,18 @@ public final class PluginRegistry {
             if (jars.providerClasses().isEmpty()) {
                 throw new IllegalStateException("Plugin directory %s (%s) registers no plugin provider".formatted(id, pluginDir.toAbsolutePath()));
             }
-            // Parent first, so Core's classes win over a plugin's copy; never closed since providers live as long as
-            // Core. The loader also finds the classpath's providers through its parent: keep the ones its jars register.
-            // Each registered class is created or fails the load, so types is never empty here
-            ClassLoader loader = new URLClassLoader(jars.urls().toArray(URL[]::new), parent);
-            List<String> types = addProviders(ServiceLoader.load(PluginProvider.class, loader).stream()
-                            .filter(provider -> jars.providerClasses().contains(provider.type().getName())),
-                    "plugin directory " + id, providers, originByType);
+            // Sees the JDK, its own jars and SharedPackages from Core's loader; never closed since providers live as
+            // long as Core
+            ClassLoader loader = new PluginClassLoader(jars.urls().toArray(URL[]::new), core);
+            List<String> types = addProviders(loader, "plugin directory " + id, providers, originByType);
+            types.forEach(type -> directoryLoaderByType.put(type, loader));
             log.info("Loaded plugin directory {}: types {}", id, types);
         }
+        // Wrapped last, so the checks above name the providers' own classes
+        directoryLoaderByType.forEach(
+            (type, loader) -> providers.compute(
+                type, (ignored, provider) -> new ScopedPlugins.ScopedProvider(provider, loader)
+            ));
         return new PluginRegistry(Map.copyOf(providers));
     }
 
@@ -106,11 +110,11 @@ public final class PluginRegistry {
         return providers.get(type);
     }
 
-    private static List<String> addProviders(Stream<ServiceLoader.Provider<PluginProvider>> found, String origin,
+    private static List<String> addProviders(ClassLoader loader, String origin,
                                              Map<String, PluginProvider> providers, Map<String, String> originByType) {
         List<String> types = new ArrayList<>();
-        try {
-            for (PluginProvider provider : found.map(ServiceLoader.Provider::get).toList()) {
+        try (PluginClassLoaderScope ignored = PluginClassLoaderScope.enter(loader)) {
+            for (PluginProvider provider : ServiceLoader.load(PluginProvider.class, loader).stream().map(ServiceLoader.Provider::get).toList()) {
                 String type = provider.type();
                 if (type == null || type.isBlank()) {
                     throw new IllegalStateException("Plugin provider %s of %s declares no type".formatted(provider.getClass().getName(), origin));
@@ -200,9 +204,27 @@ public final class PluginRegistry {
         // ServiceLoader loads a provider class registered by two jars once, from the first jar: an old jar left beside
         // its new version would win without a word
         Map<String, Path> registeredBy = new HashMap<>();
+        Map<String, Integer> sharedCountsByPackage = new java.util.TreeMap<>();
+        List<String> sharedJars = new ArrayList<>();
+        int sharedJarCount = 0;
         for (Path jar : listSorted(pluginDir).stream().filter(PluginRegistry::isJar).toList()) {
             // URLClassLoader skips a jar it cannot open without a word: open each one here so a broken jar stops the start
             try (JarFile file = new JarFile(jar.toFile())) {
+                boolean hasSharedClasses = false;
+                var entries = file.entries();
+                while (entries.hasMoreElements()) {
+                    String sharedPackage = resolveSharedPackage(entries.nextElement().getName());
+                    if (sharedPackage != null) {
+                        hasSharedClasses = true;
+                        sharedCountsByPackage.merge(sharedPackage, 1, Integer::sum);
+                    }
+                }
+                if (hasSharedClasses) {
+                    sharedJarCount++;
+                    if (sharedJars.size() < 10) {
+                        sharedJars.add(jar.getFileName().toString());
+                    }
+                }
                 for (String provider : providerNames(file)) {
                     Path other = registeredBy.putIfAbsent(provider, jar);
                     if (other != null) {
@@ -215,7 +237,32 @@ public final class PluginRegistry {
                 throw new IllegalStateException("Cannot open plugin jar " + jar.toAbsolutePath() + ": " + e.getMessage(), e);
             }
         }
+        if (sharedJarCount > 0) {
+            log.warn("Plugin directory {}/{} bundles ignored Shared classes: {} jars, first jars {}, package entry counts {}",
+                    pluginDir.getParent().getFileName(), pluginDir.getFileName(), sharedJarCount, sharedJars, sharedCountsByPackage);
+        }
         return new PluginJars(jars, registeredBy.keySet());
+    }
+
+    @Nullable
+    static String resolveSharedPackage(String entry) {
+        if (!entry.endsWith(".class")) {
+            return null;
+        }
+        if (entry.startsWith("META-INF/versions/")) {
+            int versionEnd = entry.indexOf('/', "META-INF/versions/".length());
+            if (versionEnd < 0) {
+                return null;
+            }
+            entry = entry.substring(versionEnd + 1);
+        }
+        String className = entry.substring(0, entry.length() - ".class".length()).replace('/', '.');
+        for (String prefix : SharedPackages.PREFIXES) {
+            if (className.startsWith(prefix)) {
+                return prefix;
+            }
+        }
+        return null;
     }
 
     private static List<Path> listSorted(Path dir) {
