@@ -48,18 +48,10 @@ public final class PluginRegistry {
     private static final String LOST_AND_FOUND = "lost+found";
 
     private final Map<String, PluginProvider> providers;
-    private final Map<String, ClassLoader> classLoadersByType;
 
     @VisibleForTesting
     public PluginRegistry(Map<String, PluginProvider> providers) {
         this.providers = providers;
-        this.classLoadersByType = new HashMap<>();
-        providers.forEach((type, provider) -> classLoadersByType.put(type, provider.getClass().getClassLoader()));
-    }
-
-    private PluginRegistry(Map<String, PluginProvider> providers, Map<String, ClassLoader> classLoadersByType) {
-        this.providers = Map.copyOf(providers);
-        this.classLoadersByType = Map.copyOf(classLoadersByType);
     }
 
     /**
@@ -82,12 +74,10 @@ public final class PluginRegistry {
         }
         List<String> exclude = patterns(settings, "exclude", "");
         ClassLoader core = PluginRegistry.class.getClassLoader();
-        // Ordinary unit fixtures supply Shared on their application classpath; never delegate private lookup there.
-        ClassLoader shared = "dial-core".equals(core.getName()) ? core.getParent() : core;
         Map<String, PluginProvider> providers = new HashMap<>();
         Map<String, String> originByType = new HashMap<>();
-        Map<String, ClassLoader> classLoadersByType = new HashMap<>();
-        addProviders(core, "the classpath", providers, originByType, classLoadersByType);
+        Map<String, ClassLoader> directoryLoaderByType = new HashMap<>();
+        addProviders(core, "the classpath", providers, originByType);
         for (Path pluginDir : listPluginDirs(dir)) {
             String group = pluginDir.getParent().getFileName().toString();
             String plugin = pluginDir.getFileName().toString();
@@ -100,11 +90,16 @@ public final class PluginRegistry {
             if (jars.providerClasses().isEmpty()) {
                 throw new IllegalStateException("Plugin directory %s (%s) registers no plugin provider".formatted(id, pluginDir.toAbsolutePath()));
             }
-            ClassLoader loader = new PluginClassLoader(jars.urls().toArray(URL[]::new), shared);
-            List<String> types = addProviders(loader, "plugin directory " + id, providers, originByType, classLoadersByType);
+            // Sees the JDK, its own jars and SharedPackages from Core's loader; never closed since providers live as
+            // long as Core
+            ClassLoader loader = new PluginClassLoader(jars.urls().toArray(URL[]::new), core);
+            List<String> types = addProviders(loader, "plugin directory " + id, providers, originByType);
+            types.forEach(type -> directoryLoaderByType.put(type, loader));
             log.info("Loaded plugin directory {}: types {}", id, types);
         }
-        return new PluginRegistry(providers, classLoadersByType);
+        // Wrapped last, so the checks above name the providers' own classes
+        directoryLoaderByType.forEach((type, loader) -> providers.compute(type, (ignored, provider) -> new ScopedPlugins.ScopedProvider(provider, loader)));
+        return new PluginRegistry(Map.copyOf(providers));
     }
 
     @Nullable
@@ -112,14 +107,8 @@ public final class PluginRegistry {
         return providers.get(type);
     }
 
-    @Nullable
-    public ClassLoader getClassLoader(String type) {
-        return classLoadersByType.get(type);
-    }
-
     private static List<String> addProviders(ClassLoader loader, String origin,
-                                             Map<String, PluginProvider> providers, Map<String, String> originByType,
-                                             Map<String, ClassLoader> classLoadersByType) {
+                                             Map<String, PluginProvider> providers, Map<String, String> originByType) {
         List<String> types = new ArrayList<>();
         try (PluginClassLoaderScope ignored = PluginClassLoaderScope.enter(loader)) {
             for (PluginProvider provider : ServiceLoader.load(PluginProvider.class, loader).stream().map(ServiceLoader.Provider::get).toList()) {
@@ -133,7 +122,6 @@ public final class PluginRegistry {
                             previous.getClass().getName(), originByType.get(type), provider.getClass().getName(), origin, type));
                 }
                 originByType.put(type, origin);
-                classLoadersByType.put(type, loader);
                 types.add(type);
                 log.info("Loaded plugin provider {} for type '{}'", provider.getClass().getName(), type);
             }

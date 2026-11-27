@@ -42,7 +42,7 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings());
 
-        assertEquals(JarEchoPluginProvider.class.getName(), registry.get(JarEchoPluginProvider.TYPE).getClass().getName());
+        assertEquals(JarEchoPluginProvider.class.getName(), unwrap(registry.get(JarEchoPluginProvider.TYPE)).getClass().getName());
         assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.TYPE));
     }
 
@@ -137,7 +137,7 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings());
 
-        assertEquals(JarEchoPluginProvider.class.getName(), registry.get(JarEchoPluginProvider.TYPE).getClass().getName());
+        assertEquals(JarEchoPluginProvider.class.getName(), unwrap(registry.get(JarEchoPluginProvider.TYPE)).getClass().getName());
     }
 
     @Test
@@ -149,16 +149,16 @@ class PluginRegistryTest {
 
         // One provider class name and one helper class name in both directories: each provider's type() calls the
         // helper of its own directory
-        PluginProvider a = registry.get("type-a");
-        PluginProvider b = registry.get("type-b");
+        PluginProvider a = unwrap(registry.get("type-a"));
+        PluginProvider b = unwrap(registry.get("type-b"));
         assertNotNull(a);
         assertNotNull(b);
         assertEquals(a.getClass().getName(), b.getClass().getName());
         assertNotSame(a.getClass(), b.getClass());
-        assertSame(a.getClass().getClassLoader(), registry.getClassLoader("type-a"));
-        assertSame(b.getClass().getClassLoader(), registry.getClassLoader("type-b"));
-        assertSame(PluginRegistry.class.getClassLoader(), registry.getClassLoader(TestEchoPluginProvider.TYPE));
-        assertNull(registry.getClassLoader("missing"));
+        // Directory providers are scoped to their own loader; the classpath's are not wrapped
+        assertSame(a.getClass().getClassLoader(), assertInstanceOf(ScopedPlugins.ScopedProvider.class, registry.get("type-a")).loader());
+        assertSame(b.getClass().getClassLoader(), assertInstanceOf(ScopedPlugins.ScopedProvider.class, registry.get("type-b")).loader());
+        assertInstanceOf(TestEchoPluginProvider.class, registry.get(TestEchoPluginProvider.TYPE));
     }
 
     @Test
@@ -186,8 +186,8 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings());
 
-        assertEquals(JarEchoPluginProvider.class.getName(), registry.get(JarEchoPluginProvider.TYPE).getClass().getName());
-        assertEquals(OtherPluginProvider.class.getName(), registry.get(OtherPluginProvider.TYPE).getClass().getName());
+        assertEquals(JarEchoPluginProvider.class.getName(), unwrap(registry.get(JarEchoPluginProvider.TYPE)).getClass().getName());
+        assertEquals(OtherPluginProvider.class.getName(), unwrap(registry.get(OtherPluginProvider.TYPE)).getClass().getName());
     }
 
     @Test
@@ -199,7 +199,7 @@ class PluginRegistryTest {
         PluginRegistry registry = PluginRegistry.load(settings().put("exclude", "builtin/*"));
 
         assertNull(registry.get(JarEchoPluginProvider.TYPE));
-        assertEquals(OtherPluginProvider.class.getName(), registry.get(OtherPluginProvider.TYPE).getClass().getName());
+        assertEquals(OtherPluginProvider.class.getName(), unwrap(registry.get(OtherPluginProvider.TYPE)).getClass().getName());
     }
 
     @Test
@@ -223,7 +223,7 @@ class PluginRegistryTest {
         PluginRegistry registry = PluginRegistry.load(settings().put("include", new JsonArray().add(" custom/* ").add("")));
 
         assertNull(registry.get(JarEchoPluginProvider.TYPE));
-        assertEquals(OtherPluginProvider.class.getName(), registry.get(OtherPluginProvider.TYPE).getClass().getName());
+        assertEquals(OtherPluginProvider.class.getName(), unwrap(registry.get(OtherPluginProvider.TYPE)).getClass().getName());
     }
 
     @Test
@@ -242,8 +242,8 @@ class PluginRegistryTest {
 
         PluginRegistry registry = PluginRegistry.load(settings().put("exclude", new JsonArray().add("builtin/echo")));
 
-        assertEquals(JarEchoPluginProvider.class.getName(), registry.get(JarEchoPluginProvider.TYPE).getClass().getName());
-        assertNotSame(JarEchoPluginProvider.class, registry.get(JarEchoPluginProvider.TYPE).getClass());
+        assertEquals(JarEchoPluginProvider.class.getName(), unwrap(registry.get(JarEchoPluginProvider.TYPE)).getClass().getName());
+        assertNotSame(JarEchoPluginProvider.class, unwrap(registry.get(JarEchoPluginProvider.TYPE)).getClass());
     }
 
     @Test
@@ -290,14 +290,6 @@ class PluginRegistryTest {
     }
 
     @Test
-    void testMapConstructorDerivesProviderLoader() {
-        PluginProvider provider = new JarEchoPluginProvider();
-        PluginRegistry registry = new PluginRegistry(java.util.Map.of("fixture", provider));
-        assertSame(provider, registry.get("fixture"));
-        assertSame(provider.getClass().getClassLoader(), registry.getClassLoader("fixture"));
-    }
-
-    @Test
     void testMalformedPatternFailsTheLoad() {
         for (String pattern : List.of("a/b/c", "builtin", "builtin/", "/echo", "built*/echo", "built in/echo", "'builtin/echo'")) {
             IllegalStateException error = assertThrows(IllegalStateException.class,
@@ -324,6 +316,10 @@ class PluginRegistryTest {
         Path jar = dir.resolve(path);
         Files.createDirectories(jar.getParent());
         JarEchoPluginProvider.writeJar(jar, className);
+    }
+
+    private static PluginProvider unwrap(PluginProvider provider) {
+        return provider instanceof ScopedPlugins.ScopedProvider scoped ? scoped.delegate() : provider;
     }
 
     private static void writeClass(JarOutputStream out, String className) throws IOException {

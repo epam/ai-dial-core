@@ -300,62 +300,6 @@ class EmbeddedProxyRequestTest {
         await(cancelled.get());
     }
 
-    @Test
-    void testOriginScopeRestoredBeforeFutureCompletesAndRetainedForResponse() throws Exception {
-        Promise<Response> pending = Promise.promise();
-        ClassLoader origin = new ClassLoader(getClass().getClassLoader()) { };
-        AtomicReference<ClassLoader> previous = new AtomicReference<>();
-        Plugin plugin = (call, host) -> {
-            assertSame(origin, Thread.currentThread().getContextClassLoader());
-            assertSame(context, Vertx.currentContext());
-            return pending.future();
-        };
-        request(plugin);
-        EmbeddedProxyRequest request = new EmbeddedProxyRequest(context, pass, () -> plugin, HttpMethod.POST,
-                "dial-plugin://p1", "dial-plugin://p1/request", null, origin);
-        Future<ProxyResponse> sent = onContext(() -> {
-            previous.set(Thread.currentThread().getContextClassLoader());
-            Future<ProxyResponse> future = request.send(Buffer.buffer());
-            assertSame(previous.get(), Thread.currentThread().getContextClassLoader());
-            assertFalse(future.isComplete());
-            return future;
-        });
-        Response answer = mock(Response.class);
-        when(answer.headers()).thenAnswer(ignored -> {
-            assertSame(origin, Thread.currentThread().getContextClassLoader());
-            return MultiMap.caseInsensitiveMultiMap();
-        });
-        when(answer.body()).thenAnswer(ignored -> {
-            assertSame(origin, Thread.currentThread().getContextClassLoader());
-            return stream(false);
-        });
-        onContext(() -> {
-            pending.complete(answer);
-            assertSame(previous.get(), Thread.currentThread().getContextClassLoader());
-            return null;
-        });
-        assertEquals("answer", await(await(sent).body()).toString());
-    }
-
-    @Test
-    void testThrowingHandleRestoresLoader() throws Exception {
-        ClassLoader origin = new ClassLoader(getClass().getClassLoader()) { };
-        Plugin plugin = (call, host) -> {
-            assertSame(origin, Thread.currentThread().getContextClassLoader());
-            throw new NoClassDefFoundError("private dependency");
-        };
-        request(plugin);
-        EmbeddedProxyRequest request = new EmbeddedProxyRequest(context, pass, () -> plugin, HttpMethod.POST,
-                "dial-plugin://p1", "dial-plugin://p1/request", null, origin);
-        Future<ProxyResponse> sent = onContext(() -> {
-            ClassLoader previous = Thread.currentThread().getContextClassLoader();
-            Future<ProxyResponse> future = request.send(Buffer.buffer());
-            assertSame(previous, Thread.currentThread().getContextClassLoader());
-            return future;
-        });
-        assertInstanceOf(NoClassDefFoundError.class, assertThrows(ExecutionException.class, () -> await(sent)).getCause());
-    }
-
     private void assertSendFails(Plugin plugin, Class<? extends Throwable> cause) {
         ExecutionException error = assertThrows(ExecutionException.class, () -> await(request(plugin).send(Buffer.buffer("{}"))));
         assertInstanceOf(cause, error.getCause());

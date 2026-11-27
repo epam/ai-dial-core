@@ -36,7 +36,6 @@ import com.epam.aidial.core.credentials.validation.AuthSettingsValidator;
 import com.epam.aidial.core.credentials.validation.AuthSettingsValidatorFactory;
 import com.epam.aidial.core.plugin.PluginProvider;
 import com.epam.aidial.core.server.alias.AliasTargets;
-import com.epam.aidial.core.server.plugin.PluginClassLoaderScope;
 import com.epam.aidial.core.server.plugin.PluginRegistry;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceValidation;
@@ -209,7 +208,7 @@ public final class ConfigPostProcessor {
             return;
         }
         List<PluginProvider.Problem> problems;
-        try (var ignored = PluginClassLoaderScope.enter(pluginRegistry.getClassLoader(plugin.getType()))) {
+        try {
             // a copy: a provider that changed the settings would change the config being validated
             problems = List.copyOf(provider.validate(plugin.getSettings().deepCopy()));
         } catch (RuntimeException | LinkageError e) {

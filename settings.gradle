@@ -8,7 +8,6 @@ rootProject.name = "aidial-core"
 include 'config'
 include 'openapi-annotations'
 include 'server'
-include 'bootstrap'
 include 'storage'
 include 'credentials'
 include 'aidial-core-plugin-api'

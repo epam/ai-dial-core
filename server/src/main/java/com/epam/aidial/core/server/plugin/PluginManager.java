@@ -47,7 +47,7 @@ public class PluginManager {
         if (declaration == null) {
             Origin removed = origins.remove(name);
             if (removed != null) {
-                closePlugin(name, removed);
+                closePlugin(name, removed.plugin());
             }
             throw new IllegalStateException("No plugins entry is named '" + name + "'");
         }
@@ -58,20 +58,20 @@ public class PluginManager {
         Plugin plugin = origins.compute(name, (key, current) -> {
             if (current != null && current.declaration().equals(declaration)) {
                 // a rebuild made a new object for the same declaration: keep it, so the next lookup is an identity check
-                return new Origin(declaration, current.plugin(), current.classLoader());
+                return new Origin(declaration, current.plugin());
             }
             // a failed create throws out of compute and leaves the current instance in place
             Plugin created = create(name, declaration);
             if (current != null) {
-                closePlugin(name, current);
+                closePlugin(name, current.plugin());
             }
-            return new Origin(declaration, created, getClassLoader(config, name));
+            return new Origin(declaration, created);
         }).plugin();
         if (closed) {
             // close() may have emptied the map before this compute stored the plugin
             Origin left = origins.remove(name);
             if (left != null) {
-                closePlugin(name, left);
+                closePlugin(name, left.plugin());
             }
             throw new IllegalStateException("Core is shutting down");
         }
@@ -88,17 +88,13 @@ public class PluginManager {
         for (String name : origins.keySet()) {
             Origin origin = origins.remove(name);
             if (origin != null) {
-                closes.add(closePlugin(name, origin));
+                closes.add(closePlugin(name, origin.plugin()));
             }
         }
         return Future.join(closes).mapEmpty();
     }
 
-    public ClassLoader getClassLoader(Config config, String name) {
-        return pluginRegistry.getClassLoader(config.getPlugins().get(name).getType());
-    }
-
-    private record Origin(com.epam.aidial.core.config.Plugin declaration, Plugin plugin, ClassLoader classLoader) {
+    private record Origin(com.epam.aidial.core.config.Plugin declaration, Plugin plugin) {
     }
 
     private Plugin create(String name, com.epam.aidial.core.config.Plugin declaration) {
@@ -108,7 +104,7 @@ public class PluginManager {
         }
         Plugin created;
         try {
-            created = createOutsideRequest(provider, declaration.getSettings(), pluginRegistry.getClassLoader(declaration.getType()));
+            created = createOutsideRequest(provider, declaration.getSettings());
         } catch (RuntimeException | LinkageError e) {
             // plugin code: a jar missing a class throws NoClassDefFoundError on first use
             throw new IllegalStateException("Plugin '" + name + "' cannot be created: " + e.getMessage(), e);
@@ -124,28 +120,24 @@ public class PluginManager {
      * at every rebuild. Runs it outside the duplicated context of the request that got here first: a timer the plugin
      * sets up there would keep that request's context, and the request it holds, for the plugin's life.
      */
-    private Plugin createOutsideRequest(PluginProvider provider, ObjectNode settings, ClassLoader loader) {
+    private Plugin createOutsideRequest(PluginProvider provider, ObjectNode settings) {
         ObjectNode copy = settings.deepCopy();
         ContextInternal current = ContextInternal.current();
         if (current == null) {
-            try (var ignored = PluginClassLoaderScope.enter(loader)) {
-                return provider.create(copy, vertx);
-            }
+            return provider.create(copy, vertx);
         }
         ContextInternal base = current.unwrap();
         ContextInternal previous = base.beginDispatch();
-        try (var ignored = PluginClassLoaderScope.enter(loader)) {
+        try {
             return provider.create(copy, vertx);
         } finally {
             base.endDispatch(previous);
         }
     }
 
-    private Future<Void> closePlugin(String name, Origin origin) {
+    private Future<Void> closePlugin(String name, Plugin plugin) {
         return taskExecutor.submit(() -> {
-            try (var ignored = PluginClassLoaderScope.enter(origin.classLoader())) {
-                origin.plugin().close();
-            }
+            plugin.close();
             return null;
         }).otherwise(error -> {
             log.warn("Plugin '{}' failed to close:", name, error);

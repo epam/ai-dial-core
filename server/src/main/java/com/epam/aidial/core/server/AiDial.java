@@ -45,7 +45,6 @@ import com.epam.aidial.core.server.limiter.budget.DefaultBudgetService;
 import com.epam.aidial.core.server.log.AnalyticsSettings;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
-import com.epam.aidial.core.server.log.LoggingInitializer;
 import com.epam.aidial.core.server.mcp.McpAuthorizationChallengeProvider;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.plugin.PluginManager;
@@ -152,9 +151,8 @@ import io.vertx.tracing.opentelemetry.OpenTelemetryOptions;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -176,19 +174,10 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
+@Slf4j
 @Setter
 @Getter
 public class AiDial {
-
-    static {
-        System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
-    }
-
-    private static final Logger log = LoggerFactory.getLogger(AiDial.class);
-
-    static {
-        LoggingInitializer.initialize();
-    }
 
     private static final Set<String> NON_PRINTABLE_SETTINGS = Set.of("secret", "password", "key", "credential", "identity");
     private JsonObject settings;
@@ -222,6 +211,7 @@ public class AiDial {
 
     @VisibleForTesting
     void start() throws Exception {
+        System.setProperty("io.opentelemetry.context.contextStorageProvider", "io.vertx.tracing.opentelemetry.VertxContextStorageProvider");
         try {
             settings = (settings == null) ? settings() : settings;
             printSettings(settings);
@@ -831,8 +821,11 @@ public class AiDial {
 
         // added to the provider rather than around the exporter's processor: without an exporter there is none, and from
         // OpenTelemetry 1.67 a provider without a processor hands out no-op tracers, so no request would get a trace id
-        OpenTelemetry openTelemetry = "dial-core".equals(AiDial.class.getClassLoader().getName())
-                ? SharedTelemetry.INSTANCE : buildTelemetry(false);
+        OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder()
+                .addTracerProviderCustomizer((tracerProvider, configProperties) ->
+                        tracerProvider.addSpanProcessor(new PathNormalizerSpanProcessor()))
+                .build()
+                .getOpenTelemetrySdk();
 
         OpenTelemetryAppender.install(openTelemetry);
 
@@ -840,22 +833,6 @@ public class AiDial {
         otelOpts.setFactory(new DialTracingFactory(otelOpts.getFactory()));
         vertxOptions.setTracingOptions(otelOpts);
         return openTelemetry;
-    }
-
-    // One process-owned SDK in split runtime; ordinary tests keep their existing per-instance SDKs.
-    private static final class SharedTelemetry {
-        private static final OpenTelemetry INSTANCE = buildTelemetry(true);
-    }
-
-    private static OpenTelemetry buildTelemetry(boolean registerGlobal) {
-        var builder = AutoConfiguredOpenTelemetrySdk.builder()
-                .setServiceClassLoader(AutoConfiguredOpenTelemetrySdk.class.getClassLoader())
-                .addTracerProviderCustomizer((tracerProvider, configProperties) ->
-                        tracerProvider.addSpanProcessor(new PathNormalizerSpanProcessor()));
-        if (registerGlobal) {
-            builder.setResultAsGlobal();
-        }
-        return builder.build().getOpenTelemetrySdk();
     }
 
     private static String getOtlSetting(String envVar, String systemProperty) {

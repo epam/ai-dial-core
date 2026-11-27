@@ -96,7 +96,7 @@ public class ProxyClient {
             pluginManager.resolve(config, plugin);
             return vertxContext.succeededFuture(new EmbeddedProxyRequest(vertxContext, context,
                     () -> pluginManager.resolve(config, plugin), method, DeploymentEndpointUtil.PLUGIN_URL_PREFIX + plugin,
-                    absoluteUri, router, pluginManager.getClassLoader(config, plugin)));
+                    absoluteUri, router));
         } catch (RuntimeException e) {
             return vertxContext.failedFuture(e);
         }
