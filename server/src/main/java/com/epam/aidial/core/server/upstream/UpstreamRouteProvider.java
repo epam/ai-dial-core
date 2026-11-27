@@ -146,8 +146,10 @@ public class UpstreamRouteProvider {
             }
             if (originalUpstream != null) {
                 context.setOriginalUpstream(originalUpstream);
-            } else {
+            } else if (cachedId != null || cachedEndpoint != null) {
                 log.warn("cached upstream doesn't exist any longer in config: id={}, endpoint={}", cachedId, cachedEndpoint);
+            } else {
+                log.debug("no cached upstream found: prefixPath={}", context.getEntry().prefixPath());
             }
         }
         return new UpstreamRoute(taskExecutor, upstreamCacheService, wrapper.balancer, result, context);
