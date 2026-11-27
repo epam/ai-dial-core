@@ -274,6 +274,12 @@ class DtoSchemaGeneratorTest {
         assertNotNull(required);
         assertEquals("kind", required.get(0).asText());
 
+        assertEquals("Model", schemas.get(generator.resolveTypeName(SampleModelTypedManifest.class))
+                .get("properties").get("kind").get("enum").get(0).asText(),
+                "each subtype must accept only its own discriminator value, or oneOf is ambiguous");
+        assertEquals("Schema", schemas.get(generator.resolveTypeName(SampleSchemaTypedManifest.class))
+                .get("properties").get("kind").get("enum").get(0).asText());
+
         ObjectNode modelManifest = schemas.get(generator.resolveTypeName(SampleModelTypedManifest.class));
         assertNotNull(modelManifest, "model manifest schema should be generated");
         assertEquals("#/components/schemas/Model",
@@ -284,6 +290,21 @@ class DtoSchemaGeneratorTest {
         assertNotNull(schemaManifest, "schema manifest schema should be generated");
         assertEquals("#/components/schemas/ApplicationTypeSchema",
                 schemaManifest.get("properties").get("spec").get("$ref").asText());
+    }
+
+    @Test
+    void discriminatorIsPinnedWhenPolymorphicTypeIsReachedOnlyThroughField() {
+        DtoSchemaGenerator generator = new DtoSchemaGenerator();
+        generator.processType(SampleApplyRequest.class);
+
+        Map<String, ObjectNode> schemas = generator.getSchemas();
+        assertEquals("Model", schemas.get(generator.resolveTypeName(SampleModelTypedManifest.class))
+                .get("properties").get("kind").get("enum").get(0).asText());
+        assertEquals("Settings", schemas.get(generator.resolveTypeName(SampleSettingsTypedManifest.class))
+                .get("properties").get("kind").get("enum").get(0).asText());
+    }
+
+    private record SampleApplyRequest(List<SampleAdminManifest> manifests) {
     }
 
     @Test
