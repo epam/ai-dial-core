@@ -150,7 +150,16 @@ public class RateLimiter {
     }
 
     public Future<RateLimitResult> limit(ProxyContext context, RoleBasedEntity roleBasedEntity) {
-        return checkLimits(context, roleBasedEntity, false);
+        return checkLimits(context, roleBasedEntity, false, false);
+    }
+
+    /**
+     * Checks the caller's token and request limits like {@link #limit(ProxyContext, RoleBasedEntity)}, but never the
+     * account-wide cost limit. For a call that spends nothing itself, such as a toolset call over MCP: whatever it
+     * spends is charged, and checked, by the request for a model that it makes.
+     */
+    public Future<RateLimitResult> limitWithoutCost(ProxyContext context, RoleBasedEntity roleBasedEntity) {
+        return checkLimits(context, roleBasedEntity, false, true);
     }
 
     /**
@@ -162,10 +171,11 @@ public class RateLimiter {
      * with the unwrapped failure otherwise.
      */
     public Future<RateLimitResult> limitWithSpendCaps(ProxyContext context, RoleBasedEntity roleBasedEntity) {
-        return checkLimits(context, roleBasedEntity, true);
+        return checkLimits(context, roleBasedEntity, true, false);
     }
 
-    private Future<RateLimitResult> checkLimits(ProxyContext context, RoleBasedEntity roleBasedEntity, boolean withSpendCaps) {
+    private Future<RateLimitResult> checkLimits(ProxyContext context, RoleBasedEntity roleBasedEntity, boolean withSpendCaps,
+                                                    boolean skipCostLimit) {
         try {
             // skip checking limits if redis is not available
             if (resourceService == null) {
@@ -193,7 +203,7 @@ public class RateLimiter {
             if (withSpendCaps && isEnforced) {
                 return checkBudgetsWithSpendCaps(context, (Model) roleBasedEntity, limit);
             }
-            boolean isRoleCostLimitSkipped = BudgetEnforcer.isRoleCostLimitSkipped(context);
+            boolean isRoleCostLimitSkipped = skipCostLimit || BudgetEnforcer.isRoleCostLimitSkipped(context);
             // in shadow the budget is checked and its payer charged on every route, while the legacy cost limit,
             // and the spend caps read from it, still decide
             boolean isBudgetCheck = isBudgetApplicable && context.getConfig().getSpendingLimits().getMode() != SpendingLimitMode.OFF;

@@ -580,9 +580,10 @@ public class McpProxyController implements Controller {
 
     /**
      * The limits of an alias call are checked by the target pass, under the target's name; the alias pass itself is
-     * not limited, so a limit under the alias's name has no effect, as for the other interfaces.
+     * not limited, so a limit under the alias's name has no effect, as for the other interfaces. The cost limit is not
+     * checked: a toolset call spends nothing, and the model request a tool makes is checked and charged on its own.
      */
     private Future<RateLimitResult> limit(Deployment deployment) {
-        return deployment instanceof AliasPass ? Future.succeededFuture(RateLimitResult.SUCCESS) : rateLimiter.limit(context, deployment);
+        return deployment instanceof AliasPass ? Future.succeededFuture(RateLimitResult.SUCCESS) : rateLimiter.limitWithoutCost(context, deployment);
     }
 }
