@@ -22570,14 +22570,9 @@ components:
         out:
           $ref: "#/components/schemas/InterfaceType"
     TranslatorRef:
-      type: object
-      properties:
-        definition:
-          $ref: "#/components/schemas/Translator"
-        name:
-          type: string
-        inline:
-          $ref: "#/components/schemas/Translator"
+      oneOf:
+      - type: string
+      - $ref: "#/components/schemas/Translator"
     TruncatePromptError:
       required:
       - error

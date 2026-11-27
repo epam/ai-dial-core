@@ -1,6 +1,7 @@
 package com.epam.aidial.core.config;
 
 import com.epam.aidial.core.config.databind.TranslatorRefDeserializer;
+import com.epam.aidial.core.openapi.annotations.ApiSchema;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import jakarta.annotation.Nullable;
@@ -15,6 +16,7 @@ import java.util.Map;
  * entry reaches every deployment naming it with nothing relinked and nothing rewritten.
  */
 @Data
+@ApiSchema(oneOf = {String.class, Translator.class})
 @JsonDeserialize(using = TranslatorRefDeserializer.class)
 public class TranslatorRef {
 
