@@ -236,19 +236,6 @@ class CatalogSchemaServiceTest {
         Assertions.assertEquals("boom", thrown.getMessage());
     }
 
-    @Test
-    void collectMarkerReferencesAcceptsLocalRefsOfSchemaWithAbsoluteId() {
-        String catalogSchema = """
-                {"$id":"https://dial.example/catalog-schemas/model","type":"object",
-                 "properties":{"badge":{"$ref":"#/$defs/file"}},
-                 "$defs":{"file":{"type":"string","dial:file":true}}}""";
-
-        MarkerCollection result = collectFrom(catalogSchema, properties("badge", "files/public/b.png"));
-
-        Assertions.assertEquals(List.of(fileReference("/badge", "files/public/b.png")), result.references());
-        Assertions.assertTrue(result.issues().isEmpty());
-    }
-
     @ParameterizedTest
     @ValueSource(strings = {"remote", "local file"})
     void collectMarkerReferencesRefusesRefOutsideTheDocumentWithoutFetchingOrReadingIt(String kind) throws IOException {

@@ -1,6 +1,5 @@
 package com.epam.aidial.core.server.controller;
 
-import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.openapi.annotations.ApiExtension;
 import com.epam.aidial.core.openapi.annotations.ApiOperation;
 import com.epam.aidial.core.openapi.annotations.ApiResponse;
@@ -12,12 +11,13 @@ import com.epam.aidial.core.server.security.AccessService;
 import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.dependency.AdminAccessPolicy;
+import com.epam.aidial.core.server.service.dependency.ConfigSnapshotReader;
 import com.epam.aidial.core.server.service.dependency.DependencyAccessPolicy;
 import com.epam.aidial.core.server.service.dependency.DependencyListResponse;
 import com.epam.aidial.core.server.service.dependency.DependencyRequestParser;
 import com.epam.aidial.core.server.service.dependency.DependencyRequestParser.DependencyRequest;
 import com.epam.aidial.core.server.service.dependency.DependencyWalker;
-import com.epam.aidial.core.server.service.dependency.InitiatorAccessPolicy;
+import com.epam.aidial.core.server.service.dependency.UserAccessPolicy;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
@@ -27,6 +27,7 @@ import io.vertx.core.buffer.Buffer;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -63,10 +64,9 @@ public class DependencyListController implements Controller {
     }
 
     private static DependencyWalker newWalker(Proxy proxy) {
-        MergedConfigStore store = (MergedConfigStore) proxy.getConfigStore();
-        return new DependencyWalker(proxy.getApiKeyStore().getMutationLock(), store::getInvalidEntities, store::get,
-                store::getFileSourcedConfig, proxy.getResourceService(), proxy.getApplicationSchemaService(),
-                proxy.getCatalogSchemaService(), proxy.getEncryptionService(), proxy.getComplexResourceService());
+        ConfigSnapshotReader snapshots = new ConfigSnapshotReader(proxy.getApiKeyStore(), (MergedConfigStore) proxy.getConfigStore());
+        return new DependencyWalker(snapshots, proxy.getResourceService(), proxy.getApplicationSchemaService(),
+                proxy.getCatalogSchemaService(), proxy.getEncryptionService(), proxy.getComplexResourceService(), proxy.getPlatformSchemaScan());
     }
 
     @Override
@@ -94,51 +94,36 @@ public class DependencyListController implements Controller {
             return Future.succeededFuture();
         }
         context.getRequest().body()
-                .onSuccess(this::list)
-                .onFailure(error -> context.respond(HttpStatus.BAD_REQUEST, "Failed to read the request body"));
+                .recover(error -> Future.failedFuture(new HttpException(HttpStatus.BAD_REQUEST, "Failed to read the request body")))
+                .compose(this::list)
+                .onSuccess(response -> context.respond(HttpStatus.OK, response))
+                .onFailure(error -> context.respond(error, "Failed to build the dependency list"));
         return Future.succeededFuture();
     }
 
-    void list(Buffer body) {
-        DependencyRequest request;
-        try {
-            request = DependencyRequestParser.parse(body.toString(StandardCharsets.UTF_8), encryptionService);
-        } catch (HttpException e) {
-            context.respond(e);
-            return;
-        }
+    private Future<DependencyListResponse> list(Buffer body) {
+        DependencyRequest request = DependencyRequestParser.parse(body.toString(StandardCharsets.UTF_8), encryptionService);
         boolean isAdmin = authorizationService.isAdmin(context);
         DependencyWalker walker = walkerSource.get();
-        taskExecutor.submit(() -> buildList(walker, request, isAdmin))
-                .onSuccess(response -> context.respond(HttpStatus.OK, response))
-                .onFailure(error -> context.respond(error, "Failed to build the dependency list"));
+        return taskExecutor.submit(() -> buildList(walker, request, isAdmin));
     }
 
-    /** Checks the roots, then walks. It blocks, so it runs on a task thread. */
+    /** Checks the roots, then walks; a root that does not exist ends the walk with 404. It blocks, so it runs on a task thread. */
     private DependencyListResponse buildList(DependencyWalker walker, DependencyRequest request, boolean isAdmin) {
-        DependencyAccessPolicy policy = isAdmin ? new AdminAccessPolicy(this::hasPublicReadAccess) : newInitiatorPolicy();
+        DependencyAccessPolicy policy = isAdmin ? new AdminAccessPolicy() : newUserPolicy();
         List<ResourceDescriptor> roots = request.roots();
+        Set<ResourceDescriptor> allowed = policy.selectAllowedRoots(new LinkedHashSet<>(roots));
         for (int i = 0; i < roots.size(); i++) {
-            if (!policy.isRootAllowed(roots.get(i))) {
+            if (!allowed.contains(roots.get(i))) {
                 // an admin is told what is wrong with the root; any other caller is told nothing that depends on whether it exists
                 throw isAdmin ? new HttpException(HttpStatus.BAD_REQUEST, "roots[" + i + "] must be an Application")
                         : new HttpException(HttpStatus.FORBIDDEN, "Forbidden");
             }
         }
-        for (ResourceDescriptor root : roots) {
-            if (!walker.isStored(root)) {
-                throw new HttpException(HttpStatus.NOT_FOUND, "A selected Application does not exist");
-            }
-        }
         return walker.walk(roots, policy);
     }
 
-    private InitiatorAccessPolicy newInitiatorPolicy() {
-        return new InitiatorAccessPolicy(targets -> accessService.lookupInitiatorPermissions(targets, context), context.getUserRoles());
-    }
-
-    private boolean hasPublicReadAccess(ResourceDescriptor descriptor) {
-        return accessService.lookupPermissions(Set.of(descriptor), context)
-                .getOrDefault(descriptor, Set.of()).contains(ResourceAccessType.READ);
+    private UserAccessPolicy newUserPolicy() {
+        return new UserAccessPolicy(targets -> accessService.lookupInitiatorPermissions(targets, context), context.getUserRoles());
     }
 }

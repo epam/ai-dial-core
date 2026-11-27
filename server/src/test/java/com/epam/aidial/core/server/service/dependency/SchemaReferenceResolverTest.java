@@ -84,7 +84,7 @@ public class SchemaReferenceResolverTest {
     }
 
     private SchemaReferenceResolver resolver() {
-        return new SchemaReferenceResolver(merged, invalid, file, resourceService);
+        return new SchemaReferenceResolver(new ConfigSnapshot(merged, file, invalid), new PlatformSchemaScan(resourceService));
     }
 
     private static String body(String id) {

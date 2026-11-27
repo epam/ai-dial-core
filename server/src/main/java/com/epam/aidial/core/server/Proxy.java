@@ -56,6 +56,7 @@ import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.service.config.ConfigApplyService;
 import com.epam.aidial.core.server.service.config.ConfigValidationService;
+import com.epam.aidial.core.server.service.dependency.PlatformSchemaScan;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
 import com.epam.aidial.core.server.tracing.GenAiTraceAttributes;
@@ -229,6 +230,7 @@ public class Proxy implements Handler<HttpServerRequest> {
     private final AdminSystemImportService.Settings adminSystemImportSettings;
     private final ProxyClient proxyClient;
     private final DefaultBudgetService defaultBudgetService;
+    private final PlatformSchemaScan platformSchemaScan;
 
     @Override
     public void handle(HttpServerRequest request) {

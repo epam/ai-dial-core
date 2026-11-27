@@ -1,11 +1,14 @@
 package com.epam.aidial.core.server.validation;
 
+import com.epam.aidial.core.server.util.ProxyUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.networknt.schema.CollectorContext;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaException;
 import com.networknt.schema.ValidationMessage;
 
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -29,6 +32,8 @@ public record MarkerCollection(List<MarkerReference> references, List<Collection
     public record MarkerReference(String pointer, String value) {
     }
 
+    public static final MarkerCollection EMPTY = new MarkerCollection(List.of(), List.of());
+
     public static MarkerCollection ofIssue(CollectionIssueKind kind) {
         return new MarkerCollection(List.of(), List.of(new CollectionIssue(kind, "")));
     }
@@ -37,8 +42,16 @@ public record MarkerCollection(List<MarkerReference> references, List<Collection
      * Validates the properties against the schema with a {@link MarkerRecorder} registered and returns what was recorded together with one
      * issue for each violated location and keyword. A schema that the library cannot evaluate gives {@code SCHEMA_UNAVAILABLE}. The issues
      * carry no library message and no value, because a message can hold the instance value or an IRI.
+     *
+     * @param properties the properties of the application or of the catalog entry, which are serialized as they are
      */
-    public static MarkerCollection collect(JsonSchema schema, String propertiesJson) {
+    public static MarkerCollection collect(JsonSchema schema, Object properties) {
+        String propertiesJson;
+        try {
+            propertiesJson = ProxyUtil.MAPPER.writeValueAsString(properties);
+        } catch (JsonProcessingException e) {
+            throw new UncheckedIOException("Failed to serialize the properties", e);
+        }
         MarkerRecorder recorder = new MarkerRecorder();
         CollectorContext collectorContext = new CollectorContext();
         collectorContext.getCollectorMap().put(MarkerRecorder.KEY, recorder);

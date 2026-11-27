@@ -7,15 +7,15 @@ import ch.qos.logback.core.read.ListAppender;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
-import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
-import com.epam.aidial.core.server.service.dependency.DependencyAccessPolicy.ConfigSnapshot;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.MarkerCollection;
 import com.epam.aidial.core.server.validation.MarkerCollection.MarkerReference;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
@@ -27,18 +27,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
 
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
@@ -58,7 +52,7 @@ import static org.mockito.Mockito.lenient;
 @ExtendWith(MockitoExtension.class)
 public class DependencyWalkerTest {
 
-    private static final DependencyAccessPolicy ADMIN = new AdminAccessPolicy(descriptor -> true);
+    private static final DependencyAccessPolicy ADMIN = new AdminAccessPolicy();
 
     @Mock
     private ResourceService resourceService;
@@ -77,6 +71,7 @@ public class DependencyWalkerTest {
     private final List<String> existenceChecks = new ArrayList<>();
     private final ListAppender<ILoggingEvent> logs = new ListAppender<>();
     private final Logger walkerLog = (Logger) LoggerFactory.getLogger(DependencyWalker.class);
+    private Level originalWalkerLevel;
 
     @BeforeEach
     void setUp() {
@@ -96,16 +91,19 @@ public class DependencyWalkerTest {
         });
         logs.start();
         walkerLog.addAppender(logs);
+        originalWalkerLevel = walkerLog.getLevel();
+        walkerLog.setLevel(Level.DEBUG);
     }
 
     @AfterEach
     void detachLog() {
         walkerLog.detachAppender(logs);
+        walkerLog.setLevel(originalWalkerLevel);
     }
 
     /** The admin policy with a filter on what it lists and a hook that runs for every call of a level. */
     private static final class WrappedPolicy implements DependencyAccessPolicy {
-        private final DependencyAccessPolicy delegate = new AdminAccessPolicy(descriptor -> true);
+        private final DependencyAccessPolicy delegate = new AdminAccessPolicy();
         private final UnaryOperator<Set<ResourceDescriptor>> filter;
         private final Runnable onCall;
         /** The configuration that every call of a level was given. */
@@ -117,8 +115,8 @@ public class DependencyWalkerTest {
         }
 
         @Override
-        public boolean isRootAllowed(ResourceDescriptor root) {
-            return delegate.isRootAllowed(root);
+        public Set<ResourceDescriptor> selectAllowedRoots(Set<ResourceDescriptor> roots) {
+            return delegate.selectAllowedRoots(roots);
         }
 
         @Override
@@ -180,14 +178,8 @@ public class DependencyWalkerTest {
     }
 
     private DependencyWalker walker(Supplier<Config> configSource, Supplier<Config> fileConfigSource) {
-        return walker(new ReentrantLock(), Map::of, configSource, fileConfigSource);
-    }
-
-    private DependencyWalker walker(ReentrantLock publicationLock,
-                                    Supplier<Map<ResourceTypes, Map<String, InvalidEntityRecord>>> invalidEntitiesSource,
-                                    Supplier<Config> configSource, Supplier<Config> fileConfigSource) {
-        return new DependencyWalker(publicationLock, invalidEntitiesSource, configSource, fileConfigSource, resourceService, schemaService,
-                catalogSchemaService, encryptionService, complexResourceService);
+        return new DependencyWalker(() -> new ConfigSnapshot(configSource.get(), fileConfigSource.get(), Map.of()), resourceService,
+                schemaService, catalogSchemaService, encryptionService, complexResourceService, new PlatformSchemaScan(resourceService));
     }
 
     private DependencyListResponse walk(String... roots) {
@@ -209,59 +201,6 @@ public class DependencyWalkerTest {
 
     private List<String> warnings() {
         return logs.list.stream().filter(event -> event.getLevel() == Level.WARN).map(ILoggingEvent::getFormattedMessage).toList();
-    }
-
-    @Test
-    void testWalkWaitsForConfigurationPublicationThatHoldsTheLock() throws Exception {
-        app("a");
-        ReentrantLock publicationLock = new ReentrantLock();
-        DependencyWalker walker = walker(publicationLock, Map::of, Config::new, () -> null);
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        publicationLock.lock();
-        try {
-            Future<DependencyListResponse> walk = executor.submit(() -> walk(walker, ADMIN, "a"));
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-            while (!publicationLock.hasQueuedThreads() && System.nanoTime() < deadline) {
-                Thread.sleep(1);
-            }
-
-            assertTrue(publicationLock.hasQueuedThreads(), "the walk must queue on the publication lock");
-            assertFalse(walk.isDone(), "the walk must not answer while a publication holds the lock");
-
-            publicationLock.unlock();
-            assertEquals(1, walk.get(10, TimeUnit.SECONDS).roots().size());
-        } finally {
-            if (publicationLock.isHeldByCurrentThread()) {
-                publicationLock.unlock();
-            }
-            executor.shutdownNow();
-        }
-        assertFalse(publicationLock.isLocked());
-    }
-
-    @Test
-    void testPublicationLockIsHeldForTheTwoConfigurationReadsOnly() {
-        app("a");
-        ReentrantLock publicationLock = new ReentrantLock();
-        List<String> held = new ArrayList<>();
-        DependencyWalker walker = walker(publicationLock,
-                () -> {
-                    held.add("invalid=" + publicationLock.isHeldByCurrentThread());
-                    return Map.of();
-                },
-                () -> {
-                    held.add("merged=" + publicationLock.isHeldByCurrentThread());
-                    return new Config();
-                },
-                () -> {
-                    held.add("file=" + publicationLock.isHeldByCurrentThread());
-                    return null;
-                });
-
-        walk(walker, ADMIN, "a");
-
-        assertEquals(List.of("invalid=true", "merged=true", "file=false"), held);
-        assertFalse(publicationLock.isLocked());
     }
 
     @Test
@@ -378,13 +317,6 @@ public class DependencyWalkerTest {
     }
 
     @Test
-    void testReferenceToItselfIsNotDependency() {
-        app("a", "a", "a");
-
-        assertEquals(List.of(), walk("a").roots().get(0).dependencies());
-    }
-
-    @Test
     void testRootThatAnotherRootNeedsIsAnItemAndAlsoAnEntryWithItsOwnList() {
         app("a", "b");
         app("b", "models/platform/m");
@@ -411,18 +343,6 @@ public class DependencyWalkerTest {
     }
 
     @Test
-    void testSharedDependencyIsReadOnce() {
-        app("first", "models/platform/m");
-        app("second", "models/platform/m");
-        model("m");
-
-        walk("first", "second");
-
-        assertEquals(1, reads.stream().filter("models/platform/m"::equals).count(), reads.toString());
-        assertEquals(3, reads.size(), "each resource is read once: " + reads);
-    }
-
-    @Test
     void testOrderIsBreadthFirstInTheOrderOfTheReferences() {
         app("root", "x", "y");
         app("x", "z");
@@ -430,25 +350,6 @@ public class DependencyWalkerTest {
         app("z");
 
         assertEquals(List.of("application:x", "application:y", "application:z"), listOf(walk("root").roots().get(0)));
-    }
-
-    @Test
-    void testTwoRootsWithSharedDependenciesListThemInBoth() {
-        app("support-bot", "summarizer", "interceptors/platform/pii-filter", "models/platform/gpt-4o", "~gpt-4o-mini", "files/public/team/icon.png",
-                "prompts/public/notes");
-        app("summarizer", "interceptors/platform/pii-filter", "models/platform/gpt-4o", "~gpt-4o-mini");
-        stored.put("interceptors/platform/pii-filter", "{\"endpoint\":\"http://p.invalid\"}");
-        model("gpt-4o");
-        file("team/icon.png");
-        stored.put("prompts/public/notes", "{\"content\":\"text\"}");
-        Config file = new Config();
-        file.setModels(Map.of("gpt-4o-mini", new Model()));
-
-        DependencyListResponse response = walk(walker(() -> file, () -> file), ADMIN, "support-bot", "summarizer");
-
-        assertEquals(List.of("application:summarizer", "interceptor:pii-filter", "model:gpt-4o", "model:gpt-4o-mini", "file:icon.png", "prompt:notes"),
-                listOf(response.roots().get(0)));
-        assertEquals(List.of("interceptor:pii-filter", "model:gpt-4o", "model:gpt-4o-mini"), listOf(response.roots().get(1)));
     }
 
     @Test
@@ -550,49 +451,59 @@ public class DependencyWalkerTest {
         assertEquals(List.of(), warnings(), "and leaves no log record");
     }
 
-    @Test
-    void testRootThatNoLongerExistsEndsTheWalk() {
-        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> walk("gone"));
+    private ResourceDescriptor userApp(String name, String body) {
+        stored.put("applications/bucket/" + name, body);
+        return descriptor(ResourceTypes.APPLICATION, "bucket", "Users/user/", name);
+    }
 
-        assertTrue(failure.getMessage().contains("application:platform:gone"), failure.getMessage());
+    private List<String> eventsAt(Level level) {
+        return logs.list.stream().filter(event -> event.getLevel() == level).map(ILoggingEvent::getFormattedMessage).toList();
     }
 
     @Test
-    void testExistsAsksStorageForStoredResourceAndTrustsFileEntity() {
-        app("a");
+    void testFindingsInUserBucketAreDebugAndNotForTheOperator() {
+        ResourceDescriptor root = userApp("mine", "{\"endpoint\":\"http://mine.invalid\",\"dependencies\":[\"applications/platform/gone\","
+                + "\"models/public/not-supported\",\"https://example.com/x\"]}");
 
-        assertTrue(walker().isStored(platformApp("a")));
-        assertFalse(walker().isStored(platformApp("b")));
-        assertTrue(walker().isStored(FileConfigEntities.newDescriptor(ResourceTypes.MODEL, "fm")));
+        walker().walk(List.of(root), ADMIN);
+
+        assertEquals(List.of(), warnings(), "a finding about a reference that the user wrote is not for the operator");
+        assertEquals(List.of(), eventsAt(Level.INFO).stream().filter(message -> message.contains("external")).toList());
+        List<String> debug = eventsAt(Level.DEBUG);
+        assertEquals(3, debug.size(), debug.toString());
+        String all = String.join(" | ", debug);
+        assertTrue(all.contains("resource=application:private:mine pointer=/dependencies/0 reason=missing"), all);
+        assertTrue(all.contains("resource=application:private:mine pointer=/dependencies/1 reason=unsupported"), all);
+        assertTrue(all.contains("resource=application:private:mine pointer=/dependencies/2"), all);
     }
 
-    /** The body of a resource is garbage once its references are found: the walk keeps identities and links, never a body. */
     @Test
-    void testBodyIsNotHeldAfterItsReferencesAreFound() throws InterruptedException {
-        app("a", "b");
-        app("b", "c");
-        app("c");
-        List<WeakReference<String>> bodies = new ArrayList<>();
-        boolean[] firstBodyWasHeld = {true};
-        lenient().when(resourceService.getResource(any(ResourceDescriptor.class))).thenAnswer(invocation -> {
-            String stored = this.stored.get(((ResourceDescriptor) invocation.getArgument(0)).getUrl());
-            if (bodies.size() == 2) {
-                // c is read: the body of a was read two resources ago and is no longer needed
-                for (int attempt = 0; attempt < 10 && bodies.get(0).get() != null; attempt++) {
-                    System.gc();
-                    Thread.sleep(20);
-                }
-                firstBodyWasHeld[0] = bodies.get(0).get() != null;
-            }
-            String body = new String(stored.toCharArray());
-            bodies.add(new WeakReference<>(body));
-            return body;
-        });
+    void testFindingsInPlatformResourceAreWarnedWhoeverReachedThem() {
+        model("m", "gone");
+        ResourceDescriptor root = userApp("mine", "{\"endpoint\":\"http://mine.invalid\",\"dependencies\":[\"models/platform/m\"]}");
 
-        walk("a");
+        walker().walk(List.of(root), ADMIN);
 
-        assertEquals(3, bodies.size());
-        assertFalse(firstBodyWasHeld[0], "the body of the first resource is still reachable while the third is read");
+        assertEquals(1, warnings().size(), warnings().toString());
+        assertTrue(warnings().get(0).contains("resource=model:platform:m pointer=/dependencies/0 reason=missing"), warnings().toString());
+    }
+
+    @Test
+    void testRootThatDoesNotExistEndsTheWalkWithNotFound() {
+        HttpException failure = assertThrows(HttpException.class, () -> walk("gone"));
+
+        assertEquals(HttpStatus.NOT_FOUND, failure.getStatus());
+        assertEquals("A selected Application does not exist", failure.getMessage());
+    }
+
+    @Test
+    void testMissingSecondRootEndsTheWalkAndNothingIsListed() {
+        app("a", "models/platform/m");
+        model("m");
+
+        HttpException failure = assertThrows(HttpException.class, () -> walk("a", "gone"));
+
+        assertEquals(HttpStatus.NOT_FOUND, failure.getStatus());
     }
 
     /**

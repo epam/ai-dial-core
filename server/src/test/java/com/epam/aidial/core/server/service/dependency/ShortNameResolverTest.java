@@ -1,12 +1,10 @@
-package com.epam.aidial.core.server.config;
+package com.epam.aidial.core.server.service.dependency;
 
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Interceptor;
-import com.epam.aidial.core.server.service.dependency.ShortNameResolution;
+import com.epam.aidial.core.server.config.MergedConfigStore;
 import com.epam.aidial.core.server.service.dependency.ShortNameResolution.Origin;
 import com.epam.aidial.core.server.service.dependency.ShortNameResolution.Outcome;
-import com.epam.aidial.core.server.service.dependency.ShortNameResolver;
-import com.epam.aidial.core.storage.data.ResourceEvent;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +13,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -24,12 +23,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ShortNameResolverTest extends MergedConfigStoreTestSupport {
 
     private ShortNameResolution resolve(MergedConfigStore store, String name) {
-        return resolve(store, null, name);
+        return newResolver(store).resolve(name);
     }
 
-    private ShortNameResolution resolve(MergedConfigStore store, ResourceTypes hint, String name) {
-        return new ShortNameResolver(store.get(), store.getInvalidEntities(), store.getFileSourcedConfig(), resourceService)
-                .resolve(hint, name);
+    private ShortNameResolution resolveInterceptor(MergedConfigStore store, String name) {
+        return newResolver(store).resolveInterceptor(name);
+    }
+
+    private ShortNameResolver newResolver(MergedConfigStore store) {
+        return new ShortNameResolver(new ConfigSnapshot(store.get(), store.getFileSourcedConfig(), store.getInvalidEntities()), resourceService);
     }
 
     private static void assertFound(ShortNameResolution result, ResourceTypes type, Origin origin) {
@@ -186,41 +188,49 @@ public class ShortNameResolverTest extends MergedConfigStoreTestSupport {
         stubBlobs();
         MergedConfigStore store = newStore(MergedConfigStore.MODE_SKIP);
 
-        assertFound(resolve(store, ResourceTypes.INTERCEPTOR, "only-interceptor"), ResourceTypes.INTERCEPTOR, Origin.FILE);
-        assertEquals(Outcome.NOT_FOUND, resolve(store, ResourceTypes.INTERCEPTOR, "only-model").outcome(),
+        assertFound(resolveInterceptor(store, "only-interceptor"), ResourceTypes.INTERCEPTOR, Origin.FILE);
+        assertEquals(Outcome.NOT_FOUND, resolveInterceptor(store, "only-model").outcome(),
                 "a model of that name is not an interceptor");
         assertFound(resolve(store, "only-model"), ResourceTypes.MODEL, Origin.FILE);
     }
 
-    @Test
-    public void testNameHeldByTwoDeploymentMapsIsOriginUnknown() {
-        fileConfigIs(fileConfig(model(FILE_ENDPOINT), "shared"));
-        stubBlobs();
-        MergedConfigStore store = newStore(MergedConfigStore.MODE_SKIP);
-        platformBlobBodyIs(ResourceTypes.APPLICATION, "shared", applicationBody(BLOB_ENDPOINT));
-        store.applyReplicaEvent(platformDescriptor(ResourceTypes.APPLICATION, "shared"),
-                ResourceEvent.Action.CREATE, null);
-        Config merged = store.get();
-        assertTrue(merged.getModels().containsKey("shared") && merged.getApplications().containsKey("shared"),
-                "precondition: the replica path leaves both maps holding the name");
-        platformBlobExists(ResourceTypes.APPLICATION, "shared", true);
-
-        assertOriginUnknown(resolve(store, "shared"));
-        platformBlobExists(ResourceTypes.APPLICATION, "shared", false);
-        assertOriginUnknown(resolve(store, "shared"));
+    /** A snapshot that a rebuild would refuse because two types hold the name; only the replica path of a real store can leave it behind. */
+    private ShortNameResolver newResolverOver(Config merged, Config file) {
+        return new ShortNameResolver(new ConfigSnapshot(merged, file, Map.of()), resourceService);
     }
 
     @Test
-    public void testInterceptorHintResolvesTheInterceptorWhileAnotherTypeAlsoHoldsTheName() {
-        fileConfigIs(fileConfig(model(FILE_ENDPOINT), "shared"));
-        stubBlobs();
-        MergedConfigStore store = newStore(MergedConfigStore.MODE_SKIP);
-        platformBlobBodyIs(ResourceTypes.INTERCEPTOR, "shared", interceptorBody(BLOB_ENDPOINT));
-        store.applyReplicaEvent(platformDescriptor(ResourceTypes.INTERCEPTOR, "shared"), ResourceEvent.Action.CREATE, null);
+    public void testNameHeldByTwoDeploymentMapsIsOriginUnknown() {
+        Config merged = fileConfig(model(FILE_ENDPOINT), "shared");
+        merged.setApplications(new LinkedHashMap<>(Map.of("shared", appWithEndpoint(BLOB_ENDPOINT))));
+        ShortNameResolver resolver = newResolverOver(merged, fileConfig(model(FILE_ENDPOINT), "shared"));
+        platformBlobExists(ResourceTypes.APPLICATION, "shared", true);
+
+        assertOriginUnknown(resolver.resolve("shared"));
+        platformBlobExists(ResourceTypes.APPLICATION, "shared", false);
+        assertOriginUnknown(resolver.resolve("shared"));
+    }
+
+    @Test
+    public void testInterceptorLookupResolvesTheInterceptorWhileAnotherTypeAlsoHoldsTheName() {
+        Config merged = fileConfig(model(FILE_ENDPOINT), "shared");
+        Interceptor interceptor = new Interceptor();
+        interceptor.setEndpoint(BLOB_ENDPOINT);
+        merged.setInterceptors(new LinkedHashMap<>(Map.of("shared", interceptor)));
+        ShortNameResolver resolver = newResolverOver(merged, fileConfig(model(FILE_ENDPOINT), "shared"));
         platformBlobExists(ResourceTypes.INTERCEPTOR, "shared", true);
 
-        assertOriginUnknown(resolve(store, "shared"));
-        assertFound(resolve(store, ResourceTypes.INTERCEPTOR, "shared"), ResourceTypes.INTERCEPTOR, Origin.PLATFORM);
+        assertOriginUnknown(resolver.resolve("shared"));
+        assertFound(resolver.resolveInterceptor("shared"), ResourceTypes.INTERCEPTOR, Origin.PLATFORM);
+    }
+
+    @Test
+    public void testValueThatIsNotShortNameIsRefused() {
+        ShortNameResolver resolver = newResolverOver(new Config(), new Config());
+
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolve(""));
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolve("models/platform/m"));
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolveInterceptor("a/b"));
     }
 
     @Test
@@ -245,7 +255,7 @@ public class ShortNameResolverTest extends MergedConfigStoreTestSupport {
         MergedConfigStore store = newStore(MergedConfigStore.MODE_SKIP);
 
         ShortNameResolution unhinted = resolve(store, "shared");
-        ShortNameResolution hinted = resolve(store, ResourceTypes.INTERCEPTOR, "shared");
+        ShortNameResolution hinted = resolveInterceptor(store, "shared");
 
         assertEquals(Outcome.FOUND, unhinted.outcome(), "precondition: the file model holds the name");
         assertEquals(Outcome.NOT_FOUND, hinted.outcome(), "no interceptor holds the name");

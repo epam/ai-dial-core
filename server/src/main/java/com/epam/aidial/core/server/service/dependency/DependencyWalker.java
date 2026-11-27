@@ -1,24 +1,24 @@
 package com.epam.aidial.core.server.service.dependency;
 
-import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Deployment;
-import com.epam.aidial.core.server.config.InvalidEntityRecord;
 import com.epam.aidial.core.server.data.folder.FolderResourceMarker;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
 import com.epam.aidial.core.server.service.config.ConfigEntityCodec;
-import com.epam.aidial.core.server.service.dependency.DependencyAccessPolicy.ConfigSnapshot;
 import com.epam.aidial.core.server.service.dependency.DependencyTypePolicy.Content;
 import com.epam.aidial.core.server.service.dependency.DiscoveredEdge.EdgeStatus;
 import com.epam.aidial.core.server.service.dependency.DiscoveryResult.DiscoveryIssue;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
+import com.epam.aidial.core.storage.http.HttpException;
+import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.event.Level;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -30,7 +30,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.locks.Lock;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
@@ -41,46 +40,37 @@ import javax.annotation.Nullable;
  *
  * <p>An {@link DependencyAccessPolicy} decides, once for a whole level of the walk, which targets may be listed. A target that is not
  * listed is left out without a trace. A reference that is not followed is one log record with the resource key, the JSON pointer and a
- * reason, never the value. The instance holds no state of a walk.
+ * reason, never the value; it is at DEBUG when the resource that holds the reference is in a user bucket. The instance holds no state of a
+ * walk.
  */
 @Slf4j
 public final class DependencyWalker {
 
-    private final Lock publicationLock;
-    private final Supplier<Map<ResourceTypes, Map<String, InvalidEntityRecord>>> invalidEntitiesSource;
-    private final Supplier<Config> configSource;
-    private final Supplier<Config> fileConfigSource;
+    private final Supplier<ConfigSnapshot> snapshotSource;
     private final ResourceService resourceService;
     private final ApplicationSchemaService applicationSchemaService;
     private final CatalogSchemaService catalogSchemaService;
     private final EncryptionService encryptionService;
     private final ComplexResourceService complexResourceService;
+    private final PlatformSchemaScan platformSchemaScan;
 
     /**
-     * The merged {@code Config} and the skipped entities are read together under the publication lock, so they come from one publication.
-     * The file-sourced configuration belongs to another store, so it is read afterwards and is not part of that guarantee.
+     * @param snapshotSource what a walk resolves every name against, read once per walk
      */
-    public DependencyWalker(Lock publicationLock, Supplier<Map<ResourceTypes, Map<String, InvalidEntityRecord>>> invalidEntitiesSource,
-                            Supplier<Config> configSource, Supplier<Config> fileConfigSource, ResourceService resourceService,
+    public DependencyWalker(Supplier<ConfigSnapshot> snapshotSource, ResourceService resourceService,
                             ApplicationSchemaService applicationSchemaService, CatalogSchemaService catalogSchemaService,
-                            EncryptionService encryptionService, ComplexResourceService complexResourceService) {
-        this.publicationLock = publicationLock;
-        this.invalidEntitiesSource = invalidEntitiesSource;
-        this.configSource = configSource;
-        this.fileConfigSource = fileConfigSource;
+                            EncryptionService encryptionService, ComplexResourceService complexResourceService,
+                            PlatformSchemaScan platformSchemaScan) {
+        this.snapshotSource = snapshotSource;
         this.resourceService = resourceService;
         this.applicationSchemaService = applicationSchemaService;
         this.catalogSchemaService = catalogSchemaService;
         this.encryptionService = encryptionService;
         this.complexResourceService = complexResourceService;
+        this.platformSchemaScan = platformSchemaScan;
     }
 
-    /**
-     * It blocks: call it from a worker thread.
-     *
-     * @return whether the stored resource exists; it is asked for a root, before the walk
-     */
-    public boolean isStored(ResourceDescriptor descriptor) {
+    private boolean isStored(ResourceDescriptor descriptor) {
         if (FileConfigEntities.isFile(descriptor)) {
             return true;
         }
@@ -94,24 +84,14 @@ public final class DependencyWalker {
     /**
      * It blocks: call it from a worker thread.
      *
-     * @param roots the roots that the policy accepted and that exist; the same root named twice is walked once
-     * @throws IllegalStateException if a root no longer exists
+     * @param roots the roots that the policy accepted; the same root named twice is walked once
+     * @throws HttpException {@code 404} if a root does not exist
      */
     public DependencyListResponse walk(List<ResourceDescriptor> roots, DependencyAccessPolicy policy) {
         List<ResourceDescriptor> distinctRoots = List.copyOf(new LinkedHashSet<>(roots));
-        Map<ResourceTypes, Map<String, InvalidEntityRecord>> invalidEntities;
-        Config merged;
-        publicationLock.lock();
-        try {
-            invalidEntities = invalidEntitiesSource.get();
-            merged = configSource.get();
-        } finally {
-            publicationLock.unlock();
-        }
-        Config fileConfig = fileConfigSource.get();
-        ConfigSnapshot configuration = new ConfigSnapshot(merged, fileConfig);
-        DeploymentEdgeDiscovery discovery = new DeploymentEdgeDiscovery(merged, invalidEntities, fileConfig, resourceService,
-                applicationSchemaService, catalogSchemaService, encryptionService, policy::isSupported);
+        ConfigSnapshot configuration = snapshotSource.get();
+        DeploymentEdgeDiscovery discovery = new DeploymentEdgeDiscovery(configuration, resourceService, applicationSchemaService,
+                catalogSchemaService, encryptionService, platformSchemaScan, policy::isSupported);
         long begun = System.nanoTime();
         Exploration exploration = new Exploration(discovery, configuration, policy);
         DependencyListResponse response = exploration.run(distinctRoots);
@@ -120,21 +100,25 @@ public final class DependencyWalker {
         return response;
     }
 
-    /** The resource and the JSON pointer of a reference. */
-    private record Referrer(String key, String pointer) {
+    private record Referrer(ResourceDescriptor resource, String pointer) {
     }
 
-    /** The state of one walk. */
+    /** The stored body of a resource cannot be bound to its type; the message names the resource and holds no value of the body. */
+    private static final class UnboundBodyException extends IllegalStateException {
+        private UnboundBodyException(String key) {
+            super("A stored body cannot be bound to its type (resource=" + key + ")");
+        }
+    }
+
     private final class Exploration {
         private final DeploymentEdgeDiscovery discovery;
         /** What discovery resolved against; the policy decides on the same publication. */
         private final ConfigSnapshot configuration;
         private final DependencyAccessPolicy policy;
-        /** The resources that exist and were examined, each with the listed resources it refers to, in the order of its references. */
+        /** The resources that exist and were examined, each with the resources it refers to, in the order of its references. */
         private final Map<ResourceDescriptor, List<ResourceDescriptor>> references = new LinkedHashMap<>();
-        /** Every resource that was ever queued: the roots and the targets that the policy listed. */
-        private final Set<ResourceDescriptor> met = new HashSet<>();
-        private final Set<ResourceDescriptor> denied = new HashSet<>();
+        /** The roots and every target met so far, listed by the policy or not: each is examined, or refused, once. */
+        private final Set<ResourceDescriptor> seen = new HashSet<>();
         /** The first reference that led to each target, for the log of a target that does not exist. */
         private final Map<ResourceDescriptor, Referrer> referrers = new HashMap<>();
 
@@ -145,134 +129,150 @@ public final class DependencyWalker {
         }
 
         private DependencyListResponse run(List<ResourceDescriptor> roots) {
-            met.addAll(roots);
+            seen.addAll(roots);
             List<ResourceDescriptor> level = roots;
             boolean isRootLevel = true;
             while (!level.isEmpty()) {
-                Map<ResourceDescriptor, List<ResourceDescriptor>> found = new LinkedHashMap<>();
                 Set<ResourceDescriptor> fresh = new LinkedHashSet<>();
                 for (ResourceDescriptor descriptor : level) {
                     List<ResourceDescriptor> targets = examine(descriptor, isRootLevel);
                     if (targets == null) {
                         continue;
                     }
-                    found.put(descriptor, targets);
+                    references.put(descriptor, targets);
                     for (ResourceDescriptor target : targets) {
-                        if (!met.contains(target) && !denied.contains(target)) {
+                        if (seen.add(target)) {
                             fresh.add(target);
                         }
                     }
                 }
                 Set<ResourceDescriptor> listed = fresh.isEmpty() ? Set.of() : policy.selectListable(fresh, configuration);
-                List<ResourceDescriptor> next = new ArrayList<>();
-                for (ResourceDescriptor target : fresh) {
-                    if (listed.contains(target)) {
-                        met.add(target);
-                        next.add(target);
-                    } else {
-                        denied.add(target);
-                    }
-                }
-                found.forEach((descriptor, targets) -> references.put(descriptor, targets.stream().filter(met::contains).toList()));
-                level = next;
+                level = fresh.stream().filter(listed::contains).toList();
                 isRootLevel = false;
             }
             return buildAnswer(roots);
         }
 
         /**
-         * @return the targets that the references of the resource name, or {@code null} for a dependency that does not exist, which is logged
-         * @throws IllegalStateException if a root no longer exists
+         * A root that does not exist or whose stored body cannot be bound ends the walk; a dependency that does not exist is logged and left
+         * out, and one whose body cannot be bound is listed with unknown references.
+         *
+         * @return the targets that the references of the resource name, or {@code null} for a dependency that does not exist
+         * @throws HttpException         {@code 404} if a root does not exist
+         * @throws IllegalStateException if the stored body of a root cannot be bound
          */
         @Nullable
         private List<ResourceDescriptor> examine(ResourceDescriptor descriptor, boolean isRoot) {
-            String key = DependencyResourceNames.buildKey(descriptor);
+            List<ResourceDescriptor> targets;
+            try {
+                targets = readTargets(descriptor);
+            } catch (UnboundBodyException e) {
+                if (isRoot) {
+                    throw e;
+                }
+                logFinding(Level.WARN, descriptor, "Dependency list: the references of {} are not read: the stored body cannot be bound");
+                return List.of();
+            }
+            if (targets == null) {
+                if (isRoot) {
+                    throw new HttpException(HttpStatus.NOT_FOUND, "A selected Application does not exist");
+                }
+                logMissing(descriptor);
+            }
+            return targets;
+        }
+
+        /**
+         * @return the targets of the references of the resource, or {@code null} if the resource does not exist
+         */
+        @Nullable
+        private List<ResourceDescriptor> readTargets(ResourceDescriptor descriptor) {
             Content content = DependencyTypePolicy.resolveContent(DependencyTypePolicy.resolveType(descriptor));
             if (content == Content.EXAMINED) {
-                return examineDeployment(descriptor, key, isRoot);
+                Deployment entity = loadDeployment(descriptor);
+                return entity == null ? null : listTargets(descriptor, entity);
             }
-            if (!isStored(descriptor)) {
-                return onMissing(descriptor, key, isRoot);
-            }
-            return List.of();
+            return isStored(descriptor) ? List.of() : null;
         }
 
         @Nullable
-        private List<ResourceDescriptor> examineDeployment(ResourceDescriptor descriptor, String key, boolean isRoot) {
-            Deployment entity;
+        private Deployment loadDeployment(ResourceDescriptor descriptor) {
             if (FileConfigEntities.isFile(descriptor)) {
-                entity = FileConfigEntities.findDeployment(configuration.file(), descriptor);
-            } else {
-                String text = resourceService.getResource(descriptor);
-                entity = text == null ? null : bindStored(descriptor, key, text, isRoot);
-                if (entity == null && text != null) {
-                    return List.of();
-                }
+                return FileConfigEntities.findDeployment(configuration.file(), descriptor);
             }
-            if (entity == null) {
-                return onMissing(descriptor, key, isRoot);
-            }
+            String text = resourceService.getResource(descriptor);
+            return text == null ? null : bindStored(descriptor, text);
+        }
+
+        private List<ResourceDescriptor> listTargets(ResourceDescriptor descriptor, Deployment entity) {
             DiscoveryResult found = discovery.discover(entity);
-            for (DiscoveryIssue issue : found.listReportedIssues()) {
-                log.warn("Dependency list: the references of {} may be incomplete: {} at {}", key,
-                        DependencyResourceNames.toWireName(issue.kind()), issue.pointer());
+            for (DiscoveryIssue issue : found.issues()) {
+                logFinding(Level.WARN, descriptor, "Dependency list: the references of {} may be incomplete: {} at {}",
+                        DependencyResourceNames.formatReason(issue.kind()), issue.pointer());
             }
             Set<ResourceDescriptor> targets = new LinkedHashSet<>();
             for (DiscoveredEdge edge : found.edges()) {
                 if (edge.status() != null) {
-                    recordNotFollowed(key, edge.pointer(), edge.status());
+                    recordNotFollowed(descriptor, edge.pointer(), edge.status());
                     continue;
                 }
                 if (targets.add(edge.target())) {
-                    referrers.putIfAbsent(edge.target(), new Referrer(key, edge.pointer()));
+                    referrers.putIfAbsent(edge.target(), new Referrer(descriptor, edge.pointer()));
                 }
             }
             return List.copyOf(targets);
         }
 
         /**
-         * Binds the stored body to the entity of its type. A root whose body cannot be bound ends the walk; a dependency is listed with unknown
-         * references. A message and a log record name the resource only: no cause is kept, because the message of the parser or of the binder
-         * can quote a value of the body.
+         * Binds the stored body to the entity of its type. The exception names the resource only: no cause is kept, because the message of
+         * the parser or of the binder can quote a value of the body.
+         *
+         * @throws UnboundBodyException if the body is not an object of that type
          */
-        @Nullable
-        private Deployment bindStored(ResourceDescriptor descriptor, String key, String text, boolean isRoot) {
+        private Deployment bindStored(ResourceDescriptor descriptor, String text) {
             try {
                 JsonNode tree = ConfigEntityCodec.BLOB_MAPPER.readTree(text);
-                if (tree != null && tree.isObject()) {
+                if (tree.isObject()) {
                     return ConfigEntityCodec.treeToEntity(tree, DependencyTypePolicy.resolveEntityClass(DependencyTypePolicy.resolveType(descriptor)));
                 }
             } catch (JsonProcessingException | IllegalArgumentException e) {
                 // falls through to the refusal below, without the cause
             }
-            if (isRoot) {
-                throw new IllegalStateException("A stored body cannot be bound to its type (resource=" + key + ")");
-            }
-            log.warn("Dependency list: the references of {} are not read: the stored body cannot be bound", key);
-            return null;
+            throw new UnboundBodyException(DependencyResourceNames.buildKey(descriptor));
         }
 
-        /** A root that is gone ends the walk; a dependency that is gone is recorded and the walk goes on. */
-        @Nullable
-        private List<ResourceDescriptor> onMissing(ResourceDescriptor descriptor, String key, boolean isRoot) {
-            if (isRoot) {
-                throw new IllegalStateException("A selected Application no longer exists (resource=" + key + ")");
-            }
+        /** Every target that is not a root was named by a reference that was recorded when it was found. */
+        private void logMissing(ResourceDescriptor descriptor) {
             Referrer referrer = referrers.get(descriptor);
-            log.warn("Dependency list: a reference is not followed: resource={} pointer={} reason={}",
-                    referrer == null ? "-" : referrer.key(), referrer == null ? "-" : referrer.pointer(),
-                    DependencyResourceNames.toWireName(EdgeStatus.MISSING));
-            return null;
+            logFinding(Level.WARN, referrer.resource(), "Dependency list: a reference is not followed: resource={} pointer={} reason={}",
+                    referrer.pointer(), DependencyResourceNames.formatReason(EdgeStatus.MISSING));
         }
 
-        private void recordNotFollowed(String fromKey, String pointer, EdgeStatus status) {
+        private void recordNotFollowed(ResourceDescriptor from, String pointer, EdgeStatus status) {
             if (status == EdgeStatus.EXTERNAL) {
                 // an external URL is not a resource of the system, so it is not a finding
-                log.info("Dependency list: a reference is external and not followed: resource={} pointer={}", fromKey, pointer);
+                logFinding(Level.INFO, from, "Dependency list: a reference is external and not followed: resource={} pointer={}", pointer);
                 return;
             }
-            log.warn("Dependency list: a reference is not followed: resource={} pointer={} reason={}", fromKey, pointer,
-                    DependencyResourceNames.toWireName(status));
+            logFinding(Level.WARN, from, "Dependency list: a reference is not followed: resource={} pointer={} reason={}", pointer,
+                    DependencyResourceNames.formatReason(status));
+        }
+
+        /**
+         * Logs a finding about a resource at {@code operatorLevel}, or at DEBUG when the resource lies in a user bucket: its references are
+         * the user's to fix, so a call must not make the operator read them. The key of the resource is the first argument of the message, and
+         * it is built only when the record is written.
+         */
+        private void logFinding(Level operatorLevel, ResourceDescriptor resource, String format, Object... arguments) {
+            boolean isUserResource = DependencyResourceNames.PRIVATE.equals(DependencyResourceNames.resolveOrigin(resource));
+            Level level = isUserResource ? Level.DEBUG : operatorLevel;
+            if (!log.isEnabledForLevel(level)) {
+                return;
+            }
+            Object[] withKey = new Object[arguments.length + 1];
+            withKey[0] = DependencyResourceNames.buildKey(resource);
+            System.arraycopy(arguments, 0, withKey, 1, arguments.length);
+            log.atLevel(level).log(format, withKey);
         }
 
         private DependencyListResponse buildAnswer(List<ResourceDescriptor> roots) {
@@ -302,7 +302,7 @@ public final class DependencyWalker {
         }
 
         private DependencyResource toResource(ResourceDescriptor descriptor) {
-            String type = DependencyResourceNames.resolveTypeName(DependencyTypePolicy.resolveType(descriptor));
+            String type = DependencyTypePolicy.resolveTypeName(DependencyTypePolicy.resolveType(descriptor));
             String url = policy.isUrlExposed(descriptor) ? descriptor.getUrl() : null;
             return new DependencyResource(type, url, descriptor.getName(), DependencyResourceNames.resolveOrigin(descriptor));
         }

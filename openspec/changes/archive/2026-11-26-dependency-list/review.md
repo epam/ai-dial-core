@@ -11,9 +11,9 @@ trace. A per-request key is `403`; a root is authorized before it is looked up. 
 - `./gradlew checkstyleMain checkstyleTest` passes.
 - `./gradlew :server:test` over the classes of groups 1 to 4 passes: `MarkerRecorderTest`, `RequestTimeCollectionCompatibilityTest`,
   `ApplicationSchemaServiceTest`, `CatalogSchemaServiceTest`, `ShortNameResolver*`, `SchemaReferenceResolverTest`, `DeploymentEdgeDiscoveryTest`,
-  `DependencyTypePolicyTest`, `DependencyNamesTest`, `DependencyAccessPolicyTest`, `DependencyListResponseTest`,
+  `DependencyTypePolicyTest`, `DependencyNamesTest`, `DependencyAccessPolicyTest`,
   `DependencyWalkerTest`, `DependencyRequestParserTest`, `DependencyListControllerSelectionTest`, `DependencyListApiTest`,
-  `DependencyListRunnerFailureApiTest`, `DependencyListAccessApiTest`.
+  `DependencyListAccessApiTest`.
 - `./gradlew mergeOpenApiSpec lintMergedOpenApi`: no new lint warning (the generated `docs/open_api_core.yaml` is left to CI).
 - `npx -y @fission-ai/openspec@1.14.3 validate --all --strict`: all items pass.
 - Measured in `DependencyWalkerTest` (two roots reaching 50 resources through a diamond and a cycle): 34 reads (one per Application), 16 existence checks

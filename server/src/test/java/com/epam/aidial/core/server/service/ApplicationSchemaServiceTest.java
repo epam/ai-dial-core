@@ -955,7 +955,7 @@ public class ApplicationSchemaServiceTest {
         return result;
     }
 
-    /** Collects as the export does: builds the schema from the given configuration, then collects the properties against it. */
+    /** Collects as the dependency list does: builds the schema from the given configuration, then collects the properties against it. */
     private MarkerCollection collect(ApplicationSchemaService under, Config source) {
         ApplicationSchemaService.ReferenceSchema built = under.buildReferenceSchema(application.getApplicationTypeSchemaId(), source);
         return built.issue() != null ? MarkerCollection.ofIssue(built.issue()) : under.collectMarkerReferences(application, built.schema());
@@ -1024,16 +1024,12 @@ public class ApplicationSchemaServiceTest {
     }
 
     @Test
-    public void collectMarkerReferences_acceptsLocalRefsOfSchemaWithAbsoluteId() {
-        String mergedSchema = """
-                {"$id":"https://mydial.example/custom_application_schemas/quick","type":"object",
-                 "properties":{"a":{"$ref":"#/$defs/res"}},
-                 "$defs":{"res":{"type":"string","dial:resource":true}}}""";
+    public void collectMarkerReferences_reportsStoredSchemaThatIsNotJsonAsUnavailableWithoutThrowing() {
+        MarkerCollection result = collectFrom("{not json", properties("first", "toolsets/platform/a"));
 
-        MarkerCollection result = collectFrom(mergedSchema, properties("a", "toolsets/platform/a"));
-
-        Assertions.assertEquals(List.of(reference("/a", "toolsets/platform/a")), result.references());
-        Assertions.assertTrue(result.issues().isEmpty());
+        Assertions.assertTrue(result.references().isEmpty());
+        Assertions.assertEquals(1, result.issues().size());
+        Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, result.issues().get(0).kind());
     }
 
     @ParameterizedTest
@@ -1102,14 +1098,14 @@ public class ApplicationSchemaServiceTest {
         MarkerCollection beforeAnythingIsCached = collect(configStore.get());
 
         Assertions.assertEquals(List.of(reference("/first", "toolsets/platform/a")), beforeAnythingIsCached.references());
-        Assertions.assertEquals(0, service.schemaCacheSize(), "the export neither reads nor fills the cache");
+        Assertions.assertEquals(0, service.schemaCacheSize(), "the dependency list neither reads nor fills the cache");
 
         String cachedByRequestProcessing = service.getSchema(schemaId, false);
         givenRunnerAnswers("{\"type\":\"object\",\"properties\":{\"first\":{\"type\":\"string\"}}}");
 
         MarkerCollection result = collect(configStore.get());
 
-        Assertions.assertTrue(result.references().isEmpty(), "the export evaluated the live document, not the cached one");
+        Assertions.assertTrue(result.references().isEmpty(), "the dependency list evaluated the live document, not the cached one");
         Assertions.assertEquals(cachedByRequestProcessing, service.getSchema(schemaId, false),
                 "request processing still sees what it cached");
         Assertions.assertEquals(1, service.schemaCacheSize());
@@ -1204,7 +1200,7 @@ public class ApplicationSchemaServiceTest {
             Assertions.assertEquals(CollectionIssueKind.SCHEMA_UNAVAILABLE, result.issues().get(0).kind());
             Assertions.assertFalse(logs.text().isBlank(), "the failure is still logged");
             Assertions.assertFalse(logs.text().contains("SECRET-PATH") || logs.text().contains("token=abc")
-                    || logs.text().contains("runner.example"), "no IRI in the export's log: " + logs.text());
+                    || logs.text().contains("runner.example"), "no IRI in the log of the dependency list: " + logs.text());
         }
     }
 
@@ -1213,7 +1209,7 @@ public class ApplicationSchemaServiceTest {
     private void givenRunnerFailsWith(int status) throws IOException, InterruptedException {
         HttpResponse<String> response = mock(HttpResponse.class);
         when(response.statusCode()).thenReturn(status);
-        when(response.body()).thenReturn("BODY-MARKER");
+        org.mockito.Mockito.lenient().when(response.body()).thenReturn("BODY-MARKER");
         org.mockito.Mockito.lenient().when(response.headers()).thenReturn(java.net.http.HttpHeaders.of(
                 Map.of("X-Secret", List.of("HEADER-MARKER")), (name, value) -> true));
         when(httpClient.send(any(HttpRequest.class), eq(HttpResponse.BodyHandlers.ofString()))).thenReturn(response);
@@ -1237,7 +1233,7 @@ public class ApplicationSchemaServiceTest {
             ApplicationTypeSchemaProcessingException thrown = assertThrows(ApplicationTypeSchemaProcessingException.class,
                     () -> service.getSchema(schemaId, true));
 
-            // request processing is unchanged by the export: the endpoint and the cause are logged and wrapped
+            // request processing is unchanged by the dependency list: the endpoint and the cause are logged and wrapped
             Assertions.assertEquals("Failed to download application schema: http://runner.example/schema", thrown.getMessage());
             Assertions.assertSame(failure, thrown.getCause());
             Assertions.assertTrue(logs.text().contains("http://runner.example/schema"), "the endpoint is logged: " + logs.text());

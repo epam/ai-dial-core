@@ -6,7 +6,6 @@ import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.config.ResourceAccessType;
 import com.epam.aidial.core.config.ToolSet;
-import com.epam.aidial.core.server.service.dependency.DependencyAccessPolicy.ConfigSnapshot;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
@@ -19,7 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -32,8 +30,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class DependencyAccessPolicyTest {
 
-    private static final DependencyAccessPolicy READS_PUBLIC = new AdminAccessPolicy(resource -> true);
-    private static final ConfigSnapshot NO_CONFIG = new ConfigSnapshot(new Config(), null);
+    private static final DependencyAccessPolicy ADMIN = new AdminAccessPolicy();
+    private static final ConfigSnapshot NO_CONFIG = new ConfigSnapshot(new Config(), null, Map.of());
 
     private static ResourceDescriptor descriptor(ResourceTypes type, String bucket, String location, String path) {
         return ResourceDescriptorFactory.fromDecoded(type, bucket, location, path);
@@ -62,7 +60,7 @@ public class DependencyAccessPolicyTest {
         ResourceDescriptor application = platform(ResourceTypes.APPLICATION, "helper");
         ResourceDescriptor schema = platform(ResourceTypes.APP_TYPE_SCHEMA, "s");
 
-        assertEquals(Set.of(model, interceptor, application, schema), listed(READS_PUBLIC, model, interceptor, application, schema));
+        assertEquals(Set.of(model, interceptor, application, schema), listed(ADMIN, model, interceptor, application, schema));
     }
 
     @Test
@@ -70,26 +68,16 @@ public class DependencyAccessPolicyTest {
         // the policy knows no roles: a platform deployment is listed whoever may call it
         ResourceDescriptor restricted = platform(ResourceTypes.MODEL, "internal-llm");
 
-        assertEquals(Set.of(restricted), listed(READS_PUBLIC, restricted));
+        assertEquals(Set.of(restricted), listed(ADMIN, restricted));
     }
 
     @Test
     public void testEntityOfTheFileConfigurationIsListedAndItsUrlIsNotExposed() {
         ResourceDescriptor entity = FileConfigEntities.newDescriptor(ResourceTypes.MODEL, "fm");
 
-        assertEquals(Set.of(entity), listed(READS_PUBLIC, entity));
-        assertFalse(READS_PUBLIC.isUrlExposed(entity));
-        assertTrue(READS_PUBLIC.isUrlExposed(platform(ResourceTypes.MODEL, "m")));
-    }
-
-    @Test
-    public void testPublicResourceIsListedOnlyWhenTheCallerMayReadIt() {
-        ResourceDescriptor readable = publicResource(ResourceTypes.FILE, "a/icon.png");
-        ResourceDescriptor hidden = publicResource(ResourceTypes.PROMPT, "secret");
-        Predicate<ResourceDescriptor> reads = resource -> !"secret".equals(resource.getName());
-        DependencyAccessPolicy policy = new AdminAccessPolicy(reads);
-
-        assertEquals(Set.of(readable), listed(policy, readable, hidden));
+        assertEquals(Set.of(entity), listed(ADMIN, entity));
+        assertFalse(ADMIN.isUrlExposed(entity));
+        assertTrue(ADMIN.isUrlExposed(platform(ResourceTypes.MODEL, "m")));
     }
 
     @Test
@@ -98,7 +86,7 @@ public class DependencyAccessPolicyTest {
         ResourceDescriptor userApplication = descriptor(ResourceTypes.APPLICATION, "bucketToken", "Users/someone/", "app");
         ResourceDescriptor review = descriptor(ResourceTypes.FILE, "reviewToken", "public/publications/p1/", "a.txt");
 
-        assertEquals(Set.of(), listed(READS_PUBLIC, userFile, userApplication, review));
+        assertEquals(Set.of(), listed(ADMIN, userFile, userApplication, review));
     }
 
     @Test
@@ -107,8 +95,8 @@ public class DependencyAccessPolicyTest {
         ResourceDescriptor publicToolSet = publicResource(ResourceTypes.TOOL_SET, "team/t");
         ResourceDescriptor userToolSet = descriptor(ResourceTypes.TOOL_SET, "bucketToken", "Users/someone/", "t");
 
-        assertEquals(Set.of(platformToolSet, publicToolSet), listed(READS_PUBLIC, platformToolSet, publicToolSet, userToolSet));
-        assertFalse(READS_PUBLIC.isRootAllowed(platformToolSet), "only an Application is a root");
+        assertEquals(Set.of(platformToolSet, publicToolSet), listed(ADMIN, platformToolSet, publicToolSet, userToolSet));
+        assertFalse(isRootAllowed(ADMIN, platformToolSet), "only an Application is a root");
     }
 
     @Test
@@ -116,33 +104,36 @@ public class DependencyAccessPolicyTest {
         ResourceDescriptor router = platform(ResourceTypes.ROUTER, "r");
         ResourceDescriptor folder = publicResource(ResourceTypes.FILE, "folder/");
 
-        assertEquals(Set.of(), listed(READS_PUBLIC, router, folder));
+        assertEquals(Set.of(), listed(ADMIN, router, folder));
     }
 
     @Test
-    public void testRootMustBeAnApplicationOfPublicOrPlatformThatTheCallerMayRead() {
-        DependencyAccessPolicy policy = new AdminAccessPolicy(resource -> !"hidden".equals(resource.getName()));
+    public void testRootMustBeAnApplicationOfPublicOrPlatform() {
+        DependencyAccessPolicy policy = new AdminAccessPolicy();
 
-        assertTrue(policy.isRootAllowed(platform(ResourceTypes.APPLICATION, "a")));
-        assertTrue(policy.isRootAllowed(publicResource(ResourceTypes.APPLICATION, "team/a__1.0")));
-        assertFalse(policy.isRootAllowed(publicResource(ResourceTypes.APPLICATION, "hidden")), "a public root that the caller may not read");
-        assertFalse(policy.isRootAllowed(platform(ResourceTypes.MODEL, "m")), "only an Application is a root");
-        assertFalse(policy.isRootAllowed(descriptor(ResourceTypes.APPLICATION, "bucketToken", "Users/someone/", "a")), "a user bucket");
-        assertFalse(policy.isRootAllowed(publicResource(ResourceTypes.APPLICATION, "folder/")), "a folder");
+        assertTrue(isRootAllowed(policy, platform(ResourceTypes.APPLICATION, "a")));
+        assertTrue(isRootAllowed(policy, publicResource(ResourceTypes.APPLICATION, "team/a__1.0")));
+        assertFalse(isRootAllowed(policy, platform(ResourceTypes.MODEL, "m")), "only an Application is a root");
+        assertFalse(isRootAllowed(policy, descriptor(ResourceTypes.APPLICATION, "bucketToken", "Users/someone/", "a")), "a user bucket");
+        assertFalse(isRootAllowed(policy, publicResource(ResourceTypes.APPLICATION, "folder/")), "a folder");
+    }
+
+    private static boolean isRootAllowed(DependencyAccessPolicy policy, ResourceDescriptor root) {
+        return policy.selectAllowedRoots(Set.of(root)).contains(root);
     }
 
     private static final String OWN = "Users/me/";
     private static final String OTHER = "Users/other/";
 
-    /** What the initiator policy asks of the access service and of the configuration. */
-    private static final class InitiatorSetup {
+    /** What the user policy asks of the access service and of the configuration. */
+    private static final class UserSetup {
         private final Set<String> readable = new HashSet<>();
         private final AtomicInteger lookups = new AtomicInteger();
         private final AtomicInteger lookedUp = new AtomicInteger();
         private final Config merged = new Config();
         private final Config file = new Config();
 
-        private InitiatorSetup() {
+        private UserSetup() {
             for (Config config : List.of(merged, file)) {
                 config.setModels(new HashMap<>());
                 config.setApplications(new HashMap<>());
@@ -151,8 +142,8 @@ public class DependencyAccessPolicyTest {
             }
         }
 
-        private InitiatorAccessPolicy policy(String... roles) {
-            return new InitiatorAccessPolicy(targets -> {
+        private UserAccessPolicy policy(String... roles) {
+            return new UserAccessPolicy(targets -> {
                 lookups.incrementAndGet();
                 lookedUp.addAndGet(targets.size());
                 Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = new HashMap<>();
@@ -163,7 +154,7 @@ public class DependencyAccessPolicyTest {
 
         /** The configuration that a walk would hand to the policy. */
         private ConfigSnapshot snapshot() {
-            return new ConfigSnapshot(merged, file);
+            return new ConfigSnapshot(merged, file, Map.of());
         }
     }
 
@@ -175,8 +166,8 @@ public class DependencyAccessPolicyTest {
     }
 
     @Test
-    public void testInitiatorListsOnlyWhatTheCallerMayRead() {
-        InitiatorSetup setup = new InitiatorSetup();
+    public void testUserListsOnlyWhatTheCallerMayRead() {
+        UserSetup setup = new UserSetup();
         setup.readable.addAll(Set.of("mine.png", "open.png", "app"));
         ResourceDescriptor own = descriptor(ResourceTypes.FILE, "tokenMe", OWN, "mine.png");
         ResourceDescriptor others = descriptor(ResourceTypes.FILE, "tokenOther", OTHER, "theirs.png");
@@ -190,8 +181,8 @@ public class DependencyAccessPolicyTest {
     }
 
     @Test
-    public void testInitiatorAsksNothingForConfigurationEntities() {
-        InitiatorSetup setup = new InitiatorSetup();
+    public void testUserAsksNothingForConfigurationEntities() {
+        UserSetup setup = new UserSetup();
         setup.merged.getModels().put("m", modelWithRoles());
         ResourceDescriptor model = platform(ResourceTypes.MODEL, "m");
         ResourceDescriptor interceptor = platform(ResourceTypes.INTERCEPTOR, "i");
@@ -202,7 +193,7 @@ public class DependencyAccessPolicyTest {
 
     @Test
     public void testDeploymentOfTheConfigurationNeedsRoleThatAdmitsTheCaller() {
-        InitiatorSetup setup = new InitiatorSetup();
+        UserSetup setup = new UserSetup();
         setup.merged.getModels().put("open", modelWithRoles());
         setup.merged.getModels().put("power", modelWithRoles("power-user"));
         Model nobody = new Model();
@@ -226,15 +217,15 @@ public class DependencyAccessPolicyTest {
     }
 
     @Test
-    public void testInitiatorDecidesOnTheGivenSnapshotNotOnLaterConfiguration() {
-        InitiatorSetup setup = new InitiatorSetup();
+    public void testUserDecidesOnTheGivenSnapshotNotOnLaterConfiguration() {
+        UserSetup setup = new UserSetup();
         setup.merged.getModels().put("m", modelWithRoles("power-user"));
         ConfigSnapshot admitting = setup.snapshot();
         Config later = new Config();
         later.setModels(new HashMap<>(Map.of("m", modelWithRoles("someone-else"))));
-        ConfigSnapshot refusing = new ConfigSnapshot(later, null);
+        ConfigSnapshot refusing = new ConfigSnapshot(later, null, Map.of());
         ResourceDescriptor model = platform(ResourceTypes.MODEL, "m");
-        InitiatorAccessPolicy policy = setup.policy("power-user");
+        UserAccessPolicy policy = setup.policy("power-user");
 
         assertEquals(Set.of(model), listed(policy, admitting, model));
         assertEquals(Set.of(), listed(policy, refusing, model), "the same policy, another publication: the roles of that one decide");
@@ -242,7 +233,7 @@ public class DependencyAccessPolicyTest {
 
     @Test
     public void testToolSetOfTheConfigurationNeedsRoleThatAdmitsTheCallerAndHasNoUrl() {
-        InitiatorSetup setup = new InitiatorSetup();
+        UserSetup setup = new UserSetup();
         ToolSet open = new ToolSet();
         ToolSet restricted = new ToolSet();
         restricted.setUserRoles(Set.of("power-user"));
@@ -261,7 +252,7 @@ public class DependencyAccessPolicyTest {
 
     @Test
     public void testToolSetInTheStoresOfTheUserIsListedByTheRightToRead() {
-        InitiatorSetup setup = new InitiatorSetup();
+        UserSetup setup = new UserSetup();
         setup.readable.add("mine");
         ResourceDescriptor own = descriptor(ResourceTypes.TOOL_SET, "tokenMe", OWN, "mine");
         ResourceDescriptor others = descriptor(ResourceTypes.TOOL_SET, "tokenOther", OTHER, "theirs");
@@ -270,12 +261,12 @@ public class DependencyAccessPolicyTest {
 
         assertEquals(Set.of(own, open), listed(setup.policy(), setup.snapshot(), own, others, open));
         assertTrue(setup.policy().isUrlExposed(own));
-        assertFalse(setup.policy().isRootAllowed(own), "only an Application is a root");
+        assertFalse(isRootAllowed(setup.policy(), own), "only an Application is a root");
     }
 
     @Test
-    public void testInitiatorUrlIsExposedExceptForDeploymentsOfTheConfiguration() {
-        InitiatorAccessPolicy policy = new InitiatorSetup().policy();
+    public void testUserUrlIsExposedExceptForDeploymentsOfTheConfiguration() {
+        UserAccessPolicy policy = new UserSetup().policy();
 
         assertFalse(policy.isUrlExposed(platform(ResourceTypes.MODEL, "m")));
         assertFalse(policy.isUrlExposed(platform(ResourceTypes.APPLICATION, "a")));
@@ -287,8 +278,8 @@ public class DependencyAccessPolicyTest {
     }
 
     @Test
-    public void testInitiatorSupportsTheStoresOfTheUserAndNothingElse() {
-        InitiatorAccessPolicy policy = new InitiatorSetup().policy();
+    public void testUserSupportsTheStoresOfTheUserAndNothingElse() {
+        UserAccessPolicy policy = new UserSetup().policy();
 
         assertTrue(policy.isSupported(descriptor(ResourceTypes.APPLICATION, "tokenMe", OWN, "a")));
         assertTrue(policy.isSupported(descriptor(ResourceTypes.PROMPT, "tokenOther", OTHER, "p")));
@@ -301,24 +292,53 @@ public class DependencyAccessPolicyTest {
     }
 
     @Test
-    public void testInitiatorRootIsOwnSharedOrPublicAndReadable() {
-        InitiatorSetup setup = new InitiatorSetup();
+    public void testUserRootIsOwnSharedOrPublicAndReadable() {
+        UserSetup setup = new UserSetup();
         setup.readable.addAll(Set.of("mine", "shared", "open"));
-        InitiatorAccessPolicy policy = setup.policy();
+        UserAccessPolicy policy = setup.policy();
 
-        assertTrue(policy.isRootAllowed(descriptor(ResourceTypes.APPLICATION, "tokenMe", OWN, "mine")));
-        assertTrue(policy.isRootAllowed(descriptor(ResourceTypes.APPLICATION, "tokenOther", OTHER, "shared")));
-        assertTrue(policy.isRootAllowed(publicResource(ResourceTypes.APPLICATION, "open")));
-        assertFalse(policy.isRootAllowed(descriptor(ResourceTypes.APPLICATION, "tokenOther", OTHER, "theirs")), "not readable");
-        assertFalse(policy.isRootAllowed(publicResource(ResourceTypes.APPLICATION, "closed")), "a public folder that does not allow the caller");
-        assertFalse(policy.isRootAllowed(platform(ResourceTypes.APPLICATION, "mine")), "platform is never a root of a caller");
-        assertFalse(policy.isRootAllowed(FileConfigEntities.newDescriptor(ResourceTypes.APPLICATION, "mine")), "the file configuration is not a root");
-        assertFalse(policy.isRootAllowed(descriptor(ResourceTypes.FILE, "tokenMe", OWN, "mine")), "only an Application is a root");
+        assertTrue(isRootAllowed(policy, descriptor(ResourceTypes.APPLICATION, "tokenMe", OWN, "mine")));
+        assertTrue(isRootAllowed(policy, descriptor(ResourceTypes.APPLICATION, "tokenOther", OTHER, "shared")));
+        assertTrue(isRootAllowed(policy, publicResource(ResourceTypes.APPLICATION, "open")));
+        assertFalse(isRootAllowed(policy, descriptor(ResourceTypes.APPLICATION, "tokenOther", OTHER, "theirs")), "not readable");
+        assertFalse(isRootAllowed(policy, publicResource(ResourceTypes.APPLICATION, "closed")), "a public folder that does not allow the caller");
+        assertFalse(isRootAllowed(policy, platform(ResourceTypes.APPLICATION, "mine")), "platform is never a root of a caller");
+        assertFalse(isRootAllowed(policy, FileConfigEntities.newDescriptor(ResourceTypes.APPLICATION, "mine")), "the file configuration is not a root");
+        assertFalse(isRootAllowed(policy, descriptor(ResourceTypes.FILE, "tokenMe", OWN, "mine")), "only an Application is a root");
     }
 
     @Test
-    public void testInitiatorInterceptorOfTheFileConfigurationIsListed() {
-        InitiatorSetup setup = new InitiatorSetup();
+    public void testRootsAreSelectedWithOneLookupWhateverTheirNumber() {
+        UserSetup setup = new UserSetup();
+        setup.readable.addAll(Set.of("mine", "shared"));
+        ResourceDescriptor mine = descriptor(ResourceTypes.APPLICATION, "tokenMe", OWN, "mine");
+        ResourceDescriptor shared = descriptor(ResourceTypes.APPLICATION, "tokenOther", OTHER, "shared");
+        ResourceDescriptor theirs = descriptor(ResourceTypes.APPLICATION, "tokenOther", OTHER, "theirs");
+        ResourceDescriptor open = publicResource(ResourceTypes.APPLICATION, "open");
+        ResourceDescriptor folder = publicResource(ResourceTypes.APPLICATION, "folder/");
+        ResourceDescriptor platform = platform(ResourceTypes.APPLICATION, "mine");
+
+        Set<ResourceDescriptor> allowed = setup.policy().selectAllowedRoots(new LinkedHashSet<>(List.of(mine, shared, theirs, open, folder, platform)));
+
+        assertEquals(Set.of(mine, shared), allowed);
+        assertEquals(1, setup.lookups.get(), "one lookup for all the roots");
+        assertEquals(4, setup.lookedUp.get(), "only what the structure admits is looked up: not the folder and not platform");
+    }
+
+    @Test
+    public void testNoLookupWhenNoRootIsAdmittedByItsStructure() {
+        UserSetup setup = new UserSetup();
+
+        Set<ResourceDescriptor> allowed = setup.policy().selectAllowedRoots(Set.of(platform(ResourceTypes.APPLICATION, "a"),
+                publicResource(ResourceTypes.APPLICATION, "folder/"), descriptor(ResourceTypes.FILE, "tokenMe", OWN, "f")));
+
+        assertEquals(Set.of(), allowed);
+        assertEquals(0, setup.lookups.get());
+    }
+
+    @Test
+    public void testUserInterceptorOfTheFileConfigurationIsListed() {
+        UserSetup setup = new UserSetup();
         setup.file.getInterceptors().put("audit", new Interceptor());
         ResourceDescriptor interceptor = FileConfigEntities.newDescriptor(ResourceTypes.INTERCEPTOR, "audit");
 

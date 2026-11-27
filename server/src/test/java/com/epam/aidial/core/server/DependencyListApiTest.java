@@ -39,6 +39,12 @@ public class DependencyListApiTest extends ResourceBaseTest {
         return names;
     }
 
+    private static List<String> fieldsOf(JsonNode node) {
+        List<String> names = new ArrayList<>();
+        node.fieldNames().forEachRemaining(names::add);
+        return names;
+    }
+
     @Test
     void testRouteAnswersWithOneEntryPerRootAndItsDependencies() throws Exception {
         store("platform/applications/root", "{\"endpoint\":\"http://root.invalid\",\"dependencies\":[\"applications/platform/dep\"]}");
@@ -47,8 +53,13 @@ public class DependencyListApiTest extends ResourceBaseTest {
         Response response = list("admin", DependencyListApiSupport.rootsRequest("applications/platform/root"));
 
         verify(response, 200);
-        JsonNode roots = ProxyUtil.MAPPER.readTree(response.body()).get("roots");
+        JsonNode tree = ProxyUtil.MAPPER.readTree(response.body());
+        assertEquals(List.of("roots"), fieldsOf(tree));
+        JsonNode roots = tree.get("roots");
         assertEquals(1, roots.size());
+        assertEquals(List.of("type", "url", "name", "origin", "dependencies"), fieldsOf(roots.get(0)));
+        assertEquals(List.of("type", "url", "name", "origin"), fieldsOf(roots.get(0).get("dependencies").get(0)));
+        assertEquals("application", roots.get(0).get("type").asText());
         assertEquals("root", roots.get(0).get("name").asText());
         assertEquals("applications/platform/root", roots.get(0).get("url").asText());
         assertEquals("platform", roots.get(0).get("origin").asText());
@@ -123,6 +134,17 @@ public class DependencyListApiTest extends ResourceBaseTest {
 
         assertEquals(400, response.status());
         assertFalse(response.body().contains(userRoot), "the answer does not repeat the URL");
+    }
+
+    @Test
+    void testRefusedRootIsReportedWithItsIndexInTheRequestWhateverTheDuplicatesBeforeIt() throws Exception {
+        store("platform/applications/root", "{\"endpoint\":\"http://root.invalid\"}");
+        String root = "applications/platform/root";
+
+        Response response = list("admin", DependencyListApiSupport.rootsRequest(root, root, userApplicationUrl("user", "own")));
+
+        assertEquals(400, response.status());
+        assertTrue(response.body().contains("roots[2]"), response.body());
     }
 
     @Test

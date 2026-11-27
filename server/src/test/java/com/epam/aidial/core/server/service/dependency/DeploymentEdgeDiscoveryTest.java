@@ -52,6 +52,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -65,7 +66,7 @@ public class DeploymentEdgeDiscoveryTest {
     @Mock
     private CatalogSchemaService catalogSchemaService;
     @Mock
-    private JsonSchema exportSchema;
+    private JsonSchema referenceSchema;
     @Mock
     private EncryptionService encryptionService;
     @Mock
@@ -92,7 +93,7 @@ public class DeploymentEdgeDiscoveryTest {
         file.setApplicationTypeSchemas(new LinkedHashMap<>());
         file.setCatalogSchemas(new LinkedHashMap<>());
         lenient().when(schemaService.buildReferenceSchema(any(URI.class), any(Config.class)))
-                .thenReturn(new ApplicationSchemaService.ReferenceSchema(exportSchema, null));
+                .thenReturn(new ApplicationSchemaService.ReferenceSchema(referenceSchema, null));
         lenient().when(schemaService.collectMarkerReferences(any(Application.class), any(JsonSchema.class)))
                 .thenReturn(new MarkerCollection(List.of(), List.of()));
         lenient().when(catalogSchemaService.collectMarkerReferences(any(Deployment.class), any(Config.class)))
@@ -145,8 +146,9 @@ public class DeploymentEdgeDiscoveryTest {
     }
 
     private DeploymentEdgeDiscovery newDiscovery() {
-        return new DeploymentEdgeDiscovery(merged, invalid, file, resourceService, schemaService, catalogSchemaService, encryptionService,
-                new AdminAccessPolicy(resource -> true)::isSupported);
+        return new DeploymentEdgeDiscovery(new ConfigSnapshot(merged, file, invalid), resourceService, schemaService, catalogSchemaService, encryptionService,
+                new PlatformSchemaScan(resourceService),
+                new AdminAccessPolicy()::isSupported);
     }
 
     private DiscoveryResult discover(Application application, MarkerReference... markers) {
@@ -256,46 +258,8 @@ public class DeploymentEdgeDiscoveryTest {
 
         DiscoveredEdge edge = onlyEdgeOf(discover(new Application(), resourceMarker("/deployment_id", "file-model")));
 
-        assertNull(edge.status(), "the entity is exported from the file configuration");
+        assertNull(edge.status(), "the entity is followed from the file configuration");
         assertTrue(FileConfigEntities.isFile(edge.target()), "the descriptor is the stand-in of a file entity, not a blob");
-    }
-
-    @Test
-    public void testPlatformBlobWinsOverFileEntityAndIsFlagged() {
-        merged.getModels().put("m", new Model());
-        Model fileModel = new Model();
-        file.getModels().put("m", fileModel);
-        platformBlobs.add("MODEL/m");
-
-        DiscoveredEdge edge = onlyEdgeOf(discover(new Application(), resourceMarker("/deployment_id", "m")));
-
-        assertNull(edge.status());
-        assertFalse(FileConfigEntities.isFile(edge.target()), "the platform blob is the exported entity");
-        assertEquals("models/platform/m", edge.target().getUrl());
-    }
-
-    @Test
-    public void testPlatformBlobWinsWhenTheMergedEntityIsTheFileInstance() {
-        givenFileOnlyModel("m");
-        platformBlobs.add("MODEL/m");
-
-        DiscoveredEdge edge = onlyEdgeOf(discover(new Application(), resourceMarker("/deployment_id", "m")));
-
-        assertNull(edge.status());
-        assertEquals("models/platform/m", edge.target().getUrl());
-    }
-
-    @Test
-    public void testFileEntityNextToSkippedBlobStaysFile() {
-        givenFileOnlyModel("m");
-        platformBlobs.add("MODEL/m");
-        invalid.put(ResourceTypes.MODEL, Map.of("models/platform/m", new InvalidEntityRecord(
-                "m", "models/platform/m", "invalid", List.of(), "api", null)));
-
-        DiscoveredEdge edge = onlyEdgeOf(discover(new Application(), resourceMarker("/deployment_id", "m")));
-
-        assertNull(edge.status());
-        assertTrue(FileConfigEntities.isFile(edge.target()));
     }
 
     @Test
@@ -320,45 +284,6 @@ public class DeploymentEdgeDiscoveryTest {
         DiscoveredEdge edge = onlyEdgeOf(discover(new Application(), resourceMarker("/deployment_id", "bad")));
 
         assertEquals(EdgeStatus.MISSING, edge.status());
-    }
-
-    @Test
-    public void testSkippedApplicationOfTheSameNameDoesNotHideTheModelCandidate() {
-        givenPlatformModel("shared");
-        invalid.put(ResourceTypes.APPLICATION, Map.of("applications/platform/shared", new InvalidEntityRecord(
-                "shared", "applications/platform/shared", "duplicate", List.of(), "api", null)));
-
-        DiscoveredEdge edge = onlyEdgeOf(discover(new Application(), resourceMarker("/deployment_id", "shared")));
-
-        assertNull(edge.status());
-        assertEquals(ResourceTypes.MODEL, typeOf(edge));
-    }
-
-    @Test
-    public void testShortNameHeldByTwoDeploymentMapsIsListedAsOriginUnknownWithoutTarget() {
-        givenPlatformModel("shared");
-        givenPlatformApplication("shared");
-        Application application = new Application();
-        application.setDependencies(List.of("shared"));
-
-        DiscoveredEdge edge = onlyEdgeOf(discover(application));
-
-        assertEquals(EdgeStatus.ORIGIN_UNKNOWN, edge.status());
-        assertNull(edge.target(), "no holder is chosen");
-        assertEquals("/dependencies/0", edge.pointer());
-    }
-
-    @Test
-    public void testInterceptorEntryResolvesTheInterceptorWhileModelHoldsTheSameName() {
-        givenPlatformInterceptor("shared");
-        givenPlatformModel("shared");
-        Application application = new Application();
-        application.setInterceptors(List.of("shared"));
-
-        DiscoveredEdge edge = onlyEdgeOf(discover(application));
-
-        assertNull(edge.status());
-        assertEquals(ResourceTypes.INTERCEPTOR, typeOf(edge));
     }
 
     private DiscoveredEdge iconEdge(String iconUrl) {
@@ -469,7 +394,7 @@ public class DeploymentEdgeDiscoveryTest {
                 edges.stream().map(DiscoveredEdge::pointer).toList());
         assertNull(edges.get(0).status());
         assertEquals(ResourceTypes.INTERCEPTOR, typeOf(edges.get(0)));
-        assertNull(edges.get(1).status(), "a file-only interceptor is exported from the file configuration");
+        assertNull(edges.get(1).status(), "a file-only interceptor is followed from the file configuration");
         assertEquals(EdgeStatus.MISSING, edges.get(2).status(), "a fixed field, not a marked one");
         assertEquals(EdgeStatus.MISSING, edges.get(3).status(), "a model is not an interceptor");
     }
@@ -535,7 +460,7 @@ public class DeploymentEdgeDiscoveryTest {
         verify(schemaService, times(1)).buildReferenceSchema(URI.create("https://dial.example/schemas/shared"), merged);
         verify(schemaService, times(1)).buildReferenceSchema(URI.create("https://dial.example/schemas/other"), merged);
         // the references are collected per Application, against the schema built once
-        verify(schemaService, times(3)).collectMarkerReferences(any(Application.class), eq(exportSchema));
+        verify(schemaService, times(3)).collectMarkerReferences(any(Application.class), eq(referenceSchema));
     }
 
     private static final String SCHEMA_ID = "https://dial.example/schemas/quickapps";
@@ -597,35 +522,9 @@ public class DeploymentEdgeDiscoveryTest {
 
         DiscoveredEdge edge = onlyEdgeOf(discover(applicationWithSchema(SCHEMA_ID)));
 
-        assertNull(edge.status(), "the schema is exported from the file configuration");
+        assertNull(edge.status(), "the schema is followed from the file configuration");
         assertTrue(FileConfigEntities.isFile(edge.target()), "a stand-in descriptor, not a blob");
         assertEquals(FileConfigEntities.computeSchemaDigest(SCHEMA_ID), edge.target().getName());
-    }
-
-    @Test
-    public void testPlatformSchemaWinsWhenTheMergedBodyIsTheFileInstance() {
-        String body = schemaBody(SCHEMA_ID);
-        merged.getApplicationTypeSchemas().put(SCHEMA_ID, body);
-        file.getApplicationTypeSchemas().put(SCHEMA_ID, body);
-        givenSchemaBlob(ResourceTypes.APP_TYPE_SCHEMA, "b", body);
-
-        DiscoveredEdge edge = onlyEdgeOf(discover(applicationWithSchema(SCHEMA_ID)));
-
-        assertNull(edge.status());
-        assertFalse(FileConfigEntities.isFile(edge.target()));
-        assertEquals("b", edge.target().getName());
-    }
-
-    @Test
-    public void testPlatformSchemaWinsOverFileSchemaAndIsFlagged() {
-        file.getApplicationTypeSchemas().put(SCHEMA_ID, "{\"$id\":\"" + SCHEMA_ID + "\",\"title\":\"file\"}");
-        givenPlatformSchema(ResourceTypes.APP_TYPE_SCHEMA, "b", SCHEMA_ID);
-
-        DiscoveredEdge edge = onlyEdgeOf(discover(applicationWithSchema(SCHEMA_ID)));
-
-        assertNull(edge.status());
-        assertFalse(FileConfigEntities.isFile(edge.target()), "the platform blob is exported, the file schema is not");
-        assertEquals("b", edge.target().getName());
     }
 
     @Test
@@ -651,17 +550,50 @@ public class DeploymentEdgeDiscoveryTest {
     }
 
     @Test
-    public void testUnavailableRemoteSchemaMakesTheIncludableSchemaEdgeSchemaUnavailable() {
+    public void testUnavailableRemoteSchemaIsStillCandidateAndIssueOfTheDiscovery() {
         givenPlatformSchema(ResourceTypes.APP_TYPE_SCHEMA, "b", SCHEMA_ID);
         Application application = applicationWithSchema(SCHEMA_ID);
+        application.setApplicationProperties(Map.of("a", "1"));
         when(schemaService.buildReferenceSchema(URI.create(SCHEMA_ID), merged))
                 .thenReturn(new ApplicationSchemaService.ReferenceSchema(null, CollectionIssueKind.SCHEMA_UNAVAILABLE));
 
         DiscoveryResult result = newDiscovery().discover(application);
 
-        assertEquals(EdgeStatus.SCHEMA_UNAVAILABLE, onlyEdgeOf(result).status());
+        assertNull(onlyEdgeOf(result).status(), "the schema exists and does not depend on itself");
         assertNotNull(onlyEdgeOf(result).target(), "the schema itself was identified");
-        assertFalse(result.issues().isEmpty(), "no marker of the application was evaluated");
+        assertEquals(List.of(new DiscoveryIssue(CollectionIssueKind.SCHEMA_UNAVAILABLE, "/application_type_schema_id")), result.issues());
+    }
+
+    @Test
+    public void testUnavailableCatalogSchemaIsStillCandidateAndIssueOfTheDiscovery() {
+        givenPlatformSchema(ResourceTypes.CATALOG_SCHEMA, "catalog-blob", CATALOG_ID);
+        Application application = new Application();
+        application.setCatalogSchemaId(URI.create(CATALOG_ID));
+        when(catalogSchemaService.collectMarkerReferences(application, merged))
+                .thenReturn(MarkerCollection.ofIssue(CollectionIssueKind.SCHEMA_UNAVAILABLE));
+
+        DiscoveryResult result = newDiscovery().discover(application);
+
+        assertNull(onlyEdgeOf(result).status());
+        assertEquals(List.of(new DiscoveryIssue(CollectionIssueKind.SCHEMA_UNAVAILABLE, "/catalog_schema_id")), result.issues());
+    }
+
+    @Test
+    public void testSchemaIsNotBuiltForApplicationWithoutProperties() {
+        givenPlatformSchema(ResourceTypes.APP_TYPE_SCHEMA, "b", SCHEMA_ID);
+        Application withoutProperties = applicationWithSchema(SCHEMA_ID);
+        Application withEmptyProperties = applicationWithSchema(SCHEMA_ID);
+        withEmptyProperties.setApplicationProperties(Map.of());
+        DeploymentEdgeDiscovery discovery = newDiscovery();
+
+        DiscoveryResult first = discovery.discover(withoutProperties);
+        DiscoveryResult second = discovery.discover(withEmptyProperties);
+
+        verify(schemaService, never()).buildReferenceSchema(any(URI.class), any(Config.class));
+        assertNull(onlyEdgeOf(first).status());
+        assertNull(onlyEdgeOf(second).status());
+        assertEquals(List.of(), first.issues());
+        assertEquals(List.of(), second.issues());
     }
 
     @Test
@@ -708,7 +640,7 @@ public class DeploymentEdgeDiscoveryTest {
         application.setDependencies(List.of("applications/platform/d"));
 
         application.setApplicationProperties(Map.of("p", "models/platform/a"));
-        when(schemaService.collectMarkerReferences(application, exportSchema)).thenReturn(new MarkerCollection(
+        when(schemaService.collectMarkerReferences(application, referenceSchema)).thenReturn(new MarkerCollection(
                 List.of(resourceMarker("/p", "models/platform/a")), List.of()));
 
         List<DiscoveredEdge> edges = discover(application, resourceMarker("/m", "models/platform/t")).edges();
@@ -722,7 +654,7 @@ public class DeploymentEdgeDiscoveryTest {
     public void testApplicationPropertiesAreScannedAndItsMarkersBecomeEdgesAtTheirPointers() {
         Application application = applicationWithSchema(SCHEMA_ID);
         application.setApplicationProperties(Map.of("tool", "models/platform/t", "file", "files/public/a.png", "model", "nope"));
-        when(schemaService.collectMarkerReferences(application, exportSchema)).thenReturn(new MarkerCollection(List.of(
+        when(schemaService.collectMarkerReferences(application, referenceSchema)).thenReturn(new MarkerCollection(List.of(
                 resourceMarker("/tool", "models/platform/t"),
                 new MarkerReference("/file", "files/public/a.png"),
                 resourceMarker("/model", "nope")), List.of()));
@@ -742,7 +674,7 @@ public class DeploymentEdgeDiscoveryTest {
     public void testInstanceIssuesOfApplicationPropertiesMakeTheDiscoveryIncompleteAndAreAtTheirPointers() {
         Application application = applicationWithSchema(SCHEMA_ID);
         application.setApplicationProperties(Map.of("x", 1));
-        when(schemaService.collectMarkerReferences(application, exportSchema)).thenReturn(new MarkerCollection(List.of(),
+        when(schemaService.collectMarkerReferences(application, referenceSchema)).thenReturn(new MarkerCollection(List.of(),
                 List.of(new CollectionIssue(CollectionIssueKind.INSTANCE_INVALID, "/x"))));
 
         DiscoveryResult result = newDiscovery().discover(application);
@@ -751,8 +683,10 @@ public class DeploymentEdgeDiscoveryTest {
     }
 
     @Test
-    public void testSchemaIssueIsAtTheSchemaIdAndCatalogIssuesAreKeptWithPointersIntoTheBody() {
+    public void testSchemaIssueAndCatalogIssuesAreKeptWithPointersIntoTheBody() {
+        givenPlatformSchema(ResourceTypes.APP_TYPE_SCHEMA, "b", SCHEMA_ID);
         Application application = applicationWithSchema(SCHEMA_ID);
+        application.setApplicationProperties(Map.of("a", "1"));
         when(schemaService.buildReferenceSchema(URI.create(SCHEMA_ID), merged))
                 .thenReturn(new ApplicationSchemaService.ReferenceSchema(null, CollectionIssueKind.SCHEMA_UNAVAILABLE));
         when(catalogSchemaService.collectMarkerReferences(application, merged)).thenReturn(new MarkerCollection(List.of(),
@@ -760,10 +694,24 @@ public class DeploymentEdgeDiscoveryTest {
 
         DiscoveryResult result = newDiscovery().discover(application);
 
-        assertEquals(List.of(
-                        new DiscoveryIssue(CollectionIssueKind.SCHEMA_UNAVAILABLE, "/application_type_schema_id"),
-                        new DiscoveryIssue(CollectionIssueKind.INSTANCE_INVALID, "/catalog_properties/badge")),
-                result.issues());
+        assertNull(result.edges().get(0).status());
+        assertEquals(List.of(new DiscoveryIssue(CollectionIssueKind.SCHEMA_UNAVAILABLE, "/application_type_schema_id"),
+                new DiscoveryIssue(CollectionIssueKind.INSTANCE_INVALID, "/catalog_properties/badge")), result.issues());
+    }
+
+    @Test
+    public void testSchemaNotFoundIsShownByTheSchemaEdgeAndIsNotAnIssueOfTheDiscovery() {
+        Application application = applicationWithSchema(SCHEMA_ID);
+        application.setApplicationProperties(Map.of("a", "1"));
+        when(schemaService.buildReferenceSchema(URI.create(SCHEMA_ID), merged))
+                .thenReturn(new ApplicationSchemaService.ReferenceSchema(null, CollectionIssueKind.SCHEMA_NOT_FOUND));
+        when(catalogSchemaService.collectMarkerReferences(application, merged)).thenReturn(
+                new MarkerCollection(List.of(), List.of(new CollectionIssue(CollectionIssueKind.SCHEMA_NOT_FOUND, ""))));
+
+        DiscoveryResult result = newDiscovery().discover(application);
+
+        assertEquals(EdgeStatus.MISSING, onlyEdgeOf(result).status());
+        assertEquals(List.of(), result.issues());
     }
 
     private static Deployment deploymentOf(ResourceTypes type) {

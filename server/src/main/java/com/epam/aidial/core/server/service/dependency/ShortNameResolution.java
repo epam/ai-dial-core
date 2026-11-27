@@ -9,13 +9,13 @@ import javax.annotation.Nullable;
  *
  * @param origin where the effective entity came from; {@code null} when it is not established
  */
-public record ShortNameResolution(Outcome outcome, @Nullable ResourceTypes type, String name, @Nullable Origin origin) {
+record ShortNameResolution(Outcome outcome, @Nullable ResourceTypes type, String name, @Nullable Origin origin) {
 
-    public enum Outcome {
+    enum Outcome {
         FOUND, SKIPPED, NOT_FOUND, ORIGIN_UNKNOWN
     }
 
-    public enum Origin {
+    enum Origin {
         FILE, PLATFORM
     }
 }

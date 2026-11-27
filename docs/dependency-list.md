@@ -65,6 +65,8 @@ The list of a root follows these rules:
   its own.
 - A reference that points at a resource that does not exist, at a folder, at an absolute URL or at a type the list does not support gives no
   item. It does not fail the request.
+- A dependency whose stored body cannot be read as its type is listed, but what it refers to is not followed through it. It does not fail
+  the request either; a selected Application in that state does (see the statuses below).
 
 The answer has no flag, no count and no warning, and it never holds the body of a resource, a secret, an endpoint, a key, a role or an
 absolute storage path.
@@ -111,6 +113,8 @@ Core cannot establish is not followed. Schemas, Files, Skills and Prompts are li
 
 A reference that is not followed is one record in the server log with the key of the referring resource, the JSON pointer of the reference
 and a reason (`missing`, `unsupported`, `unresolved-short-name`, `origin-unknown` or `schema-unavailable`). The log never holds the value.
+A record is at WARN, and at INFO for an absolute URL. When the resource that holds the reference is in a user bucket, the record is at DEBUG
+instead, because the user wrote the reference and the operator is not the one to fix it.
 
 ## Statuses
 
@@ -119,8 +123,8 @@ and a reason (`missing`, `unsupported`, `unresolved-short-name`, `origin-unknown
 | `200` | The answer above. Findings about references do not change it |
 | `400` | The body is missing, empty or not JSON, holds a field other than `roots`, or a root is not a valid Application. The message names `roots` or the index of the root, never the submitted value |
 | `403` | The caller authenticates with a per-request key (an application, not a person), or is not an administrator and may not read a selected Application, or names an Application in `platform/` |
-| `404` | A selected Application does not exist (for a caller who is not an administrator, only one that they may read) |
-| `500` | The walk failed |
+| `404` | A selected Application does not exist (for a caller who is not an administrator, only one that they may read), also when it is deleted after the access check and before the walk reads it |
+| `500` | The walk failed, for example because the stored body of a selected Application cannot be read as an Application |
 
 Every status is decided before the body of the answer. The walk takes no bucket lock, so it does not wait for an administrative write that
 holds the bucket locks, and such a write does not wait for it. It does take, for two reads, the lock that every configuration publication
@@ -134,4 +138,5 @@ be in it.
 An application type schema that declares `dial:applicationTypeSchemaEndpoint` is requested from that endpoint during the call, so that the
 references under its markers can be found. The endpoint comes from the stored schema and never from the request, and a schema is requested at
 most once per call. If the request fails, answers with an error status or returns a document that cannot be used, the references that depend
-on the schema are not followed, one record with the reason `schema-unavailable` is logged, and the answer is still `200`.
+on the schema are not followed, one record with the reason `schema-unavailable` is logged, and the answer is still `200`. The schema itself is
+still listed, because it does not depend on itself.

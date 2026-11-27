@@ -96,7 +96,7 @@ public class DependencyNamesTest {
 
     @Test
     public void testWireNameIsLowerCaseWithHyphens() {
-        assertEquals("unresolved-short-name", DependencyResourceNames.toWireName(EdgeStatus.UNRESOLVED_SHORT_NAME));
+        assertEquals("unresolved-short-name", DependencyResourceNames.formatReason(EdgeStatus.UNRESOLVED_SHORT_NAME));
     }
 
     @Test
@@ -111,7 +111,7 @@ public class DependencyNamesTest {
         assertEquals("m1", application.getDependencies().get(0));
         assertSame(config.getToolsets().get("t1"),
                 assertInstanceOf(ToolSet.class, FileConfigEntities.findDeployment(config, FileConfigEntities.newDescriptor(ResourceTypes.TOOL_SET, "t1"))));
-        assertEquals("toolset", DependencyResourceNames.resolveTypeName(ResourceTypes.TOOL_SET));
+        assertEquals("toolset", DependencyTypePolicy.resolveTypeName(ResourceTypes.TOOL_SET));
     }
 
     @Test

@@ -96,12 +96,20 @@ public class DependencyTypePolicyTest {
         for (ResourceTypes type : ResourceTypes.values()) {
             DependencyTypePolicy.Content content = DependencyTypePolicy.resolveContent(type);
             boolean supportedSomewhere = EXPECTED.get(type).values().stream().anyMatch(disposition -> disposition != Disposition.UNSUPPORTED);
-            assertEquals(supportedSomewhere, content != null, type + ": a supported type has a content rule and an unsupported one has none");
+            assertEquals(supportedSomewhere, content != DependencyTypePolicy.Content.UNSUPPORTED, type + ": a supported type has a content rule and an unsupported one has none");
         }
         assertEquals(DependencyTypePolicy.Content.EXAMINED, DependencyTypePolicy.resolveContent(ResourceTypes.APPLICATION));
         assertEquals(DependencyTypePolicy.Content.EXAMINED, DependencyTypePolicy.resolveContent(ResourceTypes.TOOL_SET), "a ToolSet is a Deployment");
         assertEquals(DependencyTypePolicy.Content.LEAF, DependencyTypePolicy.resolveContent(ResourceTypes.FILE));
-        assertNull(DependencyTypePolicy.resolveContent(ResourceTypes.ROUTER), "a Router is not listed");
+        assertEquals(DependencyTypePolicy.Content.UNSUPPORTED, DependencyTypePolicy.resolveContent(ResourceTypes.ROUTER), "a Router is not listed");
+    }
+
+    @Test
+    public void testTypeNameIsTheNameInTheAnswerAndTheUrlSegmentForAnUnsupportedType() {
+        assertEquals("application", DependencyTypePolicy.resolveTypeName(ResourceTypes.APPLICATION));
+        assertEquals("toolset", DependencyTypePolicy.resolveTypeName(ResourceTypes.TOOL_SET));
+        assertEquals("application-type-schema", DependencyTypePolicy.resolveTypeName(ResourceTypes.APP_TYPE_SCHEMA));
+        assertEquals(ResourceTypes.ROUTER.urlSegment(), DependencyTypePolicy.resolveTypeName(ResourceTypes.ROUTER));
     }
 
     @Test

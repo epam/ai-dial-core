@@ -71,8 +71,8 @@ public final class DependencyRequestParser {
         } catch (RuntimeException e) {
             throw newBadRequestException(message);
         }
-        ResourceTypes type = (ResourceTypes) descriptor.getType();
-        if (!root.type().equals(DependencyResourceNames.resolveTypeName(type)) || !DependencyTypePolicy.isRoot(type) || descriptor.isFolder()) {
+        ResourceTypes type = DependencyTypePolicy.resolveType(descriptor);
+        if (!root.type().equals(DependencyTypePolicy.resolveTypeName(type)) || !DependencyTypePolicy.isRoot(type) || descriptor.isFolder()) {
             throw newBadRequestException(message);
         }
         return descriptor;

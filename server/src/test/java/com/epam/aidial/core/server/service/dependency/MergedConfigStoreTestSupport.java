@@ -1,9 +1,13 @@
-package com.epam.aidial.core.server.config;
+package com.epam.aidial.core.server.service.dependency;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Config;
 import com.epam.aidial.core.config.Model;
 import com.epam.aidial.core.credentials.service.ResourceAuthSettingsEncryptionService;
+import com.epam.aidial.core.server.config.FileConfigStore;
+import com.epam.aidial.core.server.config.MergedConfigStore;
+import com.epam.aidial.core.server.config.PlatformEntityLocationStrategy;
+import com.epam.aidial.core.server.config.SecretFieldProcessor;
 import com.epam.aidial.core.server.security.ApiKeyStore;
 import com.epam.aidial.core.server.service.ExternalServiceService;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;

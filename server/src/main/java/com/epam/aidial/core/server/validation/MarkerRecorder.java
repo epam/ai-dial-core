@@ -17,21 +17,21 @@ import java.util.Set;
  * <p>The same pointer and value visited more than once, as when several {@code oneOf} branches evaluate one location, is recorded
  * once. The same value at two pointers is two references.
  */
-public final class MarkerRecorder {
+final class MarkerRecorder {
 
-    public static final String KEY = "marker_references";
+    static final String KEY = "marker_references";
 
     private final Set<MarkerReference> references = new LinkedHashSet<>();
 
     /** Records a marked value if a recorder is registered in the context; otherwise does nothing. */
-    public static void record(CollectorContext context, JsonNodePath location, String value) {
+    static void record(CollectorContext context, JsonNodePath location, String value) {
         Object recorder = context.getCollectorMap().get(KEY);
         if (recorder instanceof MarkerRecorder markerRecorder) {
             markerRecorder.references.add(new MarkerReference(toPointer(location), value));
         }
     }
 
-    public List<MarkerReference> listReferences() {
+    List<MarkerReference> listReferences() {
         return new ArrayList<>(references);
     }
 
@@ -39,7 +39,7 @@ public final class MarkerRecorder {
      * Converts a library location to an RFC 6901 pointer: {@code ~} becomes {@code ~0} and {@code /} becomes {@code ~1}. The library's own
      * rendering ({@code $.a[0]}) is not a pointer. The root is the empty pointer.
      */
-    public static String toPointer(JsonNodePath location) {
+    static String toPointer(JsonNodePath location) {
         StringBuilder pointer = new StringBuilder();
         for (int i = 0; i < location.getNameCount(); i++) {
             String segment = String.valueOf(location.getElement(i));

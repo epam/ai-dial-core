@@ -1,14 +1,12 @@
 package com.epam.aidial.core.server.service.dependency;
 
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
-import com.epam.aidial.core.storage.resource.ResourceTypes;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
-import java.util.Map;
 
 /**
- * The names that the dependency list gives a resource: its key for the log, {@code <type>:<origin>:<segment>}, the name of its type and its
+ * The names that the dependency list gives a resource: its key for the log, {@code <type>:<origin>:<segment>}, and its
  * origin. A location other than {@code public/}, {@code platform/} and the file configuration is a user bucket and is reported as origin
  * {@code private}, because the list never discloses the location of a user.
  */
@@ -19,17 +17,6 @@ final class DependencyResourceNames {
     static final String FILE = "file";
     static final String PRIVATE = "private";
 
-    private static final Map<ResourceTypes, String> TYPE_NAMES = Map.of(
-            ResourceTypes.APPLICATION, "application",
-            ResourceTypes.MODEL, "model",
-            ResourceTypes.INTERCEPTOR, "interceptor",
-            ResourceTypes.TOOL_SET, "toolset",
-            ResourceTypes.APP_TYPE_SCHEMA, "application-type-schema",
-            ResourceTypes.CATALOG_SCHEMA, "catalog-schema",
-            ResourceTypes.FILE, "file",
-            ResourceTypes.PROMPT, "prompt",
-            ResourceTypes.SKILL, "skill");
-
     private DependencyResourceNames() {
     }
 
@@ -38,12 +25,8 @@ final class DependencyResourceNames {
      * digits, {@code :} included, so two resources never share a key.
      */
     static String buildKey(ResourceDescriptor descriptor) {
-        return resolveTypeName(DependencyTypePolicy.resolveType(descriptor)) + ":" + resolveOrigin(descriptor) + ":"
+        return DependencyTypePolicy.resolveTypeName(DependencyTypePolicy.resolveType(descriptor)) + ":" + resolveOrigin(descriptor) + ":"
                 + escapePath(resolvePath(descriptor));
-    }
-
-    static String resolveTypeName(ResourceTypes type) {
-        return TYPE_NAMES.getOrDefault(type, type.urlSegment());
     }
 
     /**
@@ -60,10 +43,8 @@ final class DependencyResourceNames {
         return ResourceDescriptor.PUBLIC_LOCATION.equals(location) ? PUBLIC : PRIVATE;
     }
 
-    /**
-     * @return the constant in lower case with hyphens, for example {@code unresolved-short-name}
-     */
-    static String toWireName(Enum<?> value) {
+    /** The constant in lower case with hyphens, such as {@code unresolved-short-name}. */
+    static String formatReason(Enum<?> value) {
         return value.name().toLowerCase(Locale.ROOT).replace('_', '-');
     }
 

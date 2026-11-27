@@ -32,7 +32,7 @@ final class FileConfigEntities {
         return newDescriptor(type, computeSchemaDigest(schemaId));
     }
 
-    public static boolean isFile(ResourceDescriptor descriptor) {
+    static boolean isFile(ResourceDescriptor descriptor) {
         return FILE_LOCATION.equals(descriptor.getBucketLocation());
     }
 

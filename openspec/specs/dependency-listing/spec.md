@@ -150,6 +150,17 @@ For an application type schema, a catalog schema, a File, a Skill and a Prompt, 
 - **WHEN** an Application's `icon_url` names `files/public/a/gone.png` and no such file exists
 - **THEN** the answer is `200` and holds no element for it
 
+### Requirement: A stored body that cannot be bound to its type
+A stored Application, Model, Interceptor or ToolSet whose body is not a JSON object, or does not bind to the entity of its type, SHALL end the walk with `500` when it is a root, and SHALL be listed with no references followed when it is a dependency. Core SHALL name the resource and nothing of the body in the message and in the log record, and SHALL keep no exception cause, because the message of the parser can quote a value of the body.
+
+#### Scenario: Root with an unreadable body
+- **WHEN** a root's stored body is `{ sk-abc123 not json`
+- **THEN** the response is `500`, and neither the message nor a log line holds `sk-abc123`
+
+#### Scenario: Dependency with an unreadable body
+- **WHEN** an Application names a dependency whose stored body cannot be bound
+- **THEN** the answer is `200`, the dependency is listed, nothing it refers to is listed through it, and the log holds one WARN record with its key
+
 ### Requirement: References come from fixed fields and schema markers
 For every Deployment it examines, Core SHALL find references in `interceptors`, `dependencies`, `catalog_schema_id`, `icon_url` and the values under `dial:resource` and `dial:file` markers of `catalog_properties`. For an Application it SHALL also examine `application_type_schema_id` and the markers of `application_properties`. It SHALL NOT examine `function.source_folder`, `user_roles`, `interfaces.*.translator` or inline `routes`.
 
@@ -233,7 +244,7 @@ When a valid platform blob and an entity of the file configuration share a type 
 - **THEN** it is listed with `origin` `file`
 
 ### Requirement: A schema is located by its $id
-A schema SHALL be identified by its body `$id`; its blob name is arbitrary. For `application_type_schema_id` and `catalog_schema_id` Core SHALL list the platform blobs of that schema type once per walk, read one body at a time for its `$id`, and then apply the origin rules of a short name.
+A schema SHALL be identified by its body `$id`; its blob name is arbitrary. For `application_type_schema_id` and `catalog_schema_id` Core SHALL find the platform blobs of that schema type by reading them one body at a time for its `$id`, keep the result for the configuration that the walk resolved against, and then apply the origin rules of a short name. Walks that resolve against the same configuration SHALL share one scan; a publication of the configuration SHALL make the next walk scan again.
 
 #### Scenario: Blob name differs from the schema id
 - **WHEN** an Application's `application_type_schema_id` names a schema whose platform blob has another name
@@ -242,6 +253,10 @@ A schema SHALL be identified by its body `$id`; its blob name is arbitrary. For 
 #### Scenario: One scan per schema type
 - **WHEN** two Applications of one walk name application type schemas and one names a catalog schema
 - **THEN** Core lists the platform application type schema blobs once and the platform catalog schema blobs once
+
+#### Scenario: Walks between two publications share a scan
+- **WHEN** two walks resolve against the same configuration
+- **THEN** the second walk lists no platform schema blob, and after a publication of the configuration the next walk lists them again
 
 ### Requirement: A remote application type schema is fetched live and read with local references only
 To evaluate a schema that declares `dial:applicationTypeSchemaEndpoint`, Core SHALL request it from that endpoint during the walk through the existing schema download, never from the request, and SHALL NOT change what request processing later sees for the schema. Core SHALL refuse every `$ref` that is not local to the document.
@@ -275,6 +290,17 @@ A reference that is missing, unsupported, external, an unresolved short name, of
 #### Scenario: Token-like value
 - **WHEN** a marked value is `sk-abc123` and no entity holds it
 - **THEN** the log record holds the pointer and the reason `unresolved-short-name` and not the value
+
+### Requirement: A finding about a user's own resource is not written for the operator
+When the resource that holds a reference that is not followed is in a user bucket, its log record SHALL be at DEBUG, because the user wrote the reference and the operator is not the one to fix it. A resource of `public/`, `platform/` or the file configuration SHALL keep the level of the previous requirement, whoever reached it.
+
+#### Scenario: Finding in a user's own Application
+- **WHEN** an Application in a user bucket names a dependency that does not exist
+- **THEN** the log record is at DEBUG, and no WARN record is written for it
+
+#### Scenario: Finding in a platform resource reached from a user's Application
+- **WHEN** a user's Application names a platform Model, and that Model names a dependency that does not exist
+- **THEN** the log record about the Model is at WARN
 
 ### Requirement: An explicit admin walks public, platform and the file configuration
 For a caller with explicit admin access (`access.admin.rules`), Core SHALL accept roots in `public/` and `platform/` and SHALL list dependencies in `public/`, in `platform/` and in the file configuration. It SHALL NOT check the `user_roles` of a deployment. Any other location, such as a user bucket, a review bucket or an app bucket, SHALL be unsupported.
@@ -334,7 +360,7 @@ For a caller who is not an explicit admin, Core SHALL list a Model, an Applicati
 - **THEN** the Interceptor is listed
 
 ### Requirement: A root is authorized before it is looked up
-For a caller who is not an explicit admin, Core SHALL answer `403` for a root the caller may not read, whether or not the resource exists, and SHALL answer `404` only for a root the caller may read and that does not exist. A root in `platform/` SHALL be refused with `403`.
+For a caller who is not an explicit admin, Core SHALL answer `403` for a root the caller may not read, whether or not the resource exists, and SHALL answer `404` only for a root the caller may read and that does not exist. A root in `platform/` SHALL be refused with `403`. A root that passed that check and no longer exists when the walk reads it, because it was deleted meanwhile, SHALL be answered with `404` too.
 
 #### Scenario: Another user's Application
 - **WHEN** a user names an Application in a bucket that is not theirs and not shared with them
@@ -347,6 +373,10 @@ For a caller who is not an explicit admin, Core SHALL answer `403` for a root th
 #### Scenario: Platform root
 - **WHEN** a user names `applications/platform/x`
 - **THEN** the response is `403`
+
+#### Scenario: Root deleted after the access check
+- **WHEN** a root passes the access check and is gone when the walk reads it
+- **THEN** the response is `404`, with the same message as for a root that never existed
 
 ### Requirement: Only the caller's own standing widens the list
 For a caller who is not an explicit admin, Core SHALL decide the right to read a resource from the caller's own bucket, the resources shared with the caller and the public folder rules only. The standing of a global reader and the grants of a calling key SHALL NOT widen the list.

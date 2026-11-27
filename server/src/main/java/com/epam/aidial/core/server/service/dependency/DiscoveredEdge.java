@@ -15,9 +15,9 @@ import javax.annotation.Nullable;
 record DiscoveredEdge(String pointer, @Nullable EdgeStatus status, @Nullable ResourceDescriptor target) {
 
     /**
-     * What discovery and traversal found out about an edge; the export logs every outcome but the candidate.
+     * What discovery and traversal found out about an edge; the walk logs every outcome but the candidate.
      */
-    public enum EdgeStatus {
-        MISSING, UNSUPPORTED, EXTERNAL, UNRESOLVED_SHORT_NAME, ORIGIN_UNKNOWN, SCHEMA_UNAVAILABLE
+    enum EdgeStatus {
+        MISSING, UNSUPPORTED, EXTERNAL, UNRESOLVED_SHORT_NAME, ORIGIN_UNKNOWN
     }
 }

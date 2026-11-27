@@ -16,9 +16,10 @@ import javax.annotation.Nullable;
 /**
  * The policy of a caller who is not an explicit admin. Stored resources (public, own and shared buckets) are listed by the right to read on the
  * caller's own standing; a Model, an Application or a ToolSet of the configuration is listed by its roles and has no URL; an Interceptor and a schema of
- * the configuration are listed.
+ * the configuration are listed. A global-reader or administrator standing and the grants of a calling key do not widen the list: the right to
+ * read is the caller's own, as {@code AccessService.lookupInitiatorPermissions} answers it, so a caller with such a standing is served here too.
  */
-public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
+public final class UserAccessPolicy implements DependencyAccessPolicy {
 
     private static final String USER_BUCKET_PREFIX = "Users/";
     private static final String API_KEY_BUCKET_PREFIX = "Keys/";
@@ -31,16 +32,26 @@ public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
     private final Function<Set<ResourceDescriptor>, Map<ResourceDescriptor, Set<ResourceAccessType>>> initiatorPermissions;
     private final List<String> userRoles;
 
-    public InitiatorAccessPolicy(Function<Set<ResourceDescriptor>, Map<ResourceDescriptor, Set<ResourceAccessType>>> initiatorPermissions,
-                                 @Nullable List<String> userRoles) {
+    public UserAccessPolicy(Function<Set<ResourceDescriptor>, Map<ResourceDescriptor, Set<ResourceAccessType>>> initiatorPermissions,
+                            @Nullable List<String> userRoles) {
         this.initiatorPermissions = initiatorPermissions;
         this.userRoles = userRoles == null ? List.of() : userRoles;
     }
 
     @Override
-    public boolean isRootAllowed(ResourceDescriptor root) {
+    public Set<ResourceDescriptor> selectAllowedRoots(Set<ResourceDescriptor> roots) {
+        Set<ResourceDescriptor> candidates = new LinkedHashSet<>();
+        for (ResourceDescriptor root : roots) {
+            if (isRootCandidate(root)) {
+                candidates.add(root);
+            }
+        }
+        return candidates.isEmpty() ? Set.of() : selectReadable(candidates);
+    }
+
+    private boolean isRootCandidate(ResourceDescriptor root) {
         ResourceTypes type = DependencyTypePolicy.resolveType(root);
-        return !root.isFolder() && DependencyTypePolicy.isRoot(type) && isStored(root) && isSupported(root) && selectReadable(Set.of(root)).contains(root);
+        return !root.isFolder() && DependencyTypePolicy.isRoot(type) && isInStoredBucket(root) && isSupported(root);
     }
 
     @Override
@@ -77,7 +88,7 @@ public final class InitiatorAccessPolicy implements DependencyAccessPolicy {
     }
 
     /** A resource in {@code public/} or in a user bucket: the right to read decides. */
-    private static boolean isStored(ResourceDescriptor target) {
+    private static boolean isInStoredBucket(ResourceDescriptor target) {
         String location = target.getBucketLocation();
         return !FileConfigEntities.isFile(target) && (ResourceDescriptor.PUBLIC_LOCATION.equals(location) || isUserBucket(location));
     }

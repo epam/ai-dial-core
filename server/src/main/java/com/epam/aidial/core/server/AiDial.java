@@ -96,6 +96,7 @@ import com.epam.aidial.core.server.service.clientchannel.ClientChannelService;
 import com.epam.aidial.core.server.service.codeinterpreter.CodeInterpreterService;
 import com.epam.aidial.core.server.service.config.ConfigApplyService;
 import com.epam.aidial.core.server.service.config.ConfigValidationService;
+import com.epam.aidial.core.server.service.dependency.PlatformSchemaScan;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.service.resource.ComplexResourceSweepService;
 import com.epam.aidial.core.server.token.TokenStatsTracker;
@@ -483,7 +484,7 @@ public class AiDial {
                     TracingSettings.from(settings("tracing")), blockingCallTracer,
                     adminSystemExportService, adminSystemExportSettings, orgUnitService,
                     adminSystemImportService, adminSystemImportSettings, proxyClient,
-                    new DefaultBudgetService(resourceService));
+                    new DefaultBudgetService(resourceService), new PlatformSchemaScan(resourceService));
 
             HttpServerOptions serverOptions = new HttpServerOptions(serverSettings);
             // each instance listens on the same port from its own event loop; Vert.x hands new connections to them in turn

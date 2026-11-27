@@ -1,8 +1,8 @@
 package com.epam.aidial.core.server.service.dependency;
 
 import com.epam.aidial.core.server.security.EncryptionService;
-import com.epam.aidial.core.server.service.dependency.ShortNameResolver.ClassifiedReference;
-import com.epam.aidial.core.server.service.dependency.ShortNameResolver.ReferenceForm;
+import com.epam.aidial.core.server.service.dependency.ReferenceClassifier.ClassifiedReference;
+import com.epam.aidial.core.server.service.dependency.ReferenceClassifier.ReferenceForm;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,16 +18,17 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-public class ShortNameResolverClassificationTest {
+public class ReferenceClassifierTest {
 
     @Mock
     private EncryptionService encryptionService;
 
     private ClassifiedReference classify(String value) {
-        return ShortNameResolver.classify(value, encryptionService);
+        return ReferenceClassifier.classify(value, encryptionService);
     }
 
     private void assertForm(ReferenceForm expected, String value) {
@@ -77,6 +78,14 @@ public class ShortNameResolverClassificationTest {
         lenient().when(encryptionService.decrypt("badToken")).thenThrow(new IllegalArgumentException("not a bucket"));
 
         assertForm(ReferenceForm.MALFORMED, value);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"gpt-4o", "my.model", "a b", "%2e%2e"})
+    public void testValueWithoutSlashIsShortNameAndNothingIsDecrypted(String value) {
+        assertForm(ReferenceForm.SHORT_NAME, value);
+
+        verifyNoInteractions(encryptionService);
     }
 
     @Test

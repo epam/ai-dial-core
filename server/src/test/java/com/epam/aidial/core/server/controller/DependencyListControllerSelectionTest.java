@@ -7,15 +7,23 @@ import com.epam.aidial.core.server.security.ConfigAuthorizationService;
 import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.dependency.DependencyWalker;
 import com.epam.aidial.core.server.vertx.AsyncTaskExecutor;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import io.vertx.core.Future;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -57,7 +65,24 @@ public class DependencyListControllerSelectionTest {
 
         controller.handle();
 
-        verify(context).respond(HttpStatus.BAD_REQUEST, "Failed to read the request body");
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(context).respond(error.capture(), anyString());
+        HttpException exception = assertInstanceOf(HttpException.class, error.getValue());
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatus());
+        assertEquals("Failed to read the request body", exception.getMessage());
+        assertNull(exception.getCause());
+        verifyNoInteractions(walker);
+    }
+
+    @Test
+    public void testBodyThatIsNotValidIsAnsweredAndNotLeftWithoutResponse() {
+        when(httpRequest.body()).thenReturn(Future.succeededFuture(Buffer.buffer("not json")));
+
+        controller.handle();
+
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(context).respond(error.capture(), eq("Failed to build the dependency list"));
+        assertEquals(HttpStatus.BAD_REQUEST, assertInstanceOf(HttpException.class, error.getValue()).getStatus());
         verifyNoInteractions(walker);
     }
 

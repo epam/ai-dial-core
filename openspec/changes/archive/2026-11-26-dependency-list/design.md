@@ -119,7 +119,7 @@ None: `development` has no call that lists dependencies, so no existing behaviou
 |---|---|---|
 | Storage round trips | one read per examined resource (the body is bound once and dropped after its references are found), one existence check per leaf, one scan per schema type per request | counting `ResourceService` in `DependencyWalkerTest` and in the API tests |
 | Permission lookups | initiator policy: one batched `lookupInitiatorPermissions` per level of the walk, which reads the caller's shared-with-me record once per resource type; admin policy: the read check of `public/` targets | `DependencyWalkerTest` with a counting policy |
-| Remote schema | one HTTP request per application type schema with an endpoint, and a non-admin can cause it by naming such an Application | `DependencyListRunnerFailureApiTest` |
+| Remote schema | one HTTP request per application type schema with an endpoint, and a non-admin can cause it by naming such an Application | `DeploymentEdgeDiscoveryTest` (one build per schema id) and the runner tests of `ApplicationSchemaServiceTest` |
 | Locks | none; the publication lock for two reads | an API test with a concurrent admin write |
 
 ## Risks / Trade-offs
