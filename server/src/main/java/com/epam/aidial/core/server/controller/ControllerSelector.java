@@ -489,6 +489,7 @@ public class ControllerSelector {
             PublicationController controller = new PublicationController(proxy, context);
             return controller::listRules;
         });
+        post(RouteTemplate.DEPENDENCY_LIST, (proxy, context, pathMatcher) -> new DependencyListController(proxy, context));
         post(RouteTemplate.RESOURCE_OPERATIONS, (proxy, context, pathMatcher) -> {
             String operation = pathMatcher.group(1);
             ResourceOperationController controller = new ResourceOperationController(proxy, context);

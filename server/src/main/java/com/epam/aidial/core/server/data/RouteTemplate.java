@@ -308,6 +308,10 @@ public enum RouteTemplate {
             "^/v1/ops/resource/(move|copy|subscribe)$",
             "/v1/ops/resource/{operation}"
     ),
+    DEPENDENCY_LIST(
+            "^/v1/ops/dependency/list$",
+            "/v1/ops/dependency/list"
+    ),
     NOTIFICATIONS(
             "^/v1/ops/notification/(list|delete)$",
             "/v1/ops/notification/{operation}"

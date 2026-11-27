@@ -17,10 +17,13 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.epam.aidial.core.server.util.ResourceDescriptorFactory;
 import com.epam.aidial.core.server.validation.ApplicationTypeResourceException;
 import com.epam.aidial.core.server.validation.ApplicationTypeSchemaValidationException;
+import com.epam.aidial.core.server.validation.CollectionIssueKind;
 import com.epam.aidial.core.server.validation.DialFileKeyword;
 import com.epam.aidial.core.server.validation.DialMetaKeyword;
 import com.epam.aidial.core.server.validation.DialResourceKeyKeyword;
 import com.epam.aidial.core.server.validation.ListCollector;
+import com.epam.aidial.core.server.validation.MarkerCollection;
+import com.epam.aidial.core.server.validation.ReferenceSchemaFactory;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
@@ -36,6 +39,7 @@ import com.networknt.schema.CollectorContext;
 import com.networknt.schema.InputFormat;
 import com.networknt.schema.JsonMetaSchema;
 import com.networknt.schema.JsonSchema;
+import com.networknt.schema.JsonSchemaException;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
 import lombok.SneakyThrows;
@@ -87,6 +91,9 @@ public class ApplicationSchemaService {
             .metaSchema(DIAL_META_SCHEMA)
             .defaultMetaSchemaIri(DIAL_META_SCHEMA.getIri())
             .build();
+
+    /** The dependency list's factory: it refuses every {@code $ref} that is not local to the document, so a schema cannot make Core fetch anything. */
+    private static final JsonSchemaFactory REFERENCE_SCHEMA_FACTORY = ReferenceSchemaFactory.of(DIAL_META_SCHEMA);
 
     private static final TypeReference<LinkedHashMap<String, Route>> APP_ROUTE_TYPE_REF = new TypeReference<>() {
         @Override
@@ -223,12 +230,43 @@ public class ApplicationSchemaService {
         }
         String url = schema.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT).textValue();
         try {
-            ObjectNode appSchema = downloadAppSchema(url);
+            ObjectNode appSchema = downloadAppSchema(url, false);
             merge(appSchema, schema);
             return new CachedSchema(source, appSchema.toString(), appSchema);
         } catch (Exception e) {
             log.warn("Failed to download application schema: {}", url, e);
             throw new ApplicationTypeSchemaProcessingException("Failed to download application schema: " + url, e);
+        }
+    }
+
+    /**
+     * As {@link #build}, for the dependency list: a failed download logs no endpoint or response, the exception carries no endpoint or
+     * cause, and an interrupt is rethrown. The cache is not touched.
+     */
+    @SneakyThrows
+    private CachedSchema buildQuietly(String source) {
+        JsonNode schema;
+        try {
+            schema = ProxyUtil.MAPPER.readTree(source);
+        } catch (JsonProcessingException e) {
+            throw new ApplicationTypeSchemaProcessingException("Application schema is not valid JSON");
+        }
+        if (!schema.has(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT)) {
+            return new CachedSchema(source, source, schema);
+        }
+        String url = schema.get(MetaSchemaHolder.DIAL_APPLICATION_TYPE_SCHEMA_ENDPOINT).textValue();
+        try {
+            ObjectNode appSchema = downloadAppSchema(url, true);
+            merge(appSchema, schema);
+            return new CachedSchema(source, appSchema.toString(), appSchema);
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) {
+                // an interrupt is neither a failure of the runner nor a reason to go on
+                Thread.currentThread().interrupt();
+                throw e;
+            }
+            log.warn("Failed to download application schema");
+            throw new ApplicationTypeSchemaProcessingException("Failed to download application schema");
         }
     }
 
@@ -303,21 +341,35 @@ public class ApplicationSchemaService {
         }
     }
 
+    /**
+     * @param isQuiet when set, nothing of the endpoint or of the response is logged
+     */
+    private ObjectNode downloadAppSchema(String url, boolean isQuiet) {
+        HttpResponse<String> response = requestAppSchema(url);
+        if (response.statusCode() != 200) {
+            if (isQuiet) {
+                log.debug("Error of downloading application schema: status {}", response.statusCode());
+            } else {
+                log.debug("Error of downloading application schema {}: status {}, response {}, headers: {}",
+                        url, response.statusCode(), response.body(), response.headers());
+            }
+            throw new HttpException(response.statusCode(), "Application runner returned error on downloading application schema");
+        }
+        return parseAppSchema(response.body());
+    }
+
     @SneakyThrows
-    private ObjectNode downloadAppSchema(String url) {
+    private HttpResponse<String> requestAppSchema(String url) {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(java.time.Duration.ofSeconds(5))
                 .GET()
                 .build();
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        int status = response.statusCode();
-        String body = response.body();
-        if (status != 200) {
-            log.debug("Error of downloading application schema {}: status {}, response {}, headers: {}",
-                    request.uri(), response.statusCode(), response.body(), response.headers());
-            throw new HttpException(status, "Application runner returned error on downloading application schema");
-        }
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    @SneakyThrows
+    private static ObjectNode parseAppSchema(String body) {
         JsonNode tree = ProxyUtil.MAPPER.readTree(body);
         if (!tree.isObject()) {
             throw new ApplicationTypeSchemaProcessingException("Application schema is not JSON object");
@@ -543,6 +595,49 @@ public class ApplicationSchemaService {
     public List<ResourceDescriptor> getDeployments(Application application) {
         return getApplicationResources(application, Set.of(ResourceTypes.APPLICATION, ResourceTypes.TOOL_SET),
                 ListCollector.ResourceCollectorType.ALL_RESOURCES, false);
+    }
+
+    /**
+     * The schema of an application as the dependency list holds it: evaluable, or the reason why it is not.
+     *
+     * @param schema {@code null} when there is an issue
+     * @param issue  {@code SCHEMA_NOT_FOUND} when nothing holds the id, {@code SCHEMA_UNAVAILABLE} when the schema or its Runner's document
+     *               cannot be evaluated
+     */
+    public record ReferenceSchema(@Nullable JsonSchema schema, @Nullable CollectionIssueKind issue) {
+    }
+
+    /**
+     * Builds the schema from the given configuration, live: the cache is neither read nor written, so the dependency list never sees a stale
+     * schema and never replaces the one of request processing. A missing or unusable schema is an {@link ReferenceSchema} with an issue;
+     * any other failure propagates.
+     */
+    public ReferenceSchema buildReferenceSchema(URI schemaId, Config config) {
+        String source = config.getCustomApplicationSchema(schemaId);
+        if (source == null) {
+            return new ReferenceSchema(null, CollectionIssueKind.SCHEMA_NOT_FOUND);
+        }
+        CachedSchema cached;
+        try {
+            cached = buildQuietly(source);
+        } catch (ApplicationTypeSchemaProcessingException e) {
+            return new ReferenceSchema(null, CollectionIssueKind.SCHEMA_UNAVAILABLE);
+        }
+        try {
+            return new ReferenceSchema(REFERENCE_SCHEMA_FACTORY.getSchema(cached.raw), null);
+        } catch (JsonSchemaException e) {
+            return new ReferenceSchema(null, CollectionIssueKind.SCHEMA_UNAVAILABLE);
+        }
+    }
+
+    /**
+     * Collects the marked values of the application's properties against a schema that the caller already holds, with their RFC 6901
+     * pointer; nothing is parsed, checked or authorized.
+     *
+     * <p>Issues carry no library message and no value, because a message can hold the instance value or an IRI.
+     */
+    public MarkerCollection collectMarkerReferences(Application application, JsonSchema schema) {
+        return MarkerCollection.collect(schema, application.getApplicationProperties());
     }
 
     @SuppressWarnings("unchecked")
