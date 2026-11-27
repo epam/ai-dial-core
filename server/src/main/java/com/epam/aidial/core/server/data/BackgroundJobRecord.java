@@ -91,7 +91,7 @@ public record BackgroundJobRecord(
                         .map(UpstreamRoute::get)
                         .map(Upstream::getEndpoint)
                         .orElse(null))
-                .upstreamId(AnalyticsLogContext.upstreamId(context))
+                .upstreamId(AnalyticsLogContext.resolveUpstreamId(context))
                 .build();
     }
 }

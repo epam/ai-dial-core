@@ -121,8 +121,9 @@ The analytics log entry names the model upstream Core chose for the request in i
 | `upstream_uri` | The upstream's `endpoint`; omitted when the upstream has none                                  |
 | `upstream_id`  | The upstream's `id`; written only for an entry of a model's `upstreams` with a non-blank `id`  |
 
-A deployment without `upstreams` writes `upstream_uri` (its serving endpoint) and no `upstream_id`. A router's own
-entry and a `tokenize` or `truncate_prompt` call carry neither field. Give each upstream an `id` when a model's
+A deployment without `upstreams`, a router in `proxy` mode included, writes `upstream_uri` (its serving endpoint) and
+no `upstream_id`. The router's own entry of a decided request and a `tokenize` or `truncate_prompt` call carry
+neither field. Give each upstream an `id` when a model's
 upstreams have no `endpoint`, or differ only in `extraData`, so their entries can be told apart.
 
 A request for an interface the model serves in `translator` mode names the upstream Core chose for it, although the
@@ -130,7 +131,7 @@ translator, not that upstream, answers it. The translator calls Core back, and t
 upstream that answered: it is the child entry, whose `trace.core_parent_span_id` is the translator pass's
 `trace.core_span_id`. Count that one when counting requests per upstream.
 
-The upstream id goes to the analytics log only, never to spans or console log lines.
+This field puts the upstream id in the analytics log only; spans do not carry it.
 
 ## Storage and rate-limit spans
 

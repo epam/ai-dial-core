@@ -77,7 +77,7 @@ public class AnalyticsLogContext {
     private final Buffer requestBody;
 
     private final String upstreamEndpoint;
-    // the id of the model upstream Core chose for the pass, see upstreamId(ProxyContext)
+    // the id of the model upstream Core chose for the pass, see resolveUpstreamId(ProxyContext)
     private final String upstreamId;
 
     private final String routeName;
@@ -142,7 +142,7 @@ public class AnalyticsLogContext {
                         .map(UpstreamRoute::get)
                         .map(Upstream::getEndpoint)
                         .orElse(null))
-                .upstreamId(upstreamId(context))
+                .upstreamId(resolveUpstreamId(context))
                 .routeName(route == null ? null : route.getName())
                 .routeType(routeType == null ? null : routeType.getValue())
                 .responseStatusCode(context.getResponse().getStatusCode())
@@ -259,7 +259,7 @@ public class AnalyticsLogContext {
      * the row already carries as the upstream uri.
      */
     @Nullable
-    public static String upstreamId(ProxyContext context) {
+    public static String resolveUpstreamId(ProxyContext context) {
         UpstreamRoute route = context.getUpstreamRoute();
         Upstream upstream = route == null ? null : route.get();
         if (upstream == null || !EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())) {

@@ -87,9 +87,11 @@ either. Rollback works the same way.
 
 ## Code map
 
+- `server/.../log/AnalyticsLogContext.java:resolveUpstreamId(ProxyContext)` - the one rule for the row and the job
+  record: the chosen upstream's `id` when it is not blank and
+  `EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())`, else null.
 - `server/.../log/AnalyticsLogContext.java:from(ProxyContext, String)` - builds the row. Add `upstreamId` next to
-  `upstreamEndpoint`: the chosen upstream's `id` when it is not blank and
-  `EncryptedContentAffinityUtil.hasConfiguredUpstreams(context.getDeployment())`.
+  `upstreamEndpoint`, from `resolveUpstreamId`.
 - `server/.../log/AnalyticsLogContext.java:from(BackgroundJobRecord, ResponsesApiClient.TerminalResult, List)` - the
   job's row; map `record.upstreamId()`.
 - `server/.../log/AnalyticsLogContext.java:routerRow` - clears `upstreamEndpoint` on the router row, live and from a
@@ -98,7 +100,8 @@ either. Rollback works the same way.
 - `server/.../log/GfLogStore.java:append(AnalyticsLogContext, LogEntry)` - writes `upstream_uri` after
   `response.status`; write `upstream_id` after it, escaped, with the same `"\",\"name\":\""` pattern.
 - `server/.../data/BackgroundJobRecord.java:from(ProxyContext, UnaryOperator)` - add the `upstreamId` component next
-  to `upstreamEndpoint`, with the same rule as the row. The record is `@JsonIgnoreProperties(ignoreUnknown = true)`.
+  to `upstreamEndpoint`, from `AnalyticsLogContext.resolveUpstreamId`. The record is
+  `@JsonIgnoreProperties(ignoreUnknown = true)`.
 - `server/.../util/EncryptedContentAffinityUtil.java:hasConfiguredUpstreams` - the "model with `upstreams`" check to
   reuse; `UpstreamRouteProvider.java:getUpstreams` builds the synthetic upstream for everything else, and returns
   the model's `upstreams` whatever the interface's mode (D4).
