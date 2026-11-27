@@ -5,6 +5,7 @@ import com.epam.aidial.core.config.Upstream;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.alias.AliasPass;
+import com.epam.aidial.core.server.data.ApiKeyData;
 import com.epam.aidial.core.server.data.BackgroundJobRecord;
 import com.epam.aidial.core.server.data.RouteType;
 import com.epam.aidial.core.server.data.RouterDecision;
@@ -184,6 +185,20 @@ public class AnalyticsLogContext {
                 .tokenUsage(result == null ? null : result.usage())
                 .usagePerModel(usagePerModel)
                 .operationDurationMs(operationDurationMs(record))
+                .build();
+    }
+
+    /**
+     * The row of a pass that ended in an error. When Core refused a resolved deployment before the pass had its key (its own
+     * {@code 429}), the parent comes from the path that key would have had.
+     */
+    public static AnalyticsLogContext fromError(ProxyContext context) {
+        AnalyticsLogContext row = from(context, null);
+        if (context.getDecision() != null || context.getExecutionPath() != null || context.getDeployment() == null) {
+            return row;
+        }
+        return row.toBuilder()
+                .parentDeployment(getParentDeployment(context.getSourceDeployment(), context.getInterceptors(), ApiKeyData.pathOf(context)))
                 .build();
     }
 

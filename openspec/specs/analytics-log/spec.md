@@ -26,19 +26,19 @@ the two requirements on rows without bodies). For a `secured` key, Core SHALL wr
   write their rows
 - **THEN** `app`'s row and `m`'s row each have their `request.body` and `response.body`
 
-### Requirement: No limit on bodies waiting to be logged by default
-Core SHALL keep the bodies of every row of a key that is not `secured`, whatever the backlog, when
-`analytics.maxPendingBodyHeapPercent` (env
-`aidial.analytics.maxPendingBodyHeapPercent`) is absent, which means `-1`, or is 0 or below.
+### Requirement: A limit on bodies waiting to be logged by default
+When `analytics.maxPendingBodyHeapPercent` (env `aidial.analytics.maxPendingBodyHeapPercent`) is absent, Core SHALL
+take it as `10`. When it is 0 or below, Core SHALL keep the bodies of every row of a key that is not `secured`,
+whatever the backlog.
 
 #### Scenario: Setting absent
-- **WHEN** Core runs without `analytics.maxPendingBodyHeapPercent`, a row with a 2,000-byte request body is waiting to
-  be written, and another pass writes its row
-- **THEN** that row has its `request.body` and `response.body`
+- **WHEN** the JVM's maximum heap is 10,000 bytes, Core runs without `analytics.maxPendingBodyHeapPercent` (a limit of
+  1,000 bytes), a row with a 2,000-byte request body is waiting to be written, and another pass writes its row
+- **THEN** that row has no `request.body`, `response.body` or `assembled_response`
 
-#### Scenario: Value 0
-- **WHEN** Core runs with `analytics.maxPendingBodyHeapPercent: 0`, a row with a 2,000-byte request body is waiting to
-  be written, and another pass writes its row
+#### Scenario: Value 0 or below
+- **WHEN** Core runs with `analytics.maxPendingBodyHeapPercent` `0` or `-1`, a row with a 2,000-byte request body is
+  waiting to be written, and another pass writes its row
 - **THEN** that row has its `request.body` and `response.body`
 
 ### Requirement: Rows without bodies while the log writer is behind
@@ -72,7 +72,7 @@ the row. Once the held bodies fall below the limit, new rows SHALL carry their b
 Core SHALL write the row of an alias pass without `request.body`, `response.body` and `assembled_response`, and with
 every other field, whatever the key, the interface and whether the target pass runs in process. The row of the
 alias's target pass SHALL carry its bodies as "Bodies in the analytics row" says; a target pass that refuses the call
-before its origin writes no row, as on a direct call.
+before its origin writes no row unless `analytics.errorRows` is on, as on a direct call.
 
 #### Scenario: Messages through an alias
 - **WHEN** a caller with a key that is not `secured` sends `/anthropic/v1/messages` with `model: multi-alias`, and
@@ -114,7 +114,7 @@ when every such budget is used up.
 - **THEN** the call succeeds and its row has `spending_limits` with `outcome` `exhausted`
 
 #### Scenario: Every budget used up in enforce mode
-- **WHEN** `spendingLimits.mode` is `enforce` and the caller's only budget is used up
+- **WHEN** `spendingLimits.mode` is `enforce`, `analytics.errorRows` is off and the caller's only budget is used up
 - **THEN** Core refuses the call with 429 and writes no row for it
 
 ### Requirement: Budget in the analytics row
@@ -188,3 +188,49 @@ of the request that started the job.
 #### Scenario: Token without a project
 - **WHEN** a caller whose token has no project claim sends a request
 - **THEN** the row has `cost_object` with `id` `ORG` and `source` `default`, while `project.id` is empty
+
+### Requirement: Error rows are on by default
+Core SHALL write the rows of "Error rows for answers Core gives itself" and "Error rows for a relay that breaks" unless
+`analytics.errorRows` (env `aidial.analytics.errorRows`) is `false`. Absent, it SHALL be `true`. With it off, every row SHALL be
+what Core writes without this setting.
+
+#### Scenario: Setting absent
+- **WHEN** Core runs without `analytics.errorRows` and a model's only upstream answers `429` with `maxRetryAttempts: 1`
+- **THEN** the client gets `503` and one row is written, with `response.status: "503"`
+
+#### Scenario: Setting off
+- **WHEN** `analytics.errorRows` is `false` and a model's only upstream answers `429` with `maxRetryAttempts: 1`
+- **THEN** the client gets `503` and no row is written
+
+#### Scenario: Setting off, a successful pass
+- **WHEN** `analytics.errorRows` is `false` and a model answers `200`
+- **THEN** the row is the row Core writes without the setting
+
+### Requirement: Error rows use the fields of any row
+A row of "Error rows for answers Core gives itself" or "Error rows for a relay that breaks" SHALL have the fields every row has and
+no field that other rows lack. A row of an answer Core gave itself SHALL have no `token_usage`, and no `request.body` or
+`response.body`, as for a `secured` key, unless its status is `400` or `500` and spending limits did not refuse the call;
+then `response.body` SHALL be empty. A broken relay's row SHALL keep its `request.body`.
+
+#### Scenario: Refusal
+- **WHEN** `analytics.errorRows` is on and a key that is not `secured` is refused with `403` on
+  `/openai/deployments/{id}/chat/completions`
+- **THEN** the row has `response.status: "403"` and `trace`, and has no `request.body`, `response.body`,
+  `token_usage` or `error` member
+
+#### Scenario: Upstreams used up
+- **WHEN** `analytics.errorRows` is on and a model's only upstream answers `503` with `maxRetryAttempts` 1
+- **THEN** the client gets `502` and its row has no `request.body` or `response.body`
+
+#### Scenario: Body that is not JSON
+- **WHEN** `analytics.errorRows` is on and a client sends a body that is not valid JSON
+- **THEN** the client gets `400` and its row has the `request.body` field and an empty `response.body`
+
+#### Scenario: Spending-limit refusal on Responses
+- **WHEN** `analytics.errorRows` is on, `spendingLimits.mode` is `enforce`, a caller has no budget, and it calls
+  `/openai/v1/responses`
+- **THEN** the client gets `400` and its row has no `request.body` or `response.body`
+
+#### Scenario: Successful pass with the setting on
+- **WHEN** `analytics.errorRows` is on and a model answers `200`
+- **THEN** the row is the row written with the setting off

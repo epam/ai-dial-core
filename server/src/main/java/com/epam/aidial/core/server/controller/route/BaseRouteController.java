@@ -73,6 +73,7 @@ abstract class BaseRouteController implements Controller {
             if (!result) {
                 // the route has no required permissions
                 context.respond(HttpStatus.FORBIDDEN, "Forbidden route");
+                proxy.getLogStore().saveErrorResponse(context);
                 return Future.succeededFuture();
             }
             Route.Response response = route.getResponse();
@@ -83,9 +84,6 @@ abstract class BaseRouteController implements Controller {
                 }
                 context.setTraceOperation("Send request to %s route".formatted(route.getName()));
                 context.setUpstreamRoute(upstreamRoute);
-            } else {
-                context.getResponse().setStatusCode(response.getStatus());
-                context.setResponseBody(Buffer.buffer(response.getBody()));
             }
             return proxy.getRateLimiter().limit(context, context.getRoute())
                     .compose(rateLimitResult -> {
@@ -112,7 +110,9 @@ abstract class BaseRouteController implements Controller {
     }
 
     private Future<?> handleRateLimitSuccess() {
-        if (context.getResponseBody() == null) {
+        // a static response is put on the context only now, so that an error row before it carries no body
+        Route.Response response = context.getRoute().getResponse();
+        if (response == null) {
             return proxy.getTokenStatsTracker().startSpan(context)
                     .compose(ignore -> {
                         if (isWebSocketUpgrade(context.getRequest())) {
@@ -124,6 +124,8 @@ abstract class BaseRouteController implements Controller {
                         }
                     });
         } else {
+            context.getResponse().setStatusCode(response.getStatus());
+            context.setResponseBody(Buffer.buffer(response.getBody()));
             context.setResponseBodyTimestamp(System.currentTimeMillis());
             context.getResponse().send(context.getResponseBody());
             proxy.getLogStore().save(AnalyticsLogContext.from(context, null));
@@ -274,16 +276,19 @@ abstract class BaseRouteController implements Controller {
     void respond(HttpStatus status, String result) {
         finalizeRequest();
         context.respond(status, result);
+        proxy.getLogStore().saveErrorResponse(context);
     }
 
     void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
+        proxy.getLogStore().saveErrorResponse(context);
     }
 
     void respond(HttpStatus status) {
         finalizeRequest();
         context.respond(status);
+        proxy.getLogStore().saveErrorResponse(context);
     }
 
     void finalizeRequest() {

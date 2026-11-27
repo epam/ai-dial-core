@@ -2,6 +2,7 @@ package com.epam.aidial.core.server.controller;
 
 import com.epam.aidial.core.config.Application;
 import com.epam.aidial.core.config.Deployment;
+import com.epam.aidial.core.config.Interceptor;
 import com.epam.aidial.core.config.InterfaceMode;
 import com.epam.aidial.core.config.InterfaceType;
 import com.epam.aidial.core.config.Model;
@@ -40,6 +41,7 @@ import com.epam.aidial.core.server.util.UsagePerModelInjector;
 import com.epam.aidial.core.server.vertx.stream.BufferingReadStream;
 import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.http.HttpStatus;
+import com.epam.aidial.core.storage.util.UrlUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -114,22 +116,56 @@ public class BaseDeploymentPostController {
 
     protected Future<?> respond(HttpStatus status, String errorMessage) {
         finalizeRequest();
-        return context.respond(status, errorMessage);
+        Future<?> answered = context.respond(status, errorMessage);
+        saveErrorResponse();
+        return answered;
     }
 
     protected void respond(HttpException exception) {
         finalizeRequest();
         context.respond(exception);
+        saveErrorResponse();
     }
 
     protected void respond(HttpStatus status) {
         finalizeRequest();
         context.respond(status);
+        saveErrorResponse();
     }
 
     protected void respond(HttpStatus status, Object result) {
         finalizeRequest();
         context.respond(status, result);
+        saveErrorResponse();
+    }
+
+    /** Saves the error row of an answer Core gave itself; call it right after {@code context.respond(...)}. */
+    protected void saveErrorResponse() {
+        // the setting first: with it off, an error answer reads one boolean
+        if (proxy.getLogStore().isErrorRowsEnabled() && isErrorRowAllowed()) {
+            proxy.getLogStore().saveErrorResponse(context);
+        }
+    }
+
+    /**
+     * False for an interceptor call, an undecided decision-mode router, and a decided pass whose current candidate was not
+     * resolved (router-deployment "Decision failures"): their specs say they write no error row.
+     */
+    protected boolean isErrorRowAllowed() {
+        Deployment deployment = context.getDeployment();
+        if (deployment instanceof Interceptor) {
+            return false;
+        }
+        RouterDecision decision = context.getDecision();
+        if (decision == null) {
+            return !(deployment instanceof Router router && router.getMode() == Router.Mode.DECISION);
+        }
+        if (deployment == null) {
+            return false;
+        }
+        // a candidate names a resource deployment by its decoded url, and the deployment's name is the encoded one
+        String candidate = decision.current();
+        return candidate.equals(deployment.getName()) || candidate.equals(UrlUtil.tryDecodePath(deployment.getName()));
     }
 
     /**
@@ -279,7 +315,10 @@ public class BaseDeploymentPostController {
         if (deployment instanceof Model) {
             // make sure we collect token usage in case if client accidentally closed the connection
             responseStream.endStreamFuture()
-                    .onFailure(ignore -> context.getProxyRequest().reset()) // drop connection to stop origin response
+                    .onFailure(ignore -> {
+                        context.getProxyRequest().reset(); // drop connection to stop origin response
+                        saveBrokenStreamRow();
+                    })
                     .compose(ignore -> {
                         Buffer responseBody = responseStream.getContent();
                         context.setResponseBody(responseBody);
@@ -291,8 +330,16 @@ public class BaseDeploymentPostController {
         } else {
             // drop connection to stop application responding
             context.getProxyRequest().reset();
+            saveBrokenStreamRow();
             // the pass keeps its key and span to their TTLs, but the router row is written
             decisions.writeRouterRow().onFailure(e -> log.warn("Router row is not written", e));
+        }
+    }
+
+    // a recorded background job's terminal row is written by BackgroundJobService, once the job ends
+    private void saveBrokenStreamRow() {
+        if (proxy.getLogStore().isErrorRowsEnabled() && isErrorRowAllowed() && !context.isBackgroundJobRecorded()) {
+            proxy.getLogStore().saveErrorRow(context);
         }
     }
 

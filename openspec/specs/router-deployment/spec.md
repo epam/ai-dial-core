@@ -344,8 +344,8 @@ record across decisions).
 - **THEN** Core writes both rows, and the router row carries the `decision` object
 
 #### Scenario: Router row when every candidate fails
-- **WHEN** the router `r-two`, with `decision: {"maxDecisions": 2}`, answers `{"candidates": ["m1"]}` to both decide requests and
-  `m1` answers `503` each time
+- **WHEN** `analytics.errorRows` is off, the router `r-two`, with `decision: {"maxDecisions": 2}`, answers `{"candidates": ["m1"]}`
+  to both decide requests and `m1` answers `503` each time
 - **THEN** the client receives `502` and Core writes only the router row, with `response.status: "502"`,
   `decision.decisions: 2`, `decision.deployment: "m1"` and `decision.attempts: [{"deployment": "m1", "status": 502,
   "reason": "upstream"}]`, the last try being the one `deployment` names

@@ -67,6 +67,8 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                 .initiatorBucket(BucketBuilder.buildInitiatorBucket(context))
                 .router(context.getDecision() == null ? null : context.getDecision().getAnswerName())
                 .build();
+        // set before the saves, so that a stream that breaks while they run writes no row next to the job's terminal row
+        context.setBackgroundJobRecorded(context.isBackgroundJob());
         return proxy.getTaskExecutor()
                 .submit(() -> proxy.getResponseMappingService().saveMapping(context, mapping))
                 .compose(id -> {
@@ -78,6 +80,8 @@ public class ReplaceResponseIdFn extends BaseResponseFunction {
                     }
                     return proxy.getBackgroundJobService().saveJob(dialId, context);
                 })
+                // no job and no poller: a stream that breaks after this writes its own row
+                .onFailure(ignore -> context.setBackgroundJobRecorded(false))
                 .map(tree);
     }
 }

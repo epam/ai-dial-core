@@ -84,6 +84,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -811,12 +812,51 @@ public class ResponsesControllerTest {
 
     @Test
     public void testBackgroundJobRecordSaved(Vertx vertx, VertxTestContext textContext) throws Throwable {
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        stubBackgroundJobRequest(vertx, apiKeyStore);
+        // a background job's usage record gets the longer TTL, so the flag must be set before startSpan
+        AtomicBoolean backgroundAtStartSpan = new AtomicBoolean();
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenAnswer(invocation -> {
+            backgroundAtStartSpan.set(context.isBackgroundJob());
+            return Future.succeededFuture();
+        });
+        when(proxy.getBackgroundJobService().saveJob(anyString(), any())).thenAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.<Void>succeededFuture();
+        });
+
+        controller.handle();
+
+        await(textContext);
+        assertTrue(backgroundAtStartSpan.get());
+        // the job's poller polls with the pass's key and ends the pass, so this pass must not invalidate it
+        verify(apiKeyStore, after(300).never()).invalidatePerRequestApiKey(any());
+    }
+
+    @Test
+    public void testBackgroundJobRecordNotSavedFinalizesThePass(Vertx vertx, VertxTestContext textContext) throws Throwable {
+        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
+        stubBackgroundJobRequest(vertx, apiKeyStore);
+        when(proxy.getTokenStatsTracker().startSpan(context)).thenReturn(Future.succeededFuture());
+        when(proxy.getBackgroundJobService().saveJob(anyString(), any())).thenReturn(Future.failedFuture("blob store down"));
+        // no job means no poller to end the pass, so this pass ends it: its key is invalidated
+        doAnswer(invocation -> {
+            textContext.completeNow();
+            return Future.succeededFuture(Boolean.TRUE);
+        }).when(apiKeyStore).invalidatePerRequestApiKey(any());
+
+        controller.handle();
+
+        await(textContext);
+        verify(response).end(any(Buffer.class));
+    }
+
+    private void stubBackgroundJobRequest(Vertx vertx, ApiKeyStore apiKeyStore) {
         Application deployment = new Application();
         deployment.setName("test");
         deployment.setResponsesEndpoint("http://adapter/responses");
         HttpClient httpClient = mock(HttpClient.class, RETURNS_DEEP_STUBS);
         HttpClientRequest proxyRequest = mock(HttpClientRequest.class, RETURNS_DEEP_STUBS);
-        ApiKeyStore apiKeyStore = mock(ApiKeyStore.class);
         UpstreamRoute upstreamRoute = mock(UpstreamRoute.class, RETURNS_DEEP_STUBS);
         HttpClientResponse proxyResponse = mock(HttpClientResponse.class, RETURNS_DEEP_STUBS);
         Upstream upstream = new Upstream(null, "endpoint", null, null, null, 0, 0, "endpoint", null, null, null);
@@ -853,18 +893,8 @@ public class ResponsesControllerTest {
         when(proxy.getApplicationSchemaService().modifyEndpointsForCustomApplication(deployment))
                 .thenReturn(deployment);
         when(proxy.getApiKeyStore()).thenReturn(apiKeyStore);
-        // a background job's usage record gets the longer TTL, so the flag must be set before startSpan
-        AtomicBoolean backgroundAtStartSpan = new AtomicBoolean();
-        when(proxy.getTokenStatsTracker().startSpan(context)).thenAnswer(invocation -> {
-            backgroundAtStartSpan.set(context.isBackgroundJob());
-            return Future.succeededFuture();
-        });
         when(proxy.getResponseMappingService().saveMapping(any(), any())).thenReturn(expectedDialId);
         when(context.getUserId()).thenReturn("test-user");
-        when(proxy.getBackgroundJobService().saveJob(anyString(), any())).thenAnswer(invocation -> {
-            textContext.completeNow();
-            return Future.<Void>succeededFuture();
-        });
         doCallRealMethod().when(context).setDeployment(any());
         doCallRealMethod().when(context).getDeployment();
         doCallRealMethod().when(context).setRequestBodyWithTimestamp(any());
@@ -877,11 +907,6 @@ public class ResponsesControllerTest {
         doCallRealMethod().when(context).isStoreResponse();
         doCallRealMethod().when(context).setBackgroundJob(anyBoolean());
         doCallRealMethod().when(context).isBackgroundJob();
-
-        controller.handle();
-
-        await(textContext);
-        assertTrue(backgroundAtStartSpan.get());
     }
 
     @Test

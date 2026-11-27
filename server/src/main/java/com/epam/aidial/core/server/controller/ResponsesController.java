@@ -552,13 +552,17 @@ public class ResponsesController extends BaseDeploymentPostController {
                     response.putHeader(HttpHeaders.CONTENT_LENGTH, Integer.toString(rewritten.length()));
                     putUpstreamAttempts(response, context.getUpstreamRoute().getAttemptCount());
 
+                    // the answer is relayed whatever happens here, so a failure must not reach the error answer after it
                     if (context.isBackgroundJob() && dialId != null) {
                         return proxy.getBackgroundJobService().saveJob(dialId, context)
-                                .onComplete(result -> {
+                                .transform(result -> {
+                                    response.end(rewritten);
                                     if (result.failed()) {
                                         log.warn("Failed to save background job record", result.cause());
+                                        // no job was recorded, so no poller ends this pass
+                                        finalizeRequest();
                                     }
-                                    response.end(rewritten);
+                                    return Future.<Void>succeededFuture();
                                 });
                     } else {
                         return collectTokenUsage(rewritten, dialId)
@@ -568,12 +572,13 @@ public class ResponsesController extends BaseDeploymentPostController {
                                     }
                                     return collectResponseAttachments(rewritten, new CollectResponsesApiOutputAttachmentsFn(proxy, context));
                                 })
-                                .onComplete(result -> {
+                                .transform(result -> {
                                     if (result.failed()) {
                                         log.warn("Failed to collect attachments from response", result.cause());
                                     }
                                     response.end(rewritten);
                                     completeProxyResponse(null);
+                                    return Future.<Void>succeededFuture();
                                 });
                     }
                 });

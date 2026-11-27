@@ -34,6 +34,11 @@ public record BudgetCheck(SpendingLimitMode mode, @Nullable String costObject, @
         return new BudgetCheck(mode, costObject, Outcome.EXHAUSTED, null);
     }
 
+    /** True when the check refused the call: {@code enforce} mode, and no budget pays. */
+    public boolean refuses() {
+        return mode == SpendingLimitMode.ENFORCE && (outcome == Outcome.NO_BUDGET || outcome == Outcome.EXHAUSTED);
+    }
+
     public enum Outcome {
         PAID("paid"),
         NO_BUDGET("no_budget"),

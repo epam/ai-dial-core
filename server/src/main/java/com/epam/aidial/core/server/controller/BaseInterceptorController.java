@@ -102,6 +102,11 @@ public abstract class BaseInterceptorController extends BaseDeploymentPostContro
         });
     }
 
+    @Override
+    protected boolean isErrorRowAllowed() {
+        return false;
+    }
+
     private void handleError(Throwable error) {
         log.error("Can't handle request. Error: {}", error.getMessage());
         respond(HttpStatus.INTERNAL_SERVER_ERROR);

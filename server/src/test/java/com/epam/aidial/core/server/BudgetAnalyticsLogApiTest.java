@@ -11,6 +11,7 @@ import com.epam.aidial.core.server.util.ProxyUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.vertx.core.http.HttpMethod;
+import io.vertx.core.json.JsonObject;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
 
@@ -47,6 +48,12 @@ class BudgetAnalyticsLogApiTest extends ResourceBaseTest {
             + "\"model\":\"gpt-spend\",\"output\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":10,\"total_tokens\":20}}";
     private static final String CHAT_ANSWER = "{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"app-chain\","
             + "\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}";
+
+    // the scenario "Every budget used up in enforce mode" is the one with analytics.errorRows off
+    @Override
+    protected JsonObject additionalSettingsOverrides() {
+        return new JsonObject().put("analytics", new JsonObject().put("errorRows", false));
+    }
 
     @Test
     @DialConfigLocation(CONFIG)
