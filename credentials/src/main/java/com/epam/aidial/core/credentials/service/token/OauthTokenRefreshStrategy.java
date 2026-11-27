@@ -9,11 +9,7 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class OauthTokenRefreshStrategy implements TokenRefreshStrategy {
 
-    /**
-     * How long before expiry a token is refreshed. A caller gets the token and uses it a few seconds later (a git
-     * clone, an MCP call), so a token handed out in its last seconds can expire on the way. Capped at half the
-     * token's lifetime, so a short-lived token is not refreshed on every read.
-     */
+    /** Refresh a token this long before it expires, capped at half its lifetime. */
     static final long MAX_REFRESH_MARGIN_MILLIS = TimeUnit.MINUTES.toMillis(5);
 
     private final TimeProvider timeProvider;
