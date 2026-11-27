@@ -36,8 +36,8 @@ public class AnalyticsSettingsTest {
     }
 
     @Test
-    public void testErrorRowsDefaultsToFalse() {
-        assertFalse(AnalyticsSettings.from(new JsonObject()).errorRows());
+    public void testErrorRowsDefaultsToTrue() {
+        assertTrue(AnalyticsSettings.from(new JsonObject()).errorRows());
         assertFalse(AnalyticsSettings.from(new JsonObject().put("errorRows", false)).errorRows());
     }
 

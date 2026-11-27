@@ -9,8 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
- * {@code analytics.errorRows} absent, which is off: Core behaves as it did before the setting existed. Specs:
- * {@code analytics-log} "Error rows are off by default"; {@code app-to-model-accounting} "Error rows for answers Core gives
+ * {@code analytics.errorRows} {@code false}: Core behaves as it did before the setting existed. Specs:
+ * {@code analytics-log} "Error rows are on by default"; {@code app-to-model-accounting} "Error rows for answers Core gives
  * itself" and "Error rows for a relay that breaks", scenarios "Setting off", and "Passes without an analytics row".
  */
 public class ErrorRowsDisabledApiTest extends BaseErrorRowsApiTest {
@@ -21,7 +21,7 @@ public class ErrorRowsDisabledApiTest extends BaseErrorRowsApiTest {
     }
 
     @Test
-    void testSettingAbsentIsOff() {
+    void testSettingReachesTheStore() {
         assertFalse(dial.getProxy().getLogStore().isErrorRowsEnabled());
     }
 

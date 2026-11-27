@@ -66,7 +66,7 @@ public record AnalyticsSettings(boolean collectClaims, boolean collectAllClaims,
                 parseHeaderPatterns(settings.getJsonArray("headersBlacklist")),
                 parseHeaderPatterns(settings.getJsonArray("headersAllowlist")),
                 settings.getDouble("maxPendingBodyHeapPercent", -1.0),
-                settings.getBoolean("errorRows", false));
+                settings.getBoolean("errorRows", true));
     }
 
     private static List<String> parseClaimPaths(JsonArray value) {

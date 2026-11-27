@@ -23,7 +23,7 @@ application"). They are not accidents, so changing them needs a spec change, and
 
 ## What Changes
 
-- New static setting `analytics.errorRows` (env `aidial.analytics.errorRows`), a boolean, default `false`. With it off, Core
+- New static setting `analytics.errorRows` (env `aidial.analytics.errorRows`), a boolean, default `true`. With it `false`, Core
   behaves exactly as today: the same rows, the same fields, no extra row.
 - With it on, Core writes **one row for every error answer it gives itself** on the LLM surfaces (chat completions, embeddings,
   Responses, Messages), on a deployment's feature calls (tokenize, truncate and rate; `configuration` is a GET, and a request that is not a POST writes no row), on its MCP proxy and on routes:
@@ -74,7 +74,7 @@ None.
   `respond(...)` helpers and `handleResponseError` of `BaseDeploymentPostController`, and the `respond` helpers of
   `DeploymentFeatureController`, `McpProxyController` and `BaseRouteController` (the rows). Docs: the settings table in `README.md`, `docs/tracing.md`, and the bundled
   `aidial.settings.json`.
-- Operators: nothing changes with the setting off. With it on, every request that gets an error answer adds one row, with a status
+- Operators: the setting is on by default, so after an upgrade every request that gets an error answer adds one row, with a status
   of 4xx or 5xx and no tokens, and a consumer that sums requests from the rows counts it too. During an outage of every upstream
-  that is one row per failed request.
+  that is one row per failed request. Set it to `false` to keep the rows as before.
 - Dependencies: none.

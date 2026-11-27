@@ -189,13 +189,17 @@ of the request that started the job.
 - **WHEN** a caller whose token has no project claim sends a request
 - **THEN** the row has `cost_object` with `id` `ORG` and `source` `default`, while `project.id` is empty
 
-### Requirement: Error rows are off by default
-Core SHALL write the rows of "Error rows for answers Core gives itself" and "Error rows for a relay that breaks" only when
-`analytics.errorRows` (env `aidial.analytics.errorRows`) is `true`. Absent, it SHALL be `false`. With it off, every row SHALL be
+### Requirement: Error rows are on by default
+Core SHALL write the rows of "Error rows for answers Core gives itself" and "Error rows for a relay that breaks" unless
+`analytics.errorRows` (env `aidial.analytics.errorRows`) is `false`. Absent, it SHALL be `true`. With it off, every row SHALL be
 what Core writes without this setting.
 
 #### Scenario: Setting absent
 - **WHEN** Core runs without `analytics.errorRows` and a model's only upstream answers `429` with `maxRetryAttempts: 1`
+- **THEN** the client gets `503` and one row is written, with `response.status: "503"`
+
+#### Scenario: Setting off
+- **WHEN** `analytics.errorRows` is `false` and a model's only upstream answers `429` with `maxRetryAttempts: 1`
 - **THEN** the client gets `503` and no row is written
 
 #### Scenario: Setting off, a successful pass

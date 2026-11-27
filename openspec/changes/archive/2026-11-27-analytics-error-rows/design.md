@@ -53,7 +53,7 @@ and `401` and `413` (no Monitoring record).
 ## Goals / Non-Goals
 
 Goals:
-- one Analytics row for each event above, behind one boolean, off by default;
+- one Analytics row for each event above, behind one boolean, on by default;
 - the integration point chosen where the event happens and the request context is still there;
 - an exact one-row guarantee per pass, with no marker on the request;
 - no change with the setting off, and none to a successful or relayed row with it on.
@@ -150,7 +150,7 @@ what the existing row of a client that left a `Model` carries (Measured: x10). R
 
 ### 5. The flag is `LogStore.isErrorRowsEnabled()`, a default method that returns `false`
 
-`GfLogStore` returns `settings.errorRows()`. `AnalyticsSettings.from` reads it with `getBoolean("errorRows", false)`, the code
+`GfLogStore` returns `settings.errorRows()`. `AnalyticsSettings.from` reads it with `getBoolean("errorRows", true)`, the code
 default; the bundled `aidial.settings.json` states it too. The settings are static, so a change needs a restart, as every `analytics`
 setting does. (This is already in the code and stays.)
 
@@ -235,7 +235,7 @@ on, expecting the same count (deferred: needs Docker and Redis, as in the invest
 ## Risks / Trade-offs
 
 - **A consumer that sums requests from the rows counts these too.** → Documented in `README.md` and `docs/tracing.md`; the setting is
-  off by default; a consumer already handles a relayed `500` row.
+  on by default and `false` turns it off; a consumer already handles a relayed `500` row.
 - **A broken stream is a row with status `200`** and no tokens, like the row of a client that left. → Review decision D4.
 - **The rule covers helper answers the run did not exercise** (`500`, `503` for a missing id, an unknown upstream id, `422`, router
   failures). → They log the same WARN, so the task covers them; one test for each that a test can reach, and the rest are listed.
@@ -253,15 +253,15 @@ on, expecting the same count (deferred: needs Docker and Redis, as in the invest
   before archive.
 - **No marker.** → Decision 6; the row counts of the tests.
 - **A row for a decided request has `deployment` of the last candidate.** → It is the pass that answered.
-- **Volume during an outage.** → Same as any row; the setting is off by default.
+- **Volume during an outage.** → Same as any row; where bodies are logged, set `analytics.maxPendingBodyHeapPercent`, or the setting to `false`.
 - **A background stream that breaks while its job is being saved, and a save that then fails, write no row.**
   `backgroundJobRecorded` is set before the saves, so the break writes none, and the failed save leaves no job to write it. → Two
   failures at once, within the time the two saves take; accepted.
 
 ## Migration Plan
 
-None. The setting is off by default and every existing row is unchanged. To enable it, set `analytics.errorRows: true` (or
-`aidial.analytics.errorRows=true`) and restart Core. To roll back, unset it and restart; rows already written stay.
+The setting is on by default, so after an upgrade Core writes the new rows; every existing row is unchanged. To keep the rows as before, set `analytics.errorRows: false` (or
+`aidial.analytics.errorRows=false`) and restart Core; rows already written stay.
 
 ## Decisions for review
 

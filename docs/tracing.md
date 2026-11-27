@@ -116,7 +116,7 @@ are unchanged.
 
 Core logs an error answer at WARN (`Responding with error`) and a stream that breaks at WARN (`Can't send response to client`), but a
 row of the analytics log is written only when a relay ended. With the static setting `analytics.errorRows` (env
-`aidial.analytics.errorRows`, default `false`) Core also writes a row for these events. Nothing changes while the setting is off: the
+`aidial.analytics.errorRows`, default `true`) Core also writes a row for these events. Set to `false`, it changes nothing: the
 same rows, the same fields.
 
 With the setting on, one row is written for:

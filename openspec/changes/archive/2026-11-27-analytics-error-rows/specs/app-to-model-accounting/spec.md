@@ -157,7 +157,7 @@ feature calls, its MCP proxy and routes: every answer with a status outside 200-
 - **THEN** the client gets `500` and one row is written for each, the row written with the setting off
 
 #### Scenario: Setting off
-- **WHEN** `analytics.errorRows` is off or absent and any of the above happens
+- **WHEN** `analytics.errorRows` is `false` and any of the above happens
 - **THEN** no row is written, as before
 
 ### Requirement: Error rows for a relay that breaks

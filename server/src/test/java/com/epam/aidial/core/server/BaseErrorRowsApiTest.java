@@ -68,7 +68,7 @@ abstract class BaseErrorRowsApiTest extends ResourceBaseTest {
                 .put("tracing", new JsonObject().put("responseTraceHeaders", true))
                 // small, so that a body over it gets 413
                 .put("resources", new JsonObject().put("maxSize", 20000));
-        return isErrorRowsOn() ? settings.put("analytics", new JsonObject().put("errorRows", true)) : settings;
+        return isErrorRowsOn() ? settings : settings.put("analytics", new JsonObject().put("errorRows", false));
     }
 
     @BeforeEach

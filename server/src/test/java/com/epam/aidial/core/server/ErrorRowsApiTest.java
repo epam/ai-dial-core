@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code analytics.errorRows} on: a row for every error answer Core gives itself, and for a stream that breaks.
+ * {@code analytics.errorRows} absent, which is on: a row for every error answer Core gives itself, and for a stream that breaks.
  * Specs: {@code app-to-model-accounting} "Error rows for answers Core gives itself", "Error rows for a relay that breaks",
  * "No error row for what Monitoring does not log" and "One row per pass, and the passes that keep none"; {@code analytics-log}
  * "Error rows use the fields of any row".
@@ -41,7 +41,7 @@ public class ErrorRowsApiTest extends BaseErrorRowsApiTest {
     }
 
     @Test
-    void testSettingReachesTheStore() {
+    void testSettingAbsentIsOn() {
         assertTrue(dial.getProxy().getLogStore().isErrorRowsEnabled());
     }
 

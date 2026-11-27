@@ -2,7 +2,7 @@
 
 ## What shipped
 
-- Static setting `analytics.errorRows` (env `aidial.analytics.errorRows`, default `false`). With it off, every row is unchanged.
+- Static setting `analytics.errorRows` (env `aidial.analytics.errorRows`, default `true`). With it `false`, every row is unchanged.
 - With it on, one row for every error answer Core gives itself through the `respond(...)` helpers on the LLM surfaces, feature
   calls, the MCP proxy and routes (the answers logged as `Responding with error`), and one row for a stream that breaks after its
   headers on the LLM surfaces. `response.status` is the client's; no new field, no tokens (a broken Messages stream keeps the

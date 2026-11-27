@@ -43,13 +43,13 @@ Notes from implementing (each is also in design.md where it changes a decision):
 
 ## 1. The setting (already in `9b6043c7`, stays)
 
-- [x] 1.1 `AnalyticsSettingsTest#testErrorRowsDefaultsToFalse` and `#testErrorRowsRead` (analytics-log, "Setting absent").
+- [x] 1.1 `AnalyticsSettingsTest#testErrorRowsDefaultsToTrue` and `#testErrorRowsRead` (analytics-log, "Setting absent").
 - [x] 1.2 `errorRows` in `AnalyticsSettings`, the default method `LogStore.isErrorRowsEnabled()` and its override in `GfLogStore`.
-- [x] 1.3 `ResourceBaseTest.createLogStore` delegates `isErrorRowsEnabled()`; `ErrorRowsApiTest#testSettingReachesTheStore` and
-  `ErrorRowsDisabledApiTest#testSettingAbsentIsOff`.
-- [x] 1.4 `"errorRows": false` in the `analytics` object of `server/src/main/resources/aidial.settings.json`; the test-resources file
+- [x] 1.3 `ResourceBaseTest.createLogStore` delegates `isErrorRowsEnabled()`; `ErrorRowsApiTest#testSettingAbsentIsOn` and
+  `ErrorRowsDisabledApiTest#testSettingReachesTheStore`.
+- [x] 1.4 `"errorRows": true` in the `analytics` object of `server/src/main/resources/aidial.settings.json`; the test-resources file
   is not changed.
-- [x] 1.5 Rewrite the `analytics.errorRows` row of the settings table in `README.md` for this scope: default `false`, one row for every
+- [x] 1.5 Rewrite the `analytics.errorRows` row of the settings table in `README.md` for this scope: default `true`, one row for every
   error answer Core gives itself on the LLM surfaces and for a stream that breaks after its headers, `response.status` is the
   client's, no new field, `401` and `413` write none, env var `aidial.analytics.errorRows`. Verify the row has the table's four
   columns.
@@ -84,7 +84,7 @@ Notes from implementing (each is also in design.md where it changes a decision):
   - analytics-log "Refusal" and "Successful pass with the setting on": `#testErrorRowFields` (the row's `trace.trace_id` equals the
     `X-DIAL-TRACE-ID` the client got, `response.body` is null in the context and empty in the line, no `token_usage`, no
     `upstream_uri` for an exhausted route) and `#testSuccessUnchanged` (stays).
-  - In `ErrorRowsDisabledApiTest` (a2m "Setting off", analytics-log "Setting absent"): `#testSettingOffEveryUpstreamBusy`,
+  - In `ErrorRowsDisabledApiTest` (a2m "Setting off", analytics-log "Setting off"): `#testSettingOffEveryUpstreamBusy`,
     `#testSettingOffNoRoute`, `#testSettingOffTwoUpstreamsFailed`, `#testSettingOffSuccessRow`, `#testModelBehindInterceptorsOneRow`
     stay; add `#testSettingOffRefusals` (`403`, `404`, `415` and `400` each write no row) and `#testSettingOffConnectionRefused` (no row).
 - [x] 2.2 Add the default methods `LogStore.saveErrorRow(ProxyContext)` (saves the row when the setting is on) and
