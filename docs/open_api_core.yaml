@@ -22169,6 +22169,10 @@ components:
           type: string
         mode:
           $ref: "#/components/schemas/SpendingLimitMode"
+        autoBudgetSelection:
+          type: boolean
+        budgetMandatory:
+          type: boolean
     SubjectAny-1:
       type: object
     SubjectAny-2:
