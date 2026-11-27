@@ -55,6 +55,11 @@ public interface ComplexResourceHandler {
     @Nullable
     Map<String, Object> refreshMetadataOnPut(String relativePath, byte[] content);
 
+    /** Whether a copied file's contents must be read to validate or refresh marker metadata. */
+    default boolean requiresFileContent(String relativePath) {
+        return true;
+    }
+
     /**
      * Kind of single-file mutation.
      */

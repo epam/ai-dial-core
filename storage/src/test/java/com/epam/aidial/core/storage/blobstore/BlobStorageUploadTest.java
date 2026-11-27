@@ -4,6 +4,7 @@ import com.epam.aidial.core.storage.FileUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.BlobMetadata;
+import org.jclouds.blobstore.domain.StorageType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -63,6 +65,18 @@ class BlobStorageUploadTest {
             }
         }
         FileUtil.deleteDir(testDir);
+    }
+
+    @Test
+    void testFolderListingUsesUrlSeparators() {
+        storage.store("folder/nested/file.txt", "text/plain", null, Map.of(), "content".getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(List.of("folder/nested/"), storage.list("folder/", null, 100, false).stream()
+                .map(meta -> meta.getName()).toList());
+        assertEquals(List.of("folder/nested/file.txt"), storage.list("folder/", null, 100, true).stream()
+                .filter(meta -> meta.getType() == StorageType.BLOB)
+                .map(meta -> meta.getName()).toList());
+        assertTrue(storage.exists("folder/nested/file.txt"));
     }
 
     @Test

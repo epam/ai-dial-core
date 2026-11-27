@@ -32,6 +32,11 @@ public class ProjectHandler implements ComplexResourceHandler {
     }
 
     @Override
+    public boolean requiresFileContent(String relativePath) {
+        return false;
+    }
+
+    @Override
     public Map<String, Object> refreshMetadataOnPut(String relativePath, byte[] content) {
         return null;
     }

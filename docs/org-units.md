@@ -64,6 +64,9 @@ a unit. Content enters a unit by a copy or a publication instead.
 Clients move folders item by item, so this stops a unit's folder from being renamed or moved away from its entry;
 folder moves themselves are refused by the move API as before;
 moves inside one unit work as before. To rename a unit, change its display name with `PATCH`.
+This ownership restriction also applies to the [Universal File API](universal-file-api.md) when moving individual
+files inside skills or projects, including cross-group file moves. A complex file's owning unit is the unit of its
+resource root; copying a file into another unit remains possible with the required source/destination permissions.
 
 A node refuses to start when it cannot read the tree, and a tree that isn't a JSON object of units is never read as
 empty: that would hand every unit's content to the shared space. A `public/` entry in the tree is ignored and dropped

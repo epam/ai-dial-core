@@ -3,7 +3,9 @@ package com.epam.aidial.core.server;
 import com.epam.aidial.core.server.data.InvitationLink;
 import com.epam.aidial.core.server.service.resource.ComplexResourceService;
 import com.epam.aidial.core.server.util.ProxyUtil;
+import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.service.ResourceService;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
@@ -15,10 +17,17 @@ import org.apache.hc.client5.http.entity.mime.MultipartEntityBuilder;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
 
+import java.io.File;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystemException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -48,6 +57,56 @@ public class SkillResourceApiTest extends ResourceBaseTest {
 
             Body of the skill.
             """;
+
+    private BlobStorage originalStorage;
+
+    @BeforeEach
+    void installFilesystemRetries() {
+        if (File.separatorChar != '\\') {
+            return;
+        }
+        originalStorage = dial.getProxy().getStorage();
+        BlobStorage storage = Mockito.spy(originalStorage);
+        Mockito.doAnswer(invocation -> FileUtil.retryFilesystemCall(() -> callRealStorageMethod(invocation))).when(storage)
+                .store(Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(byte[].class));
+        Mockito.doAnswer(invocation -> FileUtil.retryFilesystemCall(() -> callRealStorageMethod(invocation))).when(storage)
+                .copy(Mockito.anyString(), Mockito.anyString(), Mockito.any());
+        Mockito.doAnswer(invocation -> FileUtil.retryFilesystemCall(() -> {
+            callRealStorageMethod(invocation);
+            String path = invocation.getArgument(0);
+            // The filesystem provider can log a failed deletion without throwing it.
+            if (storage.exists(path)) {
+                throw new FileSystemException(path, null, "Filesystem provider did not delete the blob");
+            }
+            return null;
+        })).when(storage).delete(Mockito.anyString());
+        replaceStorage(storage);
+    }
+
+    @AfterEach
+    void restoreStorage() {
+        if (originalStorage != null) {
+            replaceStorage(originalStorage);
+        }
+    }
+
+    private void replaceStorage(BlobStorage storage) {
+        replaceStorageField(dial.getProxy(), Proxy.class, "storage", storage);
+        replaceStorageField(dial.getProxy().getResourceService(), ResourceService.class, "blobStore", storage);
+        replaceStorageField(dial.getProxy().getComplexResourceService(), ComplexResourceService.class, "blobStorage", storage);
+    }
+
+    @SneakyThrows
+    private static void replaceStorageField(Object owner, Class<?> type, String name, BlobStorage storage) {
+        Field field = type.getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(owner, storage);
+    }
+
+    @SneakyThrows
+    private static Object callRealStorageMethod(InvocationOnMock invocation) {
+        return invocation.callRealMethod();
+    }
 
     @Test
     void testCreateAndDownloadRoundTrip() {

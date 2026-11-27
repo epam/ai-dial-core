@@ -4,12 +4,14 @@ import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.RedisException;
 import org.redisson.client.codec.StringCodec;
 
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -22,7 +24,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -77,6 +85,32 @@ class LockServiceFailureTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void testBucketLocksAreOrderedAndDeduplicated() {
+        LockService service = mock(LockService.class, CALLS_REAL_METHODS);
+        LockService.Lock platform = mock(LockService.Lock.class);
+        LockService.Lock publicBucket = mock(LockService.Lock.class);
+        doReturn(platform).when(service).lock("platform/");
+        doReturn(publicBucket).when(service).lock("public/");
+        assertEquals("result", service.underBucketLocks(List.of("public/", "platform/", "public/"), () -> "result"));
+        InOrder order = inOrder(service, platform, publicBucket);
+        order.verify(service).lock("platform/");
+        order.verify(service).lock("public/");
+        order.verify(platform).close();
+        order.verify(publicBucket).close();
+        verify(service, times(1)).lock("public/");
+    }
+
+    @Test
+    void testBucketAcquisitionFailureClosesEarlierLocks() {
+        LockService service = mock(LockService.class, CALLS_REAL_METHODS);
+        LockService.Lock platform = mock(LockService.Lock.class);
+        doReturn(platform).when(service).lock("platform/");
+        doThrow(new RedisException("second lock failed")).when(service).lock("public/");
+        assertThrows(RedisException.class, () -> service.underBucketLocks(List.of("public/", "platform/"), () -> null));
+        verify(platform).close();
     }
 
     /**

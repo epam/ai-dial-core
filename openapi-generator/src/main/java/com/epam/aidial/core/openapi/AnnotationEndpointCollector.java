@@ -55,6 +55,8 @@ import com.epam.aidial.core.server.controller.ToolSetController;
 import com.epam.aidial.core.server.controller.ToolSetMcpProxyController;
 import com.epam.aidial.core.server.controller.ToolSetRepairController;
 import com.epam.aidial.core.server.controller.ToolSetToolsController;
+import com.epam.aidial.core.server.controller.UniversalFileController;
+import com.epam.aidial.core.server.controller.UniversalFileMetadataController;
 import com.epam.aidial.core.server.controller.UploadFileController;
 import com.epam.aidial.core.server.controller.UserInfoController;
 import com.epam.aidial.core.server.controller.UserOrgUnitsController;
@@ -128,6 +130,8 @@ public final class AnnotationEndpointCollector {
             ToolSetMcpProxyController.class,
             ToolSetRepairController.class,
             ToolSetToolsController.class,
+            UniversalFileController.class,
+            UniversalFileMetadataController.class,
             UploadFileController.class,
             UserInfoController.class,
             UserOrgUnitsController.class

@@ -2,6 +2,7 @@ package com.epam.aidial.core.storage.service;
 
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.BlobStorageUtil;
+import com.epam.aidial.core.storage.blobstore.StorageProvider;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.MetadataBase;
 import com.epam.aidial.core.storage.data.NodeType;
@@ -149,6 +150,7 @@ public class ResourceService implements AutoCloseable {
             .register(Metrics.globalRegistry);
     // in a fixed order, for HMGET
     private static final List<String> REDIS_FIELD_LIST = List.copyOf(REDIS_FIELDS);
+    private static final List<String> REDIS_FIELD_LIST_NO_BODY = List.copyOf(REDIS_FIELDS_NO_BODY);
     // ARGV[1]: the synced flag of a record to skip ('' to skip none); ARGV[2..]: the field names. Run as a write
     // (RScript.Mode.READ_WRITE) it reads the master: a replica can lag behind the last compare-and-set
     private static final String READ_FIELDS_SCRIPT = """
@@ -158,6 +160,7 @@ public class ResourceService implements AutoCloseable {
             return redis.call('hmget', KEYS[1], unpack(ARGV, 2))
             """.formatted(SYNCED_ATTRIBUTE);
     private static final Object[] READ_FIELDS_ARGS = buildReadFieldsArgs(RedisUtil.EMPTY_ARRAY);
+    private static final Object[] READ_FIELDS_NO_BODY_ARGS = buildReadFieldsArgs(RedisUtil.EMPTY_ARRAY, REDIS_FIELD_LIST_NO_BODY);
     private static final Object[] READ_UNSYNCED_FIELDS_ARGS = buildReadFieldsArgs(RedisUtil.BOOLEAN_TRUE_ARRAY);
     // ARGV[1]: the etag the value was read with ('' for none); ARGV[2]: 'true' if the value came from blob storage, so
     // the record is created when Redis has none; ARGV[3..]: field, value pairs.
@@ -607,6 +610,19 @@ public class ResourceService implements AutoCloseable {
         return toMetadata(descriptor, result);
     }
 
+    /** Reads the master without the body; the caller holds the record or owning marker lock. */
+    @Nullable
+    public ResourceItemMetadata getResourceMetadataLocked(ResourceDescriptor descriptor) {
+        if (descriptor.isFolder()) {
+            throw new IllegalArgumentException("Resource folder: " + descriptor.getUrl());
+        }
+        Result result = redisGetMaster(redisKey(descriptor), false);
+        if (result == null) {
+            result = blobGet(blobKey(descriptor), false);
+        }
+        return result.exists() ? toMetadata(descriptor, result) : null;
+    }
+
     @Nullable
     private Pair<ResourceItemMetadata, String> getBlobMetadata(ResourceDescriptor descriptor) {
         Result result = blobGet(blobKey(descriptor), false);
@@ -677,8 +693,36 @@ public class ResourceService implements AutoCloseable {
 
     @Nullable
     public byte[] getResourceBytes(ResourceDescriptor descriptor) {
-        Pair<ResourceItemMetadata, byte[]> result = getResourceBytesWithMetadata(descriptor, EtagHeader.ANY, true);
+        return getResourceBytes(descriptor, EtagHeader.ANY, true);
+    }
+
+    @Nullable
+    public byte[] getResourceBytes(ResourceDescriptor descriptor, EtagHeader etag, boolean lock) {
+        Pair<ResourceItemMetadata, byte[]> result = getResourceBytesWithMetadata(descriptor, etag, lock);
         return (result == null) ? null : result.getRight();
+    }
+
+    /** Reads the master; the caller holds the record or owning marker lock. */
+    @Nullable
+    public byte[] getResourceBytesLocked(ResourceDescriptor descriptor, EtagHeader etag) {
+        return trace("resource.get", descriptor, () -> {
+            String redisKey = redisKey(descriptor);
+            Result result = redisGetMaster(redisKey, true);
+            boolean cacheHit = result != null;
+            if (result == null) {
+                result = blobGet(blobKey(descriptor), true);
+                putIfAbsent(redisKey, result);
+            }
+            BlockingCallTracer.currentSpan().setAttribute("dial.cache.hit", cacheHit);
+            etag.validate(result.etag);
+            return result.exists() ? result.body : null;
+        });
+    }
+
+    @Nullable
+    public String getResourceLocked(ResourceDescriptor descriptor, EtagHeader etag) {
+        byte[] body = getResourceBytesLocked(descriptor, etag);
+        return body == null ? null : new String(body, StandardCharsets.UTF_8);
     }
 
     @Nullable
@@ -754,6 +798,34 @@ public class ResourceService implements AutoCloseable {
             etagHeader.validate(etag);
             return new ResourceStream(payload.openStream(), etag, contentType, length);
         }
+    }
+
+    /** Reads the master without reentering the caller's record or owning marker lock. */
+    @Nullable
+    public ResourceStream getResourceStreamLocked(ResourceDescriptor resource, EtagHeader etagHeader) throws IOException {
+        if (resource.getType().requireCompression()) {
+            throw new IllegalArgumentException("Streaming is supported for uncompressed resources only");
+        }
+        String key = redisKey(resource);
+        Result result = redisGetMaster(key, true);
+        if (result != null) {
+            return ResourceStream.fromResult(result, etagHeader);
+        }
+        Blob blob = blobStore.load(resource.getAbsoluteFilePath());
+        if (blob == null) {
+            putIfAbsent(key, Result.DELETED_SYNCED);
+            return null;
+        }
+        BlobMetadata metadata = blob.getMetadata();
+        Long length = metadata.getContentMetadata().getContentLength();
+        if (length == null || length <= maxSizeToCache) {
+            result = blobToResult(blob, metadata);
+            putIfAbsent(key, result);
+            return ResourceStream.fromResult(result, etagHeader);
+        }
+        String etag = extractEtag(metadata);
+        etagHeader.validate(etag);
+        return new ResourceStream(blob.getPayload().openStream(), etag, metadata.getContentMetadata().getContentType(), length);
     }
 
     public ResourceItemMetadata putResource(
@@ -1143,9 +1215,13 @@ public class ResourceService implements AutoCloseable {
     }
 
     private static Object[] buildReadFieldsArgs(byte[] skippedSyncedFlag) {
+        return buildReadFieldsArgs(skippedSyncedFlag, REDIS_FIELD_LIST);
+    }
+
+    private static Object[] buildReadFieldsArgs(byte[] skippedSyncedFlag, List<String> fields) {
         List<Object> args = new ArrayList<>();
         args.add(skippedSyncedFlag);
-        REDIS_FIELD_LIST.forEach(name -> args.add(name.getBytes(StandardCharsets.UTF_8)));
+        fields.forEach(name -> args.add(name.getBytes(StandardCharsets.UTF_8)));
         return args.toArray();
     }
 
@@ -1161,15 +1237,25 @@ public class ResourceService implements AutoCloseable {
     // a script run as a write, so it reads the master and the fields include the last write; empty if there is no record
     // or, with unsyncedOnly, if it is synced
     private Map<String, byte[]> readFieldsOnMaster(String redisKey, boolean unsyncedOnly) {
+        return readFieldsOnMaster(redisKey, REDIS_FIELD_LIST, unsyncedOnly ? READ_UNSYNCED_FIELDS_ARGS : READ_FIELDS_ARGS);
+    }
+
+    private Map<String, byte[]> readFieldsOnMaster(String redisKey, List<String> names, Object[] args) {
         List<Object> values = redis.getScript(ByteArrayCodec.INSTANCE).eval(RScript.Mode.READ_WRITE, READ_FIELDS_SCRIPT,
-                RScript.ReturnType.LIST, List.of(redisKey), unsyncedOnly ? READ_UNSYNCED_FIELDS_ARGS : READ_FIELDS_ARGS);
+                RScript.ReturnType.LIST, List.of(redisKey), args);
         Map<String, byte[]> fields = new HashMap<>();
         for (int i = 0; i < values.size(); i++) {
             if (values.get(i) instanceof byte[] value) {
-                fields.put(REDIS_FIELD_LIST.get(i), value);
+                fields.put(names.get(i), value);
             }
         }
         return fields;
+    }
+
+    private Result redisGetMaster(String redisKey, boolean withBody) {
+        Map<String, byte[]> fields = withBody ? readFieldsOnMaster(redisKey, false)
+                : readFieldsOnMaster(redisKey, REDIS_FIELD_LIST_NO_BODY, READ_FIELDS_NO_BODY_ARGS);
+        return toResult(fields, redisKey);
     }
 
     /**
@@ -1243,6 +1329,35 @@ public class ResourceService implements AutoCloseable {
         }
     }
 
+    /**
+     * For destination-first file moves under the source record lock. The caller must restore from the committed
+     * destination if a Redis write fails after provider deletion. Events are best-effort once deletion has committed.
+     */
+    public boolean deleteResourceLocked(ResourceDescriptor descriptor, EtagHeader etag) {
+        return trace("resource.delete", descriptor, () -> {
+            ResourceItemMetadata metadata = getResourceMetadataLocked(descriptor);
+            etag.validate(metadata == null ? null : metadata.getEtag());
+            if (metadata == null) {
+                return false;
+            }
+            String blobKey = blobKey(descriptor);
+            blobDelete(blobKey);
+            // The filesystem provider can swallow a deletion IOException and leave the blob in place.
+            if (blobStore.getStorageProvider() == StorageProvider.FILESYSTEM && blobExists(blobKey)) {
+                throw new IllegalStateException("Filesystem source file was not deleted: " + descriptor.getUrl());
+            }
+            String redisKey = redisKey(descriptor);
+            redisPut(redisKey, Result.DELETED_NOT_SYNCED);
+            redisSync(redisKey);
+            try {
+                publishEvent(descriptor, ResourceEvent.Action.DELETE, time(), null);
+            } catch (RuntimeException e) {
+                log.warn("Failed to publish committed file deletion: {}", descriptor.getUrl(), e);
+            }
+            return true;
+        });
+    }
+
     public boolean copyResource(ResourceDescriptor from, ResourceDescriptor to) {
         return copyResource(from, to, null, true);
     }
@@ -1257,26 +1372,44 @@ public class ResourceService implements AutoCloseable {
         Pair<String, String> sortedPair = toOrderedPair(fromRedisKey, toRedisKey);
         try (LockService.Lock ignored1 = lockService.lock(sortedPair.getLeft());
              LockService.Lock ignored2 = lockService.lock(sortedPair.getRight())) {
-            ResourceItemMetadata fromMetadata = getResourceMetadata(from);
-            if (fromMetadata == null) {
-                return false;
-            }
+            return copyResourceInternally(from, to, userMetadata, overwrite, false);
+        }
+    }
 
-            ResourceItemMetadata toMetadata = getResourceMetadata(to);
-            if (toMetadata == null || overwrite) {
-                flushToBlobStore(fromRedisKey);
-                flushToBlobStore(toRedisKey);
-                blobStore.copy(blobKey(from), blobKey(to), toUserMetaData(userMetadata));
+    /** The caller holds both record locks, or owns a fresh, unpublished destination version. */
+    public boolean copyResourceLocked(ResourceDescriptor from, ResourceDescriptor to, UserMetadata userMetadata, boolean overwrite) {
+        if (from.equals(to)) {
+            return overwrite;
+        }
+        return copyResourceInternally(from, to, userMetadata, overwrite, true);
+    }
 
-                ResourceEvent.Action action = toMetadata == null
-                        ? ResourceEvent.Action.CREATE
-                        : ResourceEvent.Action.UPDATE;
-                publishEvent(to, action, time(), fromMetadata.getEtag());
-                return true;
-            }
-
+    private boolean copyResourceInternally(ResourceDescriptor from, ResourceDescriptor to, UserMetadata userMetadata,
+                                          boolean overwrite, boolean invalidateDestination) {
+        ResourceItemMetadata fromMetadata = invalidateDestination ? getResourceMetadataLocked(from) : getResourceMetadata(from);
+        if (fromMetadata == null) {
             return false;
         }
+
+        ResourceItemMetadata toMetadata = invalidateDestination ? getResourceMetadataLocked(to) : getResourceMetadata(to);
+        if (toMetadata != null && !overwrite) {
+            return false;
+        }
+
+        String fromRedisKey = redisKey(from);
+        String toRedisKey = redisKey(to);
+        flushToBlobStore(fromRedisKey);
+        flushToBlobStore(toRedisKey);
+        blobStore.copy(blobKey(from), blobKey(to), toUserMetaData(userMetadata));
+        if (invalidateDestination) {
+            redis.getMap(toRedisKey, REDIS_MAP_CODEC).delete();
+        }
+
+        ResourceEvent.Action action = toMetadata == null
+                ? ResourceEvent.Action.CREATE
+                : ResourceEvent.Action.UPDATE;
+        publishEvent(to, action, time(), fromMetadata.getEtag());
+        return true;
     }
 
     @Nullable

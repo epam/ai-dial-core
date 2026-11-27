@@ -10,6 +10,7 @@ import com.epam.aidial.core.openapi.annotations.OpenApiDescriptions;
 import com.epam.aidial.core.server.Proxy;
 import com.epam.aidial.core.server.ProxyContext;
 import com.epam.aidial.core.server.data.CopyResourcesRequest;
+import com.epam.aidial.core.server.data.FileTarget;
 import com.epam.aidial.core.server.data.MoveResourcesRequest;
 import com.epam.aidial.core.server.data.SubscribeResourcesRequest;
 import com.epam.aidial.core.server.security.AccessService;
@@ -17,6 +18,7 @@ import com.epam.aidial.core.server.security.EncryptionService;
 import com.epam.aidial.core.server.service.ApplicationSchemaService;
 import com.epam.aidial.core.server.service.ApplicationService;
 import com.epam.aidial.core.server.service.CatalogSchemaService;
+import com.epam.aidial.core.server.service.FileOperationService;
 import com.epam.aidial.core.server.service.HeartbeatService;
 import com.epam.aidial.core.server.service.OrgUnitService;
 import com.epam.aidial.core.server.service.PermissionDeniedException;
@@ -57,6 +59,7 @@ public class ResourceOperationController {
     private final AsyncTaskExecutor taskExecutor;
     private final EncryptionService encryptionService;
     private final ResourceOperationService resourceOperationService;
+    private final FileOperationService fileOperationService;
     private final LockService lockService;
     private final AccessService accessService;
     private final HeartbeatService heartbeatService;
@@ -79,20 +82,32 @@ public class ResourceOperationController {
         this.catalogSchemaService = proxy.getCatalogSchemaService();
         this.applicationService = proxy.getApplicationService();
         this.resourceService = proxy.getResourceService();
+        this.fileOperationService = new FileOperationService(resourceService, proxy.getComplexResourceService(), lockService,
+                proxy.getInvitationService(), proxy.getShareService(), orgUnitService);
     }
 
     @ApiOperation(
             method = "POST",
             path = "/v1/ops/resource/move",
             operationId = "moveResource",
-            requestBody = @ApiSchema(implementation = MoveResourcesRequest.class),
-            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets"},
+            requestBody = @ApiSchema(implementation = MoveResourcesRequest.class,
+                    description = "When either URL names a file inside a skill or project, both URLs must name distinct files. "
+                            + "Source READ/WRITE and destination WRITE are required at complex roots; SHARE is not required. "
+                            + "Example: {\"sourceUrl\":\"skills/public/source/files/refs/a.md\","
+                            + "\"destinationUrl\":\"projects/public/destination/files/a.md\",\"overwrite\":false}. "
+                            + "A rename inside one resource commits once. Across resources the destination commits first; "
+                            + "failed source deletion retains both files and can be retried with overwrite=true. "
+                            + "Root shares/publications stay put; plain source shares are revoked only after deletion. Legacy operations are unchanged."),
+            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets", "Skills", "Projects"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success"),
-                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 200, description = "Success; empty response body"),
+                    @ApiResponse(code = 400, description = "Invalid targets, missing source or rejected file mutation; legacy operation errors are unchanged"),
                     @ApiResponse(code = 403),
-                    @ApiResponse(code = 409, description = "A move inside the shared space would change which org unit owns the resource (into, out of or between units), "
-                            + "or put a skill or project on an org unit's folder"),
+                    @ApiResponse(code = 404, description = "Complex destination is absent or deleting; create it with PUT /v2/{group}/{bucket}/{resource}. "
+                            + "Internal complex paths are hidden."),
+                    @ApiResponse(code = 409, description = "For complex file operations, destination file exists and overwrite=false; or a move inside the shared space "
+                            + "would change the owning org unit. Whole-resource moves cannot put a skill or project on an org unit's folder."),
+                    @ApiResponse(code = 413, description = "A complex file operation exceeds a configured file or total byte limit"),
                     @ApiResponse(code = 500)
             }
     )
@@ -118,8 +133,14 @@ public class ResourceOperationController {
                         throw new IllegalArgumentException("destinationUrl must be provided");
                     }
 
-                    ResourceDescriptor source = ResourceDescriptorFactory.fromAnyUrl(sourceUrl, encryptionService);
-                    ResourceDescriptor destination = ResourceDescriptorFactory.fromAnyUrl(destinationUrl, encryptionService);
+                    FileTarget sourceTarget = ResourceDescriptorFactory.fromFileUrl(sourceUrl, encryptionService);
+                    FileTarget destinationTarget = ResourceDescriptorFactory.fromFileUrl(destinationUrl, encryptionService);
+                    if (sourceTarget.isComplexFile() || destinationTarget.isComplexFile()) {
+                        return operateFiles(sourceTarget, destinationTarget, true, request.isOverwrite());
+                    }
+
+                    ResourceDescriptor source = sourceTarget.descriptor();
+                    ResourceDescriptor destination = destinationTarget.descriptor();
 
                     if (!source.getType().equals(destination.getType())) {
                         throw new IllegalArgumentException("source and destination resources must be the same type");
@@ -160,13 +181,21 @@ public class ResourceOperationController {
             method = "POST",
             path = "/v1/ops/resource/copy",
             operationId = "copyResource",
-            requestBody = @ApiSchema(implementation = CopyResourcesRequest.class),
-            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets"},
+            requestBody = @ApiSchema(implementation = CopyResourcesRequest.class,
+                    description = "When either URL names a file inside a skill or project, both URLs must name distinct files; all file groups may be combined. "
+                            + "Source READ and destination WRITE are checked at complex roots. "
+                            + "Example: {\"sourceUrl\":\"files/public/a.md\",\"destinationUrl\":\"skills/public/existing/files/refs/a.md\",\"overwrite\":false}. "
+                            + "Complex destinations must already exist. Shares and publications are not copied. Legacy operations are unchanged."),
+            tags = {"Files", "Conversations", "Prompts", "Applications", "Toolsets", "Skills", "Projects"},
             responses = {
-                    @ApiResponse(code = 200, description = "Success"),
-                    @ApiResponse(code = 400),
+                    @ApiResponse(code = 200, description = "Success; empty response body"),
+                    @ApiResponse(code = 400, description = "Invalid targets, missing source or rejected file mutation; legacy operation errors are unchanged"),
                     @ApiResponse(code = 403),
-                    @ApiResponse(code = 409, description = "The copy would put a skill or project on an org unit's folder"),
+                    @ApiResponse(code = 404, description = "Complex destination is absent or deleting; create it with PUT /v2/{group}/{bucket}/{resource}. "
+                            + "Internal complex paths are hidden."),
+                    @ApiResponse(code = 409, description = "For complex file operations, destination file exists and overwrite=false; "
+                            + "or a whole-resource copy would put a skill or project on an org unit's folder"),
+                    @ApiResponse(code = 413, description = "A complex file operation exceeds a configured file or total byte limit"),
                     @ApiResponse(code = 500)
             }
     )
@@ -191,8 +220,14 @@ public class ResourceOperationController {
                         throw new IllegalArgumentException("destinationUrl must be provided");
                     }
 
-                    ResourceDescriptor source = ResourceDescriptorFactory.fromAnyUrl(sourceUrl, encryptionService);
-                    ResourceDescriptor destination = ResourceDescriptorFactory.fromAnyUrl(destinationUrl, encryptionService);
+                    FileTarget sourceTarget = ResourceDescriptorFactory.fromFileUrl(sourceUrl, encryptionService);
+                    FileTarget destinationTarget = ResourceDescriptorFactory.fromFileUrl(destinationUrl, encryptionService);
+                    if (sourceTarget.isComplexFile() || destinationTarget.isComplexFile()) {
+                        return operateFiles(sourceTarget, destinationTarget, false, request.isOverwrite());
+                    }
+
+                    ResourceDescriptor source = sourceTarget.descriptor();
+                    ResourceDescriptor destination = destinationTarget.descriptor();
 
                     if (!source.getType().equals(destination.getType())) {
                         throw new IllegalArgumentException("source and destination resources must have same type");
@@ -231,6 +266,23 @@ public class ResourceOperationController {
                 .onFailure(this::handleServiceError);
 
         return Future.succeededFuture();
+    }
+
+    private Future<?> operateFiles(FileTarget source, FileTarget destination, boolean move, boolean overwrite) {
+        return taskExecutor.submit(() -> {
+            Set<ResourceDescriptor> roots = new HashSet<>(List.of(source.resource(), destination.resource()));
+            Map<ResourceDescriptor, Set<ResourceAccessType>> permissions = accessService.lookupPermissions(roots, context);
+            Set<ResourceAccessType> sourcePermissions = move
+                    ? Set.of(ResourceAccessType.READ, ResourceAccessType.WRITE) : Set.of(ResourceAccessType.READ);
+            if (!permissions.get(source.resource()).containsAll(sourcePermissions)) {
+                throw new PermissionDeniedException("You don't have an access to: " + source.resource().getUrl());
+            }
+            if (!permissions.get(destination.resource()).contains(ResourceAccessType.WRITE)) {
+                throw new PermissionDeniedException("You don't have an access to: " + destination.resource().getUrl());
+            }
+            fileOperationService.copyFile(source, destination, move, overwrite, context.getUserDisplayName());
+            return null;
+        });
     }
 
     @ApiOperation(

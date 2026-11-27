@@ -20,6 +20,7 @@ import org.jclouds.blobstore.domain.MutableBlobMetadata;
 import org.jclouds.blobstore.domain.MutableStorageMetadata;
 import org.jclouds.blobstore.domain.PageSet;
 import org.jclouds.blobstore.domain.StorageMetadata;
+import org.jclouds.blobstore.domain.StorageType;
 import org.jclouds.blobstore.domain.Tier;
 import org.jclouds.blobstore.domain.internal.BlobImpl;
 import org.jclouds.blobstore.domain.internal.BlobMetadataImpl;
@@ -44,6 +45,7 @@ import org.jclouds.s3.domain.ObjectMetadataBuilder;
 import org.jclouds.util.Strings2;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
@@ -77,6 +79,7 @@ public class BlobStorage implements Closeable {
     private final BlobStoreContext storeContext;
     private final BlobStore blobStore;
     private final String bucketName;
+    @Getter
     private final StorageProvider storageProvider;
 
     // defines a root folder for all resources in bucket
@@ -371,17 +374,21 @@ public class BlobStorage implements Closeable {
         ListContainerOptions options = buildListContainerOptions(absoluteFilePath, maxResults, recursive, afterMarker);
 
         PageSet<? extends StorageMetadata> originalSet = measure("list", () -> blobStore.list(bucketName, options));
-        if (prefix == null) {
+        boolean normalizeFolders = storageProvider == StorageProvider.FILESYSTEM && File.separatorChar == '\\';
+        if (prefix == null && !normalizeFolders) {
             return originalSet;
         }
-        // if prefix defined - subtract it from blob key
         String nextMarker = originalSet.getNextMarker();
         List<MutableStorageMetadata> resultSet = originalSet.stream()
                 .map(metadata -> {
                     MutableStorageMetadata mutableMetadata = metadata instanceof BlobMetadata blobMetadata
                             ? new MutableBlobMetadataImpl(blobMetadata)
                             : new MutableStorageMetadataImpl(metadata);
-                    mutableMetadata.setName(removePrefix(metadata.getName()));
+                    String name = prefix == null ? metadata.getName() : removePrefix(metadata.getName());
+                    if (normalizeFolders && metadata.getType() != StorageType.BLOB && name.endsWith("\\")) {
+                        name = name.substring(0, name.length() - 1) + ResourceDescriptor.PATH_SEPARATOR;
+                    }
+                    mutableMetadata.setName(name);
                     return mutableMetadata;
                 })
                 .toList();

@@ -141,6 +141,16 @@ This example demonstrates the properties to be overridden:
 }
 ```
 
+## Filesystem storage
+
+Filesystem directory listings use forward-slash URL separators, including on Windows. Extended file moves verify
+that a filesystem source was actually deleted before committing its cache tombstone; cloud providers incur no extra
+existence request. The production code does not force garbage collection.
+
+Use case-sensitive storage for distinct resource paths. The case-insensitive filesystem limitation described in
+[org units](org-units.md) is unchanged. Local tests handle Windows memory-mapped files with bounded retries; exhausted
+retries and other errors still fail the test.
+
 ## Redis
 
 Redis can be used as a cache with volatile-* eviction policies:

@@ -3,26 +3,52 @@ package com.epam.aidial.core.storage.service;
 import com.epam.aidial.core.storage.FileUtil;
 import com.epam.aidial.core.storage.blobstore.BlobStorage;
 import com.epam.aidial.core.storage.blobstore.Storage;
+import com.epam.aidial.core.storage.blobstore.StorageProvider;
 import com.epam.aidial.core.storage.data.FileMetadata;
 import com.epam.aidial.core.storage.data.ResourceItemMetadata;
+import com.epam.aidial.core.storage.data.UserMetadata;
+import com.epam.aidial.core.storage.http.HttpException;
 import com.epam.aidial.core.storage.resource.ResourceDescriptor;
 import com.epam.aidial.core.storage.resource.ResourceTypes;
+import com.epam.aidial.core.storage.util.EtagBuilder;
 import com.epam.aidial.core.storage.util.EtagHeader;
+import com.epam.aidial.core.storage.util.RedisUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.SneakyThrows;
 import org.apache.commons.lang3.tuple.Pair;
+import org.jclouds.ContextBuilder;
+import org.jclouds.blobstore.BlobStoreContext;
 import org.jclouds.blobstore.domain.Blob;
 import org.jclouds.blobstore.domain.MutableBlobMetadata;
 import org.jclouds.io.MutableContentMetadata;
+import org.jclouds.io.Payload;
+import org.jclouds.io.payloads.ByteArrayPayload;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.mockito.AdditionalAnswers;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.redisson.Redisson;
+import org.redisson.api.RMap;
+import org.redisson.api.RTopic;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.RedisException;
+import org.redisson.client.codec.ByteArrayCodec;
+import org.redisson.client.codec.Codec;
+import org.redisson.client.codec.StringCodec;
+import org.redisson.codec.CompositeCodec;
 import org.redisson.config.Config;
 import redis.embedded.RedisServer;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.nio.file.FileSystemException;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -30,8 +56,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -47,6 +78,7 @@ public class ResourceServiceTest {
     private ResourceService service;
     private ResourceService.Settings settings;
     private BlobStorage storage;
+    private BlobStorage realStorage;
     private Path testDir;
 
     @BeforeEach
@@ -66,6 +98,7 @@ public class ResourceServiceTest {
             client = Redisson.create(config);
 
             testDir = FileUtil.baseTestPath(ResourceServiceTest.class);
+            FileUtil.deleteDir(testDir);
             FileUtil.createDir(testDir.resolve("test"));
             ObjectMapper mapper = new ObjectMapper();
             // the path must be JSON-encoded, otherwise a Windows path breaks parsing on its backslashes
@@ -82,7 +115,8 @@ public class ResourceServiceTest {
                       }
                     """.formatted(mapper.writeValueAsString(testDir.toString()));
             Storage storageConfig = mapper.readValue(blobStorageConfig, Storage.class);
-            storage = new BlobStorage(storageConfig);
+            realStorage = new BlobStorage(storageConfig);
+            storage = File.separatorChar == '\\' ? createStorageSpy(realStorage) : realStorage;
 
             TimerService timerService = Mockito.mock(TimerService.class);
             LockService lockService = new LockService(client, null);
@@ -113,8 +147,9 @@ public class ResourceServiceTest {
             if (client != null) {
                 client.shutdown();
             }
-            if (storage != null) {
-                storage.close();
+            if (realStorage != null) {
+                storage = realStorage;
+                realStorage.close();
             }
         } finally {
             if (server != null) {
@@ -187,9 +222,9 @@ public class ResourceServiceTest {
     }
 
     @Test
-    public void testCleanupTempFolder() {
+    public void testCleanupTempFolder() throws Exception {
         byte[] body = "1234567890".getBytes();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        DateTimeFormatter formatter = TempFolderCleaner.FOLDER_FORMATTER;
         LocalDateTime now = LocalDateTime.now();
 
         String expiredFolder = now.minusHours(3).format(formatter);
@@ -200,16 +235,25 @@ public class ResourceServiceTest {
         String recentFile = ResourceService.TEMP_FOLDER + "/" + recentFolder + "/recent";
         String currentFile = ResourceService.TEMP_FOLDER + "/" + currentFolder + "/current";
 
-        storage.store(expiredFile, "application/octet-stream", null, Map.of(), body);
-        storage.store(recentFile, "application/octet-stream", null, Map.of(), body);
-        storage.store(currentFile, "application/octet-stream", null, Map.of(), body);
+        // Real staging timestamps contain colons, which cannot be represented by a Windows filesystem folder.
+        try (BlobStoreContext context = ContextBuilder.newBuilder("transient").buildView(BlobStoreContext.class)) {
+            context.getBlobStore().createContainerInLocation(null, "test");
+            BlobStorage temporaryStorage = Mockito.spy(realStorage);
+            Field field = BlobStorage.class.getDeclaredField("blobStore");
+            field.setAccessible(true);
+            field.set(temporaryStorage, context.getBlobStore());
+            ResourceService temporaryService = serviceWithBlobStorage(temporaryStorage, "cleanup-temp");
+            temporaryStorage.store(expiredFile, "application/octet-stream", null, Map.of(), body);
+            temporaryStorage.store(recentFile, "application/octet-stream", null, Map.of(), body);
+            temporaryStorage.store(currentFile, "application/octet-stream", null, Map.of(), body);
 
-        service.cleanupTempFolder();
+            temporaryService.cleanupTempFolder();
 
-        assertFalse(storage.exists(expiredFile));
-        // a file uploaded within the last hour is kept because its folder hour may still be in progress
-        assertTrue(storage.exists(recentFile));
-        assertTrue(storage.exists(currentFile));
+            assertFalse(temporaryStorage.exists(expiredFile));
+            // A file uploaded within the last hour is kept because its folder hour may still be in progress.
+            assertTrue(temporaryStorage.exists(recentFile));
+            assertTrue(temporaryStorage.exists(currentFile));
+        }
     }
 
     @Test
@@ -258,7 +302,7 @@ public class ResourceServiceTest {
      */
     @Test
     public void testLoadSkipsBlobCallForResourceCachedAsAbsent() {
-        BlobStorage spy = Mockito.spy(storage);
+        BlobStorage spy = createStorageSpy(realStorage);
         ResourceService spied = serviceWithBlobStorage(spy, "cached-absent");
 
         ResourceDescriptor deleted = resource("cached_absent");
@@ -352,8 +396,404 @@ public class ResourceServiceTest {
         }
     }
 
+    @Test
+    void testCopyResourceOrdersRecordKeysAndClosesLocksOnFailure() {
+        ResourceDescriptor source = fileResource("z-source");
+        ResourceDescriptor destination = fileResource("a-destination");
+        LockService lockService = Mockito.mock(LockService.class);
+        LockService.Lock sourceLock = Mockito.mock(LockService.Lock.class);
+        Mockito.when(lockService.lock("file:bucket/files/z-source")).thenReturn(sourceLock);
+        Mockito.when(lockService.lock("file:bucket/files/a-destination")).thenThrow(new IllegalStateException("second lock failed"));
+        ResourceService target = new ResourceService(Mockito.mock(TimerService.class), client, storage, lockService, settings, null);
+        assertThrows(IllegalStateException.class, () -> target.copyResource(source, destination));
+        InOrder order = Mockito.inOrder(lockService, sourceLock);
+        order.verify(lockService).lock("file:bucket/files/z-source");
+        order.verify(lockService).lock("file:bucket/files/a-destination");
+        order.verify(sourceLock).close();
+    }
+
+    @Test
+    @Timeout(10)
+    void testLockedMovePreservesConcurrentPlainReplacement() throws Exception {
+        ResourceDescriptor source = fileResource("concurrent-source");
+        ResourceDescriptor destination = fileResource("concurrent-destination");
+        service.putFile(source, "original".getBytes(), EtagHeader.ANY, "text/plain", "author");
+        CountDownLatch started = new CountDownLatch(1);
+        CompletableFuture<FileMetadata> writer;
+        try (var sourceLock = service.lockResource(source); var destinationLock = service.lockResource(destination)) {
+            writer = CompletableFuture.supplyAsync(() -> {
+                started.countDown();
+                return service.putFile(source, "replacement".getBytes(), EtagHeader.ANY, "text/plain", "author");
+            });
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+            assertFalse(writer.isDone());
+            assertTrue(service.copyResourceLocked(source, destination, null, true));
+            assertTrue(service.deleteResourceLocked(source, EtagHeader.ANY));
+        }
+        assertNotNull(writer.get(5, TimeUnit.SECONDS));
+        assertEquals("replacement", new String(service.getResourceBytes(source)));
+        assertEquals("original", new String(service.getResourceBytes(destination)));
+    }
+
+    @Test
+    @Timeout(10)
+    void testCopyResourceLockedPreservesMetadataWithoutReentry() {
+        ResourceDescriptor source = fileResource("locked-source");
+        ResourceDescriptor destination = fileResource("locked-destination");
+        FileMetadata original = service.putFile(source, "source".getBytes(), EtagHeader.ANY, "application/x-custom", "author");
+        service.putFile(destination, "old".getBytes(), EtagHeader.ANY, "text/plain", "other");
+        try (var sourceLock = service.lockResource(source); var destinationLock = service.lockResource(destination)) {
+            assertFalse(service.copyResourceLocked(source, destination, null, false));
+            assertTrue(service.copyResourceLocked(source, destination, null, true));
+            assertEquals("source", new String(service.getResourceBytes(destination, EtagHeader.ANY, false)));
+            FileMetadata copied = (FileMetadata) service.getResourceMetadata(destination);
+            assertEquals(original.getEtag(), copied.getEtag());
+            assertEquals(original.getAuthor(), copied.getAuthor());
+            assertEquals(original.getCreatedAt(), copied.getCreatedAt());
+            assertEquals(original.getUpdatedAt(), copied.getUpdatedAt());
+            assertEquals(original.getContentType(), copied.getContentType());
+        }
+        assertFalse(service.copyResourceLocked(fileResource("absent"), destination, null, true));
+        assertFalse(service.copyResourceLocked(source, source, null, false));
+        assertTrue(service.copyResourceLocked(source, source, null, true));
+    }
+
+    @Test
+    void testCopyResourceLockedOverridesUserMetadata() {
+        ResourceDescriptor source = fileResource("metadata-source");
+        ResourceDescriptor destination = fileResource("metadata-destination");
+        service.putFile(source, "body".getBytes(), EtagHeader.ANY, "application/x-custom", "original");
+        UserMetadata userMetadata = new UserMetadata();
+        userMetadata.setAuthor("copier");
+        userMetadata.setCreatedAt(100L);
+        userMetadata.setUpdatedAt(200L);
+        userMetadata.setEtag("copied-etag");
+        userMetadata.setResourceType(ResourceTypes.FILE.name());
+        assertTrue(service.copyResourceLocked(source, destination, userMetadata, false));
+        FileMetadata copied = (FileMetadata) service.getResourceMetadata(destination);
+        assertEquals("copier", copied.getAuthor());
+        assertEquals(100L, copied.getCreatedAt());
+        assertEquals(200L, copied.getUpdatedAt());
+        assertEquals("\"copied-etag\"", copied.getEtag());
+        assertEquals("application/x-custom", copied.getContentType());
+    }
+
+    @Test
+    void testCopyResourceLockedInvalidatesDestinationCacheAfterBlobCopy() {
+        ResourceDescriptor source = fileResource("cache-source");
+        ResourceDescriptor destination = fileResource("cache-destination");
+        service.putFile(source, "new".getBytes(), EtagHeader.ANY, "application/x-new", "author");
+        service.putFile(destination, "old".getBytes(), EtagHeader.ANY, "application/x-old", "author");
+        BlobStorage spy = createStorageSpy(realStorage);
+        ResourceService target = serviceWithBlobStorage(spy, "copy-cache");
+        Mockito.doAnswer(invocation -> {
+            // A reader can fill a cache record while a provider-side copy is in flight.
+            assertEquals("old", new String(target.getResourceBytes(destination, EtagHeader.ANY, false)));
+            return FileUtil.retryFilesystemCall(() -> callRealStorage(invocation));
+        }).when(spy).copy(Mockito.eq(source.getAbsoluteFilePath()), Mockito.eq(destination.getAbsoluteFilePath()), Mockito.isNull());
+        service.copyResource(source, fileResource("sync-source"));
+        service.copyResource(destination, fileResource("sync-destination"));
+        assertEquals("old", new String(target.getResourceBytes(destination)));
+        assertTrue(target.copyResourceLocked(source, destination, null, true));
+        assertEquals("new", new String(target.getResourceBytes(destination)));
+        assertEquals("application/x-new", ((FileMetadata) target.getResourceMetadata(destination)).getContentType());
+    }
+
+    @Test
+    @Timeout(10)
+    void testDeleteResourceLockedProviderFailurePreservesSource() {
+        ResourceDescriptor source = fileResource("delete-failed-source");
+        ResourceDescriptor destination = fileResource("delete-failed-destination");
+        service.putFile(source, "source".getBytes(), EtagHeader.ANY, "application/x-custom", "author");
+        service.copyResource(source, fileResource("flush-delete-source"));
+        BlobStorage failingStorage = createStorageSpy(realStorage);
+        Mockito.doThrow(new IllegalStateException("provider delete failed")).when(failingStorage).delete(source.getAbsoluteFilePath());
+        ResourceService target = serviceWithBlobStorage(failingStorage, "delete-failure");
+        assertEquals("source", new String(target.getResourceBytes(source)));
+        try (var sourceLock = target.lockResource(source); var destinationLock = target.lockResource(destination)) {
+            assertTrue(target.copyResourceLocked(source, destination, null, true));
+            assertThrows(IllegalStateException.class, () -> target.deleteResourceLocked(source, EtagHeader.ANY));
+            assertEquals("source", new String(target.getResourceBytes(source, EtagHeader.ANY, false)));
+            assertEquals("source", new String(target.getResourceBytes(destination, EtagHeader.ANY, false)));
+            assertNotNull(failingStorage.load(source.getAbsoluteFilePath()));
+        }
+        ResourceService restored = serviceWithBlobStorage(storage, "delete-failure");
+        try (var ignored = restored.lockResource(source)) {
+            assertTrue(restored.deleteResourceLocked(source, EtagHeader.ANY));
+            assertNull(restored.getResourceBytes(source, EtagHeader.ANY, false));
+            assertFalse(restored.deleteResourceLocked(source, EtagHeader.ANY));
+            assertFalse(storage.exists(source.getAbsoluteFilePath()));
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    void testDeleteResourceLockedQuietFilesystemFailureDoesNotTombstoneSource() {
+        ResourceDescriptor source = fileResource("quiet-fs-source");
+        FileMetadata original = service.putFile(source, "source".getBytes(), EtagHeader.ANY, "application/x-custom", "author");
+        service.copyResource(source, fileResource("flush-quiet-fs-source"));
+        BlobStorage quietStorage = Mockito.spy(realStorage);
+        // A normally-returning provider delete leaves a real filesystem blob behind.
+        Mockito.doNothing().when(quietStorage).delete(source.getAbsoluteFilePath());
+        ResourceService target = serviceWithBlobStorage(quietStorage, "quiet-fs-source");
+        assertEquals(StorageProvider.FILESYSTEM, quietStorage.getStorageProvider());
+        assertEquals("source", new String(target.getResourceBytes(source)));
+        try (var ignored = target.lockResource(source)) {
+            IllegalStateException failure = assertThrows(IllegalStateException.class, () -> target.deleteResourceLocked(source, EtagHeader.ANY));
+            assertTrue(failure.getMessage().contains(source.getUrl()));
+            assertEquals("source", new String(target.getResourceBytes(source, EtagHeader.ANY, false)));
+            assertEquals(original.getEtag(), target.getResourceMetadata(source).getEtag());
+            assertTrue(realStorage.exists(source.getAbsoluteFilePath()));
+        }
+        Mockito.verify(quietStorage).exists(source.getAbsoluteFilePath());
+    }
+
+    @Test
+    @Timeout(10)
+    void testDeleteResourceLockedDoesNotCheckCloudExistence() {
+        ResourceDescriptor source = fileResource("cloud-delete-source");
+        service.putFile(source, "source".getBytes(), EtagHeader.ANY, "text/plain", "author");
+        BlobStorage cloudStorage = Mockito.spy(realStorage);
+        Mockito.doReturn(StorageProvider.AWS_S3).when(cloudStorage).getStorageProvider();
+        ResourceService target = serviceWithBlobStorage(cloudStorage, null);
+        try (var ignored = target.lockResource(source)) {
+            assertTrue(target.deleteResourceLocked(source, EtagHeader.ANY));
+            assertNull(target.getResourceBytes(source, EtagHeader.ANY, false));
+        }
+        Mockito.verify(cloudStorage, Mockito.never()).exists(Mockito.anyString());
+        assertFalse(realStorage.exists(source.getAbsoluteFilePath()));
+    }
+
+    @Test
+    @Timeout(10)
+    void testDeleteResourceLockedRedisFailureCanRestoreMetadataFromDestination() {
+        for (boolean failSync : List.of(false, true)) {
+            ResourceDescriptor source = fileResource("redis-delete-source-" + failSync);
+            ResourceDescriptor backup = fileResource("redis-delete-backup-" + failSync);
+            FileMetadata original = service.putFile(source, "source".getBytes(), EtagHeader.ANY, "application/x-custom", "original author");
+            assertTrue(service.copyResource(source, backup));
+            RedissonClient failingRedis = Mockito.mock(RedissonClient.class, AdditionalAnswers.delegatesTo(client));
+            String sourceKey = "file:" + source.getAbsoluteFilePath();
+            AtomicBoolean failed = new AtomicBoolean();
+            Mockito.doAnswer(invocation -> {
+                Codec codec = invocation.getArgument(1);
+                RMap<String, byte[]> map = Mockito.spy(client.<String, byte[]>getMap(sourceKey, codec));
+                Answer<Object> failAfterWrite = write -> {
+                    Object result = write.callRealMethod();
+                    if (failed.compareAndSet(false, true)) {
+                        throw new RedisException("lost source deletion acknowledgement");
+                    }
+                    return result;
+                };
+                if (failSync) {
+                    Mockito.doAnswer(failAfterWrite).when(map).put(Mockito.eq("synced"), Mockito.any(byte[].class));
+                } else {
+                    Mockito.doAnswer(failAfterWrite).when(map).putAll(Mockito.anyMap());
+                }
+                return map;
+            }).when(failingRedis).getMap(Mockito.eq(sourceKey), Mockito.any(Codec.class));
+            ResourceService target = new ResourceService(Mockito.mock(TimerService.class), failingRedis, storage,
+                    new LockService(client, null), settings, null);
+            try (var sourceLock = target.lockResource(source); var backupLock = target.lockResource(backup)) {
+                assertThrows(RedisException.class, () -> target.deleteResourceLocked(source, EtagHeader.ANY));
+                assertNull(storage.meta(source.getAbsoluteFilePath()), "provider deletion completed before the Redis failure");
+                UserMetadata metadata = new UserMetadata();
+                metadata.setAuthor(original.getAuthor());
+                metadata.setCreatedAt(original.getCreatedAt());
+                metadata.setUpdatedAt(original.getUpdatedAt());
+                metadata.setEtag(original.getEtag());
+                metadata.setResourceType(ResourceTypes.FILE.name());
+                assertTrue(target.copyResourceLocked(backup, source, metadata, true));
+                assertEquals("source", new String(target.getResourceBytes(source, EtagHeader.ANY, false)));
+                assertEquals("source", new String(target.getResourceBytes(backup, EtagHeader.ANY, false)));
+                FileMetadata restored = (FileMetadata) target.getResourceMetadata(source);
+                assertEquals(original.getEtag(), restored.getEtag());
+                assertEquals(original.getAuthor(), restored.getAuthor());
+                assertEquals(original.getCreatedAt(), restored.getCreatedAt());
+                assertEquals(original.getUpdatedAt(), restored.getUpdatedAt());
+                assertEquals(original.getContentType(), restored.getContentType());
+            }
+        }
+    }
+
+    @Test
+    void testDeleteResourceLockedEventFailureDoesNotUndoCommittedDeletion() throws Exception {
+        ResourceDescriptor source = fileResource("event-delete-source");
+        service.putFile(source, "source".getBytes(), EtagHeader.ANY, "text/plain", "author");
+        Field field = ResourceTopic.class.getDeclaredField("topic");
+        field.setAccessible(true);
+        RTopic topic = Mockito.spy((RTopic) field.get(service.getTopic()));
+        Mockito.doThrow(new RedisException("event broker unavailable")).when(topic).publish(Mockito.any());
+        field.set(service.getTopic(), topic);
+        try (var ignored = service.lockResource(source)) {
+            assertTrue(service.deleteResourceLocked(source, EtagHeader.ANY));
+            assertNull(service.getResourceBytes(source, EtagHeader.ANY, false));
+            assertNull(storage.meta(source.getAbsoluteFilePath()));
+        }
+    }
+
+    @Test
+    void testDeleteResourceLockedValidatesConditionsBeforeProviderDeletion() {
+        ResourceDescriptor source = fileResource("delete-condition");
+        service.putFile(source, "source".getBytes(), EtagHeader.ANY, "text/plain", "author");
+        service.copyResource(source, fileResource("flush-delete-condition"));
+        BlobStorage spy = createStorageSpy(realStorage);
+        ResourceService target = serviceWithBlobStorage(spy, "delete-condition");
+        assertThrows(HttpException.class, () -> target.deleteResourceLocked(source, EtagHeader.fromHeader("wrong", null, "DELETE")));
+        Mockito.verify(spy, Mockito.never()).delete(source.getAbsoluteFilePath());
+        assertEquals("source", new String(target.getResourceBytes(source)));
+    }
+
+    @Test
+    @Timeout(10)
+    void testGetResourceBytesAlreadyLockedUsesConditions() {
+        ResourceDescriptor source = fileResource("locked-read");
+        FileMetadata metadata = service.putFile(source, "body".getBytes(), EtagHeader.ANY, "text/plain", "author");
+        service.copyResource(source, fileResource("flush-read"));
+        try (var ignored = service.lockResource(source)) {
+            assertEquals("body", new String(service.getResourceBytes(source, EtagHeader.fromHeader(metadata.getEtag(), null, "GET"), false)));
+            assertThrows(HttpException.class, () -> service.getResourceBytes(source, EtagHeader.fromHeader("wrong", null, "GET"), false));
+            assertNull(service.getResourceBytes(fileResource("absent-read"), EtagHeader.ANY, false));
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    void testLockedReadsUseMasterRatherThanReplicaWithoutReentry() throws Exception {
+        ResourceDescriptor source = fileResource("replica-read-source");
+        FileMetadata old = service.putFile(source, "x".getBytes(), EtagHeader.ANY, "text/plain", "author");
+        Map<String, byte[]> replicaFields = captureRedisFields(source);
+        FileMetadata current = service.putFile(source, "four".getBytes(), EtagHeader.ANY, "text/plain", "author");
+        ResourceService target = serviceWithReplicaView(source, replicaFields);
+        assertEquals(old.getEtag(), target.getResourceMetadata(source).getEtag());
+        assertEquals("x", new String(target.getResourceBytes(source)));
+        try (var ignored = target.lockResource(source)) {
+            FileMetadata metadata = (FileMetadata) target.getResourceMetadataLocked(source);
+            assertEquals(current.getEtag(), metadata.getEtag());
+            assertEquals(4, metadata.getContentLength());
+            assertEquals("four", new String(target.getResourceBytesLocked(source, EtagHeader.ANY)));
+            assertEquals("four", target.getResourceLocked(source, EtagHeader.ANY));
+            assertThrows(HttpException.class, () -> target.getResourceBytesLocked(source, EtagHeader.fromHeader(old.getEtag(), null, "GET")));
+            try (var stream = target.getResourceStreamLocked(source, EtagHeader.ANY)) {
+                assertNotNull(stream);
+                assertEquals(current.getEtag(), stream.etag());
+                assertEquals("four", new String(stream.inputStream().readAllBytes()));
+            }
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    void testLockedCopyUsesActualMasterMetadataAndBytes() {
+        ResourceDescriptor source = fileResource("replica-copy-source");
+        ResourceDescriptor destination = fileResource("replica-copy-destination");
+        service.putFile(source, "x".getBytes(), EtagHeader.ANY, "text/plain", "author");
+        Map<String, byte[]> replicaFields = captureRedisFields(source);
+        FileMetadata current = service.putFile(source, "four".getBytes(), EtagHeader.ANY, "application/x-current", "author");
+        ResourceService target = serviceWithReplicaView(source, replicaFields);
+        try (var sourceLock = target.lockResource(source); var destinationLock = target.lockResource(destination)) {
+            assertTrue(target.copyResourceLocked(source, destination, null, false));
+            FileMetadata copied = (FileMetadata) target.getResourceMetadataLocked(destination);
+            assertEquals(current.getEtag(), copied.getEtag());
+            assertEquals(4, copied.getContentLength());
+            assertEquals(current.getContentType(), copied.getContentType());
+            assertEquals(EtagBuilder.generateEtag("four".getBytes()), copied.getEtag());
+            assertEquals("four", new String(target.getResourceBytesLocked(destination, EtagHeader.ANY)));
+        }
+    }
+
+    @Test
+    @Timeout(10)
+    void testLockedReadMissesConditionsAndStreamingBranches() throws Exception {
+        ResourceDescriptor absent = fileResource("locked-absent");
+        try (var ignored = service.lockResource(absent)) {
+            assertNull(service.getResourceMetadataLocked(absent));
+            assertNull(service.getResourceBytesLocked(absent, EtagHeader.ANY));
+            assertNull(service.getResourceLocked(absent, EtagHeader.ANY));
+            assertNull(service.getResourceStreamLocked(absent, EtagHeader.ANY));
+            assertThrows(HttpException.class, () -> service.getResourceBytesLocked(absent, EtagHeader.fromHeader("*", null, "GET")));
+        }
+        ResourceDescriptor folder = new ResourceDescriptor(ResourceTypes.FILE, "folder", List.of(), "bucket", "bucket/", true);
+        assertThrows(IllegalArgumentException.class, () -> service.getResourceMetadataLocked(folder));
+        assertThrows(IllegalArgumentException.class, () -> service.getResourceStreamLocked(resource("compressed"), EtagHeader.ANY));
+        settings.setMaxSizeToCache(4);
+        ResourceService target = serviceWithBlobStorage(storage, "locked-stream");
+        for (String body : List.of("abc", "abcdefgh")) {
+            ResourceDescriptor descriptor = fileResource("stream-" + body.length());
+            storage.store(descriptor.getAbsoluteFilePath(), "text/plain", null, Map.of("etag", EtagBuilder.generateEtag(body.getBytes())), body.getBytes());
+            try (var ignored = target.lockResource(descriptor); var stream = target.getResourceStreamLocked(descriptor, EtagHeader.ANY)) {
+                assertNotNull(stream);
+                assertEquals(body.length(), stream.contentLength());
+                assertEquals(body, new String(stream.inputStream().readAllBytes()));
+            }
+        }
+        ResourceDescriptor bytes = fileResource("locked-byte-miss");
+        storage.store(bytes.getAbsoluteFilePath(), "text/plain", null, Map.of(), "body".getBytes());
+        try (var ignored = target.lockResource(bytes)) {
+            assertEquals("body", new String(target.getResourceBytesLocked(bytes, EtagHeader.ANY)));
+        }
+    }
+
+    private Map<String, byte[]> captureRedisFields(ResourceDescriptor descriptor) {
+        return new HashMap<>(client.<String, byte[]>getMap(RedisUtil.redisKey(descriptor, null),
+                new CompositeCodec(StringCodec.INSTANCE, ByteArrayCodec.INSTANCE)).readAllMap());
+    }
+
+    private ResourceService serviceWithReplicaView(ResourceDescriptor descriptor, Map<String, byte[]> replicaFields) {
+        RedissonClient replicaRedis = Mockito.mock(RedissonClient.class, AdditionalAnswers.delegatesTo(client));
+        String key = RedisUtil.redisKey(descriptor, null);
+        Mockito.doAnswer(invocation -> {
+            Codec codec = invocation.getArgument(1);
+            RMap<String, byte[]> map = Mockito.spy(client.<String, byte[]>getMap(key, codec));
+            Mockito.doAnswer(read -> {
+                Set<String> requested = read.getArgument(0);
+                Map<String, byte[]> fields = new HashMap<>();
+                requested.forEach(name -> {
+                    if (replicaFields.containsKey(name)) {
+                        fields.put(name, replicaFields.get(name));
+                    }
+                });
+                return fields;
+            }).when(map).getAll(Mockito.anySet());
+            return map;
+        }).when(replicaRedis).getMap(Mockito.eq(key), Mockito.any(Codec.class));
+        return new ResourceService(Mockito.mock(TimerService.class), replicaRedis, storage, new LockService(client, null), settings, null);
+    }
+
+    private static BlobStorage createStorageSpy(BlobStorage original) {
+        BlobStorage storage = Mockito.spy(original);
+        if (File.separatorChar == '\\') {
+            Mockito.doAnswer(invocation -> FileUtil.retryFilesystemCall(() -> callRealStorage(invocation))).when(storage)
+                    .store(Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any(byte[].class));
+            Mockito.doAnswer(invocation -> FileUtil.retryFilesystemCall(() -> callRealStorage(invocation))).when(storage)
+                    .copy(Mockito.anyString(), Mockito.anyString(), Mockito.any());
+            // JClouds filesystem removeBlob logs an IOException instead of returning it to the caller.
+            Mockito.doAnswer(invocation -> FileUtil.retryFilesystemCall(() -> {
+                callRealStorage(invocation);
+                String path = invocation.getArgument(0);
+                if (original.exists(path)) {
+                    throw new FileSystemException(path, null, "Filesystem provider left the deleted blob in place");
+                }
+                return null;
+            })).when(storage).delete(Mockito.anyString());
+        }
+        return storage;
+    }
+
+    @SneakyThrows
+    private static Object callRealStorage(InvocationOnMock invocation) {
+        return invocation.callRealMethod();
+    }
+
+    @SneakyThrows
     private BlobStorage blobStorageWithNullContentLength(String blobKey) {
         Blob realBlob = storage.load(blobKey);
+        // Mockito's retained thenReturn blob must not retain a file-backed payload after this fixture owns it.
+        try (Payload payload = realBlob.getPayload(); InputStream stream = payload.openStream()) {
+            ByteArrayPayload copied = new ByteArrayPayload(stream.readAllBytes());
+            copied.setContentMetadata(payload.getContentMetadata());
+            realBlob.setPayload(copied);
+        }
         MutableBlobMetadata spiedMeta = Mockito.spy(realBlob.getMetadata());
         MutableContentMetadata spiedContent = Mockito.spy(spiedMeta.getContentMetadata());
         Mockito.when(spiedContent.getContentLength()).thenReturn(null);
@@ -362,7 +802,7 @@ public class ResourceServiceTest {
         Blob spiedBlob = Mockito.spy(realBlob);
         Mockito.when(spiedBlob.getMetadata()).thenReturn(spiedMeta);
 
-        BlobStorage spy = Mockito.spy(storage);
+        BlobStorage spy = createStorageSpy(realStorage);
         Mockito.when(spy.meta(blobKey)).thenReturn(spiedMeta);
         Mockito.when(spy.load(blobKey)).thenReturn(spiedBlob);
         return spy;
