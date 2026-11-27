@@ -161,6 +161,32 @@ class PluginClassLoaderTest {
         assertNull(PluginRegistry.resolveSharedPackage("META-INF/versions/Example.class"));
     }
 
+    @Test
+    void testCoreSuppliesEverySharedPackage() throws Exception {
+        // One class per published prefix, by name: a prefix added without a probe, or a library Core stops carrying,
+        // fails here rather than at a plugin's first request
+        Map<String, String> probes = Map.of(
+                "com.epam.aidial.core.plugin.", "com.epam.aidial.core.plugin.PluginProvider",
+                "io.vertx.core.", "io.vertx.core.Vertx",
+                "io.netty.", "io.netty.buffer.ByteBuf",
+                "com.fasterxml.jackson.core.", "com.fasterxml.jackson.core.JsonFactory",
+                "com.fasterxml.jackson.databind.", "com.fasterxml.jackson.databind.ObjectMapper",
+                "com.fasterxml.jackson.annotation.", "com.fasterxml.jackson.annotation.JsonProperty",
+                "org.slf4j.", "org.slf4j.Logger",
+                "io.opentelemetry.api.", "io.opentelemetry.api.OpenTelemetry",
+                "io.opentelemetry.context.", "io.opentelemetry.context.Context");
+        assertEquals(java.util.Set.copyOf(SharedPackages.PREFIXES), probes.keySet());
+        ClassLoader core = PluginRegistry.class.getClassLoader();
+        ClassLoader filter = new SharedClassLoader(core);
+        for (var probe : probes.entrySet()) {
+            String name = probe.getValue();
+            assertTrue(name.startsWith(probe.getKey()), name);
+            Class<?> shared = filter.loadClass(name);
+            assertSame(core.loadClass(name), shared, name);
+            assertNotSame(ClassLoader.getPlatformClassLoader(), shared.getClassLoader(), name);
+        }
+    }
+
     private static void assertSameResource(Class<?> shared, ClassLoader loader) {
         String resource = shared.getName().replace('.', '/') + ".class";
         assertEquals(shared.getClassLoader().getResource(resource), loader.getResource(resource));
