@@ -45,6 +45,7 @@ import com.epam.aidial.core.server.limiter.budget.DefaultBudgetService;
 import com.epam.aidial.core.server.log.AnalyticsSettings;
 import com.epam.aidial.core.server.log.GfLogStore;
 import com.epam.aidial.core.server.log.LogStore;
+import com.epam.aidial.core.server.log.RequestLogRecordProcessor;
 import com.epam.aidial.core.server.mcp.McpAuthorizationChallengeProvider;
 import com.epam.aidial.core.server.mcp.McpHttpClientBuilder;
 import com.epam.aidial.core.server.plugin.PluginManager;
@@ -824,6 +825,12 @@ public class AiDial {
         OpenTelemetry openTelemetry = AutoConfiguredOpenTelemetrySdk.builder()
                 .addTracerProviderCustomizer((tracerProvider, configProperties) ->
                         tracerProvider.addSpanProcessor(new PathNormalizerSpanProcessor()))
+                // only with a logs exporter: a provider without a processor hands out no-op loggers, and this one alone
+                // would have the appender build a record for every log line that nothing exports
+                .addLoggerProviderCustomizer((loggerProvider, configProperties) ->
+                        configProperties.getList("otel.logs.exporter").contains("none")
+                                ? loggerProvider
+                                : loggerProvider.addLogRecordProcessorFirst(new RequestLogRecordProcessor()))
                 .build()
                 .getOpenTelemetrySdk();
 

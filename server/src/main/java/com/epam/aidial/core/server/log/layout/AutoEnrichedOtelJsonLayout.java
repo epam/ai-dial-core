@@ -4,11 +4,10 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.IThrowableProxy;
 import ch.qos.logback.classic.spi.ThrowableProxy;
 import ch.qos.logback.core.LayoutBase;
-import com.epam.aidial.core.config.Route;
 import com.epam.aidial.core.server.AiDial;
 import com.epam.aidial.core.server.ContextManager;
 import com.epam.aidial.core.server.ProxyContext;
-import com.epam.aidial.core.server.limiter.budget.CostObject;
+import com.epam.aidial.core.server.log.RequestLogAttributes;
 import com.epam.aidial.core.server.log.otl.OtelLogRecord;
 import com.epam.aidial.core.server.tracing.BackgroundOperationTracer;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -75,9 +74,10 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
         attributes.put("loggerName", event.getLoggerName());
         attributes.put("threadName", event.getThreadName());
 
-        // Enrich attributes from context
-        enrichAttributesFromContext(event, attributes);
-        
+        if (proxyContext != null) {
+            RequestLogAttributes.putRequestAttributes(proxyContext, attributes);
+        }
+
         // Handle exception info
         enrichExceptionAttributes(event, attributes);
         
@@ -113,32 +113,6 @@ public class AutoEnrichedOtelJsonLayout extends LayoutBase<ILoggingEvent> {
                 .resource(resource)
                 .attributes(attributes)
                 .build();
-    }
-
-    private void enrichAttributesFromContext(ILoggingEvent event, Map<String, Object> attributes) {
-        ProxyContext proxyContext = ContextManager.getProxyContext();
-        if (proxyContext != null) {
-            attributes.put("user.project", proxyContext.getProject());
-            attributes.put("user.cost_object", proxyContext.getCostObject());
-            CostObject.Source costObjectSource = proxyContext.getCostObjectSource();
-            if (costObjectSource != null) {
-                attributes.put("user.cost_object.source", costObjectSource.toValue());
-            }
-            attributes.put("user.id", proxyContext.getUserId());
-            if (proxyContext.getRequest() != null) {
-                attributes.put("request.method", proxyContext.getRequest().method().name());
-                attributes.put("request.uri", proxyContext.getRequest().uri());
-            }
-            if (proxyContext.getResponse().ended()) {
-                attributes.put("response.status", proxyContext.getResponse().getStatusMessage());
-                attributes.put("response.status.code", proxyContext.getResponse().getStatusCode());
-            }
-            Route route = proxyContext.getRoute();
-            if (route != null) {
-                attributes.put("dial.route.name", route.getName());
-                attributes.put("dial.route.type", proxyContext.getRouteType().getValue());
-            }
-        }
     }
 
     private void enrichExceptionAttributes(ILoggingEvent event, Map<String, Object> attributes) {
