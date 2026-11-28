@@ -17,7 +17,8 @@ These are static settings, so they are read once at startup: changing them needs
 ## tracing
 
 * `genAiSpanAttributes`: Defaults to `true`. When `true`, Core adds `gen_ai.*` and `dial.*`
-  attributes to the request span and to OTel log records. See [Attributes](#attributes).
+  attributes to the request span and to every log line of the request. See [Attributes](#attributes) and
+  [Request attributes on log lines](#request-attributes-on-log-lines).
 * `responseTraceHeaders`: Defaults to `true`. When `true`, every response carries the W3C
   `traceparent` of Core's own root span, plus `X-DIAL-TRACE-ID` and `X-DIAL-SPAN-ID` for existing
   consumers. All three are listed in `Access-Control-Expose-Headers`, so a browser client can read
@@ -97,13 +98,29 @@ Which request attributes apply depends on the API surface: `stop_sequences`, `ch
 `frequency_penalty`, `presence_penalty` and `seed` come from Chat Completions,
 `previous_response.id` from Responses, `encoding_formats` from Embeddings.
 
+## Request attributes on log lines
+
+Core writes each log line twice: as console JSON on stdout, and as an OTLP log record when a logs exporter is set
+(`OTEL_LOGS_EXPORTER`, `none` by default). Every line written while a request is served carries the same request
+attributes on both:
+
+* `user.project`, `user.cost_object`, `user.cost_object.source`, `user.id`
+* `request.method`, `request.uri`
+* `response.status`, `response.status.code`, once the response has ended
+* `dial.route.name`, `dial.route.type` (see [Route on log lines and analytics](#route-on-log-lines-and-analytics))
+* the `gen_ai.*` and `dial.*` [attributes](#attributes) collected for the request so far, `gen_ai.conversation.id`
+  included, so a log index can find every line of a session
+
+A missing value is written as `null` in the console JSON and left out of the OTLP record. The OTLP record keeps the
+types of the span attributes (numbers as numbers). An origin plugin's key-value fields go to the console JSON only.
+
 ## Route on log lines and analytics
 
 A request served by a global route or by an application route records which route handled it:
 
 | Where                                           | Fields                                      |
 |-------------------------------------------------|---------------------------------------------|
-| Request span and console JSON log lines         | `dial.route.name`, `dial.route.type`        |
+| Request span and log lines (console and OTLP)   | `dial.route.name`, `dial.route.type`        |
 | Analytics log entry (flat fields)               | `route_name`, `route_type`                  |
 
 `dial.route.type` and `route_type` are `global` (a route from `routes`) or `application` (a route from
