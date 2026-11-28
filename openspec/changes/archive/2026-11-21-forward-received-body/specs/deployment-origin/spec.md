@@ -49,3 +49,13 @@ serialized.
 - **WHEN** plugin `p1`, serving `app`, calls a model behind an HTTP origin with the body tree of a client body that
   holds spaces
 - **THEN** the model's origin receives that tree serialized, without the spaces
+
+### Requirement: Serialized body keeps the client's member order
+Core SHALL send a body it serializes with the members in the client's order; computing the prefix cache keys SHALL NOT
+reorder them.
+
+#### Scenario: Serialized body keeps the client's member order
+- **WHEN** a client sends `POST /anthropic/v1/messages` to `claude-cache`, a model with automatic caching, with a
+  content block whose members are in the order `type`, `text`, `cache_control`, and with
+  `custom_fields.interceptor_configuration`, which Core removes
+- **THEN** the origin receives the body serialized, with that block's members in the client's order

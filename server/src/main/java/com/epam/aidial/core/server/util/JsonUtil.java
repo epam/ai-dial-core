@@ -100,12 +100,18 @@ public class JsonUtil {
         return !Objects.equals(target, object.get(key));
     }
 
+    /**
+     * A copy with the members of every object sorted by name. The node itself stays as it is: the request bodies Core
+     * hashes are the bodies it sends, and an origin may match a request by its bytes (Vertex AI routes a Claude request
+     * to the region holding its prompt cache only when the request is identical).
+     */
     public JsonNode sort(JsonNode node) {
         if (node.isArray()) {
-            ArrayNode arrayNode = (ArrayNode) node;
-            for (int i = 0; i < node.size(); i++) {
-                arrayNode.set(i, sort(arrayNode.get(i)));
+            ArrayNode result = ProxyUtil.MAPPER.getNodeFactory().arrayNode(node.size());
+            for (JsonNode element : node) {
+                result.add(sort(element));
             }
+            node = result;
         } else if (node.isObject()) {
             ObjectNode result = new ObjectNode(ProxyUtil.MAPPER.getNodeFactory(), new TreeMap<>());
             for (Map.Entry<String, JsonNode> entry : node.properties()) {

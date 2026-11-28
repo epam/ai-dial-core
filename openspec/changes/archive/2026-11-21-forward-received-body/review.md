@@ -10,6 +10,8 @@
 - The body is taken from the request on every pass, whatever the enhancement chain reports; the enhancement functions
   still report whether they changed the body. `RequestObject.getTree()` is replaced by `getBody()`.
 - A call an origin plugin makes through its host is serialized from the tree it passed.
+- A serialized body keeps the client's member order: the prefix hash reads sorted copies (`JsonUtil.sort` no longer
+  writes sorted elements back into the body's arrays).
 - Docs: `docs/dynamic-settings/models.md` (`overrideName`) and `docs/dynamic-settings/aliases.md` (the in-process
   second pass).
 

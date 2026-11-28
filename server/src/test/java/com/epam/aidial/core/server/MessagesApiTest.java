@@ -414,6 +414,33 @@ public class MessagesApiTest extends ResourceBaseTest {
         }
     }
 
+    /**
+     * deployment-origin "Serialized body keeps the client's member order": the prefix hash of a caching model reads
+     * sorted copies, so a body Core serializes reaches the origin with the client's member order.
+     */
+    @Test
+    public void testSerializedBodyKeepsTheClientsMemberOrder() throws IOException {
+        AtomicReference<RecordedRequest> captured = new AtomicReference<>();
+        try (TestWebServer server = new TestWebServer(4848); CloseableHttpClient client = newClient()) {
+            server.map(HttpMethod.POST, MESSAGES_PATH, request -> {
+                captured.set(request);
+                return TestWebServer.createResponse(200, NON_STREAM_RESPONSE, "Content-Type", "application/json");
+            });
+            String block = "{\"type\":\"text\",\"text\":\"Hello\",\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"1h\"}}";
+            // claude-cache hashes the prefix; the interceptor configuration, which Core removes, makes it serialize the body
+            String body = "{\"model\":\"claude-cache\",\"max_tokens\":100,\"stream\":false,"
+                    + "\"custom_fields\":{\"interceptor_configuration\":{\"a\":1}},"
+                    + "\"messages\":[{\"role\":\"user\",\"content\":[" + block + "]}]}";
+
+            Response response = post(client, MESSAGES_PATH, body, "api-key", "proxyKey1");
+
+            assertEquals(200, response.status());
+            String sent = captured.get().getBody().readUtf8();
+            assertFalse(sent.contains("interceptor_configuration"), sent);
+            assertTrue(sent.contains("\"messages\":[{\"role\":\"user\",\"content\":[" + block + "]}]"), sent);
+        }
+    }
+
     @Test
     public void testCountTokensSendsDeploymentIdHeader() throws IOException {
         AtomicReference<RecordedRequest> captured = new AtomicReference<>();

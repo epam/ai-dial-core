@@ -38,6 +38,9 @@
   `testPluginBehindAnAliasGetsTheClientBytesWithTheModelReplaced`) and "Call from an origin plugin"
   (`EmbeddedCallApiTest.testCallBodyIsTheTreeSerialized`).
 - [x] 2.5 Run `./gradlew checkstyleMain checkstyleTest` and the touched test classes with `--tests`.
+- [x] 2.6 The prefix hash leaves the body as received (`JsonUtil.sort` copies arrays). Scenario "Serialized body keeps
+  the client's member order" (`MessagesApiTest.testSerializedBodyKeepsTheClientsMemberOrder`,
+  `MessagesApiRequestTest.testBuildCacheKeys_leavesTheBodyAsReceived`).
 
 ## 3. Existing tests
 

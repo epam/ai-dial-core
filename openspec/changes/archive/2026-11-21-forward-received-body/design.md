@@ -84,7 +84,11 @@ stand-in bytes as today. An embedded plugin gets `serialize()` as `body` and the
   request; the tests pin each one.
 - The received buffer is kept until the pass ends; it already was, as the request's body and the router's original
   body.
-- An origin that depended on Core's compact layout would see the client's; JSON readers do not depend on layout.
+- An origin that depends on the layout sees the client's instead of Core's. JSON readers do not, but Vertex AI routes
+  a Claude request to the region holding its prompt cache only when the request is identical, and the Vertex adapter
+  keeps the key order it receives. So at rollout an open Vertex conversation writes its cache once more, and the layout
+  must not depend on whether a request is serialized: the prefix hash reads sorted copies instead of writing sorted
+  elements back into the body's arrays, which until now sent every serialized Messages content block sorted.
 
 ## Migration Plan
 

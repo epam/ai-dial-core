@@ -280,6 +280,18 @@ class MessagesApiRequestTest {
         return keys.get(keys.size() - 1).hash();
     }
 
+    @Test
+    void testBuildCacheKeys_leavesTheBodyAsReceived() throws JsonProcessingException {
+        String body = "{\"system\":[{\"type\":\"text\",\"text\":\"s\"}],\"messages\":[{\"role\":\"user\",\"content\":"
+                + "[{\"type\":\"text\",\"text\":\"hi\",\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"1h\"}}]}]}";
+        ObjectNode tree = (ObjectNode) ProxyUtil.MAPPER.readTree(body);
+
+        new MessagesApiRequest(tree).buildCacheKeys(NODE_ORDER);
+
+        // the hash reads sorted copies; the body Core sends keeps the client's member order
+        assertEquals(body, ProxyUtil.MAPPER.writeValueAsString(tree));
+    }
+
     private static MessagesApiRequest request(String body) throws JsonProcessingException {
         return new MessagesApiRequest((ObjectNode) ProxyUtil.MAPPER.readTree(body));
     }
